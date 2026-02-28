@@ -1,5 +1,5 @@
 module.exports = {
-  productName: "TangSengDaoDao", //项目名
+  productName: "OCTO", //项目名
   appId: "com.mininglamp.octo.web",
   copyright: "Copyright © 2026 MININGLAMP Technology", //版权
   directories: {

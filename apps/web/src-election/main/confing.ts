@@ -1,7 +1,7 @@
-const TSDD_FONFIG = {
-  appId: "com.tsdaodao.im",
+const DMWORK_CONFIG = {
+  appId: "com.dmwork.im",
   name: "DMWork",
   updataUrl: 'https://api.example.com/'
 };
 
-export default TSDD_FONFIG;
+export default DMWORK_CONFIG;

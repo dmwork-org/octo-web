@@ -2,8 +2,8 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater } from "electron-updater";
 import logger from "electron-log";
 import path from "path";
-import TSDD_FONFIG from "./confing";
-const feedUrl = `${TSDD_FONFIG.updataUrl}v1/common/pcupdater/`;
+import DMWORK_CONFIG from "./confing";
+const feedUrl = `${DMWORK_CONFIG.updataUrl}v1/common/pcupdater/`;
 
 let mainWindow: BrowserWindow;
 // 封装更新相关的进程通信方法

@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { WKApp, WKBase, Provider } from "@tsdaodao/base"
+import { WKApp, WKBase, Provider } from "@octo/base"
 import { listen } from '@tauri-apps/api/event'
 // import Provider from "limbase/src/Service/Provider";
 import { MainPage } from "../Pages/Main";
@@ -7,7 +7,7 @@ import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
-import { getSid } from "@tsdaodao/base/src/Utils/search";
+import { getSid } from "@octo/base/src/Utils/search";
 
 
 export default class AppLayout extends Component {

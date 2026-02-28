@@ -1,6 +1,6 @@
 # Native Architecture-Specific macOS Builds
 
-This document explains the native architecture-specific build system for TangSengDaoDao macOS applications.
+This document explains the native architecture-specific build system for DMWork macOS applications.
 
 ## Overview
 
@@ -52,12 +52,12 @@ The GitHub Actions workflow automatically:
 ## File Naming Convention
 
 Built DMG files use clear architecture identification:
-- **Intel**: `TangSengDaoDao-{version}-x64.dmg`
-- **Apple Silicon**: `TangSengDaoDao-{version}-arm64.dmg`
+- **Intel**: `DMWork-{version}-x64.dmg`
+- **Apple Silicon**: `DMWork-{version}-arm64.dmg`
 
 Example:
-- `TangSengDaoDao-1.0.6-x64.dmg` (Intel Macs)
-- `TangSengDaoDao-1.0.6-arm64.dmg` (Apple Silicon Macs)
+- `DMWork-1.0.6-x64.dmg` (Intel Macs)
+- `DMWork-1.0.6-arm64.dmg` (Apple Silicon Macs)
 
 ## GitHub Actions Workflow
 
@@ -156,7 +156,7 @@ This script will:
 
 ```bash
 # Check built binary architecture
-lipo -info "dist-ele/TangSengDaoDao.app/Contents/MacOS/TangSengDaoDao"
+lipo -info "dist-ele/DMWork.app/Contents/MacOS/DMWork"
 
 # Expected outputs:
 # Intel: "Non-fat file: ... is architecture: x86_64"

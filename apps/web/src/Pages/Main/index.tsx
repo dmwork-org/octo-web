@@ -1,4 +1,4 @@
-import { WKApp, WKLayout, Provider } from "@tsdaodao/base";
+import { WKApp, WKLayout, Provider } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";

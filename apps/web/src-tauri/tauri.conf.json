@@ -7,7 +7,7 @@
     "distDir": "../build"
   },
   "package": {
-    "productName": "tangsengdaodao",
+    "productName": "OCTO",
     "version": "../package.json"
   },
   "tauri": {
@@ -29,7 +29,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.tsdaodao.im",
+      "identifier": "com.dmwork.im",
       "longDescription": "",
       "macOS": {
         "entitlements": null,

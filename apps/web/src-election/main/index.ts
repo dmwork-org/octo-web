@@ -16,7 +16,7 @@ import Screenshots from "electron-screenshots";
 import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import TSDD_FONFIG from "./confing";
+import DMWORK_CONFIG from "./confing";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
@@ -462,7 +462,7 @@ function onDeepLink(url: string) {
   mainWindow.webContents.send("deep-link", url);
 }
 
-app.setName(TSDD_FONFIG.name);
+app.setName(DMWORK_CONFIG.name);
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
   onDeepLink(url);

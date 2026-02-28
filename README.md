@@ -23,10 +23,10 @@ DMWork Web/PC 客户端，支持 Web、Mac、Windows、Linux 多平台。基于 
 dmwork-web/
 ├── apps/web/              # 主应用入口
 ├── packages/
-│   ├── tsdaodaobase/      # 基础组件和工具
-│   ├── tsdaodaologin/     # 登录/注册模块
-│   ├── tsdaodaocontacts/  # 联系人模块
-│   ├── tsdaodaodatasource/# 数据源模块
+│   ├── dmworkbase/        # 基础组件和工具
+│   ├── dmworklogin/       # 登录/注册模块
+│   ├── dmworkcontacts/    # 联系人模块
+│   ├── dmworkdatasource/  # 数据源模块
 │   ├── eslint-config-custom/
 │   └── tsconfig/
 ├── turbo.json
@@ -77,7 +77,7 @@ docker run -d -p 82:80 \
   dmwork-web:latest
 ```
 
-或通过 docker-compose（参考 dmworkim 项目的 `docker/tsdd/docker-compose.yaml`）。
+或通过 docker-compose（参考 dmworkim 项目的 `docker/dmwork/docker-compose.yaml`）。
 
 ## Electron 桌面版
 

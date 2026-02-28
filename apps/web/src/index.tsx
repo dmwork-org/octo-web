@@ -3,10 +3,10 @@ import ReactDOM from 'react-dom';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, WKApp } from '@tsdaodao/base';
-import  { LoginModule } from '@tsdaodao/login';
-import  { DataSourceModule } from '@tsdaodao/datasource';
-import {ContactsModule} from '@tsdaodao/contacts';
+import  { BaseModule, WKApp } from '@octo/base';
+import  { LoginModule } from '@octo/login';
+import  { DataSourceModule } from '@octo/datasource';
+import {ContactsModule} from '@octo/contacts';
 
 const apiURL = "https://api.example.com/v1/"
 

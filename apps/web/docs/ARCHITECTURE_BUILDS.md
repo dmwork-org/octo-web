@@ -1,6 +1,6 @@
 # Architecture-Specific macOS Builds
 
-This document explains how to build and distribute architecture-specific macOS installers for TangSengDaoDao.
+This document explains how to build and distribute architecture-specific macOS installers for DMWork.
 
 ## Overview
 
@@ -36,12 +36,12 @@ yarn test:arch-builds
 ## File Naming Convention
 
 The built DMG files follow this naming pattern:
-- **Intel**: `TangSengDaoDao-{version}-x64.dmg`
-- **Apple Silicon**: `TangSengDaoDao-{version}-arm64.dmg`
+- **Intel**: `DMWork-{version}-x64.dmg`
+- **Apple Silicon**: `DMWork-{version}-arm64.dmg`
 
 Example:
-- `TangSengDaoDao-1.0.6-x64.dmg` (Intel Macs)
-- `TangSengDaoDao-1.0.6-arm64.dmg` (Apple Silicon Macs)
+- `DMWork-1.0.6-x64.dmg` (Intel Macs)
+- `DMWork-1.0.6-arm64.dmg` (Apple Silicon Macs)
 
 ## GitHub Actions Workflow
 
@@ -91,7 +91,7 @@ The CI/CD pipeline automatically:
 yarn test:arch-builds
 
 # Manual verification
-lipo -info "dist-ele/TangSengDaoDao.app/Contents/MacOS/TangSengDaoDao"
+lipo -info "dist-ele/DMWork.app/Contents/MacOS/DMWork"
 ```
 
 ### Expected Results:

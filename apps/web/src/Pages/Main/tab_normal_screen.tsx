@@ -1,4 +1,4 @@
-import { WKApp, Menus, ThemeMode, MeInfo } from "@tsdaodao/base";
+import { WKApp, Menus, ThemeMode, MeInfo } from "@octo/base";
 import classnames from "classnames";
 import React from "react";
 import { Component } from "react";

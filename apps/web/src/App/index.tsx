@@ -1,5 +1,5 @@
-import { ChatPage, EndpointCategory, WKApp, Menus } from '@tsdaodao/base';
-import { ContactsList } from '@tsdaodao/contacts';
+import { ChatPage, EndpointCategory, WKApp, Menus } from '@octo/base';
+import { ContactsList } from '@octo/contacts';
 import React from 'react';
 import './index.css';
 import AppLayout from '../Layout';
