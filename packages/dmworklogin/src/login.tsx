@@ -32,7 +32,7 @@ class Login extends Component<any, LoginState> {
                             <img src={`${process.env.PUBLIC_URL}/logo.png`} alt="logo" />
                         </div>
                         <div className="wk-login-content-slogan">
-                            更愉快的与朋友交流
+                            AI Agent 时代的即时通讯
                         </div>
                         <div className="wk-login-content-form">
                             <input type="text" placeholder="手机号或用户名" onChange={(v) => {

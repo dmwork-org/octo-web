@@ -24,6 +24,7 @@
     "react-error-overlay": "6.0.9"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "eslint": "^7.32.0",
     "eslint-config-custom": "*",
     "prettier": "^2.5.1",
