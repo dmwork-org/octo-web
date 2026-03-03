@@ -110,10 +110,10 @@ class Login extends Component<any, LoginState> {
                             <input type="text" name="reg-name" autoComplete="name" placeholder="昵称" onChange={(v) => {
                                 vm.registerEmailName = v.target.value
                             }}></input>
-                            <input type="password" name="reg-password" autoComplete="new-password" placeholder="密码" onChange={(v) => {
+                            <input type="password" name="reg-password" autoComplete="off" placeholder="密码" value={vm.registerEmailPassword || ""} onChange={(v) => {
                                 vm.registerEmailPassword = v.target.value
                             }}></input>
-                            <input type="password" name="reg-confirm-password" autoComplete="new-password" placeholder="确认密码" onChange={(v) => {
+                            <input type="password" name="reg-confirm-password" autoComplete="off" placeholder="确认密码" value={vm.registerEmailConfirmPassword || ""} onChange={(v) => {
                                 vm.registerEmailConfirmPassword = v.target.value
                             }}></input>
                             <div className="wk-login-content-form-buttons">
@@ -160,11 +160,11 @@ class Login extends Component<any, LoginState> {
                             重置密码
                         </div>
                         <div className="wk-login-content-form">
-                            <input type="email" name="forget-email" autoComplete="email" placeholder="注册邮箱" onChange={(v) => {
+                            <input type="email" name="forget-email" autoComplete="email" placeholder="注册邮箱" value={vm.forgetEmail || ""} onChange={(v) => {
                                 vm.forgetEmail = v.target.value
                             }}></input>
                             <div className="wk-login-content-form-code-row">
-                                <input type="text" name="forget-code" autoComplete="one-time-code" placeholder="验证码" onChange={(v) => {
+                                <input type="text" name="forget-code" autoComplete="one-time-code" placeholder="验证码" value={vm.forgetCode || ""} onChange={(v) => {
                                     vm.forgetCode = v.target.value
                                 }}></input>
                                 <Button className="wk-login-content-form-code-btn" disabled={vm.emailCodeCountdown > 0 || vm.emailCodeSending} loading={vm.emailCodeSending} onClick={() => {
@@ -177,10 +177,10 @@ class Login extends Component<any, LoginState> {
                                     })
                                 }}>{vm.emailCodeCountdown > 0 ? `${vm.emailCodeCountdown}s` : '发送验证码'}</Button>
                             </div>
-                            <input type="password" name="forget-new-pwd" autoComplete="new-password" placeholder="新密码" onChange={(v) => {
+                            <input type="password" name="forget-new-pwd" autoComplete="off" placeholder="新密码" value={vm.forgetNewPassword || ""} onChange={(v) => {
                                 vm.forgetNewPassword = v.target.value
                             }}></input>
-                            <input type="password" name="forget-confirm-pwd" autoComplete="new-password" placeholder="确认新密码" onChange={(v) => {
+                            <input type="password" name="forget-confirm-pwd" autoComplete="off" placeholder="确认新密码" value={vm.forgetConfirmPassword || ""} onChange={(v) => {
                                 vm.forgetConfirmPassword = v.target.value
                             }}></input>
                             <div className="wk-login-content-form-buttons">
