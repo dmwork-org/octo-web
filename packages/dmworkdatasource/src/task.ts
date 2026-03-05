@@ -1,11 +1,11 @@
 import { WKApp } from "@octo/base";
-import axios, { Canceler } from "axios";
+import axios from "axios";
 import { MediaMessageContent } from "wukongimjssdk";
 import {  MessageTask, TaskStatus } from "wukongimjssdk";
 
 export class MediaMessageUploadTask extends MessageTask {
     private _progress?:number
-    private canceler: Canceler | undefined
+    private controller: AbortController | undefined
     getUUID(){
         const len=32;//32长度
         const radix=16;//16进制
@@ -44,9 +44,7 @@ export class MediaMessageUploadTask extends MessageTask {
         param.append("file", file);
         const resp = await axios.post(uploadURL,param,{
             headers: { "Content-Type": "multipart/form-data" },
-            cancelToken: new axios.CancelToken((c: Canceler) => {
-                this.canceler = c
-            }),
+            signal: (this.controller = new AbortController()).signal,
             onUploadProgress: e => {
                 const completeProgress = ((e.loaded / e.total) | 0);
                 this._progress = completeProgress
@@ -81,8 +79,8 @@ export class MediaMessageUploadTask extends MessageTask {
     }
     cancel(): void {
         this.status = TaskStatus.cancel
-        if(this.canceler) {
-            this.canceler()
+        if(this.controller) {
+            this.controller.abort()
         }
         this.update()
     }
