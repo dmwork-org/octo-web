@@ -2,6 +2,7 @@ import React from "react";
 import { Component, ReactNode } from "react";
 import WKAvatar from "../WKAvatar";
 import "./item-message.css"
+import { sanitizeHighlight } from "./sanitize"
 interface ItemMessageProps {
     avatar: string; // 会话头像
     name: string; // 会话名字
@@ -28,7 +29,7 @@ export default class ItemMessage extends Component<ItemMessageProps> {
             <div className="wk-item-message-content">
                 <div className="wk-item-message-name">{this.props.name}</div>
                 {/* <div className="wk-item-message-time">{this.props.time}</div> */}
-                <div className="wk-item-message-digest" dangerouslySetInnerHTML={{ __html: digest}}></div>
+                <div className="wk-item-message-digest" dangerouslySetInnerHTML={{ __html: sanitizeHighlight(digest)}}></div>
             </div>
         </div>
     }

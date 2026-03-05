@@ -2,6 +2,7 @@ import React from "react";
 import { Component, ReactNode } from "react";
 import WKAvatar from "../WKAvatar";
 import "./item-group.css"
+import { sanitizeHighlight } from "./sanitize"
 interface ItemGroupProps {
     avatar: string;
     name: string;
@@ -17,7 +18,7 @@ export default class ItemGroup extends Component<ItemGroupProps> {
                 }
             }}>
                 <WKAvatar src={this.props.avatar} style={{width:"40px",height:"40px"}}></WKAvatar>
-                <div className="wk-item-group-name" dangerouslySetInnerHTML={{ __html: this.props.name }}></div>
+                <div className="wk-item-group-name" dangerouslySetInnerHTML={{ __html: sanitizeHighlight(this.props.name) }}></div>
             </div>
         }
 }

@@ -1,6 +1,7 @@
 import React from "react";
 import { Component, ReactNode } from "react";
 import "./item-file.css"
+import { sanitizeHighlight } from "./sanitize"
 import FileHelper from "../../Utils/filehelper";
 import { getTimeStringAutoShort2 } from "../../Utils/time";
 interface ItemFileProps {
@@ -24,7 +25,7 @@ export default class ItemFile extends Component<ItemFileProps> {
             <div className="wk-item-file-icon" style={{ backgroundColor: fileIconInfo?.color, borderRadius: "4px" }}>
                 <img alt="" src={fileIconInfo?.icon} style={{ width: '32px', height: '32px' }} />
             </div>
-            <div className="wk-item-file-name" dangerouslySetInnerHTML={{ __html: file.name }}></div>
+            <div className="wk-item-file-name" dangerouslySetInnerHTML={{ __html: sanitizeHighlight(file.name) }}></div>
             <div className="wk-item-file-desc">
                 <div className="wk-item-file-sender">{this.props.sender}</div><div className="wk-item-file-line" />
                 <div className="wk-item-file-recv">{channel.channel_name}</div><div className="wk-item-file-line" />

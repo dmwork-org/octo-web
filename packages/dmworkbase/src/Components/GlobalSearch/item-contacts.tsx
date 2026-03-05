@@ -2,6 +2,7 @@ import React from "react";
 import { Component, ReactNode } from "react";
 import WKAvatar from "../WKAvatar";
 import "./item-contacts.css"
+import { sanitizeHighlight } from "./sanitize"
 interface ItemContactsProps {
     avatar: string;
     name: string;
@@ -17,7 +18,7 @@ export default class ItemContacts extends Component<ItemContactsProps> {
                 }
             }}>
                 <WKAvatar src={this.props.avatar} style={{width:"40px",height:"40px"}}></WKAvatar>
-                <div className="wk-item-contacts-name" dangerouslySetInnerHTML={{ __html: this.props.name }}></div>
+                <div className="wk-item-contacts-name" dangerouslySetInnerHTML={{ __html: sanitizeHighlight(this.props.name) }}></div>
             </div>
         }
 }
