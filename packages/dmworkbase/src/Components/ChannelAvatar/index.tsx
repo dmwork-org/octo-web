@@ -28,8 +28,9 @@ export class ChannelAvatar extends Component<ChannelAvatarProps>{
         })
     }
     onFileChange() {
-        let file = this.$fileInput.files[0];
-        this.showFile(file);
+        const files = this.$fileInput?.files;
+        if (!files || files.length === 0) return;
+        this.showFile(files[0]);
     }
     chooseFile = () => {
         this.$fileInput.click();
