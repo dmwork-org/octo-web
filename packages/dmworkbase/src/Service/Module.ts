@@ -15,8 +15,11 @@ export class ModuleManager {
         module.init();
     }
     get(id: string): IModule {
-
-        return this.moduleMap.get(id)!;
+        const module = this.moduleMap.get(id);
+        if (!module) {
+            throw new Error(`Module not found: ${id}`);
+        }
+        return module;
     }
 }
 
