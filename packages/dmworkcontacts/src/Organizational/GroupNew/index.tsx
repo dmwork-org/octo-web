@@ -295,15 +295,15 @@ export class OrganizationalGroupNew extends Component<
     const newOpt = this.state.optPersonnelData.filter((item) => {
       return item.uid !== uid;
     });
-    const { friendData } = this.state
-    friendData.map((item) => {
-      if (item.uid == uid) {
-        item.checked = false
+    const newFriendData = this.state.friendData.map((item) => {
+      if (item.uid === uid) {
+        return { ...item, checked: false };
       }
-    })
+      return item;
+    });
     this.setState({
-      optPersonnelData: [...newOpt],
-      friendData: [...friendData]
+      optPersonnelData: newOpt,
+      friendData: newFriendData
     });
   }
 
