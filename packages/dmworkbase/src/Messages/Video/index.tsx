@@ -14,8 +14,8 @@ export class VideoContent extends MessageContent {
     second!: number // 小视频秒长
 
     decodeJSON(content: any) {
-        this.url = content["url"] || 0
-        this.cover = content["cover"] || 0
+        this.url = content["url"] || ""
+        this.cover = content["cover"] || ""
         this.size = content["size"] || 0
         this.width = content["width"] || 0
         this.height = content["height"] || 0
