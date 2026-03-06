@@ -272,13 +272,16 @@ export class LoginVM extends ProviderListener {
     }
 
     loginSuccess(data:any) {
+        if (!data || !data.uid || !data.token) {
+            throw new Error('Invalid login response: missing required fields (uid, token)')
+        }
         const loginInfo = WKApp.loginInfo
-        loginInfo.appID = data.app_id
+        loginInfo.appID = data.app_id ?? ''
         loginInfo.uid = data.uid
-        loginInfo.shortNo = data.short_no
         loginInfo.token = data.token
-        loginInfo.name = data.name
-        loginInfo.sex = data.sex
+        loginInfo.shortNo = data.short_no ?? ''
+        loginInfo.name = data.name ?? ''
+        loginInfo.sex = data.sex ?? 0
         loginInfo.save()
 
         WKApp.endpoints.callOnLogin()
