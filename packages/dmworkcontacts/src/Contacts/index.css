@@ -33,9 +33,9 @@
 
 
 .wk-contacts-section-item-index {
-    width: 50px;
+    width: 36px;
     text-align: center;
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 500;
 }
 
@@ -46,7 +46,7 @@ body[theme-mode=dark] .wk-contacts-section-item-index  {
 .wk-contacts-section-item {
     display: flex;
     align-items: center;
-    padding: 15px 15px 15px 0px;
+    padding: 6px 10px 6px 0px;
     cursor: pointer;
 }
 
@@ -66,14 +66,15 @@ body[theme-mode=dark] .wk-contacts-section-item  {
 }
 
 .wk-contacts-section-item-avatar img {
-    width: 50px;
-    height: 50px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
 }
 
 
 .wk-contacts-section-item-name {
-    margin-left: 15px;
+    margin-left: 10px;
+    font-size: 14px;
 }
 
 body[theme-mode=dark] .wk-contacts-section-item-name {
