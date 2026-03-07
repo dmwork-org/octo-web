@@ -354,3 +354,8 @@ body[theme-mode=dark] .wk-chat-popover {
 .wk-chat-space-dropdown-item-selected {
     background: var(--wk-color-hover, #f0f0ff);
 }
+.wk-chat-space-dropdown-divider {
+    height: 1px;
+    background: var(--wk-color-border, #e8e8e8);
+    margin: 4px 8px;
+}

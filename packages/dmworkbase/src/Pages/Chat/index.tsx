@@ -252,6 +252,14 @@ export default class ChatPage extends Component<any, ChatPageState> {
                               </div>
                             );
                           })}
+                          <div className="wk-chat-space-dropdown-divider"></div>
+                          <div className="wk-chat-space-dropdown-item" onClick={() => {
+                            vm.showSpaceCreate = true;
+                            this.setState({ showSpaceDropdown: false });
+                          }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, backgroundColor: '#e0e0e0', color: '#666', fontSize: 16, fontWeight: 600, marginRight: 8 }}>+</span>
+                            <span style={{ flex: 1, color: '#666' }}>加入 / 创建 Space</span>
+                          </div>
                         </div>
                       )}
                     </div>
