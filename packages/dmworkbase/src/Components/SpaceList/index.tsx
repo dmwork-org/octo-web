@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { IconPlus } from "@douyinfe/semi-icons";
-import { Spin } from "@douyinfe/semi-ui";
+import { Spin, Modal, Input, Toast } from "@douyinfe/semi-ui";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import "./index.css";
 
@@ -13,6 +13,9 @@ export interface SpaceListProps {
 interface SpaceListState {
     spaces: Space[];
     loading: boolean;
+    showJoinModal: boolean;
+    joinCode: string;
+    joining: boolean;
 }
 
 export default class SpaceList extends Component<SpaceListProps, SpaceListState> {
@@ -21,6 +24,9 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
         this.state = {
             spaces: [],
             loading: false,
+            showJoinModal: false,
+            joinCode: "",
+            joining: false,
         };
     }
 
@@ -35,6 +41,24 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
             this.setState({ spaces, loading: false });
         } catch {
             this.setState({ loading: false });
+        }
+    };
+
+    handleJoin = async () => {
+        const { joinCode } = this.state;
+        if (!joinCode.trim()) {
+            Toast.warning("请输入邀请码");
+            return;
+        }
+        this.setState({ joining: true });
+        try {
+            await SpaceService.shared.joinSpace(joinCode.trim());
+            Toast.success("已加入 Space");
+            this.setState({ showJoinModal: false, joinCode: "", joining: false });
+            this.loadSpaces();
+        } catch {
+            Toast.error("加入失败，请检查邀请码");
+            this.setState({ joining: false });
         }
     };
 
@@ -55,14 +79,36 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
         const { selectedSpaceId, onSelect, onCreateClick } = this.props;
         const { spaces, loading } = this.state;
 
+        const { showJoinModal, joinCode, joining } = this.state;
+
         return (
             <div className="wk-spacelist">
                 <div className="wk-spacelist-header">
                     <span className="wk-spacelist-title">Space</span>
-                    <div className="wk-spacelist-add" onClick={onCreateClick}>
-                        <IconPlus size="small" />
+                    <div className="wk-spacelist-header-actions">
+                        <div className="wk-spacelist-add" onClick={() => this.setState({ showJoinModal: true })} title="加入 Space">
+                            <span style={{ fontSize: '12px' }}>加入</span>
+                        </div>
+                        <div className="wk-spacelist-add" onClick={onCreateClick} title="创建 Space">
+                            <IconPlus size="small" />
+                        </div>
                     </div>
                 </div>
+                <Modal
+                    title="加入 Space"
+                    visible={showJoinModal}
+                    onOk={this.handleJoin}
+                    onCancel={() => this.setState({ showJoinModal: false, joinCode: "" })}
+                    okText={joining ? "加入中..." : "加入"}
+                    confirmLoading={joining}
+                >
+                    <Input
+                        placeholder="输入邀请码"
+                        value={joinCode}
+                        onChange={(v) => this.setState({ joinCode: v })}
+                        onEnterPress={this.handleJoin}
+                    />
+                </Modal>
                 {loading ? (
                     <div className="wk-spacelist-loading">
                         <Spin size="small" />

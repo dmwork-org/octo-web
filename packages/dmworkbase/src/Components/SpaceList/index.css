@@ -135,3 +135,9 @@ body[theme-mode=dark] .wk-spacelist-item-name {
     font-size: 11px;
     color: #999;
 }
+
+.wk-spacelist-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}

@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Input, TextArea, Toast, Modal } from "@douyinfe/semi-ui";
+import { Input, TextArea, Toast, Modal, Button } from "@douyinfe/semi-ui";
+import { IconCopy, IconLink } from "@douyinfe/semi-icons";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import "./index.css";
 
@@ -14,6 +15,8 @@ interface SpaceSettingsState {
     name: string;
     description: string;
     saving: boolean;
+    inviteCode: string;
+    inviteLoading: boolean;
 }
 
 export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSettingsState> {
@@ -23,6 +26,8 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
             name: props.space.name,
             description: props.space.description || "",
             saving: false,
+            inviteCode: "",
+            inviteLoading: false,
         };
     }
 
@@ -82,8 +87,38 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
         });
     };
 
+    handleInvite = async () => {
+        this.setState({ inviteLoading: true });
+        try {
+            const resp = await SpaceService.shared.createInvite(this.props.space.space_id);
+            this.setState({ inviteCode: resp.invite_code, inviteLoading: false });
+        } catch {
+            Toast.error("生成邀请链接失败");
+            this.setState({ inviteLoading: false });
+        }
+    };
+
+    copyInviteCode = () => {
+        const { inviteCode } = this.state;
+        navigator.clipboard.writeText(inviteCode).then(() => {
+            Toast.success("邀请码已复制");
+        });
+    };
+
+    copyInviteLink = () => {
+        const { inviteCode } = this.state;
+        const link = `${window.location.origin}/join/${inviteCode}`;
+        navigator.clipboard.writeText(link).then(() => {
+            Toast.success("邀请链接已复制");
+        });
+    };
+
     isOwner() {
         return this.props.space.role === 1;
+    }
+
+    isAdmin() {
+        return this.props.space.role === 1 || this.props.space.role === 2;
     }
 
     render() {
@@ -127,6 +162,34 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                         >
                             {saving ? "保存中..." : "保存修改"}
                         </button>
+                    )}
+
+                    {this.isAdmin() && (
+                        <div className="wk-spacesettings-section">
+                            <label className="wk-spacesettings-label">邀请成员</label>
+                            {!this.state.inviteCode ? (
+                                <button
+                                    className="wk-spacesettings-btn wk-spacesettings-btn-primary"
+                                    onClick={this.handleInvite}
+                                    disabled={this.state.inviteLoading}
+                                >
+                                    {this.state.inviteLoading ? "生成中..." : "生成邀请链接"}
+                                </button>
+                            ) : (
+                                <div className="wk-spacesettings-invite-result">
+                                    <div className="wk-spacesettings-invite-row">
+                                        <span className="wk-spacesettings-invite-label">邀请码：</span>
+                                        <code className="wk-spacesettings-invite-code">{this.state.inviteCode}</code>
+                                        <button className="wk-spacesettings-copy-btn" onClick={this.copyInviteCode}>复制</button>
+                                    </div>
+                                    <div className="wk-spacesettings-invite-row">
+                                        <button className="wk-spacesettings-copy-btn wk-spacesettings-copy-link" onClick={this.copyInviteLink}>
+                                            复制邀请链接
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     <div className="wk-spacesettings-section">

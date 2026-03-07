@@ -146,3 +146,58 @@ body[theme-mode=dark] .wk-spacesettings-btn-danger {
 body[theme-mode=dark] .wk-spacesettings-btn-danger:hover {
     background-color: rgba(231, 76, 60, 0.25);
 }
+
+.wk-spacesettings-invite-result {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.wk-spacesettings-invite-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wk-spacesettings-invite-label {
+    color: #999;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.wk-spacesettings-invite-code {
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 14px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body[theme-mode=dark] .wk-spacesettings-invite-code {
+    background: #333;
+    color: #eee;
+}
+
+.wk-spacesettings-copy-btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.wk-spacesettings-copy-btn:hover {
+    background: #5a6fd6;
+}
+
+.wk-spacesettings-copy-link {
+    width: 100%;
+    padding: 8px;
+}
