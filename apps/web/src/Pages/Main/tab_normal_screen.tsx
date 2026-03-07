@@ -60,6 +60,28 @@ export class TabNormalScreen extends Component<TabNormalScreenProps, TabNormalSc
               src={WKApp.shared.avatarUser(WKApp.loginInfo.uid || "")}
             ></img>
           </li>
+          {/* Space 切换器 — 头像下方 */}
+          {this.state.spaces.length > 0 && this.state.spaces.map((space) => {
+            const isSelected = WKApp.shared.currentSpaceId === space.space_id;
+            const colors = ["#667eea", "#764ba2", "#f093fb", "#4facfe", "#43e97b", "#fa709a", "#fee140", "#a18cd1"];
+            const colorIndex = space.name.charCodeAt(0) % colors.length;
+            return (
+              <Tooltip key={space.space_id} content={space.name} position="right">
+                <li
+                  className={classnames("wk-sider-space-icon", isSelected && "wk-sider-space-icon-selected")}
+                  style={{ backgroundColor: colors[colorIndex] }}
+                  onClick={() => {
+                    WKApp.shared.currentSpaceId = space.space_id;
+                    localStorage.setItem("currentSpaceId", space.space_id);
+                    WKApp.shared.notifyListener();
+                    WKApp.mittBus.emit("space-changed", space);
+                  }}
+                >
+                  {space.name.charAt(0)}
+                </li>
+              </Tooltip>
+            );
+          })}
           {vm.menusList.map((menus: Menus) => {
             return (
               <li
@@ -87,33 +109,6 @@ export class TabNormalScreen extends Component<TabNormalScreenProps, TabNormalSc
               </li>
             );
           })}
-
-          {/* Space 切换器 */}
-          {this.state.spaces.length > 0 && (
-            <li className="wk-main-sider-space-switcher">
-              {this.state.spaces.map((space) => {
-                const isSelected = WKApp.shared.currentSpaceId === space.space_id;
-                const colors = ["#667eea", "#764ba2", "#f093fb", "#4facfe", "#43e97b", "#fa709a", "#fee140", "#a18cd1"];
-                const colorIndex = space.name.charCodeAt(0) % colors.length;
-                return (
-                  <Tooltip key={space.space_id} content={space.name} position="right">
-                    <div
-                      className={classnames("wk-sider-space-icon", isSelected && "wk-sider-space-icon-selected")}
-                      style={{ backgroundColor: colors[colorIndex] }}
-                      onClick={() => {
-                        WKApp.shared.currentSpaceId = space.space_id;
-                        localStorage.setItem("currentSpaceId", space.space_id);
-                        WKApp.shared.notifyListener();
-                        WKApp.mittBus.emit("space-changed", space);
-                      }}
-                    >
-                      {space.name.charAt(0)}
-                    </div>
-                  </Tooltip>
-                );
-              })}
-            </li>
-          )}
 
           <li
             className="wk-main-sider-setting-box"
