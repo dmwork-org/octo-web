@@ -301,7 +301,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             name = item.remark
                         }
                         return <div key={item.uid} className={classnames("wk-contacts-section-item", WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined)} onClick={() => {
-                            if (item.robot && item.uid !== 'botfather') {
+                            if (item.robot === 1 && item.uid !== 'botfather') {
                                 // 非系统 Bot: 弹出详情弹窗
                                 this.setState({ botDetailUid: item.uid, botDetailVisible: true })
                                 return
@@ -395,7 +395,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             const spaceId = WKApp.shared.currentSpaceId
                             return (
                                 <div key={item.uid} className="wk-contacts-section-item" onClick={() => {
-                                    if (item.robot === true && item.uid !== 'botfather') {
+                                    if (item.robot === 1 && item.uid !== 'botfather') {
                                         this.setState({ botDetailUid: item.uid, botDetailVisible: true })
                                         return
                                     }
@@ -407,7 +407,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                     </div>
                                     <div className="wk-contacts-section-item-name">
                                         {name}
-                                        {item.robot === true && <AiBadge />}
+                                        {item.robot === 1 && <AiBadge />}
                                     </div>
                                 </div>
                             )
