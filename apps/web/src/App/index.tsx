@@ -30,6 +30,10 @@ async function registerMenus() {
     let badge = 0;
 
     for (const conversation of WKSDK.shared().conversationManager.conversations) {
+      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
+      if (channelInfo?.mute) {
+        continue
+      }
       badge += conversation.unread
     }
 
