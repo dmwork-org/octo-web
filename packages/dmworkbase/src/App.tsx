@@ -453,9 +453,11 @@ export default class WKApp extends ProviderListener {
     if (channel.channelType === ChannelTypePerson) {
       // 从 Space channel_id 中提取真实 uid
       let uid = channel.channelID;
-      if (uid.startsWith('s') && uid.includes('_')) {
-        uid = uid.substring(uid.indexOf('_') + 1);
+      const spaceId = WKApp.shared.currentSpaceId;
+      if (spaceId && uid.startsWith(`s${spaceId}_`)) {
+        uid = uid.substring(spaceId.length + 2);
       }
+      if (!uid) uid = channel.channelID; // fallback
       return `${baseURL}users/${uid}/avatar?v=${avatarTag}`;
     } else if (channel.channelType === ChannelTypeGroup) {
       return `${baseURL}groups/${channel.channelID}/avatar?v=${avatarTag}`;
