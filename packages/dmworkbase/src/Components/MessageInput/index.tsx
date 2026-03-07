@@ -15,6 +15,14 @@ import AiBadge from "../AiBadge";
 
 
 const MAX_MESSAGE_LENGTH = 5000;
+
+// Strip zero-width and invisible Unicode characters that may be introduced
+// when copying text from other apps (e.g. BotFather in Telegram).
+// This prevents slash commands like "/approve" from failing to match.
+const INVISIBLE_CHARS_RE = /[\u200B\u200C\u200D\u200E\u200F\uFEFF\u00AD\u2060\u2061\u2062\u2063\u2064\u034F\u061C\u180E]/g;
+function stripInvisibleChars(text: string): string {
+    return text.replace(INVISIBLE_CHARS_RE, '');
+}
 export type OnInsertFnc = (text: string) => void
 export type OnAddMentionFnc = (uid: string, name: string) => void
 
@@ -254,7 +262,7 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
     }
 
     handleChange = (event: { target: { value: string } }) => {
-        const value = event.target.value
+        const value = stripInvisibleChars(event.target.value)
         const { botCommands } = this.props
         // 只在输入 / 前缀且没有空格时弹出斜杠命令菜单（避免粘贴完整命令时弹出）
         if (botCommands && botCommands.length > 0 && value.startsWith('/') && !value.includes(' ') && !value.includes('\n')) {
