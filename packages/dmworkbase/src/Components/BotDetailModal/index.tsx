@@ -25,6 +25,8 @@ interface BotDetailModalState {
 }
 
 export default class BotDetailModal extends Component<BotDetailModalProps, BotDetailModalState> {
+    private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
     state: BotDetailModalState = {
         loading: true,
         name: "",
@@ -43,6 +45,13 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
     componentDidUpdate(prevProps: BotDetailModalProps) {
         if (prevProps.uid !== this.props.uid && this.props.uid) {
             this.loadBotInfo();
+        }
+    }
+
+    componentWillUnmount() {
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = null;
         }
     }
 
@@ -101,7 +110,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             });
             Toast.success("好友申请已发送");
             // Bot auto_approve=1 时会自动通过，刷新状态
-            setTimeout(() => this.loadBotInfo(), 500);
+            this.refreshTimer = setTimeout(() => this.loadBotInfo(), 500);
         } catch {
             Toast.error("申请失败");
         } finally {
