@@ -94,6 +94,14 @@ export default class AppLayout extends Component {
                 return loginComponent
             }
             // Space 模式：检查用户是否属于至少一个 Space
+            if (!WKApp.shared.currentSpaceId) {
+                // 尝试从 localStorage 恢复
+                const cached = localStorage.getItem("currentSpaceId");
+                if (cached) {
+                    WKApp.shared.currentSpaceId = cached;
+                    WKApp.shared.spaceChecked = true;
+                }
+            }
             if (!WKApp.shared.currentSpaceId && !WKApp.shared.spaceChecked) {
                 return <SpaceGate />
             }

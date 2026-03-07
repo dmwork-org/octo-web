@@ -428,6 +428,9 @@ export default class WKApp extends ProviderListener {
   // 登出
   logout() {
     WKApp.loginInfo.logout();
+    localStorage.removeItem("currentSpaceId");
+    this.currentSpaceId = "";
+    this.spaceChecked = false;
     window.location.reload();
   }
 

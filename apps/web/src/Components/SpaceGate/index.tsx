@@ -1,11 +1,11 @@
 import React, { Component } from "react";
 import { WKApp } from "@octo/base";
-import { SpaceService, Space } from "@octo/base/src/Service/SpaceService";
+import { SpaceService } from "@octo/base/src/Service/SpaceService";
 import { Input, Button, Toast, Spin } from "@douyinfe/semi-ui";
 
 interface SpaceGateState {
     loading: boolean;
-    spaces: Space[];
+    noSpace: boolean;
     inviteCode: string;
     joining: boolean;
 }
@@ -13,36 +13,49 @@ interface SpaceGateState {
 export default class SpaceGate extends Component<{}, SpaceGateState> {
     state: SpaceGateState = {
         loading: true,
-        spaces: [],
+        noSpace: false,
         inviteCode: "",
         joining: false,
     };
 
     componentDidMount() {
+        // 先检查 localStorage 缓存
+        const cached = localStorage.getItem("currentSpaceId");
+        if (cached) {
+            this.enterSpace(cached);
+            return;
+        }
         this.checkSpaces();
     }
+
+    enterSpace = (spaceId: string) => {
+        WKApp.shared.currentSpaceId = spaceId;
+        WKApp.shared.spaceChecked = true;
+        localStorage.setItem("currentSpaceId", spaceId);
+        // 双保险：notifyListener + forceUpdate + 延迟 reload
+        try {
+            WKApp.shared.notifyListener();
+        } catch (_) {}
+        this.forceUpdate();
+        // 如果 notifyListener 没生效，300ms 后 reload
+        setTimeout(() => {
+            if (document.querySelector(".wk-spacegate-join")) {
+                window.location.reload();
+            }
+        }, 300);
+    };
 
     checkSpaces = async () => {
         try {
             const spaces = await SpaceService.shared.getMySpaces();
             if (spaces.length >= 1) {
-                // 有 Space → 直接进入第一个（多 Space 切换在侧边栏）
-                WKApp.shared.currentSpaceId = spaces[0].space_id;
-                WKApp.shared.spaceChecked = true;
-                WKApp.shared.notifyListener();
+                this.enterSpace(spaces[0].space_id);
             } else {
-                // 没有 Space，显示加入页面
-                this.setState({ loading: false });
+                this.setState({ loading: false, noSpace: true });
             }
         } catch {
-            this.setState({ loading: false });
+            this.setState({ loading: false, noSpace: true });
         }
-    };
-
-    selectSpace = (space: Space) => {
-        WKApp.shared.currentSpaceId = space.space_id;
-        WKApp.shared.spaceChecked = true;
-        WKApp.shared.notifyListener();
     };
 
     joinSpace = async () => {
@@ -63,9 +76,9 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
     };
 
     render() {
-        const { loading, spaces, inviteCode, joining } = this.state;
+        const { loading, noSpace, inviteCode, joining } = this.state;
 
-        if (loading) {
+        if (loading && !noSpace) {
             return (
                 <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
                     <Spin size="large" />
@@ -73,9 +86,8 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
             );
         }
 
-        // 没有 Space，显示加入页面
         return (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: "16px" }}>
+            <div className="wk-spacegate-join" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: "16px" }}>
                 <h2>加入 Space</h2>
                 <p style={{ color: "#888" }}>请输入邀请码加入一个 Space 开始使用</p>
                 <Input
