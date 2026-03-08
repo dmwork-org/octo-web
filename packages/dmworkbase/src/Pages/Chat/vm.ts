@@ -146,6 +146,16 @@ export class ChatVM extends ProviderListener {
                 WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
             }
             if (action === ConversationAction.add) {
+                // Space 过滤：只添加属于当前 Space 的会话（或无 Space 前缀的旧会话）
+                const currentSpaceId = WKApp.shared.currentSpaceId
+                if (currentSpaceId && conversation.channel.channelID) {
+                    const prefix = `s${currentSpaceId}_`
+                    const cid = conversation.channel.channelID
+                    // 有 Space 前缀但不属于当前 Space → 跳过
+                    if (cid.startsWith("s") && !cid.startsWith(prefix)) {
+                        return
+                    }
+                }
                 if (conversation.lastMessage?.content && conversation.lastMessage?.contentType === MessageContentType.text) {
                     conversation.lastMessage.content.text = ProhibitwordsService.shared.filter(conversation.lastMessage?.content.text)
                 }
@@ -292,6 +302,8 @@ export class ChatVM extends ProviderListener {
     async requestConversationList() {
 
         this.loading = true
+        // 切换 Space 时清空当前列表，避免旧 Space 会话残留
+        this.conversations = []
         this.notifyListener()
         const conversationWraps = new Array<ConversationWrap>()
         const conversations = await WKSDK.shared().conversationManager.sync({})
