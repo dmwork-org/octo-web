@@ -194,7 +194,7 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         // 成员按字母分组
         for (const item of users) {
-            let name = (item.name || '').replace(/**/g, '')
+            let name = (item.name || '').replace(/\*\*/g, '')
             if (item.remark && item.remark !== "") name = item.remark
             let pinyinNick = getPinyin(toSimplized(name)).toUpperCase()
             let indexName = !pinyinNick || /[^a-z]/i.test(pinyinNick[0]) ? "#" : pinyinNick[0]
@@ -254,7 +254,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         const indexItemMap = new Map<string, Contacts[]>()
         let indexList = []
         for (const item of contacts) {
-            let name = (item.name || '').replace(/**/g, '')
+            let name = (item.name || '').replace(/\*\*/g, '')
             if (item.remark && item.remark !== "") {
                 name = item.remark
             }
@@ -311,7 +311,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             <div className="wk-contacts-section-list" style={isBotGroup && botGroupCollapsed ? { display: 'none' } : undefined}>
                 {
                     items?.map((item, i) => {
-                        let name = (item.name || '').replace(/**/g, '')
+                        let name = (item.name || '').replace(/\*\*/g, '')
                         if (item.remark && item.remark !== "") {
                             name = item.remark
                         }
@@ -387,7 +387,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     groupByLetter(items: Contacts[]): Map<string, Contacts[]> {
         const map = new Map<string, Contacts[]>()
         for (const item of items) {
-            let name = (item.name || '').replace(/**/g, '')
+            let name = (item.name || '').replace(/\*\*/g, '')
             if (item.remark && item.remark !== "") name = item.remark
             const firstChar = name[0] || ''
             const py = pinyin(firstChar, { toneType: 'none' })
@@ -463,7 +463,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                                 {letter}
                                             </div>
                                             {grouped.get(letter)!.map((item) => {
-                                                let name = (item.name || '').replace(/**/g, '')
+                                                let name = (item.name || '').replace(/\*\*/g, '')
                                                 if (item.remark && item.remark !== "") name = item.remark
                                                 return (
                                                     <div key={item.uid} className="wk-contacts-section-item" onClick={() => {
@@ -506,7 +506,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                 </>
                             )
                         })() : items.map((item) => {
-                            let name = (item.name || '').replace(/**/g, '')
+                            let name = (item.name || '').replace(/\*\*/g, '')
                             if (item.remark && item.remark !== "") name = item.remark
                             return (
                                 <div key={item.uid} className="wk-contacts-section-item" onClick={() => {
