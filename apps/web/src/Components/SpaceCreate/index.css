@@ -1,0 +1,93 @@
+.wk-spacecreate-form {
+    padding: 8px 0;
+}
+
+.wk-spacecreate-field {
+    margin-bottom: 16px;
+}
+
+.wk-spacecreate-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: #333;
+}
+
+body[theme-mode=dark] .wk-spacecreate-label {
+    color: #ccc;
+}
+
+.wk-spacecreate-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.wk-spacecreate-btn {
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.wk-spacecreate-btn-cancel {
+    background-color: #f0f0f0;
+    color: #333;
+}
+
+body[theme-mode=dark] .wk-spacecreate-btn-cancel {
+    background-color: #3a3a3a;
+    color: #ccc;
+}
+
+.wk-spacecreate-btn-cancel:hover {
+    background-color: #e0e0e0;
+}
+
+body[theme-mode=dark] .wk-spacecreate-btn-cancel:hover {
+    background-color: #444;
+}
+
+.wk-spacecreate-btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.wk-spacecreate-btn-primary:hover {
+    opacity: 0.9;
+}
+
+.wk-spacecreate-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.wk-spacecreate-invite {
+    padding: 8px 0 16px;
+}
+
+.wk-spacecreate-invite-tip {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 12px;
+}
+
+body[theme-mode=dark] .wk-spacecreate-invite-tip {
+    color: #aaa;
+}
+
+.wk-spacecreate-invite-link {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.wk-spacecreate-invite-link .wk-spacecreate-btn {
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}

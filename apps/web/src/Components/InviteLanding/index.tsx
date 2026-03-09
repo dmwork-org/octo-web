@@ -69,21 +69,59 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         }
     }
 
+    private findToken(): string | undefined {
+        // 先试 WKApp 的 token
+        if (WKApp.loginInfo.token) return WKApp.loginInfo.token;
+        // fallback: 遍历 localStorage 找 token（邀请链接没有 sid 参数时 WKApp 读不到）
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith("token") && key !== "tokenCallback") {
+                const val = localStorage.getItem(key);
+                if (val && val.length > 10) return val;
+            }
+        }
+        return undefined;
+    }
+
+    private findSid(): string {
+        // 从 localStorage 的 token key 提取 sid（key 格式: "token{sid}"）
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith("token") && key !== "tokenCallback") {
+                const val = localStorage.getItem(key);
+                if (val && val.length > 10) return key.substring(5); // "token".length = 5
+            }
+        }
+        return "";
+    }
+
     async handleJoin() {
         if (this.joinInProgress) return;
         this.joinInProgress = true;
         this.safeSetState({ joining: true });
         try {
-            await WKApp.apiClient.post(`/space/join`, { invite_code: this.props.inviteCode });
+            const token = this.findToken();
+            const apiUrl = WKApp.apiClient.config.apiURL?.replace(/\/+$/, '');
+            const resp = await fetch(`${apiUrl}/space/join`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(token ? { token } : {}) },
+                body: JSON.stringify({ invite_code: this.props.inviteCode }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.msg || "加入失败");
+            }
             Toast.success("加入成功！");
             const spaceId = this.state.info?.space_id;
             if (spaceId) {
                 localStorage.setItem('currentSpaceId', spaceId);
-                WKApp.shared.currentSpaceId = spaceId;
             }
-            this.redirectToClean();
+            // 跳转回主界面，带上正确的 sid
+            const sid = this.findSid();
+            const basePath = window.location.pathname.replace(/\/+$/, '') || '/web';
+            window.location.href = `${window.location.origin}${basePath}${sid ? `?sid=${sid}` : ''}`;
         } catch (e: any) {
-            Toast.error(e?.msg || "加入失败");
+            Toast.error(e?.message || "加入失败");
             this.safeSetState({ joining: false });
         } finally {
             this.joinInProgress = false;
