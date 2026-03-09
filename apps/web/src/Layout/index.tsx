@@ -114,9 +114,29 @@ export default class AppLayout extends Component {
         const urlParams = new URLSearchParams(window.location.search);
         const inviteCode = urlParams.get("invite");
         if (inviteCode) {
-            // 确保登录信息已加载（Provider 未初始化时 token 为空）
+            // 确保登录信息已加载
+            // 邀请链接 URL 没有 ?sid= 参数，导致 getSID() 返回空，
+            // 读不到 token{sid}。扫描 localStorage 找已存在的 token。
             if (!WKApp.loginInfo.token) {
                 WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                // SID 不匹配，尝试从 localStorage 找 token{xxx}
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith("token") && key !== "token") {
+                        const val = localStorage.getItem(key);
+                        if (val) {
+                            // 提取 sid 后缀，重新加载
+                            const sid = key.substring(5); // "token".length = 5
+                            const url = new URL(window.location.href);
+                            url.searchParams.set("sid", sid);
+                            // 保留 invite 参数
+                            window.location.href = url.toString();
+                            return <div />;
+                        }
+                    }
+                }
             }
             return <InviteLanding inviteCode={inviteCode} />;
         }
