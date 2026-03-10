@@ -70,7 +70,7 @@ class Login extends Component<any, LoginState> {
                             lineHeight: '1.6',
                         }}>
                             <div>你被邀请加入 <strong>{vm.inviteInfo.space_name}</strong></div>
-                            <div>{vm.inviteInfo.member_count} 位成员</div>
+                            <div>{vm.inviteInfo.max_users > 0 ? `${vm.inviteInfo.member_count}/${vm.inviteInfo.max_users} 人` : `${vm.inviteInfo.member_count} 位成员`}</div>
                         </div>
                     )}
                     <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.phone ? "block" : "none" }}>

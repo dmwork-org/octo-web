@@ -12,6 +12,7 @@ interface InviteInfo {
     space_id: string;
     space_name: string;
     member_count: number;
+    max_users: number;
 }
 
 interface InviteLandingState {
@@ -121,7 +122,12 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             const basePath = window.location.pathname.replace(/\/+$/, '') || '/web';
             window.location.href = `${window.location.origin}${basePath}${sid ? `?sid=${sid}` : ''}`;
         } catch (e: any) {
-            Toast.error(e?.message || "加入失败");
+            const msg = e?.message || "";
+            if (msg.includes("已满") || msg.includes("SPACE_FULL")) {
+                Toast.error("空间已满，无法加入");
+            } else {
+                Toast.error(msg || "加入失败");
+            }
             this.safeSetState({ joining: false });
         } finally {
             this.joinInProgress = false;
@@ -171,12 +177,16 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
                     </div>
                     <div className="invite-landing-name">{info.space_name}</div>
                     <div className="invite-landing-subtitle">邀请你加入</div>
-                    <div className="invite-landing-members">{info.member_count} 位成员</div>
+                    <div className="invite-landing-members">
+                        {info.max_users > 0 ? `${info.member_count}/${info.max_users} 人` : `${info.member_count} 位成员`}
+                    </div>
 
                     {isLoggedIn ? (
                         <Button type="primary" size="large" loading={joining}
-                            className="invite-landing-btn" onClick={() => this.handleJoin()}>
-                            加入 Space
+                            className="invite-landing-btn"
+                            disabled={info.max_users > 0 && info.member_count >= info.max_users}
+                            onClick={() => this.handleJoin()}>
+                            {info.max_users > 0 && info.member_count >= info.max_users ? "空间已满" : "加入 Space"}
                         </Button>
                     ) : (
                         <>

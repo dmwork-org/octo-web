@@ -61,7 +61,7 @@ export class LoginVM extends ProviderListener {
     forgetLoading: boolean = false
 
     // ---------- 邀请信息 ----------
-    inviteInfo?: { space_name: string; member_count: number; invite_code: string; space_id: string }
+    inviteInfo?: { space_name: string; member_count: number; max_users: number; invite_code: string; space_id: string }
     inviteLoading: boolean = false
 
     set autoRefresh(v: boolean) {

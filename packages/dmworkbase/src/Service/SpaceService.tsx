@@ -6,6 +6,7 @@ export interface Space {
     description: string
     logo: string
     member_count: number
+    max_users: number // 0 means unlimited
     role: number // 1: owner, 2: admin, 3: member
     created_at: string
 }

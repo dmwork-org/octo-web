@@ -92,8 +92,13 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
             await SpaceService.shared.joinSpace(inviteCode.trim());
             Toast.success("已加入 Space");
             this.checkSpaces();
-        } catch {
-            Toast.error("邀请码无效或已过期");
+        } catch (e: any) {
+            const msg = e?.msg || e?.message || "";
+            if (msg.includes("已满") || msg.includes("SPACE_FULL")) {
+                Toast.error("空间已满，无法加入");
+            } else {
+                Toast.error("邀请码无效或已过期");
+            }
         } finally {
             this.setState({ joining: false });
         }

@@ -69,8 +69,13 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
             Toast.success("已加入 Space");
             this.setState({ showJoinModal: false, joinCode: "", joining: false });
             this.loadSpaces();
-        } catch {
-            Toast.error("加入失败，请检查邀请码");
+        } catch (e: any) {
+            const msg = e?.msg || e?.message || "";
+            if (msg.includes("已满") || msg.includes("SPACE_FULL")) {
+                Toast.error("空间已满，无法加入");
+            } else {
+                Toast.error("加入失败，请检查邀请码");
+            }
             this.setState({ joining: false });
         }
     };
@@ -198,7 +203,9 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
                                 </div>
                                 <div className="wk-spacelist-item-info">
                                     <div className="wk-spacelist-item-name">{space.name}</div>
-                                    <div className="wk-spacelist-item-count">{space.member_count} 人</div>
+                                    <div className="wk-spacelist-item-count">
+                                        {space.max_users > 0 ? `${space.member_count}/${space.max_users} 人` : `${space.member_count} 人`}
+                                    </div>
                                 </div>
                                 <div className="wk-spacelist-item-actions">
                                     <Tooltip content="邀请成员" position="right">
