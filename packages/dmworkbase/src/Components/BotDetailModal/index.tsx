@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Modal, Button, Spin, Toast } from "@douyinfe/semi-ui";
+import { Modal, Button, Spin, Toast, Input } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
@@ -22,6 +22,8 @@ interface BotDetailModalState {
     botCommands: string;
     isFriend: boolean;
     applying: boolean;
+    showApplyInput: boolean;
+    applyRemark: string;
 }
 
 export default class BotDetailModal extends Component<BotDetailModalProps, BotDetailModalState> {
@@ -36,6 +38,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         botCommands: "",
         isFriend: false,
         applying: false,
+        showApplyInput: false,
+        applyRemark: "",
     };
 
     componentDidMount() {
@@ -100,15 +104,24 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         onClose();
     };
 
-    handleAddFriend = async () => {
+    handleShowApply = () => {
+        const { name } = this.state;
+        this.setState({
+            showApplyInput: true,
+            applyRemark: `我想使用${name.replace(/\*\*/g, '')}`,
+        });
+    };
+
+    handleSubmitApply = async () => {
         const { uid } = this.props;
+        const { applyRemark } = this.state;
         this.setState({ applying: true });
         try {
             await WKApp.apiClient.post("friend/apply", {
-                to_uid: uid, remark: "",
+                to_uid: uid, remark: applyRemark,
             });
             Toast.success("好友申请已发送");
-            // Bot auto_approve=1 时会自动通过，刷新状态
+            this.setState({ showApplyInput: false });
             this.refreshTimer = setTimeout(() => this.loadBotInfo(), 500);
         } catch {
             Toast.error("申请失败");
@@ -119,7 +132,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
     render() {
         const { visible, onClose, uid } = this.props;
-        const { loading, name, username, description, creatorName, botCommands, isFriend, applying } = this.state;
+        const { loading, name, username, description, creatorName, botCommands, isFriend, applying, showApplyInput, applyRemark } = this.state;
 
         let commands: { cmd: string; remark: string }[] = [];
         try {
@@ -179,13 +192,32 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                             >
                                 发送消息
                             </Button>
+                        ) : showApplyInput ? (
+                            <div style={{ marginTop: 16 }}>
+                                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>申请消息</div>
+                                <Input
+                                    value={applyRemark}
+                                    onChange={(v) => this.setState({ applyRemark: v })}
+                                    placeholder="请输入申请消息"
+                                    style={{ marginBottom: 12 }}
+                                />
+                                <Button
+                                    theme="solid"
+                                    type="primary"
+                                    block
+                                    loading={applying}
+                                    disabled={!applyRemark}
+                                    onClick={this.handleSubmitApply}
+                                >
+                                    发送申请
+                                </Button>
+                            </div>
                         ) : (
                             <Button
                                 theme="solid"
                                 type="primary"
                                 block
-                                loading={applying}
-                                onClick={this.handleAddFriend}
+                                onClick={this.handleShowApply}
                                 style={{ marginTop: 16 }}
                             >
                                 添加好友
