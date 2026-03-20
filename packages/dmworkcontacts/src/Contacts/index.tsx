@@ -6,7 +6,7 @@ import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
 import { Toast } from "@douyinfe/semi-ui";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, Users, Bot, UsersRound } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK,ChannelInfoListener,ChannelInfo } from "wukongimjssdk";
 import { ContactsListManager } from "../Service/ContactsListManager";
@@ -44,11 +44,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     constructor(props: any) {
         super(props)
 
-        this.state = {
-            indexList: [],
-            indexItemMap: new Map(),
-            spaceMembers: [],
-        }
+        this.state = new ContactsState()
     }
     componentDidMount() {
 
@@ -300,12 +296,11 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         return <div key={indexName} className="wk-contacts-section">
             {isBotGroup && (
-                <div className="wk-contacts-section-bot-header" onClick={() => this.setState({ botGroupCollapsed: !botGroupCollapsed })} style={{
-                    display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', userSelect: 'none',
-                    fontSize: 13, color: '#888', fontWeight: 500,
-                }}>
-                    {botGroupCollapsed ? <ChevronRight size={16} color="#999" style={{ marginRight: 6 }} /> : <ChevronDown size={16} color="#999" style={{ marginRight: 6 }} />}
-                    🤖 Bot ({items?.length || 0})
+                <div className="wk-contacts-accordion-header" onClick={() => this.setState({ botGroupCollapsed: !botGroupCollapsed })}>
+                    <span className="wk-contacts-accordion-arrow">{botGroupCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}</span>
+                    <span className="wk-contacts-accordion-icon"><Bot size={16} /></span>
+                    <span className="wk-contacts-accordion-label">Bot</span>
+                    {items && items.length > 0 && <span className="wk-contacts-accordion-count">({items.length})</span>}
                 </div>
             )}
             <div className="wk-contacts-section-list" style={isBotGroup && botGroupCollapsed ? { display: 'none' } : undefined}>
@@ -338,14 +333,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                 {name}
                                 {item.robot === true && <AiBadge />}
                                 {(item as any)._spaceRole && (item as any)._spaceRole <= 2 && (
-                                    <span className="wk-contacts-role-badge" style={{
-                                        marginLeft: 6,
-                                        fontSize: 11,
-                                        padding: '1px 6px',
-                                        borderRadius: 3,
-                                        backgroundColor: (item as any)._spaceRole === 1 ? 'var(--wk-color-theme, #6366F1)' : '#f0ad4e',
-                                        color: '#fff',
-                                    }}>
+                                    <span className={`wk-contacts-role-badge wk-contacts-role-badge--${(item as any)._spaceRole === 1 ? 'owner' : 'admin'}`}>
                                         {SpaceRoleLabels[(item as any)._spaceRole] || ''}
                                     </span>
                                 )}
@@ -427,7 +415,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         }).catch(() => {})
     }
 
-    renderAccordionSection(section: 'members' | 'bots' | 'groups', icon: string, label: string) {
+    renderAccordionSection(section: 'members' | 'bots' | 'groups', icon: React.ReactNode, label: string) {
         const { expandedSection, spaceMembers } = this.state
         const isExpanded = expandedSection === section
         const members = spaceMembers || []
@@ -445,7 +433,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         return (
             <div className="wk-contacts-accordion" key={section}>
                 <div className="wk-contacts-accordion-header" onClick={() => this.toggleSection(section)}>
-                    <span className="wk-contacts-accordion-arrow">{isExpanded ? <ChevronDown size={16} color="#999" /> : <ChevronRight size={16} color="#999" />}</span>
+                    <span className="wk-contacts-accordion-arrow">{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
                     <span className="wk-contacts-accordion-icon">{icon}</span>
                     <span className="wk-contacts-accordion-label">{label}</span>
                     {count > 0 && <span className="wk-contacts-accordion-count">({count})</span>}
@@ -507,7 +495,13 @@ export default class ContactsList extends Component<any, ContactsState> {
                                 </div>
                             )
                         })}
-                        {section === 'groups' && (this.state.myGroups || []).length === 0 && <div style={{ padding: '12px', color: '#999', fontSize: 13 }}>暂无群组</div>}
+                        {section === 'groups' && (this.state.myGroups || []).length === 0 && (
+                            <div className="wk-contacts-empty">
+                                <UsersRound size={28} className="wk-contacts-empty-icon" />
+                                <div className="wk-contacts-empty-text">暂无群组</div>
+                                <div className="wk-contacts-empty-sub">在对话中创建群组后会显示在这里</div>
+                            </div>
+                        )}
                         {section === 'groups' && (this.state.myGroups || []).map((g: any) => (
                             <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
                                 WKApp.endpoints.showConversation(new Channel(g.group_no, ChannelTypeGroup))
@@ -534,9 +528,9 @@ export default class ContactsList extends Component<any, ContactsState> {
             <div className="wk-contacts">
                 {/* 标题由全局顶栏提供 */}
                 <div className="wk-contacts-content">
-                    {this.renderAccordionSection('members', '👥', '组织内联系人')}
-                    {this.renderAccordionSection('bots', '🤖', 'Bot')}
-                    {this.renderAccordionSection('groups', '👥', '我的群组')}
+                    {this.renderAccordionSection('members', <Users size={16} />, '组织内联系人')}
+                    {this.renderAccordionSection('bots', <Bot size={16} />, 'Bot')}
+                    {this.renderAccordionSection('groups', <UsersRound size={16} />, '我的群组')}
                 </div>
                 <ContextMenus onContext={(context: ContextMenusContext) => {
                     this.contextMenusContext = context

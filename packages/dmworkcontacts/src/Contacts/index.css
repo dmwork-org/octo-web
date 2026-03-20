@@ -1,263 +1,181 @@
-
 .wk-contacts {
     width: 100%;
     height: 100%;
-    --wk-height-contacts-content-header:50px;
-    border-right: var(--wk-line);
+    border-right: 1px solid var(--wk-border-subtle);
     overflow: hidden;
     position: relative;
-}
-
-.wk-contacts-content-header {
-    width: 100%;
-    padding: 0px 10px;
-    background-color: var(--wk-color-secondary);
+    background: var(--wk-bg-base);
 }
 
 .wk-contacts-content {
     width: 100%;
-    height: calc( 100% - var(--wk-height-navheader));
-    overflow: auto;
+    height: 100%;
+    overflow-y: auto;
+    padding: var(--wk-sp-2) 0;
 }
 
-.wk-contacts-content-contacts {
-    width: 100%;
+/* ============================================================
+   手风琴分组
+   ============================================================ */
+.wk-contacts-accordion {
+    margin-bottom: var(--wk-sp-1);
 }
 
-.wk-contacts-section {
-
+.wk-contacts-accordion-header {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 var(--wk-sp-3);
+    cursor: pointer;
+    user-select: none;
+    border-radius: var(--wk-r-sm);
+    margin: 0 var(--wk-sp-2);
+    transition: background var(--wk-dur-fast) var(--wk-ease);
 }
 
+.wk-contacts-accordion-header:hover {
+    background: var(--wk-bg-hover);
+}
+
+.wk-contacts-accordion-arrow {
+    display: inline-flex;
+    align-items: center;
+    color: var(--wk-text-tertiary);
+    margin-right: var(--wk-sp-2);
+    flex-shrink: 0;
+}
+
+.wk-contacts-accordion-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    margin-right: var(--wk-sp-2);
+    color: var(--wk-text-secondary);
+    flex-shrink: 0;
+}
+
+.wk-contacts-accordion-label {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--wk-text-secondary);
+    letter-spacing: 0.01em;
+}
+
+.wk-contacts-accordion-count {
+    font-size: 12px;
+    color: var(--wk-text-tertiary);
+    font-weight: 400;
+}
+
+.wk-contacts-accordion-body {
+    padding: var(--wk-sp-1) 0;
+}
+
+/* ============================================================
+   列表项（手风琴内 + 字母分组内统一）
+   ============================================================ */
 .wk-contacts-section-list {
-    padding: 0px 5px;
-    background-color: var(--wk-color-item);
-}
-
-
-.wk-contacts-section-item-index {
-    width: 36px;
-    text-align: center;
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.wk-contacts-section-item-index {
-    color: var(--text-primary);
+    padding: var(--wk-sp-1) 0;
 }
 
 .wk-contacts-section-item {
     display: flex;
     align-items: center;
-    padding: 6px 10px 6px 0px;
+    height: 44px;
+    padding: 0 var(--wk-sp-3);
+    margin: 0 var(--wk-sp-2);
+    border-radius: var(--wk-r-sm);
     cursor: pointer;
-}
-
-body[theme-mode=dark] .wk-contacts-section-item  {
-    background-color: var(--wk-color-secondary-2);
+    transition: background var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-contacts-section-item:hover {
-    background-color: var(--bg-hover);
-    border-radius: 10px;
-    transition: background-color 0.15s;
+    background: var(--wk-bg-hover);
 }
 
 .wk-contacts-section-item-selected {
-    background-color: var(--wk-color-theme);
-    color: white;
-    border-radius: 10px;
+    background: var(--wk-brand-primary);
+    color: var(--wk-text-inverse);
 }
 
-.wk-contacts-section-item-avatar img {
-    width: 36px;
-    height: 36px;
+.wk-contacts-section-item-selected:hover {
+    background: var(--wk-brand-primary-hover);
+}
+
+.wk-contacts-section-item-index {
+    width: 20px;
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--wk-text-tertiary);
+    text-align: center;
+}
+
+.wk-contacts-section-item-avatar {
+    flex-shrink: 0;
+    margin-right: var(--wk-sp-3);
+}
+
+.wk-contacts-section-item-avatar .wk-avatar {
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
 }
 
-
 .wk-contacts-section-item-name {
-    margin-left: 10px;
-    font-size: 14px;
-    color: var(--text-primary);
-}
-
-.wk-contacts-content-fnc {
-    width: 100%;
-}
-
-.wk-contacts-content-header .wk-search-box{
-
-    background-color: var(--input-bg);
-    width: 100%;
-    border-radius: 4px;
-}
-/* 通讯录分组菜单 */
-.wk-contacts-menu {
-    padding: 8px;
-}
-.wk-contacts-menu-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    margin-bottom: 4px;
-    background: var(--wk-color-item, #f8f9fa);
-    border-radius: 8px;
-}
-.wk-contacts-menu-space-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 16px;
-    font-weight: 600;
-}
-.wk-contacts-menu-space-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-.wk-contacts-menu-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-.wk-contacts-menu-item {
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-.wk-contacts-menu-item:hover {
-    background: var(--bg-hover);
-}
-.wk-contacts-menu-item-icon {
-    font-size: 20px;
-    margin-right: 12px;
-    width: 28px;
-    text-align: center;
-}
-.wk-contacts-menu-item-label {
     flex: 1;
     font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-.wk-contacts-menu-item-count {
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-right: 4px;
-}
-.wk-contacts-menu-item-arrow {
-    color: var(--text-tertiary);
-    font-size: 18px;
-}
-.wk-contacts-list-back {
-    padding: 8px 12px;
-    cursor: pointer;
-    color: var(--wk-color-theme, #6366F1);
-    font-size: 14px;
-}
-.wk-contacts-list-back:hover {
-    opacity: 0.7;
-}
-
-/* 手风琴 */
-.wk-contacts-accordion {
-    border-bottom: 1px solid var(--border-light);
-}
-.wk-contacts-accordion-header {
+    font-weight: 400;
+    color: var(--wk-text-primary);
     display: flex;
     align-items: center;
-    padding: 8px 12px;
-    cursor: pointer;
-    user-select: none;
+    gap: var(--wk-sp-2);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.wk-contacts-accordion-header:hover {
-    background: var(--bg-hover);
+
+.wk-contacts-section-item-selected .wk-contacts-section-item-name {
+    color: var(--wk-text-inverse);
 }
-.wk-contacts-accordion-arrow {
-    margin-right: 8px;
-    display: inline-flex;
-    align-items: center;
-    color: var(--text-tertiary);
-}
-.wk-contacts-accordion-icon {
-    font-size: 18px;
-    margin-right: 8px;
-}
-.wk-contacts-accordion-label {
-    flex: 1;
-    font-size: 14px;
+
+/* 角色 badge */
+.wk-contacts-role-badge {
+    flex-shrink: 0;
+    font-size: 10px;
     font-weight: 500;
-    color: var(--text-primary);
-}
-.wk-contacts-accordion-count {
-    font-size: 12px;
-    color: var(--text-tertiary);
-}
-.wk-contacts-accordion-body {
-    max-height: 60vh;
-    overflow-y: auto;
+    padding: 1px 5px;
+    border-radius: var(--wk-r-xs);
+    line-height: 1.6;
+    color: var(--wk-text-inverse);
 }
 
-/* Space 切换下拉 */
-.wk-contacts-space-switcher {
-    position: relative;
-}
-.wk-contacts-menu-header {
-    cursor: pointer;
-}
-.wk-contacts-space-arrow {
-    margin-left: auto;
-    font-size: 14px;
-    color: var(--text-tertiary);
-    transition: transform 0.2s;
-}
-.wk-contacts-space-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 12px;
-    right: 12px;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    z-index: 100;
-    padding: 4px;
-}
-.wk-contacts-space-dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--text-primary);
-}
-.wk-contacts-space-dropdown-item:hover {
-    background: var(--bg-hover);
-}
-.wk-contacts-space-dropdown-item-selected {
-    background: var(--bg-hover);
+.wk-contacts-role-badge--owner {
+    background: var(--wk-brand-primary);
 }
 
-/* 字母分组 header */
+.wk-contacts-role-badge--admin {
+    background: var(--wk-color-warning);
+}
+
+/* ============================================================
+   字母分组 header
+   ============================================================ */
 .wk-contacts-letter-header {
-    padding: 4px 12px;
-    font-size: 12px;
+    padding: var(--wk-sp-2) var(--wk-sp-4);
+    font-size: 11px;
     font-weight: 600;
-    color: var(--text-tertiary);
-    background: var(--bg-secondary, var(--wk-color-secondary));
+    color: var(--wk-text-tertiary);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
 }
 
-/* 右侧字母索引条 */
+/* ============================================================
+   右侧字母索引条
+   ============================================================ */
 .wk-contacts-letter-index {
     position: absolute;
     top: 0;
@@ -267,21 +185,213 @@ body[theme-mode=dark] .wk-contacts-section-item  {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 4px 2px;
+    padding: var(--wk-sp-1) var(--wk-sp-1);
     z-index: 2;
     pointer-events: none;
 }
+
 .wk-contacts-letter-index-item {
     font-size: 10px;
-    padding: 1px 4px;
+    padding: 1px var(--wk-sp-1);
     cursor: pointer;
-    color: var(--text-tertiary);
+    color: var(--wk-text-tertiary);
     pointer-events: auto;
     line-height: 1.4;
     user-select: none;
 }
+
 .wk-contacts-letter-index-item:hover,
 .wk-contacts-letter-index-active {
-    color: var(--accent, var(--wk-color-theme, #6366F1));
+    color: var(--wk-brand-primary);
     font-weight: 600;
+}
+
+/* ============================================================
+   顶部搜索
+   ============================================================ */
+.wk-contacts-content-header {
+    width: 100%;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    background: var(--wk-bg-base);
+}
+
+.wk-contacts-content-header .wk-search-box {
+    background: var(--wk-bg-elevated);
+    width: 100%;
+    border-radius: var(--wk-r-sm);
+}
+
+/* ============================================================
+   Space 菜单头
+   ============================================================ */
+.wk-contacts-menu {
+    padding: var(--wk-sp-2);
+}
+
+.wk-contacts-menu-header {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-2);
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    margin-bottom: var(--wk-sp-1);
+    background: var(--wk-bg-elevated);
+    border-radius: var(--wk-r-md);
+    cursor: pointer;
+}
+
+.wk-contacts-menu-space-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--wk-r-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--wk-text-inverse);
+    font-size: 15px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.wk-contacts-menu-space-name {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--wk-text-primary);
+}
+
+.wk-contacts-space-arrow {
+    color: var(--wk-text-tertiary);
+    font-size: 14px;
+    transition: transform var(--wk-dur-fast) var(--wk-ease);
+}
+
+/* Space 切换下拉 */
+.wk-contacts-space-switcher {
+    position: relative;
+}
+
+.wk-contacts-space-dropdown {
+    position: absolute;
+    top: 100%;
+    left: var(--wk-sp-3);
+    right: var(--wk-sp-3);
+    background: var(--wk-bg-surface);
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-md);
+    box-shadow: 0 8px 24px var(--wk-border-strong);
+    z-index: 100;
+    padding: var(--wk-sp-1);
+}
+
+.wk-contacts-space-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-2);
+    padding: var(--wk-sp-2) var(--wk-sp-2);
+    border-radius: var(--wk-r-sm);
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--wk-text-primary);
+    transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-contacts-space-dropdown-item:hover,
+.wk-contacts-space-dropdown-item-selected {
+    background: var(--wk-bg-hover);
+}
+
+/* ============================================================
+   菜单列表（旧版，保留兼容）
+   ============================================================ */
+.wk-contacts-menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-1);
+}
+
+.wk-contacts-menu-item {
+    display: flex;
+    align-items: center;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border-radius: var(--wk-r-sm);
+    cursor: pointer;
+    transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-contacts-menu-item:hover {
+    background: var(--wk-bg-hover);
+}
+
+.wk-contacts-menu-item-icon {
+    font-size: 18px;
+    margin-right: var(--wk-sp-3);
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.wk-contacts-menu-item-label {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--wk-text-primary);
+}
+
+.wk-contacts-menu-item-count {
+    font-size: 12px;
+    color: var(--wk-text-tertiary);
+}
+
+.wk-contacts-menu-item-arrow {
+    color: var(--wk-text-tertiary);
+    font-size: 16px;
+}
+
+.wk-contacts-list-back {
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    cursor: pointer;
+    color: var(--wk-brand-primary);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.wk-contacts-list-back:hover {
+    opacity: 0.75;
+}
+
+/* ============================================================
+   空状态
+   ============================================================ */
+.wk-contacts-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--wk-sp-4) var(--wk-sp-4) var(--wk-sp-4);
+    text-align: center;
+}
+
+.wk-contacts-empty-icon {
+    color: var(--wk-text-tertiary);
+    margin-bottom: var(--wk-sp-3);
+    opacity: 0.6;
+}
+
+.wk-contacts-empty-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--wk-text-secondary);
+    margin-bottom: var(--wk-sp-1);
+}
+
+.wk-contacts-empty-sub {
+    font-size: 12px;
+    color: var(--wk-text-tertiary);
+    line-height: 1.5;
+}
+
+/* ============================================================
+   Dark mode
+   ============================================================ */
+body[theme-mode=dark] .wk-contacts-section-item {
+    background-color: transparent;
 }
