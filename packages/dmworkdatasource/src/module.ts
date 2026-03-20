@@ -90,6 +90,11 @@ export default class DataSourceModule implements IModule {
                 channelInfo.orgData.invite = data.invite;
                 channelInfo.orgData.forbiddenAddFriend = data.extra?.forbidden_add_friend;
                 channelInfo.orgData.save = data.save;
+                channelInfo.orgData.has_group_md = !!(data.has_group_md ?? data.extra?.has_group_md);
+                channelInfo.orgData.group_md_version = data.group_md_version || data.extra?.group_md_version || 0;
+                channelInfo.orgData.group_md_updated_at = data.group_md_updated_at || data.extra?.group_md_updated_at || null;
+                channelInfo.orgData.can_edit_group_md = !!(data.can_edit_group_md ?? data.extra?.can_edit_group_md);
+                channelInfo.orgData.can_manage_bot_admin = !!(data.can_manage_bot_admin ?? data.extra?.can_manage_bot_admin);
             }
             if (data.category === "system" || data.category === "customerService") { // 官方账号
                 channelInfo.orgData.identityIcon = "./identity_icon/official.png"
@@ -120,6 +125,7 @@ export default class DataSourceModule implements IModule {
                     member.isDeleted = memberMap.is_deleted;
                     member.status = memberMap.status;
                     member.orgData = memberMap
+                    member.orgData.bot_admin = memberMap.bot_admin || 0;
                     member.avatar = WKApp.shared.avatarUser(member.uid)
                     members.push(member);
                 }

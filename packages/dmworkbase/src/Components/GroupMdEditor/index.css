@@ -1,0 +1,77 @@
+.wk-groupmd-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+}
+
+.wk-groupmd-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+}
+
+.wk-groupmd-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.wk-groupmd-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.wk-groupmd-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wk-groupmd-bytecount {
+  font-size: 12px;
+  color: var(--wk-color-text-secondary, #999);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wk-groupmd-bytecount-over {
+  color: var(--wk-color-danger, #f5222d);
+}
+
+.wk-groupmd-version {
+  font-size: 11px;
+  color: var(--wk-color-text-tertiary, #bbb);
+}
+
+.wk-groupmd-edit-area {
+  flex: 1;
+  overflow: auto;
+}
+
+.wk-groupmd-preview {
+  flex: 1;
+  overflow: auto;
+}
+
+.wk-groupmd-preview-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 12px;
+  background: var(--wk-color-bg-secondary, #f5f5f5);
+  border-radius: 6px;
+}
+
+.wk-groupmd-empty {
+  color: var(--wk-color-text-secondary, #999);
+  text-align: center;
+  padding: 40px 0;
+  font-size: 14px;
+}

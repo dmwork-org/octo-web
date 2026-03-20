@@ -84,6 +84,8 @@ import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { SubscriberList } from "./Components/Subscribers/list";
 import GlobalSearch from "./Components/GlobalSearch";
+import { GroupMdEditor } from "./Components/GroupMdEditor";
+import { GroupManagement } from "./Components/GroupManagement";
 import { handleGlobalSearchClick } from "./Pages/Chat/vm";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
@@ -954,6 +956,7 @@ export default class BaseModule implements IModule {
               context: context,
               channel: channel,
               key: channel.getChannelKey(),
+              canManageBotAdmin: !!data.channelInfo?.orgData?.can_manage_bot_admin,
               onAdd: () => {
                 context.push(
                   <ContactsSelect
@@ -1165,6 +1168,63 @@ export default class BaseModule implements IModule {
             },
           })
         );
+        if (channel.channelType === ChannelTypeGroup) {
+          const hasGroupMd = channelInfo?.orgData?.has_group_md;
+          const mdVersion = channelInfo?.orgData?.group_md_version || 0;
+          rows.push(
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: "GROUP.md",
+                subTitle: hasGroupMd ? `已配置 v${mdVersion}` : "未配置",
+                onClick: () => {
+                  // Fall back to role check: creator (role=1) or manager (role=2) can edit GROUP.md
+                  const latestData = context.routeData() as ChannelSettingRouteData;
+                  const subscriberOfMe = latestData?.subscriberOfMe;
+                  const isOwnerOrManager = subscriberOfMe && (subscriberOfMe.role === 1 || subscriberOfMe.role === 2);
+                  const canEditMd = !!latestData?.channelInfo?.orgData?.can_edit_group_md || isOwnerOrManager;
+                  context.push(
+                    <GroupMdEditor
+                      channel={channel}
+                      canEdit={canEditMd}
+                    />,
+                    new RouteContextConfig({
+                      title: "GROUP.md",
+                    })
+                  );
+                },
+              },
+            })
+          );
+
+          const latestData2 = context.routeData() as ChannelSettingRouteData;
+          const subscriberOfMe2 = latestData2?.subscriberOfMe;
+          if (subscriberOfMe2 && (subscriberOfMe2.role === 1 || subscriberOfMe2.role === 2)) {
+            rows.push(
+              new Row({
+                cell: ListItem,
+                properties: {
+                  title: "群管理",
+                  onClick: () => {
+                    const rd = context.routeData() as ChannelSettingRouteData;
+                    const me = rd?.subscriberOfMe;
+                    const isCreator = me?.role === 1;
+                    context.push(
+                      <GroupManagement
+                        channel={channel}
+                        isCreator={isCreator}
+                        context={context}
+                      />,
+                      new RouteContextConfig({
+                        title: "群管理",
+                      })
+                    );
+                  },
+                },
+              })
+            );
+          }
+        }
         rows.push(
           new Row({
             cell: ListItem,

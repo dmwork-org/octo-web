@@ -100,6 +100,7 @@ export class ChannelDataSource implements IChannelDataSource {
                 member.isDeleted = memberMap.is_deleted;
                 member.status = memberMap.status;
                 member.orgData = memberMap
+                member.orgData.bot_admin = memberMap.bot_admin || 0;
                 member.avatar = WKApp.shared.avatarUser(member.uid)
                 members.push(member);
             }
@@ -148,6 +149,26 @@ export class ChannelDataSource implements IChannelDataSource {
 
     blacklistRemove(channel: Channel, uids: string[]): Promise<void> {
         return WKApp.apiClient.post(`groups/${channel.channelID}/blacklist/remove`, { uids: uids })
+    }
+
+    getGroupMd(channel: Channel): Promise<any> {
+        return WKApp.apiClient.get(`groups/${channel.channelID}/md`)
+    }
+
+    updateGroupMd(channel: Channel, content: string): Promise<{ version: number }> {
+        return WKApp.apiClient.put(`groups/${channel.channelID}/md`, { content })
+    }
+
+    deleteGroupMd(channel: Channel): Promise<void> {
+        return WKApp.apiClient.delete(`groups/${channel.channelID}/md`)
+    }
+
+    setBotAdmin(channel: Channel, uid: string): Promise<void> {
+        return WKApp.apiClient.put(`groups/${channel.channelID}/bot_admin/${uid}`)
+    }
+
+    removeBotAdmin(channel: Channel, uid: string): Promise<void> {
+        return WKApp.apiClient.delete(`groups/${channel.channelID}/bot_admin/${uid}`)
     }
 
     conversationExtraUpdate(conversationExtra:ConversationExtra): Promise<void> {

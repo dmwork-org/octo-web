@@ -11,11 +11,13 @@ export class SubscriberListVM extends ProviderListener {
     limit: number = 50
     hasMore: boolean = true
     keyword: string = ""
+    filter?: (subscriber: Subscriber) => boolean
     private _isMounted: boolean = false
     private _delayTimer?: ReturnType<typeof setTimeout>
-    constructor(channel: Channel) {
+    constructor(channel: Channel, filter?: (subscriber: Subscriber) => boolean) {
         super()
         this.channel = channel
+        this.filter = filter
     }
 
     didMount(): void {
@@ -48,13 +50,22 @@ export class SubscriberListVM extends ProviderListener {
         if (!this._isMounted) return
         this.hasMore = subscribers&&subscribers.length>=this.limit
         if (subscribers) {
+            const filtered = this.filter ? subscribers.filter(this.filter) : subscribers
             if (this.currPage === 1) {
-                this.subscribers = subscribers
+                this.subscribers = filtered
             } else {
-                this.subscribers = this.subscribers.concat(subscribers)
+                this.subscribers = this.subscribers.concat(filtered)
             }
         }
         this.notifyListener()
+
+        // When client-side filtering removes most results, the list may be
+        // too short for the user to scroll and trigger the next page load.
+        // Auto-fetch more pages until we have enough visible items or run out.
+        if (this.filter && this.hasMore && this.subscribers.length < this.limit) {
+            this.currPage++
+            await this.requestSubscribers()
+        }
     }
 
     delyRequestSubscribers = () => {

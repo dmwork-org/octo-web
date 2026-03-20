@@ -9,6 +9,7 @@ import WKSDK, { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import { Checkbox } from "@douyinfe/semi-ui/lib/es/checkbox";
+import { Tag } from "@douyinfe/semi-ui";
 import { GroupRole } from "../../Service/Const";
 import { debounce, throttle } from "../../Utils/rateLimit";
 
@@ -17,6 +18,8 @@ export interface SubscriberListProps {
   canSelect?: boolean; // 是否支持多选
   disableSelectList?: string[]; // 禁选列表
   onSelect?: (items: Subscriber[]) => void;
+
+  filter?: (subscriber: Subscriber) => boolean; // 过滤函数
 }
 
 export interface SubscriberListState {
@@ -161,7 +164,7 @@ export class SubscriberList extends Component<
     return (
       <Provider
         create={() => {
-          return new SubscriberListVM(this.props.channel);
+          return new SubscriberListVM(this.props.channel, this.props.filter);
         }}
         render={(vm: SubscriberListVM) => {
           return (
@@ -191,6 +194,8 @@ export class SubscriberList extends Component<
               </div>
               <div className="wk-subscrierlist-list">
                 {vm.subscribers.map((item) => {
+                  const itemIsBot = isBot(item.uid);
+                  const isBotAdmin = item.orgData?.bot_admin === 1;
                   return (
                     <div
                       className="wk-subscrierlist-list-item"
@@ -216,12 +221,18 @@ export class SubscriberList extends Component<
                       <div className="wk-subscrierlist-item-content">
                         <div className="wk-subscrierlist-item-name">
                           {this.getShowName(item)}
-                          {isBot(item.uid) && <AiBadge />}
+                          {itemIsBot && <AiBadge />}
+                          {itemIsBot && isBotAdmin && (
+                            <Tag size="small" color="green" style={{ marginLeft: 4 }}>
+                              Bot 管理员
+                            </Tag>
+                          )}
                         </div>
                         <div className="wk-subscrierlist-item-desc">
                           {this.getRoleName(item)}
                         </div>
                       </div>
+
                     </div>
                   );
                 })}

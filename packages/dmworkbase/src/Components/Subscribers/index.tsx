@@ -1,4 +1,4 @@
-import { Channel, WKSDK, Subscriber } from "wukongimjssdk";
+import { Channel, Subscriber } from "wukongimjssdk";
 import React from "react";
 import { Component } from "react";
 import Provider from "../../Service/Provider";
@@ -108,7 +108,7 @@ export class Subscribers extends Component<SubscribersProps> {
                     className="wk-subscribers-more"
                     onClick={() => {
                       context.push(
-                       <SubscriberList channel={channel} ></SubscriberList>,
+                       <SubscriberList channel={channel} />,
                         new RouteContextConfig({
                           title: "成员列表",
                         })

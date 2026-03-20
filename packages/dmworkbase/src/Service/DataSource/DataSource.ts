@@ -304,9 +304,15 @@ export interface IChannelDataSource {
 
     /**
      * 更新扩展
-     * @param conversationExtra 
+     * @param conversationExtra
      */
     conversationExtraUpdate(conversationExtra: ConversationExtra): Promise<void>
+
+    getGroupMd(channel: Channel): Promise<any>
+    updateGroupMd(channel: Channel, content: string): Promise<{ version: number }>
+    deleteGroupMd(channel: Channel): Promise<void>
+    setBotAdmin(channel: Channel, uid: string): Promise<void>
+    removeBotAdmin(channel: Channel, uid: string): Promise<void>
 }
 
 export class ChannelQrcodeResp implements APIResp {

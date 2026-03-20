@@ -20,6 +20,8 @@
     overflow: hidden;
     white-space: nowrap;
     max-width: 10rem;
+    display: flex;
+    align-items: center;
 }
 
 .wk-subscrierlist-item-content {
@@ -30,5 +32,12 @@
 
 .wk-subscrierlist-item-desc {
     font-size: 14px;
-    color: #666;
+    color: var(--wk-text-secondary, #666);
+}
+
+.wk-subscrierlist-item-action {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 8px;
 }
