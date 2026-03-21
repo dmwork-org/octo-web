@@ -1,5 +1,7 @@
 import { MessageContent, WKSDK, Task, TaskStatus } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
+
+const SMALL_FILE_THRESHOLD = 1024 * 1024 // 1MB 以下不显示进度覆盖层
 import React from "react";
 import WKApp from "../../App";
 import MessageBase from "../Base";
@@ -65,6 +67,9 @@ export class VideoCell extends MessageCell<any, VideoCellState> {
 
     componentDidMount() {
         const { message } = this.props
+        // 小文件（<1MB）不显示进度，跳过订阅
+        const fileSize = (message.content as any).file?.size ?? 0
+        if (fileSize < SMALL_FILE_THRESHOLD) return
         WKSDK.shared().taskManager.addListener(this._taskListener)
         const found = ((WKSDK.shared().taskManager as any).taskMap as Map<string, Task> | undefined)
             ?.get(message.clientMsgNo) as RestartableTask | undefined
