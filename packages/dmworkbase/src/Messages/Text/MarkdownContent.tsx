@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -39,22 +39,29 @@ const sanitizeSchema = {
 /**
  * 预处理 Markdown 内容：
  * 把独占一行的 --- / === 补充前后空行，避免被解析成 setext 标题（h2/h1）。
- * 标准 Markdown：紧跟在文本行后面的 --- 会变成 h2，=== 会变成 h1。
- * AI 输出的 --- 通常是分割线意图，前后补空行可强制解析为 <hr>。
+ * 跳过 fenced code block（```...```）内的内容，避免误处理 YAML 等代码中的分隔线。
  */
 function normalizeContent(raw: string): string {
-    return raw
-        // --- 或 *** 或 ___ 作为分割线：确保前后各有一个空行
-        .replace(/([^\n])\n([-*_]{3,})\n/g, "$1\n\n$2\n\n")
-        // 行首 --- 但前面没有空行（文件开头或紧接内容）
-        .replace(/(^|\n)([-*_]{3,})(\n|$)/g, "\n\n$2\n\n")
-        // 收拢多余空行（最多两个换行）
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
+    // 把字符串按 fenced code block 切分：
+    // 奇数索引 = 代码块内容（保持原样），偶数索引 = 普通文本（需要处理）
+    const parts = raw.split(/(```[\s\S]*?```)/g);
+
+    const processed = parts.map((part, i) => {
+        // 奇数段是代码块，原样返回
+        if (i % 2 === 1) return part;
+
+        // 偶数段是普通文本，跑分隔线补空行逻辑
+        return part
+            .replace(/([^\n])\n([-*_]{3,})\n/g, "$1\n\n$2\n\n")
+            .replace(/(^|\n)([-*_]{3,})(\n|$)/g, "\n\n$2\n\n")
+            .replace(/\n{3,}/g, "\n\n");
+    });
+
+    return processed.join("").trim();
 }
 
 const MarkdownContent: React.FC<MarkdownContentProps> = ({ content, isSend, isStreaming }) => {
-    const normalized = normalizeContent(content);
+    const normalized = useMemo(() => normalizeContent(content), [content]);
     return (
         <div className={`wk-markdown ${isSend ? "wk-markdown-send" : "wk-markdown-recv"}`}>
             <ReactMarkdown
