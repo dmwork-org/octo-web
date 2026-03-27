@@ -189,12 +189,12 @@ export class MainContentLeft extends Component<MainContentLeftProps, MainContent
                 visible={this.state.showJoinSpace}
                 onClose={() => this.setState({ showJoinSpace: false })}
                 onSuccess={(spaceId) => {
-                    this.setState({ showJoinSpace: false });
                     SpaceService.shared.getMySpaces().then(spaces => {
-                        this.setState({ allSpaces: spaces });
+                        this.setState({ allSpaces: spaces, showJoinSpace: false });
                         // 切换到新加入的 Space
                         WKApp.shared.currentSpaceId = spaceId;
                         localStorage.setItem("currentSpaceId", spaceId);
+                        WKApp.mittBus.emit("space-changed", spaces.find(s => s.space_id === spaceId));
                         WKApp.shared.notifyListener();
                     }).catch(() => {});
                 }}

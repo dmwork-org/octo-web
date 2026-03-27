@@ -78,14 +78,14 @@ export function useJoinSpace({ onSuccess, onClose }: UseJoinSpaceOptions = {}) {
             const spaceId = result?.space_id || inviteInfo.space_id;
             Toast.success(`已加入 ${inviteInfo.space_name}`);
             reset();
-            onClose?.();
             onSuccess?.(spaceId);
+            onClose?.();
         } catch (e: any) {
             const msg = e?.msg || e?.message || "";
             if (msg.includes("已是成员") || msg.includes("already")) {
                 reset();
-                onClose?.();
                 onSuccess?.(inviteInfo.space_id);
+                onClose?.();
             } else if (msg.includes("已满") || msg.includes("SPACE_FULL")) {
                 Toast.error("空间已满，无法加入");
             } else {
