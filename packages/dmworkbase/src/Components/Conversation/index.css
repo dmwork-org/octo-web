@@ -117,11 +117,13 @@ body[theme-mode=dark] .wk-conversation-content {
 }
 
 .wk-replyview-content {
-    width: calc(100% - 80px);
+    flex: 1;
+    min-width: 0;
     height: 100%;
     display: flex;
     flex-direction: column;
     margin-left: 15px;
+    overflow: hidden;
     color: var(--wk-color-font-tip);
 }
 
@@ -175,6 +177,7 @@ body[theme-mode=dark] .wk-conversation-content {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     border-right: var(--wk-line);
     cursor: pointer;
 }
