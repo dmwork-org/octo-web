@@ -5,7 +5,8 @@ import MessageBase from "../Base"
 import WKApp from "../../App"
 import { FileContent } from "./FileContent"
 import { WKSDK, Task, TaskStatus } from "wukongimjssdk"
-import { Toast } from "@douyinfe/semi-ui"
+import { Toast, Modal } from "@douyinfe/semi-ui"
+import MarkdownContent from "../Text/MarkdownContent"
 
 export { FileContent } from "./FileContent"
 
@@ -64,7 +65,12 @@ function getFileIconInfo(extension: string): { color: string; label: string } {
 
 function isPreviewable(extension: string): boolean {
     const ext = (extension || "").toLowerCase()
-    return ["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp"].includes(ext)
+    return ["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp", "md", "txt"].includes(ext)
+}
+
+function isTextFile(extension: string): boolean {
+    const ext = (extension || "").toLowerCase()
+    return ["md", "txt"].includes(ext)
 }
 
 function isSafeURL(url: string): boolean {
@@ -82,6 +88,10 @@ interface FileCellState {
     downloading: boolean
     uploadProgress: number       // 0~100 整数百分比
     uploadStatus: TaskStatus | null
+    textPreviewVisible: boolean
+    textPreviewContent: string
+    textPreviewName: string
+    textPreviewExt: string
 }
 
 export class FileCell extends MessageCell<any, FileCellState> {
@@ -102,6 +112,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
             downloading: false,
             uploadProgress: 0,
             uploadStatus: null,
+            textPreviewVisible: false,
+            textPreviewContent: "",
+            textPreviewName: "",
+            textPreviewExt: "",
         }
     }
 
@@ -163,10 +177,35 @@ export class FileCell extends MessageCell<any, FileCellState> {
         const url = this.getFileURL(content)
         if (!url || !isSafeURL(url)) return
 
+        if (isTextFile(content.extension)) {
+            this.handleTextPreview(url, content.name, content.extension)
+            return
+        }
+
         try {
             window.open(url, "_blank")
         } catch {
             alert("文件预览失败")
+        }
+    }
+
+    handleTextPreview = async (url: string, name: string, extension: string) => {
+        try {
+            const response = await fetch(url)
+            if (!response.ok) {
+                Toast.error("文件预览失败")
+                return
+            }
+            const buffer = await response.arrayBuffer()
+            const text = new TextDecoder("utf-8").decode(buffer)
+            this.setState({
+                textPreviewVisible: true,
+                textPreviewContent: text,
+                textPreviewName: name,
+                textPreviewExt: extension.toLowerCase(),
+            })
+        } catch {
+            Toast.error("文件预览失败")
         }
     }
 
@@ -293,6 +332,22 @@ export class FileCell extends MessageCell<any, FileCellState> {
                         </div>
                     )}
                 </div>
+                <Modal
+                    className="wk-base-modal"
+                    visible={this.state.textPreviewVisible}
+                    title={this.state.textPreviewName}
+                    footer={null}
+                    width={720}
+                    onCancel={() => this.setState({ textPreviewVisible: false })}
+                >
+                    <div className="wk-text-file-preview">
+                        {this.state.textPreviewExt === "md" ? (
+                            <MarkdownContent content={this.state.textPreviewContent} />
+                        ) : (
+                            <pre className="wk-text-file-preview-plain">{this.state.textPreviewContent}</pre>
+                        )}
+                    </div>
+                </Modal>
             </MessageBase>
         )
     }
