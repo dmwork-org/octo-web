@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import React, { useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
+import { vi } from "vitest";
 import SpaceList, { SpaceListProps } from "./index";
+import { SpaceService } from "../../Service/SpaceService";
 import "../../theme/index.css";
 
 const MOCK_SPACES = [
@@ -11,6 +13,8 @@ const MOCK_SPACES = [
     { space_id: "4", name: "test0311", logo: "", member_count: 3, max_users: 10 },
     { space_id: "5", name: "test", logo: "", member_count: 2, max_users: 5 },
 ];
+
+
 
 function SpaceListWrapper({
     initialSelectedId = "1",
@@ -50,6 +54,13 @@ const meta: Meta<typeof SpaceListWrapper> = {
             values: [{ name: "light-gray", value: "#F0F1F5" }],
         },
     },
+    loaders: [
+        async () => {
+            // mock SpaceService.shared.getMySpaces，避免 Storybook 环境里 WKApp 未初始化
+            vi.spyOn(SpaceService.shared, "getMySpaces").mockResolvedValue(MOCK_SPACES as any);
+            return {};
+        },
+    ],
 };
 export default meta;
 type Story = StoryObj<typeof SpaceListWrapper>;

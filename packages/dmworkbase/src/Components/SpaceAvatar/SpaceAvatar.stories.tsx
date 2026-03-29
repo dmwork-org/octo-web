@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import React from "react";
 import SpaceAvatar from "./index";
 import "../../theme/index.css";
 
