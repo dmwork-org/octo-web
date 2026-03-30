@@ -217,8 +217,8 @@ export default class DataSourceModule implements IModule {
             if (resp) {
                 // 防止快速切换 Space 时旧响应覆盖新缓存
                 if (spaceId && WKApp.shared.currentSpaceId !== spaceId) return conversations
-                // 清空旧缓存，用本次 sync 响应重建 channelID→spaceID 映射
-                WKApp.shared.channelSpaceMap.clear()
+                // 只更新本次 sync 响应中包含的频道缓存，保留其他 Space 的缓存
+                // （避免 clear() 导致切换 Space 后其他 Space 群聊缓存丢失）
                 resp.conversations.forEach((conversationMap: any) => {
                     let model = Convert.toConversation(conversationMap);
                     conversations.push(model);

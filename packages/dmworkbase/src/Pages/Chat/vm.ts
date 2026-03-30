@@ -203,6 +203,15 @@ export class ChatVM extends ProviderListener {
                 this.conversations = [new ConversationWrap(conversation), ...this.conversations]
                 this.notifyListener()
             } else if (action === ConversationAction.update) {
+                // 缓存未命中时异步补写，避免 fail-close 误丢群聊
+                if (conversation.channel.channelType === ChannelTypeGroup) {
+                    const key = `${conversation.channel.channelID}_${conversation.channel.channelType}`
+                    if (!WKApp.shared.channelSpaceMap.has(key)) {
+                        // 缓存未命中：异步获取 channelInfo 补写缓存
+                        WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
+                        return // 等待 channelInfoListener 回调处理
+                    }
+                }
                 // Space 过滤：忽略不属于当前 Space 的会话更新
                 if (shouldSkipChannelForSpace(conversation.channel)) {
                     return
