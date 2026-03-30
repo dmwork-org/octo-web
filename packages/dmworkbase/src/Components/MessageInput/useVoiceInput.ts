@@ -38,6 +38,8 @@ export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVo
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const streamRef = useRef<MediaStream | null>(null)
     const contextTextRef = useRef<string | undefined>(undefined)
+    const getChatContextRef = useRef(getChatContext)
+    getChatContextRef.current = getChatContext
     const stopFnRef = useRef<(contextText?: string) => void>(() => {})
 
     // Fetch voice config on mount
@@ -126,7 +128,7 @@ export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVo
 
             setIsTranscribing(true)
             try {
-                const chatContext = getChatContext?.()
+                const chatContext = getChatContextRef.current?.()
                 const result = await VoiceService.shared.transcribe(blob, contextTextRef.current, chatContext)
                 if (result.text && onTranscribed) {
                     onTranscribed(result.text)
