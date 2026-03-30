@@ -1,5 +1,5 @@
 import WKApp from "../App"
-import { ChannelTypePerson, ChannelTypeGroup, Channel, Conversation, Message } from "wukongimjssdk"
+import { ChannelTypePerson, ChannelTypeGroup, Channel, Conversation, Message, WKSDK } from "wukongimjssdk"
 import { hasSpacePrefix } from "./SpacePrefix"
 
 export { hasSpacePrefix } from "./SpacePrefix"
@@ -57,8 +57,8 @@ export function getSpaceFilteredLastMessage(conversation: Conversation): Message
  * - 无 currentSpaceId → 不过滤
  * - Person channel（私聊）→ 永远不过滤
  * - 有 Space 前缀（s{spaceId}_）的 channel → 前缀匹配
- * - 群聊（无前缀）→ 查 channelSpaceMap 缓存
- * - 缓存未命中 → fail-close（不放行）
+ * - 群聊（无前缀）→ 查 channelSpaceMap 缓存 → channelInfo.orgData.space_id
+ * - 都未命中 → fail-open（放行，等 channelInfo 回调后再检查）
  */
 export function shouldSkipChannelForSpace(channel: Channel): boolean {
     const currentSpaceId = WKApp.shared.currentSpaceId
@@ -80,9 +80,17 @@ export function shouldSkipChannelForSpace(channel: Channel): boolean {
         const key = `${cid}_${channel.channelType}`
         const cachedSpaceId = WKApp.shared.channelSpaceMap.get(key)
         if (cachedSpaceId) {
-            return cachedSpaceId !== currentSpaceId // 匹配 → 放行，不匹配 → 跳过
+            return cachedSpaceId !== currentSpaceId
         }
-        return true // 缓存未命中 → fail-close，不放行
+        // 缓存未命中 → 尝试从已缓存的 channelInfo 获取 space_id
+        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
+        const infoSpaceId = channelInfo?.orgData?.space_id
+        if (infoSpaceId) {
+            // 回填 channelSpaceMap 避免下次再查
+            WKApp.shared.channelSpaceMap.set(key, infoSpaceId)
+            return infoSpaceId !== currentSpaceId
+        }
+        // channelInfo 也没有 → fail-open，等 channelInfo 回调后 channelListener 会二次检查
     }
 
     return false

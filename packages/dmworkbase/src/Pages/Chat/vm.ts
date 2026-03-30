@@ -240,6 +240,16 @@ export class ChatVM extends ProviderListener {
         WKSDK.shared().conversationManager.addConversationListener(this.conversationListener)
 
         this.channelListener = (channelInfo: ChannelInfo) => {
+            // 群聊 channelInfo 到达时，更新 channelSpaceMap 并做 Space 二次过滤
+            if (channelInfo.channel?.channelType === ChannelTypeGroup && channelInfo.orgData?.space_id) {
+                const key = `${channelInfo.channel.channelID}_${channelInfo.channel.channelType}`
+                WKApp.shared.channelSpaceMap.set(key, channelInfo.orgData.space_id)
+                // 如果该群不属于当前 Space，移除会话
+                if (shouldSkipChannelForSpace(channelInfo.channel)) {
+                    this.removeConversation(channelInfo.channel)
+                    return
+                }
+            }
             const conversation = this.findConversation(channelInfo.channel)
             if (conversation) {
                 conversation.extra.top = channelInfo.top ? 1 : 0
