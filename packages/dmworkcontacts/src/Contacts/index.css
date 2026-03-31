@@ -142,32 +142,47 @@
    ============================================================ */
 .wk-contacts-filters {
     display: flex;
-    gap: var(--wk-sp-1);
+    gap: 6px;
     padding: var(--wk-sp-1) var(--wk-sp-4) var(--wk-sp-2);
 }
 
 .wk-contacts-chip {
-    padding: 3px 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
     border-radius: var(--wk-r-full);
     border: 1px solid var(--wk-border-default);
     background: transparent;
-    color: var(--semi-color-text-1);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
+    color: var(--semi-color-text-2);
     cursor: pointer;
     transition: all var(--wk-dur) var(--wk-ease);
     user-select: none;
+    line-height: 1;
 }
 
 .wk-contacts-chip:hover {
-    border-color: var(--wk-border-glow);
-    color: var(--semi-color-text-0);
+    background: var(--semi-color-fill-0);
+    border-color: var(--semi-color-fill-0);
 }
 
 .wk-contacts-chip.active {
-    background: color-mix(in srgb, var(--wk-brand-primary) 10%, transparent);
-    border-color: color-mix(in srgb, var(--wk-brand-primary) 30%, transparent);
+    background: color-mix(in srgb, var(--wk-brand-primary) 8%, transparent);
+    border-color: color-mix(in srgb, var(--wk-brand-primary) 20%, transparent);
     color: var(--wk-text-accent);
+    font-weight: 600;
+}
+
+.wk-contacts-chip-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--semi-color-text-3);
+}
+
+.wk-contacts-chip.active .wk-contacts-chip-count {
+    color: var(--wk-brand-primary);
 }
 
 /* ============================================================

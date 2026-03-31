@@ -525,16 +525,31 @@ export default class ContactsList extends Component<any, ContactsState> {
         )
     }
 
+    private getFilterCounts() {
+        const { spaceMembers, spaceBots } = this.state
+        const myUID = WKApp.loginInfo.uid || ""
+        const memberUids = new Set(spaceMembers.map(m => m.uid))
+
+        const humansCount = spaceMembers.filter(m => m.uid !== myUID && m.robot !== 1).length
+        const botsCount = (spaceBots || []).filter((b: any) => b.uid !== myUID).length
+        // "全部" = members(去掉自己) + spaceBots 中不在 members 的
+        const allCount = spaceMembers.filter(m => m.uid !== myUID).length
+            + (spaceBots || []).filter((b: any) => b.uid !== myUID && !memberUids.has(b.uid)).length
+
+        return { allCount, botsCount, humansCount }
+    }
+
     renderFilterChips() {
         const { filterMode } = this.state
+        const { allCount, botsCount, humansCount } = this.getFilterCounts()
         return (
             <div className="wk-contacts-filters">
                 <span className={classnames("wk-contacts-chip", filterMode === 'all' && "active")}
-                    onClick={() => this.handleFilterChange('all')}>全部</span>
+                    onClick={() => this.handleFilterChange('all')}>全部 {allCount > 0 && <span className="wk-contacts-chip-count">{allCount}</span>}</span>
                 <span className={classnames("wk-contacts-chip", filterMode === 'bots' && "active")}
-                    onClick={() => this.handleFilterChange('bots')}>AI</span>
+                    onClick={() => this.handleFilterChange('bots')}>AI {botsCount > 0 && <span className="wk-contacts-chip-count">{botsCount}</span>}</span>
                 <span className={classnames("wk-contacts-chip", filterMode === 'humans' && "active")}
-                    onClick={() => this.handleFilterChange('humans')}>人类</span>
+                    onClick={() => this.handleFilterChange('humans')}>人类 {humansCount > 0 && <span className="wk-contacts-chip-count">{humansCount}</span>}</span>
             </div>
         )
     }
