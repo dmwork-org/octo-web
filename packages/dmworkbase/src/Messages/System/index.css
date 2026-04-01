@@ -1,14 +1,20 @@
-
 .wk-message-system {
-    padding: 10px 20px;
-    width: 85%;
+    display: block;
+    width: fit-content;
+    max-width: min(100%, var(--wk-width-max-message));
     margin: 0 auto;
     text-align: center;
-    margin-top: 15px;
-    font-size: 12px;
-    color: rgba(9,30,66,.87);
-    white-space:  pre-line;
+    font-size: var(--wk-text-size-xs, 11px);
+    font-weight: var(--wk-font-medium, 500);
+    line-height: var(--wk-leading-normal, 1.5);
+    color: var(--wk-text-tertiary, #9498A8);
+    background: var(--wk-border-subtle, rgba(0,0,0,0.03));
+    border-radius: var(--wk-r-full, 9999px);
+    padding: calc(var(--wk-sp-1, 4px) / 2) calc(var(--wk-sp-2, 8px) + (var(--wk-sp-1, 4px) / 2));
+    white-space: pre-line;
+    overflow-wrap: anywhere;
 }
-body[theme-mode=dark] .wk-message-system  {
-    color: #999;
+
+body[theme-mode=dark] .wk-message-system {
+    color: var(--wk-text-tertiary, #7A7F96);
 }

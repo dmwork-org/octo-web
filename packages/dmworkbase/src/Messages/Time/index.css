@@ -1,53 +1,29 @@
 
-
 .wk-message-time-box {
-    width: 85%;
-    margin: 0 auto;
-    padding: 20px;
+    width: 100%;
     text-align: center;
-    display: table;
+    padding: 0;
+    margin: 16px 0 8px;
 }
 
 .wk-message-time {
-    color: rgba(9,30,66,.74);
-    padding: 5px 8px 0;
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--wk-text-tertiary);
+    background: rgba(0,0,0,0.03);
+    border-radius: var(--wk-r-full);
+    padding: 2px 10px;
     white-space: nowrap;
-    width: auto;
-    font-size: 12px;
-    font-weight: 600;
-}
-body[theme-mode=dark] .wk-message-time  {
-    color: #999;
 }
 
-.wk-message-time-line1 {
-    background-image: -webkit-gradient(linear,0 0,0 100%,from(transparent),to(rgba(9,30,66,.12)));
-    background-image: -webkit-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: -moz-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: -o-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-position: 0 0,0 100%;
-    background-repeat: no-repeat;
-    -moz-background-size: 100% 1px;
-    background-size: 100% 1px;
-    top: 13px;
-    width: 50%;
-    display: table-cell;
-    position: relative;
+body[theme-mode=dark] .wk-message-time {
+    color: var(--wk-text-tertiary, #7A7F96);
+    background: rgba(255,255,255,0.05);
 }
 
+/* 旧的渐变分割线隐藏 */
+.wk-message-time-line1,
 .wk-message-time-line2 {
-    background-image: -webkit-gradient(linear,0 0,0 100%,from(#c5d0d5),to(transparent));
-    background-image: -webkit-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: -moz-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: -o-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-position: 0 0,0 100%;
-    background-repeat: no-repeat;
-    -moz-background-size: 100% 1px;
-    background-size: 100% 1px;
-    top: 13px;
-    width: 50%;
-    display: table-cell;
-    position: relative;
+    display: none;
 }

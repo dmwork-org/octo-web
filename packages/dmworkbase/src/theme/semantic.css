@@ -142,6 +142,10 @@
   --wk-ai-glow:      var(--wk-purple-alpha-06);
   --wk-ai-panel-bg:  #FAFAFF;
 
+  /* 消息气泡双色 */
+  --wk-bg-self:   #E5F5F1;  /* 自己的消息 — 淡青 */
+  --wk-bg-bubble: #FAFAFF;  /* 他人 & AI 消息 — 微紫白 */
+
   /* Shadow */
   --wk-shadow-sm:   0 1px 2px var(--wk-black-alpha-06);
   --wk-shadow-md:   0 4px 12px var(--wk-black-alpha-08);
@@ -203,6 +207,10 @@ body[theme-mode=dark] {
   --wk-ai-border:    var(--wk-purple-alpha-12);
   --wk-ai-glow:      var(--wk-purple-alpha-06);
   --wk-ai-panel-bg:  var(--wk-bg-base);
+
+  /* 消息气泡双色 */
+  --wk-bg-self:   #1A2E2A;  /* 自己的消息 — 暗色淡青 */
+  --wk-bg-bubble: #1A1A2E;  /* 他人 & AI 消息 — 暗色微紫 */
 
   /* Shadow */
   --wk-shadow-sm:   0 1px 2px var(--wk-black-alpha-30);

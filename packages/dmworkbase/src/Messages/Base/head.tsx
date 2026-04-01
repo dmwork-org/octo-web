@@ -14,7 +14,7 @@ const titleColors = ["#8C8DFF", "#7983C2", "#6D8DDE", "#5979F0", "#6695DF", "#8F
     "#3D98D0", "#429AB6", "#4EABAA", "#6BC0CE", "#64B5D9", "#3E9CCB",
     "#2887C4", "#52A98B"];
 
-    const hascode =(str:string) => {
+    export const hascode =(str:string) => {
         let hash = 0
         if(hash === 0 && str.length>0) {
             for(let i=0;i<str.length;i++) {
@@ -24,7 +24,7 @@ const titleColors = ["#8C8DFF", "#7983C2", "#6D8DDE", "#5979F0", "#6695DF", "#8F
         return hash
     }
 
-    const getTitleColor = (title:string="") => {
+    export const getTitleColor = (title:string="") => {
         const v = hascode(title)
         return titleColors[v%titleColors.length]
     }
@@ -56,7 +56,7 @@ export default class MessageHead extends Component<MessageHeadProps> {
            {
                 this.needTitle()?( <div className="textTitle" style={{color:getTitleColor(channelInfo?.orgData?.displayName), display:'flex', alignItems:'center', gap: 4}}>
                 <span>{channelInfo?.orgData?.displayName}</span>
-                {isGroupMsg && isBot && <AiBadge size="small" />}
+                {isBot && <AiBadge size="small" />}
             </div>):null
            }
         </>

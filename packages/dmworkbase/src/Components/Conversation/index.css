@@ -42,7 +42,13 @@ body[theme-mode=dark] .wk-conversation-content {
     width: 100%;
     display: flex;
     position: relative;
-    
+
+}
+
+.wk-message-item:has(.wk-message-system),
+.wk-message-item-system {
+    justify-content: center;
+    padding: var(--wk-sp-2) var(--wk-sp-4);
 }
 
 

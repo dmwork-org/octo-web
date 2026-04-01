@@ -15,6 +15,9 @@ import Checkbox from "../../Components/Checkbox";
 import classNames from "classnames";
 import { Popconfirm } from "@douyinfe/semi-ui";
 import WKAvatar from "../../Components/WKAvatar";
+import AiBadge from "../../Components/AiBadge";
+import { getTitleColor } from "./head";
+import moment from "moment";
 
 interface MessageBaseProps extends HTMLProps<any>{
     message: MessageWrap
@@ -67,16 +70,15 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         const messageStyle: any = {}
         messageStyle.marginBottom = "15px"
         if (hasContinue && message.send) {
-            messageStyle.marginTop = "5px"
+            messageStyle.marginTop = "4px"
             messageStyle.marginBottom = "0px"
             messageStyle.marginLeft = "0px"
             messageStyle.marginRight = "5px"
         }
         if (hasContinue && !message.send) {
-            messageStyle.marginTop = "5px"
+            messageStyle.marginTop = "4px"
             messageStyle.marginBottom = "0px"
             messageStyle.marginRight = "0px"
-            messageStyle.marginLeft = "15px"
         }
         if (message.preMessage && message.preMessage.fromUID !== message.fromUID) {
             if (message.nextMessage && message.nextMessage.fromUID === message.fromUID) {
@@ -142,6 +144,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
             messageBubble += " send"
         } else {
             messageBubble += " recv"
+            if (this.isAiMessage()) {
+                messageBubble += " ai-panel"
+            }
         }
         if (message.bubblePosition === BubblePosition.first) {
             messageBubble += " first"
@@ -155,13 +160,22 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         return messageBubble
     }
 
+    isAiMessage() {
+        const { message } = this.props
+        if (message.send) return false
+        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
+        return channelInfo?.orgData?.robot === 1
+    }
+
     needAvatar() {
         const { message } = this.props
-        if (message.send) {
-            return false
-        }
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
-        return (message.bubblePosition === BubblePosition.last || message.bubblePosition === BubblePosition.single) && channelInfo
+        return (message.bubblePosition === BubblePosition.first || message.bubblePosition === BubblePosition.single) && channelInfo
+    }
+
+    needHead() {
+        const { message } = this.props
+        return message.bubblePosition === BubblePosition.first || message.bubblePosition === BubblePosition.single
     }
 
     getMessageErrorReason() {
@@ -199,6 +213,10 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
             WKSDK.shared().channelManager.fetchChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
         }
         const messageStyle = this.getMessageStyle(hasContinue, message)
+        const isAi = this.isAiMessage()
+        const showHead = this.needHead()
+        const showAvatar = this.needAvatar()
+        const timeStr = moment(message.timestamp * 1000).format('HH:mm')
 
         return (
             <div className={classNames("wk-message-base", context.editOn() ? "wk-message-base-check-open" : undefined)} onClick={context.editOn() ? (event) => {
@@ -222,36 +240,58 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                             ) : undefined
                         }
 
-                        {
-                            this.needAvatar() && (<div className="senderAvatar" onClick={(el) => {
-                                context.onTapAvatar(message.fromUID, el)
-                            }}><WKAvatar channel={channelInfo?.channel} style={{ width: "40px", height: "40px", borderRadius: "50%" }} /></div>)
-                        }
+                        {/* 头像：flex item，仅 first/single 显示，否则占位 */}
+                        <div className={classNames("senderAvatar", showAvatar ? undefined : "senderAvatar-placeholder")} onClick={showAvatar ? (el) => {
+                            context.onTapAvatar(message.fromUID, el)
+                        } : undefined}>
+                            {showAvatar && <WKAvatar channel={channelInfo?.channel} style={{ width: "32px", height: "32px" }} />}
+                        </div>
 
-                        <div className={this.getBubbleBoxClassName()}>
-                            <div className="wk-message-base-bubble" style={bubbleStyle} onContextMenu={(event) => {
-                                context.showContextMenus(message.message, event)
-                            }}>
-                                <div className="wk-message-base-content">
-                                    {this.props.children}
+                        {/* 消息体列 */}
+                        <div className="wk-msg-body">
+                            {/* Head 行：name + time，在气泡外面 */}
+                            {showHead && !message.send && !isAi && (
+                                <div className="wk-msg-head">
+                                    <span className="wk-msg-head-name" style={{ color: getTitleColor(channelInfo?.orgData?.displayName) }}>
+                                        {channelInfo?.orgData?.displayName}
+                                    </span>
+                                    {channelInfo?.orgData?.robot === 1 && <AiBadge size="small" />}
+                                    <span className="wk-msg-head-time">{timeStr}</span>
+                                </div>
+                            )}
+                            {/* 发送消息的 head: 仅 time，右对齐 */}
+                            {showHead && message.send && (
+                                <div className="wk-msg-head wk-msg-head-right">
+                                    <span className="wk-msg-head-time">{timeStr}</span>
+                                </div>
+                            )}
 
+                            <div className={this.getBubbleBoxClassName()}>
+                                <div className="wk-message-base-bubble" style={bubbleStyle} onContextMenu={(event) => {
+                                    context.showContextMenus(message.message, event)
+                                }}>
+                                    {/* AI 面板头部 */}
+                                    {isAi && showHead && (
+                                        <div className="wk-ai-panel-head">
+                                            <span className="wk-ai-panel-agent-name">{channelInfo?.orgData?.displayName}</span>
+                                            <AiBadge size="small" />
+                                        </div>
+                                    )}
+                                    <div className="wk-message-base-content">
+                                        {this.props.children}
+                                    </div>
+                                    {/* AI 面板底栏 */}
+                                    {isAi && (
+                                        <div className="wk-ai-panel-foot">
+                                            <span className="messageTime">{timeStr}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            {
-                                !hiddeBubble ? <div className="svgAppendix">
-                                    {
-                                        !message.send ? (<svg width="9" height="20" xmlns="http://www.w3.org/2000/svg"><defs><filter x="-50%" y="-14.7%" width="200%" height="141.2%" filterUnits="objectBoundingBox" id="a"><feOffset dy="1" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset><feGaussianBlur stdDeviation="1" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur><feColorMatrix values="0 0 0 0 0.0621962482 0 0 0 0 0.138574144 0 0 0 0 0.185037364 0 0 0 0.15 0" in="shadowBlurOuter1"></feColorMatrix></filter></defs><g fill="none" fillRule="evenodd"><path d="M3 17h6V0c-.193 2.84-.876 5.767-2.05 8.782-.904 2.325-2.446 4.485-4.625 6.48A1 1 0 003 17z" fill="#000" filter="url(#a)"></path><path d="M3 17h6V0c-.193 2.84-.876 5.767-2.05 8.782-.904 2.325-2.446 4.485-4.625 6.48A1 1 0 003 17z" fill="#FFF" className="corner"></path></g></svg>) :
-                                            (<svg width="9" height="20" xmlns="http://www.w3.org/2000/svg"><defs><filter x="-50%" y="-14.7%" width="200%" height="141.2%" filterUnits="objectBoundingBox" id="a"><feOffset dy="1" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset><feGaussianBlur stdDeviation="1" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur><feColorMatrix values="0 0 0 0 0.0621962482 0 0 0 0 0.138574144 0 0 0 0 0.185037364 0 0 0 0.15 0" in="shadowBlurOuter1"></feColorMatrix></filter></defs><g fill="none" fillRule="evenodd"><path d="M6 17H0V0c.193 2.84.876 5.767 2.05 8.782.904 2.325 2.446 4.485 4.625 6.48A1 1 0 016 17z" fill="#000" filter="url(#a)"></path><path d="M6 17H0V0c.193 2.84.876 5.767 2.05 8.782.904 2.325 2.446 4.485 4.625 6.48A1 1 0 016 17z" fill="FFF" className="corner"></path></g></svg>)
-
-                                    }
-                                </div> : null
-                            }
-
                         </div>
                     </div>
 
                     {
-                        //TODO:  wk-message-error-reason 谨用这个 这个会引起ui跳动
                         message.status === MessageStatus.Fail ? <div className="wk-message-error-reason">
                             {this.getMessageErrorReason()}
                         </div> : undefined

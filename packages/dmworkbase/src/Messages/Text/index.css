@@ -24,7 +24,7 @@
 }
 
 .wk-message-text-send {
-    color: white;
+    color: var(--wk-text-primary, black);
 }
 
 .wk-message-text-recv {
@@ -46,7 +46,7 @@ body[theme-mode=dark] .wk-message-text-recv {
 
 .wk-message-text-reply {
     display: flex;
-    color: rgb(255, 255, 255,0.5);
+    color: rgb(0, 0, 0,0.5);
     font-size: 14px;
     flex-direction: column;
     cursor: pointer;

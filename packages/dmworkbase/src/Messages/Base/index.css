@@ -35,85 +35,106 @@
     transform: translate3d(30px, 0, 0);
 }
 
-.senderName {
-    color: rgba(9,30,66,.74);
-    font-size: 12px;
-    font-weight: 400;
-    /* text-transform: capitalize; */
-    padding-bottom: 1px;
+/* .senderName 已废弃，由 .wk-msg-head 取代 */
+
+/* ── 头像（flex item，非 absolute） ── */
+.senderAvatar {
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    flex-shrink: 0;
 }
 
-.senderAvatar {
-    width: 34px;
-    height: 34px;
-    cursor: pointer;
-    position: absolute;
-    left: 0;
-    top: 0;
+.senderAvatar-placeholder {
+    cursor: default;
 }
 
 .senderAvatar img {
-    width: 34px;
-    height: 34px;
-    border-radius: 40%;
+    width: 32px;
+    height: 32px;
 }
 
+/* ── 消息行容器 ── */
 .wk-message-base-box {
     display: flex;
-    align-items: center;
-    position: relative;
+    align-items: flex-start;
+    gap: 8px;
 }
 
 .wk-message-base-send .wk-message-base-box {
     flex-direction: row-reverse;
-    justify-content: center;
-    margin-left: 0px;
     margin-right: 10px;
 }
 
-.wk-message-base-send .senderName {
-    padding-right: 41px;
+/* 自己的消息也显示头像（通过 row-reverse 位于右侧） */
+
+/* ── 消息体列（head + bubble） ── */
+.wk-msg-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
 }
 
-.wk-message-base-recv .senderName {
-    padding-left: 41px;
+.wk-message-base-send .wk-msg-body {
+    align-items: flex-end;
 }
 
-.wk-message-base-send .senderAvatar {
-    display: none;
-    text-align: center;
+/* ── Head 行（name + time，在气泡外面） ── */
+.wk-msg-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
 }
 
+.wk-msg-head-right {
+    justify-content: flex-end;
+}
+
+.wk-msg-head-name {
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+.wk-msg-head-time {
+    font-size: 11px;
+    color: var(--wk-text-tertiary, rgba(9,30,66,.54));
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ── Bubble box ── */
 .wk-message-base-bubble-box {
     display: flex;
     position: relative;
 }
 
 .wk-message-base-bubble-box.recv {
-    margin-left: 40px;
+    /* 不再需要 margin-left，头像已是 flex item */
 }
 
 .wk-message-base-bubble {
-    color: rgba(9,30,66,.87);
+    color: var(--wk-text-primary, rgba(9,30,66,.87));
     display: flex;
-    /* margin-bottom: 4px; */
-    padding: 8px 10px;
+    padding: 8px 12px;
     position: relative;
     word-wrap: break-word;
-    max-width: var(--wk-width-max-message);
+    max-width: 480px;
     justify-content: center;
     align-items: center;
     flex-direction: column;
-    box-shadow: 0 1px 2px rgba(114,114,114,0.25098);
-    font-size: 15px;
+    font-size: 14px;
+    line-height: 1.65;
 }
 
 .wk-message-base-bubble-box.hide .wk-message-base-bubble {
     padding: 0px;
-}
-
-body[theme-mode=dark] .wk-message-base-bubble {
-    box-shadow: none;
 }
 
 @media screen and (max-width: 640px)  {
@@ -122,87 +143,117 @@ body[theme-mode=dark] .wk-message-base-bubble {
     }
 }
 
+/* ── Sec7: 自己的消息（右对齐，淡青） ── */
 .wk-message-base-bubble-box.send .wk-message-base-bubble {
-    background-color: var(--wk-color-theme) ;
-    border-radius: 0.75rem 0.75rem 0rem 0.75rem;
-    color: white;
+    background-color: var(--wk-bg-self);
+    border-radius: var(--wk-r-lg) 2px var(--wk-r-lg) var(--wk-r-lg);
+    border: 1px solid rgba(0,180,148,0.12);
+    color: var(--wk-text-primary, rgba(9,30,66,.87));
 }
 
+/* ── Sec6: 他人消息（左对齐，微紫白） ── */
 .wk-message-base-bubble-box.recv .wk-message-base-bubble {
-    border-radius: 0.75rem 0.75rem 0.75rem 0rem;
-    background-color: white ;
-    color: black;
+    border-radius: 2px var(--wk-r-lg) var(--wk-r-lg) var(--wk-r-lg);
+    background-color: var(--wk-bg-bubble);
+    border: 1px solid rgba(0,0,0,0.06);
+    color: var(--wk-text-primary, black);
 }
 
 body[theme-mode=dark] .wk-message-base-bubble-box.recv .wk-message-base-bubble  {
-    color: white;
+    color: var(--wk-text-primary, white);
 }
 
-body[theme-mode=dark] .wk-message-base-bubble-box.recv .wk-message-base-bubble {
-    background-color: var(--wk-color-secondary);
-}
-
-.wk-message-base-bubble-box.send.middle .wk-message-base-bubble {
-    border-radius: 0.75rem 0.375rem 0.375rem 0.75rem;
-}
-
+/* 连续消息：后续气泡全圆角（不再需要尖角指向头像） */
+.wk-message-base-bubble-box.send.middle .wk-message-base-bubble,
 .wk-message-base-bubble-box.send.first .wk-message-base-bubble {
-    border-radius: 0.75rem 0.75rem 0.375rem 0.75rem;
+    border-radius: var(--wk-r-lg);
 }
 
-.wk-message-base-bubble-box.recv.middle .wk-message-base-bubble {
-    border-radius: 0.375rem 0.75rem 0.75rem 0.375rem;
-}
-
+.wk-message-base-bubble-box.recv.middle .wk-message-base-bubble,
 .wk-message-base-bubble-box.recv.first .wk-message-base-bubble {
-    border-radius: 0.75rem 0.75rem 0.75rem 0.375rem;
+    border-radius: var(--wk-r-lg);
 }
 
 .wk-message-base-bubble-box.hide .wk-message-base-bubble {
     background-color: transparent !important;
-    box-shadow: none;
+    border: none;
 }
 
+/* ── Sec8: AI 消息面板 ── */
 
-.svgAppendix {
-    display: none;
+.wk-message-base-bubble-box.ai-panel .wk-message-base-bubble {
+    display: block;
+    max-width: min(680px, calc(100vw - 120px));
+    background: var(--wk-ai-panel-bg);
+    border-radius: var(--wk-r-lg);
+    border: 1px solid var(--wk-ai-border);
     overflow: hidden;
+    position: relative;
+    padding: 0;
+    line-height: 1.75;
+}
+
+/* AI 面板顶部品牌渐变线 */
+.wk-message-base-bubble-box.ai-panel .wk-message-base-bubble::before {
+    content: '';
     position: absolute;
-    width: 0.5625rem;
-    height: 1.125rem;
-    font-size: 1rem !important;
-    bottom: -1px;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--wk-brand-gradient);
+    opacity: 0.6;
+}
+
+/* AI 面板头部（Agent 名 + AI 标签） */
+.wk-message-base-bubble-box.ai-panel .wk-ai-panel-head {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.wk-message-base-bubble-box.ai-panel .wk-ai-panel-agent-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--wk-text-primary);
+}
+
+/* AI 面板内容区 */
+.wk-message-base-bubble-box.ai-panel .wk-message-base-content {
+    padding: 16px 20px;
+    line-height: 1.75;
+    font-size: 14px;
+    height: auto;
+}
+
+/* AI 面板底栏 */
+.wk-message-base-bubble-box.ai-panel .wk-ai-panel-foot {
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(0,0,0,0.05);
+    background: rgba(124,92,252,0.02);
+}
+
+.wk-message-base-bubble-box.ai-panel .wk-ai-panel-foot .messageTime {
+    font-size: 11px;
+    color: var(--wk-text-tertiary);
+}
+
+/* 子组件渲染的 textTitle 和 messageMeta 隐藏（已由 wk-msg-head / ai-panel-head/foot 取代） */
+.wk-message-base-bubble .textTitle {
+    display: none;
+}
+
+.wk-message-base-bubble .messageMeta {
+    display: none;
 }
 
 
-.wk-message-base-bubble-box.last .svgAppendix {
-    display: block;
-}
-
-.wk-message-base-bubble-box.single .svgAppendix {
-    display: block;
-}
-
-
-.wk-message-base-bubble-box.send .svgAppendix {
-    right: -0.551rem;
-}
-
-.wk-message-base-bubble-box.recv .svgAppendix {
-    left: -0.52rem;
-}
-
-.wk-message-base-bubble-box.send .svgAppendix .corner {
-    fill: var(--wk-color-theme);
-}
-
-.wk-message-base-bubble-box.recv .svgAppendix .corner {
-    fill: white;
-}
-
-
-body[theme-mode=dark] .wk-message-base-bubble-box.recv .svgAppendix .corner  {
-    fill: var(--wk-color-secondary);
+/* SVG 尾巴已移除，v4 设计不再使用 */
+.svgAppendix {
+    display: none !important;
 }
 
 /* .wk-message-base-recv .wk-message-base-bubble {
@@ -220,19 +271,7 @@ body[theme-mode=dark] .wk-message-base-bubble-box.recv .svgAppendix .corner  {
 
 
 
-.messageNameBox {
-    display: flex;
-    margin-bottom: 1px;
-}
-
-.wk-message-base-send .messageNameBox {
-    flex-direction: row-reverse;
-    justify-content: end;
-}
-
-.wk-message-base-recv .messageNameBox {
-    flex-direction: row;
-}
+/* .messageNameBox 已废弃 */
 
 /*.messageTime {
     color: rgba(9,30,66,.74);
@@ -371,7 +410,7 @@ body[theme-mode=dark] .wk-message-base-bubble-box.recv .svgAppendix .corner  {
 }
 
 .wk-message-base-bubble-box.send .messageTime {
-    color: rgb(255, 255, 255,0.75);
+    color: rgb(104, 108, 114,0.75);
 }
 
 .textTitle {

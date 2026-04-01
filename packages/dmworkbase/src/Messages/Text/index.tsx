@@ -109,7 +109,7 @@ export class TextCell extends MessageCell {
         const { message, context } = this.props
         return <MessageBase message={message} context={context} onBubble={() => {
         }}>
-            <MessageHead message={message} />
+
             {
                 message?.content.reply ? <div className={classNames("wk-message-text-reply",message.send?undefined:"wk-message-text-reply-recv")} onClick={()=>{
                     context.locateMessage( message?.content.reply.messageSeq)

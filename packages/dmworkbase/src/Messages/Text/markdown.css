@@ -192,14 +192,9 @@
     cursor: pointer;
     text-decoration: underline;
 }
-.wk-message-mention-send {
-    color: white;
-}
+.wk-message-mention-send,
 .wk-message-mention-recv {
-    color: black;
-}
-body[theme-mode=dark] .wk-message-mention-recv {
-    color: white;
+    color: var(--wk-text-accent);
 }
 
 /* ── 流式光标（复用已有动画） ── */

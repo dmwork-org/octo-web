@@ -3,6 +3,7 @@
     height: 40px;
     border-radius: 50%; /* default: human */
     object-fit: cover;
+    transition: border-radius 150ms ease;
 }
 
 /* AI Bot — 圆角矩形 */

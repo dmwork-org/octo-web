@@ -294,10 +294,11 @@ export class Conversation extends Component<ConversationProps> implements Conver
             MessageCell = WKApp.messageManager.getCell(message.contentType)
 
         }
+        const isSystemMessage = message.revoke || message.contentType === MessageContentTypeConst.screenshot || (message.contentType >= 1000 && message.contentType <= 2000)
         return <div onAnimationEnd={() => {
             message.locateRemind = false;
             this.setState({})
-        }} key={message.clientMsgNo} id={`${message.contentType === MessageContentTypeConst.time ? "time-" : ""}${message.clientMsgNo}`} className={classNames("wk-message-item", last ? "wk-message-item-last" : undefined, message.locateRemind ? 'wk-message-item-reminder' : undefined)} >
+        }} key={message.clientMsgNo} id={`${message.contentType === MessageContentTypeConst.time ? "time-" : ""}${message.clientMsgNo}`} className={classNames("wk-message-item", last ? "wk-message-item-last" : undefined, message.locateRemind ? 'wk-message-item-reminder' : undefined, isSystemMessage ? 'wk-message-item-system' : undefined)} >
             {
                 MessageCell ? <MessageCell key={message.clientMsgNo} message={message} context={this} /> : null
             }
