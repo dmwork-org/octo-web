@@ -121,7 +121,7 @@ export default class NavSignalBadge extends Component<NavSignalBadgeProps, NavSi
                 onClick={this.handleClick}
                 onMouseEnter={() => this.setState({ showTooltip: true })}
                 onMouseLeave={() => this.setState({ showTooltip: false })}
-                style={{ cursor: connected ? "default" : "pointer" }}
+                style={{ cursor: "default" }}
             >
                 <svg width="12" height="12" viewBox="0 0 16 16">
                     <rect x="1" y="11" width="3" height="5" rx="0.5" fill={bars >= 1 ? color : "var(--wk-border-default)"} />
