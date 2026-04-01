@@ -3,7 +3,7 @@ import { Space } from "wukongimjssdk";
 import WKApp from "../../App";
 import { Menus } from "../../Service/Menus";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
-import NavSignalBadge from "./NavSignalBadge";
+
 import NavItem from "./NavItem";
 import NavBottom from "./NavBottom";
 import NavSettingsPanel from "./NavSettingsPanel";
@@ -87,7 +87,7 @@ export default class NavRail extends Component<NavRailProps> {
                                     backgroundImage: `url(${WKApp.shared.avatarUser(WKApp.loginInfo.uid || "")})`,
                                 }}
                             />
-                            <NavSignalBadge />
+                            {isOnline && <div className="wk-navrail__user-status" />}
                         </div>
                     </div>
 

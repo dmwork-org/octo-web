@@ -46,44 +46,17 @@
     transform: scale(1.08);
 }
 
-/* ── Signal badge（头像右下角信号格） ── */
-.wk-navrail__signal {
+/* ── Online status dot ── */
+.wk-navrail__user-status {
     position: absolute;
-    bottom: -1px;
-    right: -1px;
-    width: 14px;
-    height: 14px;
-    border-radius: var(--wk-r-sm);
-    background: var(--wk-bg-navrail);
-    border: 1.5px solid var(--wk-bg-navrail);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: default;
-}
-
-.wk-navrail__signal--blink svg {
-    animation: wk-signal-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes wk-signal-pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.3; }
-}
-
-.wk-navrail__signal-tooltip {
-    position: fixed;
-    left: 68px;
-    bottom: 60px;
-    background: var(--wk-bg-elevated);
-    color: var(--wk-text-primary);
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: var(--wk-r-sm);
-    white-space: nowrap;
-    box-shadow: var(--wk-shadow-md);
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--wk-r-circle, 50%);
+    background: var(--wk-color-online);
+    border: 2px solid var(--wk-bg-navrail);
     pointer-events: none;
-    z-index: 300;
 }
 
 /* ── Separator ── */

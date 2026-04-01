@@ -21,6 +21,7 @@ import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
 import { Space } from "../../Service/SpaceService";
+import NavSignalBadge from "../../Components/NavRail/NavSignalBadge";
 
 export interface ChatContentPageProps {
   channel: Channel;
@@ -273,6 +274,9 @@ export default class ChatPage extends Component<any, ChatPageState> {
                           ))}
                         </div>
                       )}
+                    </div>
+                    <div style={{ marginRight: '4px', alignItems: 'center', display: 'flex' }}>
+                      <NavSignalBadge />
                     </div>
                     <div
                       style={{ marginRight: '20px', alignItems: 'center', display: 'flex', cursor: 'pointer' }}

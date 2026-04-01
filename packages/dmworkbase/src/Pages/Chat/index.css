@@ -39,6 +39,26 @@
     color: var(--text-primary) !important;
 }
 
+/* 信号塔在 header 里的 tooltip 位置 */
+.wk-chat-search .wk-navrail__signal {
+    position: relative;
+    bottom: auto;
+    right: auto;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    border-radius: var(--wk-r-sm);
+    cursor: default;
+}
+
+.wk-chat-search .wk-navrail__signal-tooltip {
+    top: calc(100% + 6px);
+    bottom: auto;
+    left: auto;
+    right: 0;
+}
+
 /* ── Title Dropdown ── */
 .wk-chat-title-dropdown {
     position: relative;
