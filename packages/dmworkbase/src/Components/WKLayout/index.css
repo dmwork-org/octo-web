@@ -70,4 +70,8 @@
     .wk-layout-tab {
         display: none;
     }
+
+    .wk-layout-content {
+        width: 100%;
+    }
 }

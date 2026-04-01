@@ -243,13 +243,6 @@
     opacity: 0.85;
 }
 
-/* ── 移动端隐藏 ── */
-@media screen and (max-width: 640px) {
-    .wk-navrail {
-        display: none;
-    }
-}
-
 /* focus-visible for keyboard nav */
 .wk-navrail__item:focus-visible,
 .wk-navrail__space-btn:focus-visible,
