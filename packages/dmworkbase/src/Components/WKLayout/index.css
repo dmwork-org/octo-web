@@ -66,4 +66,8 @@
     .wk-layout-content-left {
         width: 100%;
     }
+
+    .wk-layout-tab {
+        display: none;
+    }
 }
