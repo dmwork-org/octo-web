@@ -503,7 +503,9 @@ export default class WKApp extends ProviderListener {
     }
     const tag = WKApp.loginInfo.getStorageItem(myAvatarTag);
     if (!tag) {
-      return "";
+      const defaultTag = new Date().getTime().toString();
+      WKApp.loginInfo.setStorageItem(myAvatarTag, defaultTag);
+      return defaultTag;
     }
     return tag;
   }
