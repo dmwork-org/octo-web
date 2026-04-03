@@ -202,6 +202,7 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
     }
 
     componentWillUnmount() {
+        if (this._rafId !== null) cancelAnimationFrame(this._rafId)
         const scope = "messageInput"
         hotkeys.unbind('ctrl+enter', scope);
         // Restore the previous scope to prevent scope pollution
@@ -300,8 +301,9 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
         const value = stripInvisibleChars(event.target.value)
         const { botCommands } = this.props
 
-        // 计算输入框自适应高度
+        // 快速估算高度（当帧），下一帧再用 scrollHeight 精确修正
         const inputHeight = this.calcAutoHeight(value)
+        this.scheduleHeightFix()
 
         // 只在输入 / 前缀且没有空格时弹出斜杠命令菜单（避免粘贴完整命令时弹出）
         if (botCommands && botCommands.length > 0 && value.startsWith('/') && !value.includes(' ') && !value.includes('\n')) {
@@ -336,6 +338,8 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
         setTimeout(() => this.inputRef?.focus(), 50)
     }
 
+    private _rafId: number | null = null
+
     calcAutoHeight(value?: string): number {
         const { hasPendingAttachments } = this.props
         const defaultRows = hasPendingAttachments ? INPUT_MIN_ROWS : INPUT_DEFAULT_ROWS
@@ -344,26 +348,33 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
             return calcInputHeight(defaultRows)
         }
 
-        // 第一步：用换行符快速估算（当帧立即应用，无闪烁）
+        // 用换行符快速估算当帧高度
         const newlines = (value.match(/\n/g) || []).length + 1
         const quickRows = Math.min(Math.max(defaultRows, newlines), INPUT_MAX_ROWS)
-        const quickHeight = calcInputHeight(quickRows)
+        return calcInputHeight(quickRows)
+    }
 
-        // 第二步：下一帧用真实 scrollHeight 修正（此时 textarea 已按 quickHeight 渲染好）
-        requestAnimationFrame(() => {
+    // 在 handleChange 之后异步用 scrollHeight 精确修正，防抖避免频繁触发
+    scheduleHeightFix() {
+        if (this._rafId !== null) {
+            cancelAnimationFrame(this._rafId)
+        }
+        this._rafId = requestAnimationFrame(() => {
+            this._rafId = null
             if (!this.inputRef) return
+            const { hasPendingAttachments } = this.props
+            const defaultRows = hasPendingAttachments ? INPUT_MIN_ROWS : INPUT_DEFAULT_ROWS
             const el = this.inputRef as HTMLTextAreaElement
-            // 直接读 scrollHeight，不改 el.style.height，不触发重排闪烁
             const scrollH = el.scrollHeight
+            if (!scrollH) return
             const realRows = Math.ceil((scrollH - INPUT_PADDING_V * 2) / INPUT_LINE_HEIGHT)
             const clampedRows = Math.min(Math.max(defaultRows, realRows), INPUT_MAX_ROWS)
             const realHeight = calcInputHeight(clampedRows)
-            if (realHeight !== this.state.inputHeight) {
+            // 只在高度确实需要变化时才 setState，避免无限触发
+            if (Math.abs(realHeight - this.state.inputHeight) > 2) {
                 this.setState({ inputHeight: realHeight })
             }
         })
-
-        return quickHeight
     }
 
     getFilteredSlashCommands(): BotCommand[] {
