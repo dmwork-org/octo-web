@@ -14,21 +14,22 @@ export function calcInputHeight(rows: number): number {
 
 export default class InputStyle {
 
-  static getStyle(inputHeight?: number) {
+  static getStyle(inputHeight?: number, expanded?: boolean) {
     const h = inputHeight ?? calcInputHeight(INPUT_DEFAULT_ROWS)
     return { 
       control: {
         fontSize: 14,
         fontWeight: 'normal',
+        height: expanded ? '100%' : undefined,
       },
       highlighter: {
         overflow: 'hidden',
-        height: h,
+        height: expanded ? '100%' : h,
       },
     
       input: {
         overflow: 'auto',
-        height: h,
+        height: expanded ? '100%' : h,
       },
     
       '&singleLine': {

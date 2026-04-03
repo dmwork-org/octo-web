@@ -437,7 +437,7 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
             });
         }
         return (
-            <div className="wk-messageinput-box">
+            <div className="wk-messageinput-box" style={expanded ? { display: 'flex', flexDirection: 'column' } : undefined}>
                 {
                     topView ? <div className="wk-messageinput-box-top">
                         {topView}
@@ -520,7 +520,7 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
                         </div>
                     </div>
                 </div>
-                <div className="wk-messageinput-inputbox" style={{ position: 'relative', height: expanded ? '100%' : (inputHeight + 15 + 'px') }}>
+                <div className="wk-messageinput-inputbox" style={{ position: 'relative', ...(expanded ? { flex: 1, height: 'auto' } : { height: inputHeight + 15 + 'px' }) }}>
                     {botCommands && botCommands.length > 0 && (
                         <SlashCommandMenu
                             commands={botCommands}
@@ -540,7 +540,7 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
                         </div>
                     )}
                     <MentionsInput
-                        style={InputStyle.getStyle(inputHeight)}
+                        style={InputStyle.getStyle(expanded ? undefined : inputHeight, expanded)}
                         value={value}
                         onKeyPress={this.handleKeyPressed}
                         onKeyDown={this.handleKeyDown}
