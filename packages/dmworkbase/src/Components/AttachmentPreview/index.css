@@ -1,13 +1,13 @@
 .wk-attachment-preview {
     width: 100%;
-    border-top: 1px solid var(--wk-color-border, #e8e8e8);
+    border-top: 1px solid var(--wk-border-subtle);
     background: var(--wk-color-item);
     padding: 8px 12px;
     box-sizing: border-box;
 }
 
 body[theme-mode=dark] .wk-attachment-preview {
-    border-top-color: var(--wk-color-border-dark, rgba(255, 255, 255, 0.08));
+    border-top-color: var(--wk-border-subtle);
 }
 
 .wk-attachment-preview-list {
@@ -29,7 +29,7 @@ body[theme-mode=dark] .wk-attachment-preview {
     flex-direction: row;
     align-items: center;
     gap: 8px;
-    background: var(--wk-color-background, #f5f7f9);
+    background: var(--wk-bg-base);
     border-radius: 8px;
     padding: 8px 10px;
     min-width: 180px;
@@ -53,7 +53,7 @@ body[theme-mode=dark] .wk-attachment-preview-item {
 }
 
 .wk-attachment-preview-icon-label {
-    color: #fff;
+    color: var(--wk-text-inverse);
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.3px;

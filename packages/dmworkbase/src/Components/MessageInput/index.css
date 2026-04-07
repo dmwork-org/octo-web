@@ -5,12 +5,12 @@
     height: 100%;
     position: relative;
 
-    box-shadow: 0.3rem -0.2rem 0.8rem 0.05rem rgb(114 114 114 / 5%);
+    box-shadow: var(--wk-shadow-xs);
     border-left: none;
 }
 
 /* .wk-messageinput-box:hover {
-     box-shadow: 0 0 10px rgb(0 0 0 / 15%)
+     box-shadow: var(--wk-shadow-sm)
 } */
 
 .wk-messageinput-inputbox {
@@ -120,7 +120,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: linear-gradient(180deg,#92a2b1 4.39%,#7b8e9f 94.46%);
+    background-color: var(--wk-bg-secondary);
     border-radius: 2px;
     cursor: pointer;
 }
@@ -150,13 +150,13 @@
 }
 
 .wk-messageinput-selected {
-    color: #fff;
+    color: var(--wk-text-inverse);
     /* background-color: #1264a3; */
 }
 
 .quickReplyPanel {
     position: absolute;
-    box-shadow: 1px -1px 12px -2px rgb(0 0 0 / 28%);
+    box-shadow: var(--wk-shadow-md);
     max-height: 400px;
     overflow-x: hidden;
     bottom: 0;
@@ -173,7 +173,7 @@
         .quickReplyPanel ul li {
             list-style-type: none;
             height: 60px;
-            border-bottom: 1px solid rgba(9,30,66,.12);
+            border-bottom: 1px solid var(--wk-border-subtle);
             cursor: pointer;
         }
 
@@ -186,8 +186,8 @@
 
 
 .quickReplySelect {
-    background-color: #5d657a !important;
-    color: #fff !important;
+    background-color: var(--wk-text-secondary) !important;
+    color: var(--wk-text-inverse) !important;
 }
 
 .wk-messageinput-header {
@@ -197,7 +197,7 @@
     margin: 10px 10px 0px 10px;
     background-color: var(--bg-secondary);
     display: flex;
-    color: #8f959e;
+    color: var(--wk-text-secondary);
     align-items: center;
 }
 
