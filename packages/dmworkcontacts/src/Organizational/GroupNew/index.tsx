@@ -369,14 +369,14 @@ export class OrganizationalGroupNew extends Component<
         // fallback to contacts list
         WKApp.dataSource.contactsList.forEach((item) => {
           if (!subscriberUids.includes(item.uid) && !systemUids.includes(item.uid)) {
-            setFriendData.push({ name: item.name, uid: item.uid });
+            setFriendData.push({ name: item.name, uid: item.uid, avatar: WKApp.shared.avatarUser(item.uid) });
           }
         });
       }
     } else {
       WKApp.dataSource.contactsList.forEach((item) => {
         if (!subscriberUids.includes(item.uid) && !systemUids.includes(item.uid)) {
-          setFriendData.push({ name: item.name, uid: item.uid });
+          setFriendData.push({ name: item.name, uid: item.uid, avatar: WKApp.shared.avatarUser(item.uid) });
         }
       });
     }
