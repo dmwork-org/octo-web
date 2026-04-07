@@ -14,7 +14,7 @@ export function calcInputHeight(rows: number): number {
 
 export default class InputStyle {
 
-  static getStyle(inputHeight?: number, expanded?: boolean) {
+  static getStyle(expanded?: boolean) {
     return { 
       control: {
         fontSize: 14,

@@ -8,7 +8,8 @@ interface AttachmentPreviewProps {
 }
 
 function getFileIconInfo(file: File): { color: string; label: string } {
-    const ext = (file.name.substring(file.name.lastIndexOf('.') + 1) || "").toLowerCase()
+    const dotIdx = file.name.lastIndexOf('.')
+    const ext = dotIdx > 0 ? file.name.substring(dotIdx + 1).toLowerCase() : ""
     if (file.type.startsWith('image/')) return { color: "#6366F1", label: "IMG" }
     switch (ext) {
         case "pdf": return { color: "#EF4444", label: "PDF" }
@@ -37,7 +38,7 @@ export default class AttachmentPreview extends Component<AttachmentPreviewProps>
                     {files.map((file, index) => {
                         const iconInfo = getFileIconInfo(file)
                         return (
-                            <div key={index} className="wk-attachment-preview-item">
+                            <div key={`${file.name}-${file.size}-${file.lastModified}-${index}`} className="wk-attachment-preview-item">
                                 <div className="wk-attachment-preview-icon" style={{ backgroundColor: iconInfo.color }}>
                                     <span className="wk-attachment-preview-icon-label">{iconInfo.label}</span>
                                 </div>

@@ -1004,7 +1004,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
                         event.preventDefault()
                         this.dragStart()
 
-                    }} className={classNames("wk-conversation-content")} style={this.state.inputExpanded ? { visibility: 'hidden', height: 0, overflow: 'hidden', flex: 'none' } : undefined}>
+                    }} className={classNames("wk-conversation-content")} style={this.state.inputExpanded ? { height: 0, overflow: 'hidden', flex: 'none' } : undefined} {...(this.state.inputExpanded ? { inert: '' } : {})}>
                         <div className="wk-conversation-messages" id={vm.messageContainerId} onScroll={this.handleScroll.bind(this)} onWheel={this.handleWheel.bind(this)}>
                             {
                                 vm.renderItems.map((item, i) => {
@@ -1160,8 +1160,13 @@ export class Conversation extends Component<ConversationProps> implements Conver
                                                 const reader = new FileReader()
                                                 const previewUrl = await new Promise<string>((resolve) => {
                                                     reader.onloadend = () => resolve(reader.result as string)
+                                                    reader.onerror = () => resolve('') // 文件损坏时不阻塞后续附件
                                                     reader.readAsDataURL(file)
                                                 })
+                                                if (!previewUrl) {
+                                                    Toast.error(`图片「${file.name}」读取失败`)
+                                                    continue
+                                                }
                                                 // 读取真实宽高，供渲染层正确计算尺寸
                                                 const { width, height } = await new Promise<{ width: number; height: number }>((resolve) => {
                                                     const img = new Image()

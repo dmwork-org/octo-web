@@ -371,7 +371,7 @@ body[theme-mode=dark] .wk-conversation-content {
 }
 
 .wk-conversation-multiplepanel-show {
-    max-height: 120px;
+    max-height: var(--wk-height-multiplepanel, 120px);
 }
 
 .wk-multiplepanel {

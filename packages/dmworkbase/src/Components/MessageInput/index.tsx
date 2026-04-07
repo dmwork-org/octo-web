@@ -190,10 +190,6 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
     //     const { quickReplyModels } = this.state
     //     return quickReplyModels && quickReplyModels.length > 0
     // }
-    componentDidUpdate(prevProps: any) {
-        // 有附件状态变化时无需手动调整高度，CSS field-sizing 自动处理
-    }
-
     componentWillUnmount() {
         const scope = "messageInput"
         hotkeys.unbind('ctrl+enter', scope);
@@ -291,7 +287,6 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
         const value = stripInvisibleChars(event.target.value)
         const { botCommands } = this.props
 
-        // 根据换行符计算高度（纯计算，无 DOM 操作，无闪烁）
         // 只在输入 / 前缀且没有空格时弹出斜杠命令菜单（避免粘贴完整命令时弹出）
         if (botCommands && botCommands.length > 0 && value.startsWith('/') && !value.includes(' ') && !value.includes('\n')) {
             const filter = value.slice(1)
@@ -313,13 +308,12 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
 
     toggleExpand = () => {
         const next = !this.state.expanded
-        this.setState({ expanded: next })
         this.props.onExpandChange?.(next)
-        // 展开时聚焦输入框
-        setTimeout(() => this.inputRef?.focus(), 50)
+        this.setState({ expanded: next }, () => {
+            // 展开时聚焦输入框（setState callback 保证 DOM 已更新）
+            if (next) this.inputRef?.focus()
+        })
     }
-
-
 
     getFilteredSlashCommands(): BotCommand[] {
         const { botCommands } = this.props
@@ -499,7 +493,7 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
                         </div>
                     )}
                     <MentionsInput
-                        style={InputStyle.getStyle(undefined, expanded)}
+                        style={InputStyle.getStyle(expanded)}
                         value={value}
                         onKeyPress={this.handleKeyPressed}
                         onKeyDown={this.handleKeyDown}
