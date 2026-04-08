@@ -2,9 +2,18 @@ import React, { forwardRef, useEffect, useImperativeHandle, useState } from 'rea
 import AiBadge from '../AiBadge'
 import './MentionList.css'
 
+interface MemberItem {
+  uid: string
+  name: string
+  icon: string
+  isBot?: boolean
+  id?: string
+  display?: string
+}
+
 interface MentionListProps {
-  items: Array<any>
-  command: (item: any) => void
+  items: MemberItem[]
+  command: (item: { id: string; label: string }) => void
 }
 
 export default forwardRef((props: MentionListProps, ref) => {

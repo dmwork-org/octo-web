@@ -14,6 +14,7 @@ import SlashCommandMenu, { BotCommand } from "../SlashCommandMenu";
 import VoiceInputIndicator from "./VoiceInputIndicator";
 import { Maximize2, Minimize2 } from 'lucide-react';
 import IconClick from '../IconClick';
+import mentionAllIcon from './mention.png';
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -178,7 +179,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                         if (!membersRef.current) return [{
                             uid: '-1',
                             name: '所有人',
-                            icon: require('./mention.png'),
+                            icon: mentionAllIcon,
                             isBot: false,
                         }]
 
@@ -194,7 +195,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                         items.unshift({
                             uid: '-1',
                             name: '所有人',
-                            icon: require('./mention.png'),
+                            icon: mentionAllIcon,
                             isBot: false,
                         })
 
@@ -259,7 +260,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             props.onContext({
                 insertText,
                 addMention,
-                text: () => editor?.getText(),
+                text: () => editor ? extractMentionsFromEditor(editor) : undefined,
             })
         }
     }, [editor, props.onInsertText, props.onContext])
