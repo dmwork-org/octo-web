@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -178,7 +178,7 @@ function processTextChildren(
                 if (seg.type === "emoji") {
                     return (
                         <span key={i} className="wk-message-text-richemoji">
-                            <img alt={seg.key} src={seg.url} />
+                            <img alt={seg.key} src={seg.url} width={22} height={22} />
                         </span>
                     );
                 }
@@ -205,12 +205,42 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     emojis = [],
 }) => {
     const normalized = useMemo(() => normalizeContent(content), [content]);
-    const hasTokens = mentions.length > 0 || emojis.length > 0;
+
+    // Stabilize mentions/emojis references: only swap when actual content changes.
+    // Parent re-renders triggered by scroll events create new array instances with
+    // the same content; without this the components useMemo below would invalidate
+    // every scroll, causing ReactMarkdown to unmount/remount emoji <img> elements
+    // and produce a visible flicker (especially noticeable with DevTools open).
+    const mentionsJson = JSON.stringify(mentions);
+    const stableMentions = useRef(mentions);
+    const prevMentionsJson = useRef(mentionsJson);
+    if (mentionsJson !== prevMentionsJson.current) {
+        prevMentionsJson.current = mentionsJson;
+        stableMentions.current = mentions;
+    }
+
+    const emojisJson = JSON.stringify(emojis);
+    const stableEmojis = useRef(emojis);
+    const prevEmojisJson = useRef(emojisJson);
+    if (emojisJson !== prevEmojisJson.current) {
+        prevEmojisJson.current = emojisJson;
+        stableEmojis.current = emojis;
+    }
+
+    // Stable callback: always calls the latest onMentionClick without producing
+    // a new function reference on each render.
+    const onMentionClickLatest = useRef(onMentionClick);
+    onMentionClickLatest.current = onMentionClick;
+    const stableOnMentionClick = useCallback((uid: string) => {
+        onMentionClickLatest.current?.(uid);
+    }, []);
+
+    const hasTokens = stableMentions.current.length > 0 || stableEmojis.current.length > 0;
 
     const components = useMemo(() => {
         if (!hasTokens) return baseComponents;
         const process = (children: React.ReactNode) =>
-            processTextChildren(children, mentions, emojis, onMentionClick, isSend);
+            processTextChildren(children, stableMentions.current, stableEmojis.current, stableOnMentionClick, isSend);
         const wrap = (Tag: string) => ({ node, children, ...props }: any) =>
             React.createElement(Tag, props, process(children));
         return {
@@ -226,7 +256,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
             h5: wrap("h5"),
             h6: wrap("h6"),
         };
-    }, [hasTokens, mentions, emojis, onMentionClick, isSend]);
+    }, [hasTokens, stableMentions.current, stableEmojis.current, stableOnMentionClick, isSend]);
 
     return (
         <div className={`wk-markdown ${isSend ? "wk-markdown-send" : "wk-markdown-recv"}`}>
