@@ -32,6 +32,8 @@ export interface ChatContentPageProps {
 
 export interface ChatContentPageState {
   showChannelSetting: boolean;
+  selectionMode: boolean;
+  selectedCount: number;
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -45,6 +47,8 @@ export class ChatContentPage extends Component<
     super(props);
     this.state = {
       showChannelSetting: false,
+      selectionMode: false,
+      selectedCount: 0,
     };
   }
 
@@ -97,7 +101,7 @@ export class ChatContentPage extends Component<
 
   render(): React.ReactNode {
     const { channel, initLocateMessageSeq } = this.props;
-    const { showChannelSetting } = this.state;
+    const { showChannelSetting, selectionMode, selectedCount } = this.state;
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
     if (!channelInfo) {
       WKSDK.shared().channelManager.fetchChannelInfo(channel);
@@ -109,10 +113,23 @@ export class ChatContentPage extends Component<
           showChannelSetting ? "wk-chat-channelsetting-open" : ""
         )}
       >
-        <div className="wk-chat-content-chat">
+        <div
+          className={classNames(
+            "wk-chat-content-chat",
+            selectionMode ? "wk-chat-content-chat-selection" : undefined
+          )}
+        >
           <div
-            className="wk-chat-conversation-header"
+            className={classNames(
+              "wk-chat-conversation-header",
+              selectionMode
+                ? "wk-chat-conversation-header-selection"
+                : undefined
+            )}
             onClick={() => {
+              if (selectionMode) {
+                return;
+              }
               this.setState({
                 showChannelSetting: !this.state.showChannelSetting,
               });
@@ -120,66 +137,92 @@ export class ChatContentPage extends Component<
           >
             <div className="wk-chat-conversation-header-content">
               <div className="wk-chat-conversation-header-left">
-                <div
-                  className="wk-chat-conversation-header-back"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    WKApp.routeRight.pop();
-                  }}
-                >
-                  <div className="wk-chat-conversation-header-back-icon"></div>
-                </div>
-                <div className="wk-chat-conversation-header-channel">
-                  <div className="wk-chat-conversation-header-channel-avatar">
-                    <img alt="" src={WKApp.shared.avatarChannel(channel)}></img>
-                  </div>
-                  <div className="wk-chat-conversation-header-channel-info">
-                    <div className="wk-chat-conversation-header-channel-info-name">
-                      {channel.channelType === ChannelTypeCommunityTopic && channelInfo?.orgData?.parentGroupNo ? (
-                        <>
-                          <span className="wk-chat-conversation-header-parent-group">
-                            {WKSDK.shared().channelManager.getChannelInfo(new Channel(channelInfo.orgData.parentGroupNo, ChannelTypeGroup))?.title || channelInfo.orgData.parentGroupNo}
-                          </span>
-                          <span className="wk-chat-conversation-header-separator">&gt;</span>
-                          <span>{channelInfo?.orgData?.displayName}</span>
-                        </>
-                      ) : (
-                        channelInfo?.orgData?.displayName
-                      )}
+                {selectionMode ? (
+                  <div className="wk-chat-conversation-selection-header">
+                    <div className="wk-chat-conversation-selection-title">
+                      已选择 {selectedCount} 条消息
                     </div>
-                    <div className="wk-chat-conversation-header-channel-info-tip"></div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div
+                      className="wk-chat-conversation-header-back"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        WKApp.routeRight.pop();
+                      }}
+                    >
+                      <div className="wk-chat-conversation-header-back-icon"></div>
+                    </div>
+                    <div className="wk-chat-conversation-header-channel">
+                      <div className="wk-chat-conversation-header-channel-avatar">
+                        <img alt="" src={WKApp.shared.avatarChannel(channel)}></img>
+                      </div>
+                      <div className="wk-chat-conversation-header-channel-info">
+                        <div className="wk-chat-conversation-header-channel-info-name">
+                          {channel.channelType === ChannelTypeCommunityTopic && channelInfo?.orgData?.parentGroupNo ? (
+                            <>
+                              <span className="wk-chat-conversation-header-parent-group">
+                                {WKSDK.shared().channelManager.getChannelInfo(new Channel(channelInfo.orgData.parentGroupNo, ChannelTypeGroup))?.title || channelInfo.orgData.parentGroupNo}
+                              </span>
+                              <span className="wk-chat-conversation-header-separator">&gt;</span>
+                              <span>{channelInfo?.orgData?.displayName}</span>
+                            </>
+                          ) : (
+                            channelInfo?.orgData?.displayName
+                          )}
+                        </div>
+                        <div className="wk-chat-conversation-header-channel-info-tip"></div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="wk-chat-conversation-header-right">
-                {WKApp.endpoints
-                  .channelHeaderRightItems(channel)
-                  .map((item: any, i: number) => {
-                    return (
-                      <div
-                        key={i}
-                        className="wk-chat-conversation-header-right-item"
-                      >
-                        {item}
-                      </div>
-                    );
-                  })}
-                <div className="wk-chat-conversation-header-right-item">
-                  <svg
-                    fill={WKApp.config.themeColor}
-                    height="28px"
-                    role="presentation"
-                    viewBox="0 0 36 36"
-                    width="28px"
+                {selectionMode ? (
+                  <button
+                    type="button"
+                    className="wk-chat-conversation-selection-cancel"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      this.conversationContext?.clearCheckedMessages();
+                      this.conversationContext?.setEditOn(false);
+                    }}
                   >
-                    <path
-                      clipRule="evenodd"
-                      d="M18 29C24.0751 29 29 24.0751 29 18C29 11.9249 24.0751 7 18 7C11.9249 7 7 11.9249 7 18C7 24.0751 11.9249 29 18 29ZM19.5 18C19.5 18.8284 18.8284 19.5 18 19.5C17.1716 19.5 16.5 18.8284 16.5 18C16.5 17.1716 17.1716 16.5 18 16.5C18.8284 16.5 19.5 17.1716 19.5 18ZM23 19.5C23.8284 19.5 24.5 18.8284 24.5 18C24.5 17.1716 23.8284 16.5 23 16.5C22.1716 16.5 21.5 17.1716 21.5 18C21.5 18.8284 22.1716 19.5 23 19.5ZM14.5 18C14.5 18.8284 13.8284 19.5 13 19.5C12.1716 19.5 11.5 18.8284 11.5 18C11.5 17.1716 12.1716 16.5 13 16.5C13.8284 16.5 14.5 17.1716 14.5 18Z"
-                      fillRule="evenodd"
-                    ></path>
-                  </svg>
-                  <div className="wk-conversation-header-mask"></div>
-                </div>
+                    取消
+                  </button>
+                ) : (
+                  <>
+                    {WKApp.endpoints
+                      .channelHeaderRightItems(channel)
+                      .map((item: any, i: number) => {
+                        return (
+                          <div
+                            key={i}
+                            className="wk-chat-conversation-header-right-item"
+                          >
+                            {item}
+                          </div>
+                        );
+                      })}
+                    <div className="wk-chat-conversation-header-right-item">
+                      <svg
+                        fill={WKApp.config.themeColor}
+                        height="28px"
+                        role="presentation"
+                        viewBox="0 0 36 36"
+                        width="28px"
+                      >
+                        <path
+                          clipRule="evenodd"
+                          d="M18 29C24.0751 29 29 24.0751 29 18C29 11.9249 24.0751 7 18 7C11.9249 7 7 11.9249 7 18C7 24.0751 11.9249 29 18 29ZM19.5 18C19.5 18.8284 18.8284 19.5 18 19.5C17.1716 19.5 16.5 18.8284 16.5 18C16.5 17.1716 17.1716 16.5 18 16.5C18.8284 16.5 19.5 17.1716 19.5 18ZM23 19.5C23.8284 19.5 24.5 18.8284 24.5 18C24.5 17.1716 23.8284 16.5 23 16.5C22.1716 16.5 21.5 17.1716 21.5 18C21.5 18.8284 22.1716 19.5 23 19.5ZM14.5 18C14.5 18.8284 13.8284 19.5 13 19.5C12.1716 19.5 11.5 18.8284 11.5 18C11.5 17.1716 12.1716 16.5 13 16.5C13.8284 16.5 14.5 17.1716 14.5 18Z"
+                          fillRule="evenodd"
+                        ></path>
+                      </svg>
+                      <div className="wk-conversation-header-mask"></div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -190,7 +233,16 @@ export class ChatContentPage extends Component<
                 shouldShowHistorySplit={true}
                 onContext={(ctx) => {
                   this.conversationContext = ctx;
-                  this.setState({});
+                  this.setState({
+                    selectionMode: ctx.editOn(),
+                    selectedCount: ctx.getCheckedMessageCount(),
+                  });
+                }}
+                onSelectionStateChange={({ editOn, checkedCount }) => {
+                  this.setState({
+                    selectionMode: editOn,
+                    selectedCount: checkedCount,
+                  });
                 }}
                 key={channel.getChannelKey()}
                 chatBg={

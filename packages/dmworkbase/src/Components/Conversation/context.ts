@@ -26,6 +26,8 @@ export default interface ConversationContext {
 
     editOn(): boolean // 编辑模式是否开启
     setEditOn(edit: boolean): void // 是否开启编辑
+    getCheckedMessageCount(): number
+    clearCheckedMessages(): void
     // 消息是否被选中
     checkeMessage(message: Message, checked: boolean): void
 
