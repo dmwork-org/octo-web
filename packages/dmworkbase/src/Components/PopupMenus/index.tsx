@@ -34,7 +34,7 @@ export default class PopupMenus extends Component<any> {
                 </div>
                 {/* 多选 */}
                 {
-                    !hiddenMulti ? (<div title="多选" className={clsName("wk-popupmenus-item", "wk-popupmenus-mulselect")} onClick={onMultiple}>
+                    !hiddenMulti ? (<div title="多选" data-testid="popup-menu-multiselect" className={clsName("wk-popupmenus-item", "wk-popupmenus-mulselect")} onClick={onMultiple}>
                     </div>) : null
                 }
                 {/* 撤回 */}

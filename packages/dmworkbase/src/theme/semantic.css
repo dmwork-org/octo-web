@@ -133,6 +133,7 @@
   --wk-bg-hover:    var(--wk-neutral-150);
   --wk-bg-active:   var(--wk-neutral-200);
   --wk-bg-navrail:  #E8E9EE; /* NavRail 亮色背景，比 --wk-bg-deep 略深 */
+  --wk-bg-selection-header: #FAF9FF;
 
   /* 文字 */
   --wk-text-primary:   #1A1C24;   /* ✅ 修正：设计稿亮色是 #1A1C24，不是 #111318 */
@@ -208,6 +209,7 @@ body[theme-mode=dark] {
   --wk-bg-hover:    var(--wk-neutral-600);
   --wk-bg-active:   var(--wk-neutral-500);
   --wk-bg-navrail:  var(--wk-bg-deep); /* NavRail 暗色背景跟随主背景 */
+  --wk-bg-selection-header: color-mix(in srgb, var(--wk-brand-accent) 14%, var(--wk-bg-base));
 
   /* 文字 */
   --wk-text-primary:   #E4E6ED;

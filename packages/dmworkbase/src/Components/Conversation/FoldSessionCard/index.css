@@ -1,287 +1,354 @@
 .wk-fold-session-card {
-    position: relative;
-    width: 100%;
-    max-width: min(680px, calc(100vw - 120px));
-    background: var(--wk-ai-panel-bg);
-    border: 1px solid var(--wk-ai-border);
-    border-radius: var(--wk-r-lg);
-    overflow: hidden;
-    transition: border-color var(--wk-dur) var(--wk-ease), box-shadow var(--wk-dur) var(--wk-ease), transform var(--wk-dur) var(--wk-ease);
+  position: relative;
+  width: 100%;
+  max-width: min(680px, calc(100vw - 120px));
+  background: var(--wk-ai-panel-bg);
+  border: 1px solid var(--wk-ai-border);
+  border-radius: var(--wk-r-lg);
+  overflow: hidden;
+  transition: border-color var(--wk-dur) var(--wk-ease),
+    box-shadow var(--wk-dur) var(--wk-ease),
+    transform var(--wk-dur) var(--wk-ease);
 }
 
 .wk-fold-session-card::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--wk-brand-gradient);
-    border-radius: 3px 0 0 3px;
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--wk-brand-gradient);
+  border-radius: 3px 0 0 3px;
 }
 
 .wk-fold-session-card:hover {
-    border-color: var(--wk-border-glow);
-    box-shadow: var(--wk-shadow-md);
+  border-color: var(--wk-border-glow);
+  box-shadow: var(--wk-shadow-md);
 }
 
 .wk-fold-session-card-active {
-    border-color: var(--wk-border-glow);
+  border-color: var(--wk-border-glow);
 }
 
 .wk-fold-session-card-flash {
-    animation: wk-fold-session-merge-flash 0.8s var(--wk-ease);
+  animation: wk-fold-session-merge-flash 0.8s var(--wk-ease);
 }
 
 .wk-fold-session-card-appearing {
-    animation: wk-fold-session-appear 0.35s var(--wk-ease);
+  animation: wk-fold-session-appear 0.35s var(--wk-ease);
 }
 
 .wk-fold-session-card-flash.wk-fold-session-card-appearing {
-    animation:
-        wk-fold-session-appear 0.35s var(--wk-ease),
-        wk-fold-session-merge-flash 0.8s var(--wk-ease);
+  animation: wk-fold-session-appear 0.35s var(--wk-ease),
+    wk-fold-session-merge-flash 0.8s var(--wk-ease);
 }
 
 .wk-fold-session-card-head {
-    padding: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-3) calc(var(--wk-sp-4) + 6px);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--wk-sp-3);
-    cursor: pointer;
+  padding: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-3)
+    calc(var(--wk-sp-4) + 6px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+  cursor: pointer;
 }
 
 .wk-fold-session-card-head-left {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--wk-sp-2);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
 }
 
 .wk-fold-session-card-avatars {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .wk-fold-session-card-avatar {
-    width: 24px;
-    height: 24px;
-    margin-right: -6px;
-    border-radius: var(--wk-r-sm);
-    border: 2px solid var(--wk-ai-panel-bg);
-    overflow: hidden;
-    background: var(--wk-bg-elevated);
-    box-shadow: var(--wk-shadow-sm);
+  width: 24px;
+  height: 24px;
+  margin-right: -6px;
+  border-radius: var(--wk-r-sm);
+  border: 2px solid var(--wk-ai-panel-bg);
+  overflow: hidden;
+  background: var(--wk-bg-elevated);
+  box-shadow: var(--wk-shadow-sm);
 }
 
 .wk-fold-session-card-avatar:last-child {
-    margin-right: 0;
+  margin-right: 0;
 }
 
 .wk-fold-session-card-avatar > * {
-    display: block;
-    width: 100%;
-    height: 100%;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .wk-fold-session-card-title-wrap {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--wk-sp-1);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-1);
 }
 
 .wk-fold-session-card-title {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: var(--wk-text-size-base);
-    font-weight: var(--wk-font-semibold);
-    color: var(--wk-text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wk-text-size-base);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-primary);
 }
 
 .wk-fold-session-card-tag {
-    flex-shrink: 0;
-    font-size: 9px;
-    font-weight: var(--wk-font-semibold);
-    color: var(--wk-text-accent);
-    background: var(--wk-ai-surface);
-    padding: 1px 6px;
-    border-radius: 3px;
-    letter-spacing: 0.3px;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-accent);
+  background: var(--wk-ai-surface);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.3px;
 }
 
 .wk-fold-session-card-meta {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--wk-sp-2);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
 }
 
 .wk-fold-session-card-live-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--wk-color-success);
-    animation: wk-fold-session-live-dot 1.5s ease-in-out infinite;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wk-color-success);
+  animation: wk-fold-session-live-dot 1.5s ease-in-out infinite;
 }
 
 .wk-fold-session-card-status {
-    font: var(--wk-text-mono-sm);
-    color: var(--wk-text-tertiary);
+  font: var(--wk-text-mono-sm);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-fold-session-card-count {
-    flex-shrink: 0;
-    background: var(--wk-ai-surface);
-    color: var(--wk-text-accent);
-    padding: 2px 8px;
-    border-radius: var(--wk-r-full);
-    font: var(--wk-text-mono-sm);
+  flex-shrink: 0;
+  background: var(--wk-ai-surface);
+  color: var(--wk-text-accent);
+  padding: 2px 8px;
+  border-radius: var(--wk-r-full);
+  font: var(--wk-text-mono-sm);
 }
 
 .wk-fold-session-card-toggle {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 1px solid var(--wk-ai-border);
-    border-radius: var(--wk-r-sm);
-    background: var(--wk-ai-surface);
-    color: var(--wk-text-accent);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color var(--wk-dur) var(--wk-ease), border-color var(--wk-dur) var(--wk-ease), transform var(--wk-dur) var(--wk-ease);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--wk-ai-border);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-ai-surface);
+  color: var(--wk-text-accent);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--wk-dur) var(--wk-ease),
+    border-color var(--wk-dur) var(--wk-ease),
+    transform var(--wk-dur) var(--wk-ease);
 }
 
 .wk-fold-session-card-toggle:hover {
-    background: var(--wk-bg-hover);
-    border-color: var(--wk-border-glow);
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-glow);
 }
 
 .wk-fold-session-card-toggle svg {
-    width: 14px;
-    height: 14px;
-    stroke: currentColor;
-    stroke-width: 2;
-    fill: none;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    transition: transform 0.3s var(--wk-ease);
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.3s var(--wk-ease);
 }
 
 .wk-fold-session-card-toggle-open svg {
-    transform: rotate(180deg);
+  transform: rotate(180deg);
 }
 
 .wk-fold-session-card-expanded {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows 0.4s var(--wk-ease);
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s var(--wk-ease);
 }
 
 .wk-fold-session-card-expanded-show {
-    grid-template-rows: 1fr;
+  grid-template-rows: 1fr;
 }
 
 .wk-fold-session-card-expanded-inner {
-    display: flex;
-    flex-direction: column;
-    gap: var(--wk-sp-2);
-    overflow: hidden;
-    min-height: 0;
-    /* 水平 padding 常驻，避免收起时内容左移 */
-    padding: 0 var(--wk-sp-4) 0 calc(var(--wk-sp-4) + 6px);
-    border-top: 0 solid var(--wk-border-subtle);
-    border-bottom: 0 solid var(--wk-border-subtle);
-    transition: padding 0.4s var(--wk-ease), border-top-width 0.4s var(--wk-ease), border-bottom-width 0.4s var(--wk-ease);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  overflow: hidden;
+  min-height: 0;
+  /* 水平 padding 常驻，避免收起时内容左移 */
+  padding: 0 var(--wk-sp-4) 0 calc(var(--wk-sp-4) + 6px);
+  border-top: 0 solid var(--wk-border-subtle);
+  border-bottom: 0 solid var(--wk-border-subtle);
+  transition: padding 0.4s var(--wk-ease), border-top-width 0.4s var(--wk-ease),
+    border-bottom-width 0.4s var(--wk-ease);
 }
 
 .wk-fold-session-card-expanded-show .wk-fold-session-card-expanded-inner {
-    padding-top: var(--wk-sp-2);
-    padding-bottom: var(--wk-sp-3);
-    border-top-width: 1px;
-    border-bottom-width: 1px;
+  padding-top: var(--wk-sp-2);
+  padding-bottom: var(--wk-sp-3);
+  border-top-width: 1px;
+  border-bottom-width: 1px;
 }
 
 .wk-fold-session-card-summary {
-    padding: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-3) calc(var(--wk-sp-4) + 6px);
-    display: none;
+  padding: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-3)
+    calc(var(--wk-sp-4) + 6px);
+  display: none;
 }
 
 .wk-fold-session-card-summary-show {
-    display: block;
-    border-top: 1px solid var(--wk-border-subtle);
+  display: block;
+  border-top: 1px solid var(--wk-border-subtle);
 }
 
 .wk-fold-session-card-expanded-show + .wk-fold-session-card-summary-show {
-    border-top: none;
+  border-top: none;
 }
 
 .wk-fold-session-card-summary-highlight {
-    animation: wk-fold-session-summary-highlight 1.2s var(--wk-ease);
+  animation: wk-fold-session-summary-highlight 1.2s var(--wk-ease);
+}
+
+.wk-fold-session-card-summary-inner-selection {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+}
+
+.wk-fold-session-card-summary-inner-selectable {
+  cursor: pointer;
+  margin: 0 calc(var(--wk-sp-2) * -1);
+  padding: var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  transition: background-color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-fold-session-card-summary-inner-selectable:hover {
+  background: color-mix(in srgb, var(--wk-brand-primary) 4%, transparent);
+}
+
+.wk-fold-session-card-summary-inner-selected {
+  background: color-mix(in srgb, var(--wk-brand-primary) 4%, transparent);
+}
+
+.wk-fold-session-card-summary-check {
+  flex-shrink: 0;
+  min-height: 22px;
+  padding-top: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.wk-fold-session-card-summary-checkbox {
+  gap: 0;
+}
+
+.wk-fold-session-card-summary-checkbox .wk-checkbox__box {
+  border-radius: 50%;
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--wk-text-primary) 15%, transparent);
+  background: transparent;
+}
+
+.wk-fold-session-card-summary-checkbox:hover .wk-checkbox__box {
+  border-color: color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
+}
+
+.wk-fold-session-card-summary-checkbox.wk-checkbox--checked .wk-checkbox__box {
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+}
+
+.wk-fold-session-card-summary-checkbox .wk-checkbox__check {
+  width: 10px;
+  height: 10px;
+}
+
+.wk-fold-session-card-summary-main {
+  min-width: 0;
+  flex: 1;
 }
 
 .wk-fold-session-card-summary-sender {
-    margin-bottom: var(--wk-sp-1);
-    font-size: var(--wk-text-size-sm);
-    font-weight: var(--wk-font-semibold);
-    color: var(--wk-text-accent);
+  margin-bottom: var(--wk-sp-1);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-accent);
 }
 
 .wk-fold-session-card-summary-content {
-    font: var(--wk-text-body);
-    line-height: var(--wk-leading-loose);
-    color: var(--wk-text-primary);
+  font: var(--wk-text-body);
+  line-height: var(--wk-leading-loose);
+  color: var(--wk-text-primary);
 }
 
 @keyframes wk-fold-session-live-dot {
-    0%, 100% {
-        opacity: 0.45;
-        transform: scale(0.8);
-    }
-    50% {
-        opacity: 1;
-        transform: scale(1.2);
-    }
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
 }
 
 @keyframes wk-fold-session-merge-flash {
-    0% {
-        box-shadow: 0 0 0 0 rgba(124, 92, 252, 0);
-    }
-    30% {
-        box-shadow: 0 0 0 4px var(--wk-brand-glow), var(--wk-shadow-lg);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(124, 92, 252, 0);
-    }
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  30% {
+    box-shadow: 0 0 0 4px var(--wk-brand-glow), var(--wk-shadow-lg);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 @keyframes wk-fold-session-appear {
-    from {
-        opacity: 0;
-        transform: translateY(-8px) scale(0.97);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes wk-fold-session-summary-highlight {
-    0% {
-        background: transparent;
-    }
-    35% {
-        background: var(--wk-ai-surface);
-    }
-    100% {
-        background: transparent;
-    }
+  0% {
+    background: transparent;
+  }
+  35% {
+    background: var(--wk-ai-surface);
+  }
+  100% {
+    background: transparent;
+  }
 }
