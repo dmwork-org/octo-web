@@ -7,6 +7,14 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  optimizeDeps: {
+    // 扫描 workspace 所有包的源码，让 Vite 提前发现并预编译所有依赖
+    // 避免测试运行中途触发热重载导致 AttachmentPreview.stories 失败
+    entries: [
+      path.resolve(__dirname, '../../packages/*/src/**/*.{ts,tsx}'),
+      path.resolve(__dirname, 'src/**/*.{ts,tsx}'),
+    ],
+  },
   plugins: [
     storybookTest({
       configDir: path.resolve(__dirname, '.storybook'),
