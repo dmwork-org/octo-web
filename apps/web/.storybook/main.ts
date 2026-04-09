@@ -24,6 +24,13 @@ const config: StorybookConfig = {
   framework: '@storybook/react-vite',
   viteFinal: (config) =>
     mergeConfig(config, {
+      optimizeDeps: {
+        // 扫描 workspace 所有包的源码，自动发现并预编译依赖，无需手动维护列表
+        entries: [
+          path.resolve(__dirname, '../../../packages/*/src/**/*.{ts,tsx}'),
+          path.resolve(__dirname, '../src/**/*.{ts,tsx}'),
+        ],
+      },
       css: {
         postcss: {
           plugins: [postcssImport()],

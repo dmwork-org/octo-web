@@ -62,6 +62,8 @@ export { default as JoinSpaceModalConnected } from "./Components/JoinSpaceModal/
 export { useJoinSpace } from "./Components/JoinSpaceModal/useJoinSpace"
 export { default as WKButton } from "./Components/WKButton"
 export { default as WKInput } from "./Components/WKInput"
+export { default as WKModal } from "./Components/WKModal"
+export type { WKModalProps, WKModalSize, WKModalFooterConfig } from "./Components/WKModal"
 export { default as SpaceAvatar } from "./Components/SpaceAvatar"
 export { default as SpaceItem } from "./Components/SpaceItem"
 export { default as ActionListItem } from "./Components/ActionListItem"

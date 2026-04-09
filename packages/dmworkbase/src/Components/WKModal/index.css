@@ -1,0 +1,22 @@
+/*
+ * WKModal — 覆盖 Semi Modal 的 Token 变量
+ * 规范：禁止直接写 .semi-xxx selector，通过根节点 Token 覆盖（DEVELOPMENT.md §十三）
+ */
+
+.wk-modal {
+  /* 圆角 */
+  --semi-border-radius-modal: var(--wk-r-lg);
+
+  /* header 背景 & 文字 */
+  --semi-color-bg-1: var(--wk-bg-base);
+  --semi-font-size-header-2: var(--wk-text-size-xl);
+  --semi-color-text-0: var(--wk-text-primary);
+}
+
+/* footer 按钮行 */
+.wk-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-4) var(--wk-sp-6) var(--wk-sp-6);
+}
