@@ -86,6 +86,7 @@ export interface ConversationProps {
   shouldShowHistorySplit?: boolean;
   initLocateMessageSeq?: number;
   onContext?: (ctx: ConversationContext) => void;
+  onOpenThreadPanel?: (threadChannelId: string, threadName: string) => void;
   onSelectionStateChange?: (state: {
     editOn: boolean;
     checkedCount: number;
@@ -126,12 +127,14 @@ export class Conversation
   private _cachedSelectedText: string | null = null;
   private _beforeUnloadHandler: () => void;
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
+  private onOpenThreadPanel?: (threadChannelId: string, threadName: string) => void;
 
   constructor(props: any) {
     super(props);
     this.state = {
       inputExpanded: false,
     };
+    this.onOpenThreadPanel = props.onOpenThreadPanel;
     this._beforeUnloadHandler = () => {
       // Use sendBeacon for reliable delivery during page unload
       if (this.vm && this.vm.needSetUnread) {
@@ -174,6 +177,9 @@ export class Conversation
         this.sendMessage(cloneContent, channel);
       }
     });
+  }
+  openThreadPanel(threadChannelId: string, threadName: string): void {
+    this.onOpenThreadPanel?.(threadChannelId, threadName);
   }
   async resendMessage(message: Message): Promise<Message> {
     await this.vm.deleteMessagesFromLocal([message]);

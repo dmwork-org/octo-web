@@ -5,12 +5,17 @@ export interface Thread {
   channel_type: number
   name: string
   creator_uid: string
+  creator_name?: string
   source_message_id?: number
   status: number  // 1=活跃, 2=归档, 3=删除
   created_at: string
   updated_at: string
   is_member?: boolean  // 当前用户是否是成员
   member_count?: number  // 成员数量
+  message_count?: number  // 消息数量
+  unread_count?: number  // 未读数量
+  last_message_content?: string  // 最后一条消息内容
+  last_message_sender_name?: string  // 最后一条消息发送者名称
 }
 
 export enum ThreadStatus {

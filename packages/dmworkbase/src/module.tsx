@@ -95,7 +95,6 @@ import { handleGlobalSearchClick } from "./Pages/Chat/vm";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
-import { ThreadList } from "./Components/ThreadList";
 import { ThreadCreatedCell, ThreadCreatedContent } from "./Messages/ThreadCreated";
 import { parseThreadChannelId } from "./Service/Thread";
 
@@ -707,33 +706,42 @@ export default class BaseModule implements IModule {
             let threadName = defaultName;
             Modal.confirm({
               title: "创建子区",
-              content: (
-                <input
-                  type="text"
-                  placeholder="请输入子区名称"
-                  defaultValue={defaultName}
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    border: "1px solid #d9d9d9",
-                    borderRadius: "4px",
-                    fontSize: "14px",
-                  }}
-                  onChange={(e) => {
-                    threadName = e.target.value;
-                  }}
-                  autoFocus
-                />
-              ),
+              icon: null,
               okText: "创建",
               cancelText: "取消",
+              content: (
+                <div>
+                  <div style={{ marginBottom: "8px", fontSize: "14px", color: "var(--wk-text-secondary)" }}>
+                    话题名称
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="输入讨论话题..."
+                    defaultValue={defaultName}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      background: "var(--wk-bg-base)",
+                      border: "1px solid var(--wk-border-default)",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                      color: "var(--wk-text-primary)",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                    onChange={(e) => {
+                      threadName = e.target.value;
+                    }}
+                    autoFocus
+                  />
+                </div>
+              ),
               onOk: async () => {
                 if (!threadName || threadName.trim() === "") {
-                  Toast.error("子区名称不能为空");
+                  Toast.error("话题名称不能为空");
                   return;
                 }
                 try {
-                  // 构造源消息 payload，用于拷贝到子区作为首条消息
                   const sourcePayload = message.content.contentObj
                     ?? { ...message.content.encodeJSON(), type: message.content.contentType };
                   const resp = await WKApp.apiClient.post(
@@ -745,7 +753,6 @@ export default class BaseModule implements IModule {
                     }
                   );
                   Toast.success("子区创建成功");
-                  // 打开新创建的子区
                   if (resp && resp.channel_id) {
                     const channel = new Channel(resp.channel_id, ChannelTypeCommunityTopic);
                     WKApp.endpoints.showConversation(channel);
@@ -1327,28 +1334,6 @@ export default class BaseModule implements IModule {
               },
             })
           );
-
-          if (WKApp.remoteConfig.threadOn) {
-            rows.push(
-              new Row({
-                cell: ListItem,
-                properties: {
-                  title: "子区",
-                  onClick: () => {
-                    context.push(
-                      <ThreadList
-                        channel={channel}
-                        context={context}
-                      />,
-                      new RouteContextConfig({
-                        title: "子区",
-                      })
-                    );
-                  },
-                },
-              })
-            );
-          }
 
           const latestData2 = context.routeData() as ChannelSettingRouteData;
           const subscriberOfMe2 = latestData2?.subscriberOfMe;

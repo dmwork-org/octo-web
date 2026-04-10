@@ -294,3 +294,84 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     margin-right: 2px;
     font-weight: 600;
 }
+
+/* Thread conversation item - 子区只显示竖线和文字 */
+.wk-conversationlist-item-thread {
+    padding-left: 40px;
+    margin-bottom: 0;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    position: relative;
+}
+
+/* 子区左侧树形连接线 ├── */
+.wk-conversationlist-item-thread::after {
+    content: '';
+    position: absolute;
+    left: 28px;
+    top: 0;
+    height: 50%;
+    width: 10px;
+    border-left: 2px solid var(--wk-border-default);
+    border-bottom: 2px solid var(--wk-border-default);
+    border-bottom-left-radius: 4px;
+}
+
+/* 非最后一个子区：延伸竖线到下一个 */
+.wk-conversationlist-item-thread:has(+ .wk-conversationlist-item-thread)::before,
+.wk-conversationlist-item-thread:has(+ .wk-conversationlist-thread-overflow)::before {
+    content: '';
+    position: absolute;
+    left: 28px;
+    top: 50%;
+    bottom: 0;
+    width: 2px;
+    background: var(--wk-border-default);
+}
+
+.wk-conversationlist-item-thread .wk-conversationlist-item-content {
+    padding: 4px 8px;
+}
+
+.wk-conversationlist-item-thread .wk-conversationlist-item-right {
+    padding-left: 0;
+}
+
+.wk-conversationlist-item-thread .wk-conversationlist-item-name h3 {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+}
+
+/* 子区组与下一个群组之间的间隔 */
+.wk-conversationlist-thread-overflow + .wk-conversationlist-item:not(.wk-conversationlist-item-thread),
+.wk-conversationlist-item-thread + .wk-conversationlist-item:not(.wk-conversationlist-item-thread) {
+    margin-top: 8px;
+}
+
+/* Thread overflow indicator */
+.wk-conversationlist-thread-overflow {
+    padding: 4px 8px 4px 48px;
+    font-size: 12px;
+    color: var(--semi-color-text-2);
+    cursor: pointer;
+    position: relative;
+}
+
+/* +N个子区 树形连接线 └── */
+.wk-conversationlist-thread-overflow::after {
+    content: '';
+    position: absolute;
+    left: 28px;
+    top: 0;
+    height: 50%;
+    width: 10px;
+    border-left: 2px solid var(--wk-border-default);
+    border-bottom: 2px solid var(--wk-border-default);
+    border-bottom-left-radius: 4px;
+}
+
+.wk-conversationlist-thread-overflow:hover {
+    color: var(--wk-brand-primary);
+}

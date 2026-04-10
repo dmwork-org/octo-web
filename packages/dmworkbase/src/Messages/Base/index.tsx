@@ -18,11 +18,14 @@ import WKAvatar from "../../Components/WKAvatar";
 import AiBadge from "../../Components/AiBadge";
 import { getTitleColor } from "./head";
 import moment from "moment";
+import ThreadIndicator, { ThreadIndicatorData } from "../../Components/ThreadIndicator";
 
 interface MessageBaseProps extends HTMLProps<any>{
     message: MessageWrap
     context: ConversationContext
     hiddenStatus?: boolean
+    threadInfo?: ThreadIndicatorData
+    onThreadClick?: () => void
     bubbleStyle?: CSSProperties
     hiddeBubble?: boolean
     onBubble?: () => void
@@ -292,7 +295,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                             <div className={this.getBubbleBoxClassName()}>
                                 <div className="wk-message-base-bubble" style={bubbleStyle} onContextMenu={(event) => {
                                     context.showContextMenus(message.message, event)
-                                }}>
+                                }} data-message-seq={message.messageSeq}>
                                     {/* AI 面板头部 */}
                                     {isAi && showHead && (
                                         <div className="wk-ai-panel-head">
@@ -311,6 +314,15 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Thread 指示条 */}
+                            {this.props.threadInfo && (
+                                <ThreadIndicator
+                                    data={this.props.threadInfo}
+                                    isSend={message.send}
+                                    onClick={this.props.onThreadClick}
+                                />
+                            )}
                         </div>
                     </div>
 

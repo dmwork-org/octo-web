@@ -1,0 +1,91 @@
+/* Thread 指示条 - 显示在消息下方 */
+.wk-thread-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-1-5) var(--wk-sp-3);
+  margin-top: var(--wk-sp-1);
+  margin-left: 48px; /* 对齐消息内容，跳过头像 */
+  max-width: 400px;
+  background: var(--wk-bg-hover);
+  border-radius: var(--wk-r-md);
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 12px;
+}
+
+.wk-thread-indicator:hover {
+  background: var(--wk-bg-active);
+}
+
+/* 未读蓝点 */
+.wk-thread-indicator-unread {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wk-color-info);
+  flex-shrink: 0;
+}
+
+/* 线程名称 */
+.wk-thread-indicator-name {
+  color: var(--wk-text-accent);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+/* 回复数 */
+.wk-thread-indicator-count {
+  color: var(--wk-text-secondary);
+  white-space: nowrap;
+}
+
+/* 头像组 */
+.wk-thread-indicator-avatars {
+  display: flex;
+  align-items: center;
+  margin-left: var(--wk-sp-1);
+}
+
+.wk-thread-indicator-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--wk-bg-surface);
+  margin-left: -6px;
+  object-fit: cover;
+}
+
+.wk-thread-indicator-avatar:first-child {
+  margin-left: 0;
+}
+
+/* 时间 */
+.wk-thread-indicator-time {
+  color: var(--wk-text-tertiary);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+/* 分隔点 */
+.wk-thread-indicator-dot {
+  color: var(--wk-text-tertiary);
+}
+
+/* 发送者消息的指示条（右对齐） */
+.wk-thread-indicator-send {
+  margin-left: auto;
+  margin-right: 48px;
+}
+
+/* 暗色主题 */
+body[theme-mode="dark"] .wk-thread-indicator {
+  background: var(--wk-bg-hover);
+}
+
+body[theme-mode="dark"] .wk-thread-indicator:hover {
+  background: var(--wk-bg-active);
+}

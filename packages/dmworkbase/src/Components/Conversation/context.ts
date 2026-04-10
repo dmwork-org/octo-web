@@ -127,4 +127,11 @@ export default interface ConversationContext {
      * 如果选区完全在当前消息气泡内则返回选区文本，否则返回 null
      */
     getCachedSelectedText(): string | null
+
+    /**
+     * 打开讨论串面板
+     * @param threadChannelId 子区频道ID
+     * @param threadName 子区名称
+     */
+    openThreadPanel?(threadChannelId: string, threadName: string): void
 }

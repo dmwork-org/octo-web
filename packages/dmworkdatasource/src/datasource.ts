@@ -256,12 +256,17 @@ export class ChannelDataSource implements IChannelDataSource {
             channel_type: ChannelTypeCommunityTopic,
             name: data.name,
             creator_uid: data.creator_uid,
+            creator_name: data.creator_name,
             source_message_id: data.source_message_id,
             status: data.status,
             created_at: data.created_at,
             updated_at: data.updated_at,
             is_member: data.is_member,
             member_count: data.member_count,
+            message_count: data.message_count,
+            unread_count: data.unread_count,
+            last_message_content: data.last_message_content,
+            last_message_sender_name: data.last_message_sender_name,
         }
     }
 }

@@ -1,79 +1,108 @@
+/* 子区卡片样式 */
 .wk-thread-created {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 14px;
-  background-color: var(--wk-color-bg-0);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  background: var(--wk-ai-surface);
+  border: 1px solid var(--wk-ai-border);
+  border-radius: var(--wk-r-md);
   cursor: pointer;
-  transition: background-color 0.2s, box-shadow 0.2s;
-  max-width: 320px;
-  min-width: 200px;
+  transition: background var(--wk-dur), border-color var(--wk-dur);
+  max-width: 420px;
+  min-width: 180px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .wk-thread-created:hover {
-  background-color: var(--wk-color-hover);
-  box-shadow: var(--wk-shadow-sm);
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-glow);
 }
 
-.wk-thread-created-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.wk-thread-created-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--wk-text-accent);
-}
-
-.wk-thread-created-count {
-  font-size: 12px;
-  color: var(--wk-text-accent);
-}
-
-.wk-thread-created-arrow {
-  color: var(--wk-text-tertiary);
-  display: flex;
-  align-items: center;
-  margin-left: auto;
-}
-
-.wk-thread-created-activity {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--wk-border-subtle);
-}
-
-.wk-thread-created-activity-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--wk-text-primary);
+/* 消息图标 */
+.wk-thread-created-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--wk-brand-primary);
   flex-shrink: 0;
 }
 
-.wk-thread-created-activity-content {
-  font-size: 12px;
-  color: var(--wk-text-secondary);
+/* 文案容器 */
+.wk-thread-created-text {
+  font-size: 13px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
   min-width: 0;
 }
 
-.wk-thread-created-activity-time {
-  font-size: 11px;
-  color: var(--wk-text-tertiary);
-  flex-shrink: 0;
+/* 创建者名称 */
+.wk-thread-created-creator {
+  font-weight: 500;
+  color: var(--wk-text-primary);
 }
 
-.wk-thread-created-desc {
-  font-size: 12px;
+/* 标签文字 */
+.wk-thread-created-label {
+  color: var(--wk-text-secondary);
+}
+
+/* 子区名称 */
+.wk-thread-created-name {
+  font-weight: 500;
+  color: var(--wk-text-accent);
+}
+
+/* 回复数 */
+.wk-thread-created-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--wk-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: var(--wk-r-full);
+}
+
+/* 分隔点 */
+.wk-thread-created-dot {
   color: var(--wk-text-tertiary);
-  margin-top: 4px;
+  font-size: 10px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+/* 参与者头像组 */
+.wk-thread-created-avatars {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  flex-direction: row-reverse;
+}
+
+/* 时间 */
+.wk-thread-created-time {
+  font-size: 11px;
+  font-family: var(--wk-font-mono, monospace);
+  color: var(--wk-text-tertiary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 暗色主题 */
+body[theme-mode="dark"] .wk-thread-created {
+  background: var(--wk-ai-surface);
+  border-color: var(--wk-ai-border);
+}
+
+body[theme-mode="dark"] .wk-thread-created:hover {
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-glow);
+}
+
+body[theme-mode="dark"] .wk-thread-created-count {
+  background: rgba(255, 255, 255, 0.06);
 }

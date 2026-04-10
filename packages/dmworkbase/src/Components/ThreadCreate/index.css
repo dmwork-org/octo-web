@@ -1,39 +1,111 @@
 .wk-thread-create {
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  background: var(--wk-bg-surface);
+  border-radius: var(--wk-r-lg);
+  min-width: 320px;
 }
 
-.wk-thread-create-form {
+.wk-thread-create-header {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.wk-thread-create-field {
-  display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
+  padding: 16px;
+  border-bottom: 1px solid var(--wk-border-default);
 }
 
-.wk-thread-create-label {
-  font-size: 14px;
-  font-weight: 500;
+.wk-thread-create-icon {
+  color: var(--wk-brand-primary);
+  flex-shrink: 0;
+}
+
+.wk-thread-create-title {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--wk-text-primary);
+  flex: 1;
+}
+
+.wk-thread-create-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  color: var(--wk-text-tertiary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.wk-thread-create-close:hover {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-thread-create-body {
+  padding: 16px;
 }
 
 .wk-thread-create-input {
   width: 100%;
+  padding: 10px 12px;
+  background: var(--wk-bg-base);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  font-size: 14px;
+  color: var(--wk-text-primary);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
 }
 
-.wk-thread-create-hint {
-  font-size: 12px;
+.wk-thread-create-input:focus {
+  border-color: var(--wk-brand-primary);
+  box-shadow: 0 0 0 2px var(--wk-brand-tint-10);
+}
+
+.wk-thread-create-input::placeholder {
   color: var(--wk-text-tertiary);
 }
 
-.wk-thread-create-actions {
+.wk-thread-create-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid var(--wk-border-default);
+}
+
+.wk-thread-create-btn {
+  padding: 8px 16px;
+  border-radius: var(--wk-r-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  border: none;
+}
+
+.wk-thread-create-btn-cancel {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-secondary);
+}
+
+.wk-thread-create-btn-cancel:hover {
+  background: var(--wk-bg-active);
+}
+
+.wk-thread-create-btn-submit {
+  background: var(--wk-brand-primary);
+  color: white;
+}
+
+.wk-thread-create-btn-submit:hover {
+  opacity: 0.9;
+}
+
+.wk-thread-create-btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -475,6 +475,21 @@ body[theme-mode=dark] .wk-chat-channelsetting  {
     margin-right: 0px;
 }
 
+/* Thread 面板打开时，ChannelSetting 向左移动 */
+.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open .wk-chat-channelsetting {
+    right: var(--wk-width-thread-panel);
+}
+
+/* 两个面板都打开时，聊天区宽度 */
+.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open .wk-chat-content-chat {
+    width: calc(100% - var(--wk-wdith-chat-channelsetting) - var(--wk-width-thread-panel));
+}
+
+/* 只有 Thread 面板打开时 */
+.wk-chat-content-right.wk-chat-threadpanel-open:not(.wk-chat-channelsetting-open) .wk-chat-content-chat {
+    width: calc(100% - var(--wk-width-thread-panel));
+}
+
 .wk-chat-conversation-list-loading {
     display: flex;
     width: 100%;

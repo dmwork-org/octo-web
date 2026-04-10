@@ -48,8 +48,11 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
           context.pop()
           this.vm.load()
         }}
+        onCancel={() => {
+          context.pop()
+        }}
       />,
-      { title: "新建子区" }
+      { title: "" }
     )
   }
 

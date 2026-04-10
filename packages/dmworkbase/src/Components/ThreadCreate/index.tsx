@@ -1,5 +1,6 @@
 import React, { Component } from "react"
-import { Input, Button, Toast } from "@douyinfe/semi-ui"
+import { Toast } from "@douyinfe/semi-ui"
+import { MessageSquare, X } from "lucide-react"
 import WKApp from "../../App"
 import "./index.css"
 
@@ -24,8 +25,14 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
     }
   }
 
-  handleNameChange = (value: string) => {
-    this.setState({ name: value })
+  handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    this.setState({ name: e.target.value })
+  }
+
+  handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !this.state.loading && this.state.name.trim()) {
+      this.handleSubmit()
+    }
   }
 
   handleSubmit = async () => {
@@ -52,8 +59,9 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
       )
       Toast.success("创建成功")
       onSuccess?.()
-    } catch (err: any) {
-      Toast.error(err?.msg || "创建失败")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "创建失败"
+      Toast.error(msg)
       this.setState({ loading: false })
     }
   }
@@ -64,36 +72,44 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
 
     return (
       <div className="wk-thread-create">
-        <div className="wk-thread-create-form">
-          <div className="wk-thread-create-field">
-            <label className="wk-thread-create-label">子区名称</label>
-            <Input
-              className="wk-thread-create-input"
-              placeholder="请输入子区名称"
-              value={name}
-              onChange={this.handleNameChange}
-              maxLength={50}
-              showClear
-            />
-            <span className="wk-thread-create-hint">
-              子区是群内独立的讨论话题，最多50个字符
-            </span>
-          </div>
-        </div>
-        <div className="wk-thread-create-actions">
+        <div className="wk-thread-create-header">
+          <MessageSquare className="wk-thread-create-icon" size={24} />
+          <span className="wk-thread-create-title">创建子区</span>
           {onCancel && (
-            <Button onClick={onCancel} disabled={loading}>
-              取消
-            </Button>
+            <div className="wk-thread-create-close" onClick={onCancel}>
+              <X size={18} />
+            </div>
           )}
-          <Button
-            type="primary"
+        </div>
+        <div className="wk-thread-create-body">
+          <input
+            className="wk-thread-create-input"
+            type="text"
+            placeholder="输入子区名称"
+            value={name}
+            onChange={this.handleNameChange}
+            onKeyDown={this.handleKeyDown}
+            maxLength={50}
+            autoFocus
+          />
+        </div>
+        <div className="wk-thread-create-footer">
+          {onCancel && (
+            <button
+              className="wk-thread-create-btn wk-thread-create-btn-cancel"
+              onClick={onCancel}
+              disabled={loading}
+            >
+              取消
+            </button>
+          )}
+          <button
+            className="wk-thread-create-btn wk-thread-create-btn-submit"
             onClick={this.handleSubmit}
-            loading={loading}
-            disabled={!name.trim()}
+            disabled={loading || !name.trim()}
           >
-            创建
-          </Button>
+            {loading ? "创建中..." : "创建"}
+          </button>
         </div>
       </div>
     )
