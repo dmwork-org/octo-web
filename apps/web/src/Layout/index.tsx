@@ -42,6 +42,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             const sidParam = existingSid ? `?sid=${existingSid}` : ""
 
             const goMain = () => {
+                if ((window as any).__POWERED_EXTENSION__) {
+                    window.location.reload()
+                    return
+                }
                 window.location.href = `${window.location.origin}${basePath}/${sidParam}`
             }
 
