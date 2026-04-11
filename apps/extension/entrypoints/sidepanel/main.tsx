@@ -7,7 +7,6 @@ import StorageService from '@octo/base/src/Service/StorageService';
 import { LoginModule } from '@octo/login';
 import { DataSourceModule } from '@octo/datasource';
 import { ContactsModule } from '@octo/contacts';
-import { MessageText, WKSDK, Setting } from 'wukongimjssdk';
 import App from '@web/App';
 
 // 标记扩展环境（Layout 等组件据此跳过 window.location.href 硬跳转）
@@ -44,17 +43,15 @@ root.render(
   </React.StrictMode>,
 );
 
-// Demo: 监听网页选中文字，自动发送到当前会话
+// 监听网页选中文字，插入到当前会话输入框
 browser.runtime.onMessage.addListener((message) => {
   if (message.type !== 'TEXT_SELECTED') return;
 
-  const channel = WKApp.shared.openChannel;
-  if (!channel) {
+  const ctx = (WKApp.shared as any).activeConversationContext;
+  if (!ctx) {
     console.warn('[Extension] 没有打开的会话，忽略选中文字');
     return;
   }
 
-  const content = new MessageText(message.text);
-  const setting = new Setting();
-  WKSDK.shared().chatManager.send(content, channel, setting);
+  ctx.insertText(message.text);
 });

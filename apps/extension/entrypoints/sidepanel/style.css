@@ -50,3 +50,14 @@ body[theme-mode=dark] ::-webkit-scrollbar-thumb {
 body[theme-mode=dark] ::-webkit-scrollbar-thumb:hover {
   background: #424242;
 }
+
+/* 扩展端浮窗位置适配（tab 在右侧，浮窗从右侧弹出） */
+.wk-navrail__settings-list {
+  left: auto !important;
+  right: 60px !important;
+}
+
+.wk-navrail__dropdown {
+  left: auto !important;
+  right: 12px !important;
+}
