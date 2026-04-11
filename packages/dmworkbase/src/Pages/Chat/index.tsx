@@ -110,17 +110,7 @@ export class ChatContentPage extends Component<
       this.setState({
         showThreadPanel: true,
         showChannelSetting: false,
-        activeThread: {
-          short_id: pt.shortId,
-          group_no: pt.groupNo,
-          channel_id: pt.channelId,
-          channel_type: ChannelTypeCommunityTopic,
-          name: pt.name,
-          creator_uid: "",
-          status: 1,
-          created_at: "",
-          updated_at: "",
-        },
+        activeThread: buildThreadStub(pt.shortId, pt.groupNo, pt.channelId, pt.name),
       })
     }
 
@@ -433,17 +423,12 @@ export class ChatContentPage extends Component<
                     this.setState({
                       showThreadPanel: true,
                       showChannelSetting: false,
-                      activeThread: {
-                        short_id: threadInfo.shortId,
-                        group_no: threadInfo.groupNo,
-                        channel_id: threadChannelId,
-                        channel_type: ChannelTypeCommunityTopic,
-                        name: threadName,
-                        creator_uid: "",
-                        status: 1,
-                        created_at: "",
-                        updated_at: "",
-                      },
+                      activeThread: buildThreadStub(
+                        threadInfo.shortId,
+                        threadInfo.groupNo,
+                        threadChannelId,
+                        threadName
+                      ),
                     });
                   }
                 }}

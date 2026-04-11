@@ -1,3 +1,4 @@
+import { ChannelTypeCommunityTopic } from './Const'
 export interface Thread {
   short_id: string
   group_no: string
@@ -44,7 +45,7 @@ export function buildThreadStub(shortId: string, groupNo: string, channelId: str
     short_id: shortId,
     group_no: groupNo,
     channel_id: channelId,
-    channel_type: 5, // ChannelTypeCommunityTopic
+    channel_type: ChannelTypeCommunityTopic,
     name,
     creator_uid: "",
     status: 1,
