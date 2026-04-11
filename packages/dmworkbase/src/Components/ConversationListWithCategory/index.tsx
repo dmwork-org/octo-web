@@ -9,8 +9,10 @@ import "./index.css"
 export interface CategoryData {
     id: string
     name: string
+    groupCount?: number   // 分组内群聊总数，折叠时显示
     unreadCount?: number
     conversations: React.ReactNode
+    isEmpty?: boolean     // 无群聊时为 true
 }
 
 export interface ConversationListWithCategoryProps {
@@ -84,7 +86,7 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
                 {categories.map(cat => (
                     <CategorySection
                         key={cat.id}
-                        category={cat}
+                        category={{ ...cat, isEmpty: cat.isEmpty ?? cat.groupCount === 0 }}
                         isCollapsed={collapsedIds.has(cat.id)}
                         onToggle={() => toggleCollapse(cat.id)}
                         onContextMenu={onCategoryContextMenu ? (e) => onCategoryContextMenu(cat.id, e) : undefined}

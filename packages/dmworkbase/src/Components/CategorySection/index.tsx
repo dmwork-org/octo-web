@@ -6,7 +6,9 @@ export interface CategorySectionProps {
     category: {
         id: string
         name: string
+        groupCount?: number
         unreadCount?: number
+        isEmpty?: boolean
     }
     isCollapsed: boolean
     onToggle: () => void
@@ -21,12 +23,14 @@ const CategorySection: React.FC<CategorySectionProps> = ({
     onContextMenu,
     children,
 }) => {
-    const isEmpty = !children || (Array.isArray(children) && children.length === 0)
+    // 优先用外部传入的 isEmpty，否则根据 children 判断
+    const isEmpty = category.isEmpty ?? (!children || (Array.isArray(children) && children.length === 0))
 
     return (
         <div className="wk-category-section">
             <CategoryHeader
                 name={category.name}
+                groupCount={category.groupCount}
                 unreadCount={category.unreadCount}
                 isCollapsed={isCollapsed}
                 isEmpty={isEmpty}

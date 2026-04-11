@@ -113,9 +113,14 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         const catConvs = (cat.groups || [])
             .map(g => groupConvMap.get(g.group_no))
             .filter((c): c is ConversationWrap => c !== undefined)
+        const groupCount = (cat.groups || []).length
+        const unreadCount = catConvs.reduce((sum, c) => sum + (c.unread || 0), 0)
         return {
             id: cat.category_id!,
             name: cat.name,
+            groupCount,
+            isEmpty: groupCount === 0,
+            unreadCount,
             conversations: ConvListWithMenu(catConvs),
         }
     })

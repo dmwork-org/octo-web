@@ -3,8 +3,11 @@ import "./index.css"
 
 export interface CategoryHeaderProps {
     name: string
+    /** 分组内群聊总数（折叠时显示） */
+    groupCount?: number
     unreadCount?: number
     isCollapsed: boolean
+    /** 空分组（无群聊）时为 true */
     isEmpty?: boolean
     onToggle: () => void
     onContextMenu?: (e: React.MouseEvent) => void
@@ -12,6 +15,7 @@ export interface CategoryHeaderProps {
 
 const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     name,
+    groupCount,
     unreadCount,
     isCollapsed,
     isEmpty,
@@ -34,8 +38,15 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
             {/* 分组名 */}
             <span className="wk-category-header__name">{name}</span>
 
-            {/* 未读 badge（有未读时显示） */}
-            {!!unreadCount && unreadCount > 0 && (
+            {/* 折叠态：显示 (N) 数量；空分组：显示 (空) */}
+            {isEmpty ? (
+                <span className="wk-category-header__count wk-category-header__count--empty">(空)</span>
+            ) : isCollapsed && groupCount !== undefined ? (
+                <span className="wk-category-header__count">({groupCount})</span>
+            ) : null}
+
+            {/* 未读 badge（空分组不显示） */}
+            {!isEmpty && !!unreadCount && unreadCount > 0 && (
                 <span className="wk-category-header__badge">
                     {unreadCount > 99 ? "99+" : unreadCount}
                 </span>

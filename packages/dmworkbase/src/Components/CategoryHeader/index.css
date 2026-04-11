@@ -1,64 +1,77 @@
 .wk-category-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border-radius: var(--wk-r-sm, 6px);
+    gap: 8px;              /* --sp-2 */
+    padding: 6px 8px;      /* 6px var(--sp-2) */
+    border-radius: 6px;    /* --r-sm */
     cursor: pointer;
     user-select: none;
-    transition: background 0.1s ease;
+    transition: background 120ms;
 }
 
 .wk-category-header:hover {
     background: var(--wk-bg-hover);
 }
 
+/* 空分组整行降透明度 */
+.wk-category-header--empty {
+    opacity: 0.6;
+}
+
 /* 折叠箭头 */
 .wk-category-header__arrow {
+    width: 14px;
+    height: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
     flex-shrink: 0;
-    color: var(--wk-text-tertiary);
     transition: transform 0.2s ease;
 }
 
 .wk-category-header__arrow svg {
-    width: 12px;
-    height: 12px;
-    stroke: currentColor;
+    width: 10px;
+    height: 10px;
+    stroke: var(--wk-text-tertiary);
     stroke-width: 2;
     fill: none;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
 
+/* 折叠态：箭头旋转 -90deg */
 .wk-category-header__arrow--collapsed {
     transform: rotate(-90deg);
 }
 
 /* 分组名 */
 .wk-category-header__name {
-    flex: 1;
     font-size: 12px;
     font-weight: 600;
     color: var(--wk-text-secondary);
+    flex: 1;
+    letter-spacing: 0.01em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.wk-category-header--empty .wk-category-header__name {
+/* 折叠时括号数量 / 空分组 (空) */
+.wk-category-header__count {
+    font-size: 11px;
     color: var(--wk-text-tertiary);
+    flex-shrink: 0;
+}
+
+.wk-category-header__count--empty {
+    font-style: italic;
 }
 
 /* 未读 badge */
 .wk-category-header__badge {
     min-width: 16px;
     height: 16px;
-    border-radius: 999px;
+    border-radius: 9999px;
     background: var(--wk-brand-primary);
     color: white;
     font-size: 9px;
