@@ -119,6 +119,31 @@ export class ChatContentPage extends Component<
 
   componentDidUpdate(prevProps: ChatContentPageProps) {
     const { channel } = this.props;
+
+    // channel 바뀐 경우 pendingThread 소비
+    if (channel.channelID !== prevProps.channel.channelID) {
+      const pt = WKApp.shared.pendingThread
+      if (pt && pt.groupNo === channel.channelID) {
+        WKApp.shared.pendingThread = undefined
+        this.setState({
+          showThreadPanel: true,
+          showChannelSetting: false,
+          activeThread: {
+            short_id: pt.shortId,
+            group_no: pt.groupNo,
+            channel_id: pt.channelId,
+            channel_type: ChannelTypeCommunityTopic,
+            name: pt.name,
+            creator_uid: "",
+            status: 1,
+            created_at: "",
+            updated_at: "",
+          },
+        })
+        return
+      }
+    }
+
     // 子区 channelInfo 加载后，检查是否需要获取父群组信息
     if (channel.channelType === ChannelTypeCommunityTopic && !this.parentGroupChannel) {
       const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
@@ -610,15 +635,34 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                     c => c.channel.channelType === ChannelTypeGroup && c.channel.channelID === parentGroupNo
                                   )
                                   if (parentConv) {
-                                    vm.selectedConversation = parentConv
-                                    WKApp.endpoints.showConversation(parentConv.channel)
-                                    vm.notifyListener()
-                                    // 设置 pendingThread，Chat 页面 mount/update 后打开对应子区
-                                    WKApp.shared.pendingThread = {
-                                      groupNo: parentGroupNo,
-                                      channelId: conversation.channel.channelID,
+                                    const thread = {
+                                      short_id: parsed?.shortId || "",
+                                      group_no: parentGroupNo,
+                                      channel_id: conversation.channel.channelID,
+                                      channel_type: ChannelTypeCommunityTopic,
                                       name: conversation.channelInfo?.orgData?.displayName || parsed?.shortId || "",
-                                      shortId: parsed?.shortId || "",
+                                      creator_uid: "",
+                                      status: 1,
+                                      created_at: "",
+                                      updated_at: "",
+                                    }
+                                    // 현재 채널이 이미 부모 그룹이면 바로 setState
+                                    if (this.props.channel.channelID === parentGroupNo) {
+                                      this.setState({
+                                        showThreadPanel: true,
+                                        showChannelSetting: false,
+                                        activeThread: thread,
+                                      })
+                                    } else {
+                                      vm.selectedConversation = parentConv
+                                      WKApp.endpoints.showConversation(parentConv.channel)
+                                      vm.notifyListener()
+                                      WKApp.shared.pendingThread = {
+                                        groupNo: parentGroupNo,
+                                        channelId: conversation.channel.channelID,
+                                        name: conversation.channelInfo?.orgData?.displayName || parsed?.shortId || "",
+                                        shortId: parsed?.shortId || "",
+                                      }
                                     }
                                     return
                                   }
