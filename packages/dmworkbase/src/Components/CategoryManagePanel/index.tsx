@@ -66,8 +66,6 @@ const CategoryManagePanel: React.FC<CategoryManagePanelProps> = ({
         }
     }, [visible])
 
-    if (!visible) return null
-
     const startRename = (item: CategoryItem) => {
         setRenamingId(item.id)
         setRenameValue(item.name)
@@ -110,8 +108,12 @@ const CategoryManagePanel: React.FC<CategoryManagePanelProps> = ({
 
     return (
         <>
-            {/* 点击遮罩关闭 */}
-            <div className="wk-category-manage-panel-overlay" onClick={onClose}>
+            {/* 点击遮罩关闭；!visible 时不显示面板 UI */}
+            <div
+                className="wk-category-manage-panel-overlay"
+                onClick={onClose}
+                style={{ display: visible ? undefined : 'none' }}
+            >
                 <div className="wk-category-manage-panel" onClick={e => e.stopPropagation()}>
                     {/* Header */}
                     <div className="wk-category-manage-panel__header">
@@ -219,23 +221,23 @@ const CategoryManagePanel: React.FC<CategoryManagePanelProps> = ({
                 </div>
             </div>
 
-            {deleteTarget && (
-                <DeleteCategoryModal
-                    visible={!!deleteTarget}
-                    categoryName={deleteTarget.name}
-                    groupCount={deleteTarget.groupCount}
-                    onConfirm={async () => {
-                        try {
-                            await onDelete(deleteTarget.id)
-                            setItems(prev => prev.filter(i => i.id !== deleteTarget.id))
-                            setDeleteTarget(null)
-                        } catch {
-                            setDeleteTarget(null)
-                        }
-                    }}
-                    onCancel={() => setDeleteTarget(null)}
-                />
-            )}
+            {/* 始终挂载，用 visible 控制显隐，避免 Semi Modal portal 泄漏 */}
+            <DeleteCategoryModal
+                visible={!!deleteTarget}
+                categoryName={deleteTarget?.name ?? ""}
+                groupCount={deleteTarget?.groupCount ?? 0}
+                onConfirm={async () => {
+                    if (!deleteTarget) return
+                    try {
+                        await onDelete(deleteTarget.id)
+                        setItems(prev => prev.filter(i => i.id !== deleteTarget.id))
+                        setDeleteTarget(null)
+                    } catch {
+                        setDeleteTarget(null)
+                    }
+                }}
+                onCancel={() => setDeleteTarget(null)}
+            />
         </>
     )
 }
