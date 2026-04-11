@@ -1,14 +1,14 @@
 import React, { useState, useRef } from "react"
 import { ChannelTypeGroup, Channel } from "wukongimjssdk"
 import { CategoryItem } from "../../Service/CategoryService"
-
-// category_id 收窄为非 null（useCategoryList 已 filter 掉 null 项）
-export type ValidCategoryItem = CategoryItem & { category_id: string }
 import { ConversationWrap } from "../../Service/Model"
 import ConversationList from "../ConversationList"
 import ConversationListWithCategory from "../ConversationListWithCategory"
 import CategoryManagePanel from "../CategoryManagePanel"
 import ContextMenus, { ContextMenusContext, ContextMenusData } from "../ContextMenus"
+
+// category_id 收窄为非 null（useCategoryList 已 filter 掉 null 项）
+export type ValidCategoryItem = CategoryItem & { category_id: string }
 
 export interface ConversationListGroupedProps {
     conversations: ConversationWrap[]
