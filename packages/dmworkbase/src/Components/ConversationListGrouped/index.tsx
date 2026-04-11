@@ -1,6 +1,9 @@
 import React, { useState, useRef } from "react"
 import { ChannelTypeGroup, Channel } from "wukongimjssdk"
 import { CategoryItem } from "../../Service/CategoryService"
+
+// category_id 收窄为非 null（useCategoryList 已 filter 掉 null 项）
+export type ValidCategoryItem = CategoryItem & { category_id: string }
 import { ConversationWrap } from "../../Service/Model"
 import ConversationList from "../ConversationList"
 import ConversationListWithCategory from "../ConversationListWithCategory"
@@ -15,7 +18,7 @@ export interface ConversationListGroupedProps {
     onThreadOverflowClick: (groupNo: string) => void
 
     // 分组数据（由 ChatConversationList 提供，不自己 fetch）
-    categories: CategoryItem[]
+    categories: ValidCategoryItem[]
     isLoading: boolean
     error: string | null
     onRetry: () => void
@@ -89,7 +92,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         const items: ContextMenusData[] = categories.map(cat => ({
             title: cat.name,
             checked: currentCategoryId === cat.category_id,
-            onClick: () => onMoveGroupToCategory(groupNo, cat.category_id!),
+            onClick: () => onMoveGroupToCategory(groupNo, cat.category_id),
         }))
         items.push({ separator: true } as ContextMenusData)
         items.push({ title: "+ 新建分组", onClick: onOpenCreateCategory })
@@ -116,7 +119,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         const groupCount = (cat.groups || []).length
         const unreadCount = catConvs.reduce((sum, c) => sum + (c.unread || 0), 0)
         return {
-            id: cat.category_id!,
+            id: cat.category_id,
             name: cat.name,
             groupCount,
             isEmpty: groupCount === 0,
@@ -140,7 +143,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 icon: "M18 15 12 9 6 15",
                 onClick: () => {
                     if (idx <= 0) return
-                    const newIds = categories.map(c => c.category_id!)
+                    const newIds = categories.map(c => c.category_id)
                     ;[newIds[idx - 1], newIds[idx]] = [newIds[idx], newIds[idx - 1]]
                     onSortCategories(newIds)
                 },
@@ -150,7 +153,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 icon: "M6 9l6 6 6-6",
                 onClick: () => {
                     if (idx >= categories.length - 1) return
-                    const newIds = categories.map(c => c.category_id!)
+                    const newIds = categories.map(c => c.category_id)
                     ;[newIds[idx], newIds[idx + 1]] = [newIds[idx + 1], newIds[idx]]
                     onSortCategories(newIds)
                 },
@@ -196,7 +199,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 categories={categories
                     .filter(c => c.category_id !== null)
                     .map(c => ({
-                        id: c.category_id!,
+                        id: c.category_id,
                         name: c.name,
                         groupCount: (c.groups || []).length,
                     }))

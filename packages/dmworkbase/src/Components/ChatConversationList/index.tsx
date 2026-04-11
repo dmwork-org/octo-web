@@ -12,7 +12,7 @@ import { useCategoryList } from "../../Hooks/useCategoryList"
 import { ConversationWrap } from "../../Service/Model"
 import { ConvFilter } from "../ConversationList"
 import ConversationList from "../ConversationList"
-import ConversationListGrouped from "../ConversationListGrouped"
+import ConversationListGrouped, { ValidCategoryItem } from "../ConversationListGrouped"
 import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 
@@ -63,7 +63,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         const items: ContextMenusData[] = categories.map(cat => ({
             title: cat.name,
             checked: currentCategoryId === cat.category_id,
-            onClick: () => moveGroupToCategory(groupNo, cat.category_id!),
+            onClick: () => moveGroupToCategory(groupNo, cat.category_id),
         }))
         items.push({ separator: true } as ContextMenusData)
         items.push({ title: "+ 新建分组", onClick: () => setCreateModalVisible(true) })
@@ -80,7 +80,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     onConversationClick={onConversationClick}
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
-                    categories={categories}
+                    categories={categories as ValidCategoryItem[]}
                     isLoading={isLoading}
                     error={error}
                     onRetry={reload}
