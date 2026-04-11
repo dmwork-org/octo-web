@@ -631,41 +631,43 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                 const parsed = parseThreadChannelId(conversation.channel.channelID)
                                 const parentGroupNo = conversation.channelInfo?.orgData?.parentGroupNo || parsed?.groupNo
                                 if (parentGroupNo) {
-                                  const parentConv = vm.filteredConversations.find(
-                                    c => c.channel.channelType === ChannelTypeGroup && c.channel.channelID === parentGroupNo
-                                  )
-                                  if (parentConv) {
-                                    const thread = {
-                                      short_id: parsed?.shortId || "",
-                                      group_no: parentGroupNo,
-                                      channel_id: conversation.channel.channelID,
-                                      channel_type: ChannelTypeCommunityTopic,
-                                      name: conversation.channelInfo?.orgData?.displayName || parsed?.shortId || "",
-                                      creator_uid: "",
-                                      status: 1,
-                                      created_at: "",
-                                      updated_at: "",
-                                    }
-                                    // 현재 채널이 이미 부모 그룹이면 바로 setState
-                                    if (this.props.channel.channelID === parentGroupNo) {
-                                      this.setState({
-                                        showThreadPanel: true,
-                                        showChannelSetting: false,
-                                        activeThread: thread,
-                                      })
-                                    } else {
-                                      vm.selectedConversation = parentConv
-                                      WKApp.endpoints.showConversation(parentConv.channel)
-                                      vm.notifyListener()
-                                      WKApp.shared.pendingThread = {
-                                        groupNo: parentGroupNo,
-                                        channelId: conversation.channel.channelID,
-                                        name: conversation.channelInfo?.orgData?.displayName || parsed?.shortId || "",
-                                        shortId: parsed?.shortId || "",
-                                      }
-                                    }
-                                    return
+                                  const thread = {
+                                    short_id: parsed?.shortId || "",
+                                    group_no: parentGroupNo,
+                                    channel_id: conversation.channel.channelID,
+                                    channel_type: ChannelTypeCommunityTopic,
+                                    name: conversation.channelInfo?.orgData?.displayName || parsed?.shortId || "",
+                                    creator_uid: "",
+                                    status: 1,
+                                    created_at: "",
+                                    updated_at: "",
                                   }
+                                  // 이미 부모 그룹이 열려있으면 바로 ThreadPanel 열기
+                                  if (this.props.channel?.channelID === parentGroupNo) {
+                                    this.setState({
+                                      showThreadPanel: true,
+                                      showChannelSetting: false,
+                                      activeThread: thread,
+                                    })
+                                  } else {
+                                    // 부모 그룹으로 전환 후 ThreadPanel 열기
+                                    const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
+                                    WKApp.shared.pendingThread = {
+                                      groupNo: parentGroupNo,
+                                      channelId: conversation.channel.channelID,
+                                      name: conversation.channelInfo?.orgData?.displayName || parsed?.shortId || "",
+                                      shortId: parsed?.shortId || "",
+                                    }
+                                    const parentConv = vm.filteredConversations.find(
+                                      c => c.channel.channelType === ChannelTypeGroup && c.channel.channelID === parentGroupNo
+                                    )
+                                    if (parentConv) {
+                                      vm.selectedConversation = parentConv
+                                      vm.notifyListener()
+                                    }
+                                    WKApp.endpoints.showConversation(parentChannel)
+                                  }
+                                  return
                                 }
                               }
                               vm.selectedConversation = conversation;
