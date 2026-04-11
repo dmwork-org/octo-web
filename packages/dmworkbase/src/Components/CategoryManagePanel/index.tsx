@@ -14,7 +14,7 @@ export interface CategoryManagePanelProps {
     categories: CategoryItem[]
     onClose: () => void
     onRename: (id: string, newName: string) => Promise<void> | void
-    onDelete: (id: string) => void
+    onDelete: (id: string) => Promise<void> | void
     onReorder: (ids: string[]) => Promise<void> | void
     onCreateCategory?: () => void
 }
@@ -167,9 +167,14 @@ const CategoryManagePanel: React.FC<CategoryManagePanelProps> = ({
                     categoryName={deleteTarget.name}
                     groupCount={deleteTarget.groupCount}
                     onConfirm={async () => {
-                        onDelete(deleteTarget.id)
-                        setItems(prev => prev.filter(i => i.id !== deleteTarget.id))
-                        setDeleteTarget(null)
+                        try {
+                            await onDelete(deleteTarget.id)
+                            setItems(prev => prev.filter(i => i.id !== deleteTarget.id))
+                            setDeleteTarget(null)
+                        } catch {
+                            // 删除失败时保持弹窗打开，DeleteCategoryModal 内部已有 loading 态处理
+                            setDeleteTarget(null)
+                        }
                     }}
                     onCancel={() => setDeleteTarget(null)}
                 />

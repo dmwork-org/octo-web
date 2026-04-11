@@ -20,7 +20,7 @@ export interface ConversationListGroupedProps {
     error: string | null
     onRetry: () => void
     onRenameCategory: (id: string, name: string) => Promise<void>
-    onDeleteCategory: (id: string) => void
+    onDeleteCategory: (id: string) => Promise<void> | void
     onSortCategories: (ids: string[]) => Promise<void>
     onMoveGroupToCategory: (groupNo: string, categoryId: string) => Promise<void>
     onOpenCreateCategory: () => void
