@@ -3,6 +3,7 @@ import React, { useState } from 'react'
 import { Button, Input } from '@douyinfe/semi-ui'
 
 import ViewToggle from '../../../../packages/dmworkbase/src/Components/ViewToggle'
+import ConversationListGrouped from '../../../../packages/dmworkbase/src/Components/ConversationListGrouped'
 import CategoryHeader from '../../../../packages/dmworkbase/src/Components/CategoryHeader'
 import AddCategoryButton from '../../../../packages/dmworkbase/src/Components/AddCategoryButton'
 import CreateCategoryModal from '../../../../packages/dmworkbase/src/Components/CreateCategoryModal'
@@ -600,6 +601,128 @@ export const ConvWithCategoryError: StoryObj = {
         error="网络异常，分组数据加载失败"
         categories={[]}
         onRetry={() => alert('重试')}
+      />
+    </div>
+  ),
+}
+
+// ══════════════════════════════════════════════
+// 12. ConversationListGrouped（受控 Mock，不调真实接口）
+// ══════════════════════════════════════════════
+
+const MOCK_CATEGORY_ITEMS = [
+  { category_id: 'cat-1', name: '工作', sort: 0, groups: [{ group_no: 'g-1', name: '产品讨论群', category_sort: 0 }, { group_no: 'g-2', name: '研发同学群', category_sort: 1 }] },
+  { category_id: 'cat-2', name: '生活', sort: 1, groups: [{ group_no: 'g-3', name: '家庭群', category_sort: 0 }] },
+]
+
+// Mock 会话 wrap（最小结构）
+const makeMockConv = (id: string, name: string, unread = 0, channelType = 2 /* ChannelTypeGroup */) => ({
+  channel: { channelID: id, channelType },
+  channelInfo: { top: false, mute: false, orgData: { name } },
+  unread,
+  lastMessage: null,
+  conversation: { channel: { channelID: id, channelType }, unread, timestamp: Date.now() },
+}) as any
+
+const MOCK_CONVERSATIONS = [
+  makeMockConv('g-1', '产品讨论群', 3),
+  makeMockConv('g-2', '研发同学群', 0),
+  makeMockConv('g-3', '家庭群', 1),
+  makeMockConv('g-4', '临时群', 0),
+]
+
+export const ConversationListGroupedWithCategories: StoryObj = {
+  name: 'ConversationListGrouped / 有分组·分组视图（Mock 数据）',
+  render: () => (
+    <div style={{ width: 280, height: 600, border: '1px solid var(--wk-border-default)', borderRadius: 12, overflow: 'hidden' }}>
+      <ConversationListGrouped
+        conversations={MOCK_CONVERSATIONS}
+        categories={MOCK_CATEGORY_ITEMS}
+        isLoading={false}
+        error={null}
+        onRetry={() => {}}
+        onConversationClick={() => {}}
+        onClearMessages={() => {}}
+        onThreadOverflowClick={() => {}}
+        onRenameCategory={async () => {}}
+        onDeleteCategory={() => {}}
+        onSortCategories={async () => {}}
+        onMoveGroupToCategory={async () => {}}
+        onOpenCreateCategory={() => alert('新建分组')}
+      />
+    </div>
+  ),
+}
+
+export const ConversationListGroupedWithCheckmark: StoryObj = {
+  name: 'ConversationListGrouped / 右键子菜单·当前分组有 ✓ 标识',
+  render: () => (
+    <div style={{ padding: 16, fontFamily: 'var(--wk-font-sans)' }}>
+      <p style={{ fontSize: 12, color: 'var(--wk-text-tertiary)', marginBottom: 12 }}>
+        右键「产品讨论群」（已在「工作」分组）→「移到分组」子菜单，「工作」前有 ✓
+      </p>
+      <div style={{ width: 280, height: 500, border: '1px solid var(--wk-border-default)', borderRadius: 12, overflow: 'hidden' }}>
+        <ConversationListGrouped
+          conversations={MOCK_CONVERSATIONS}
+          categories={MOCK_CATEGORY_ITEMS}
+          isLoading={false}
+          error={null}
+          onRetry={() => {}}
+          onConversationClick={() => {}}
+          onClearMessages={() => {}}
+          onThreadOverflowClick={() => {}}
+          onRenameCategory={async () => {}}
+          onDeleteCategory={() => {}}
+          onSortCategories={async () => {}}
+          onMoveGroupToCategory={async () => {}}
+          onOpenCreateCategory={() => alert('新建分组')}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const ConversationListGroupedLoading: StoryObj = {
+  name: 'ConversationListGrouped / 加载中',
+  render: () => (
+    <div style={{ width: 280, height: 500, border: '1px solid var(--wk-border-default)', borderRadius: 12, overflow: 'hidden' }}>
+      <ConversationListGrouped
+        conversations={[]}
+        categories={[]}
+        isLoading={true}
+        error={null}
+        onRetry={() => {}}
+        onConversationClick={() => {}}
+        onClearMessages={() => {}}
+        onThreadOverflowClick={() => {}}
+        onRenameCategory={async () => {}}
+        onDeleteCategory={() => {}}
+        onSortCategories={async () => {}}
+        onMoveGroupToCategory={async () => {}}
+        onOpenCreateCategory={() => {}}
+      />
+    </div>
+  ),
+}
+
+export const ConversationListGroupedError: StoryObj = {
+  name: 'ConversationListGrouped / 加载失败',
+  render: () => (
+    <div style={{ width: 280, height: 500, border: '1px solid var(--wk-border-default)', borderRadius: 12, overflow: 'hidden' }}>
+      <ConversationListGrouped
+        conversations={[]}
+        categories={[]}
+        isLoading={false}
+        error="网络异常，分组数据加载失败"
+        onRetry={() => alert('重试')}
+        onConversationClick={() => {}}
+        onClearMessages={() => {}}
+        onThreadOverflowClick={() => {}}
+        onRenameCategory={async () => {}}
+        onDeleteCategory={() => {}}
+        onSortCategories={async () => {}}
+        onMoveGroupToCategory={async () => {}}
+        onOpenCreateCategory={() => {}}
       />
     </div>
   ),

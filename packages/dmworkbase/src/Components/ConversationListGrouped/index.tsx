@@ -1,14 +1,11 @@
-import React, { useState, useRef, useEffect } from "react"
-import { ChannelTypeGroup } from "wukongimjssdk"
-import { useCategoryList } from "../../Hooks/useCategoryList"
+import React, { useState, useRef } from "react"
+import { ChannelTypeGroup, Channel } from "wukongimjssdk"
+import { CategoryItem } from "../../Service/CategoryService"
 import { ConversationWrap } from "../../Service/Model"
 import ConversationList from "../ConversationList"
 import ConversationListWithCategory from "../ConversationListWithCategory"
-import CreateCategoryModal from "../CreateCategoryModal"
 import CategoryManagePanel from "../CategoryManagePanel"
 import ContextMenus, { ContextMenusContext, ContextMenusData } from "../ContextMenus"
-import { Channel } from "wukongimjssdk"
-import WKApp from "../../App"
 
 export interface ConversationListGroupedProps {
     conversations: ConversationWrap[]
@@ -16,6 +13,17 @@ export interface ConversationListGroupedProps {
     onConversationClick: (conv: ConversationWrap) => void
     onClearMessages: (channel: Channel) => void
     onThreadOverflowClick: (groupNo: string) => void
+
+    // 分组数据（由 ChatConversationList 提供，不自己 fetch）
+    categories: CategoryItem[]
+    isLoading: boolean
+    error: string | null
+    onRetry: () => void
+    onRenameCategory: (id: string, name: string) => Promise<void>
+    onDeleteCategory: (id: string) => void
+    onSortCategories: (ids: string[]) => Promise<void>
+    onMoveGroupToCategory: (groupNo: string, categoryId: string) => Promise<void>
+    onOpenCreateCategory: () => void
 }
 
 type ViewMode = "all" | "grouped"
@@ -30,57 +38,37 @@ function getStoredViewMode(): ViewMode {
     return "all"
 }
 
-/**
- * ConversationListGrouped
- * 在「群聊」Tab 下替换原 ConversationList，提供「全部 | 分组」两态切换。
- * 在其他 Tab 下透传给原 ConversationList（不需要分组功能）。
- */
 const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     conversations,
     select,
     onConversationClick,
     onClearMessages,
     onThreadOverflowClick,
+    categories,
+    isLoading,
+    error,
+    onRetry,
+    onRenameCategory,
+    onDeleteCategory,
+    onSortCategories,
+    onMoveGroupToCategory,
+    onOpenCreateCategory,
 }) => {
     const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode)
-    const [createModalVisible, setCreateModalVisible] = useState(false)
     const [managePanelVisible, setManagePanelVisible] = useState(false)
     const categoryCtxMenuRef = useRef<ContextMenusContext | null>(null)
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
-
-    // 监听来自其他 filter 下右键菜单「新建分组」的事件
-    useEffect(() => {
-        const handler = () => setCreateModalVisible(true)
-        window.addEventListener("wk:open-create-category", handler)
-        return () => window.removeEventListener("wk:open-create-category", handler)
-    }, [])
-
-    const {
-        categories,
-        isLoading,
-        error,
-        reload,
-        createCategory,
-        renameCategory,
-        deleteCategory,
-        sortCategories,
-        moveGroupToCategory,
-    } = useCategoryList()
 
     const handleViewModeChange = (mode: ViewMode) => {
         setViewMode(mode)
         try { localStorage.setItem(VIEW_MODE_KEY, mode) } catch {}
     }
 
-    // 只过滤群聊
     const groupConversations = conversations.filter(
         c => c.channel.channelType === ChannelTypeGroup
     )
-
-    // 预建 groupNo → ConversationWrap 的 Map，避免重复遍历
     const groupConvMap = new Map(groupConversations.map(c => [c.channel.channelID, c]))
 
-    // 未分组的 groupNo 集合
     const categorizedGroupNos = new Set(
         categories.flatMap(cat => (cat.groups || []).map(g => g.group_no))
     )
@@ -88,9 +76,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         c => !categorizedGroupNos.has(c.channel.channelID)
     )
 
-    const existingCategoryNames = categories.map(c => c.name)
-
-    // 右键菜单：只有群聊才加「移到分组」子菜单（含当前分组 ✓ 标识 + 新建分组入口）
+    // 构建「移到分组」子菜单（含 ✓ 标识 + 新建分组入口）
     const buildExtraContextMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
         if (!conv || conv.channel.channelType !== ChannelTypeGroup) return []
         if (categories.length === 0) return []
@@ -102,14 +88,10 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
         const items: ContextMenusData[] = categories.map(cat => ({
             title: currentCategoryId === cat.category_id ? `✓ ${cat.name}` : cat.name,
-            onClick: () => moveGroupToCategory(groupNo, cat.category_id!),
+            onClick: () => onMoveGroupToCategory(groupNo, cat.category_id!),
         }))
-
         items.push({ separator: true } as any)
-        items.push({
-            title: "+ 新建分组",
-            onClick: () => setCreateModalVisible(true),
-        })
+        items.push({ title: "+ 新建分组", onClick: onOpenCreateCategory })
 
         return items
     }
@@ -126,7 +108,6 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         />
     )
 
-    // 一次性构建分组数据（含会话渲染），无重复计算
     const categoriesForView = categories.map(cat => {
         const catConvs = (cat.groups || [])
             .map(g => groupConvMap.get(g.group_no))
@@ -138,7 +119,6 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         }
     })
 
-    // 分组标题右键菜单（重命名/上移/下移/删除）
     const buildCategoryContextMenus = (categoryId: string): ContextMenusData[] => {
         const idx = categories.findIndex(c => c.category_id === categoryId)
         const cat = categories[idx]
@@ -156,7 +136,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     if (idx <= 0) return
                     const newIds = categories.map(c => c.category_id!)
                     ;[newIds[idx - 1], newIds[idx]] = [newIds[idx], newIds[idx - 1]]
-                    sortCategories(newIds)
+                    onSortCategories(newIds)
                 },
             },
             {
@@ -166,7 +146,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     if (idx >= categories.length - 1) return
                     const newIds = categories.map(c => c.category_id!)
                     ;[newIds[idx], newIds[idx + 1]] = [newIds[idx + 1], newIds[idx]]
-                    sortCategories(newIds)
+                    onSortCategories(newIds)
                 },
             },
             { separator: true } as any,
@@ -174,7 +154,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 title: "删除分组",
                 icon: "M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",
                 danger: true,
-                onClick: () => deleteCategory(categoryId),
+                onClick: () => onDeleteCategory(categoryId),
             },
         ]
     }
@@ -187,32 +167,20 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 categories={categoriesForView}
                 isLoading={isLoading}
                 error={error}
-                onRetry={reload}
+                onRetry={onRetry}
                 allConversations={ConvListWithMenu(conversations)}
                 ungroupedConversations={ungroupedConvs.length > 0 ? ConvListWithMenu(ungroupedConvs) : undefined}
-                onCreateCategory={() => setCreateModalVisible(true)}
+                onCreateCategory={onOpenCreateCategory}
                 onManageCategories={() => setManagePanelVisible(true)}
                 onCategoryContextMenu={(categoryId, e) => {
                     setActiveCategoryId(categoryId)
-                    // 延迟一帧，确保 state 更新后菜单数据是最新的
                     setTimeout(() => categoryCtxMenuRef.current?.show(e), 0)
                 }}
             />
 
-            {/* 分组标题右键菜单 */}
             <ContextMenus
                 onContext={(ctx) => { categoryCtxMenuRef.current = ctx }}
                 menus={activeCategoryId ? buildCategoryContextMenus(activeCategoryId) : []}
-            />
-
-            <CreateCategoryModal
-                visible={createModalVisible}
-                existingNames={existingCategoryNames}
-                onConfirm={async (name) => {
-                    await createCategory(name)
-                    setCreateModalVisible(false)
-                }}
-                onCancel={() => setCreateModalVisible(false)}
             />
 
             <CategoryManagePanel
@@ -226,10 +194,10 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     }))
                 }
                 onClose={() => setManagePanelVisible(false)}
-                onRename={renameCategory}
-                onDelete={deleteCategory}
-                onReorder={sortCategories}
-                onCreateCategory={() => { setManagePanelVisible(false); setCreateModalVisible(true) }}
+                onRename={onRenameCategory}
+                onDelete={onDeleteCategory}
+                onReorder={onSortCategories}
+                onCreateCategory={() => { setManagePanelVisible(false); onOpenCreateCategory() }}
             />
         </>
     )
