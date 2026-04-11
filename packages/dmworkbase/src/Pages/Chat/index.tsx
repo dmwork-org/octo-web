@@ -79,10 +79,31 @@ export class ChatContentPage extends Component<
     };
     WKSDK.shared().channelManager.addListener(this.channelInfoListener);
 
-    // 检查是否需要自动打开子区面板
+    // 检查是否需要自动打开子区面板（查看全部子区）
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
       this.setState({ showThreadPanel: true, activeThread: null });
       WKApp.shared.pendingThreadPanel = undefined;
+    }
+
+    // 检查是否需要打开具体某个子区
+    const pt = WKApp.shared.pendingThread
+    if (pt && pt.groupNo === channel.channelID) {
+      WKApp.shared.pendingThread = undefined
+      this.setState({
+        showThreadPanel: true,
+        showChannelSetting: false,
+        activeThread: {
+          short_id: pt.shortId,
+          group_no: pt.groupNo,
+          channel_id: pt.channelId,
+          channel_type: ChannelTypeCommunityTopic,
+          name: pt.name,
+          creator_uid: "",
+          status: 1,
+          created_at: "",
+          updated_at: "",
+        },
+      })
     }
 
     // 子区：预先获取父群组信息
@@ -543,6 +564,29 @@ export default class ChatPage extends Component<any, ChatPageState> {
                           select={WKApp.shared.openChannel}
                           onConversationClick={(conversation: ConversationWrap) => {
                             const doSwitch = () => {
+                              // 子区：跳转到父群聊 + 打开 ThreadPanel 定位到该子区
+                              if (conversation.channel.channelType === ChannelTypeCommunityTopic) {
+                                const parsed = parseThreadChannelId(conversation.channel.channelID)
+                                const parentGroupNo = conversation.channelInfo?.orgData?.parentGroupNo || parsed?.groupNo
+                                if (parentGroupNo) {
+                                  const parentConv = vm.filteredConversations.find(
+                                    c => c.channel.channelType === ChannelTypeGroup && c.channel.channelID === parentGroupNo
+                                  )
+                                  if (parentConv) {
+                                    vm.selectedConversation = parentConv
+                                    WKApp.endpoints.showConversation(parentConv.channel)
+                                    vm.notifyListener()
+                                    // 设置 pendingThread，Chat 页面 mount/update 后打开对应子区
+                                    WKApp.shared.pendingThread = {
+                                      groupNo: parentGroupNo,
+                                      channelId: conversation.channel.channelID,
+                                      name: conversation.channelInfo?.orgData?.displayName || parsed?.shortId || "",
+                                      shortId: parsed?.shortId || "",
+                                    }
+                                    return
+                                  }
+                                }
+                              }
                               vm.selectedConversation = conversation;
                               WKApp.endpoints.showConversation(conversation.channel);
                               vm.notifyListener();

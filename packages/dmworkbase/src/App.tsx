@@ -261,6 +261,9 @@ export default class WKApp extends ProviderListener {
   /** 待打开子区面板的群组 ID，ChatContentPage 挂载时检查并消费 */
   pendingThreadPanel?: string
 
+  /** 待打开的具体子区，ChatContentPage 挂载时检查并消费 */
+  pendingThread?: { groupNo: string; channelId: string; name: string; shortId: string }
+
   baseContext!: WKBaseContext; // DMWork基础上下文
 
   private _notificationIsClose: boolean = false; // 通知是否关闭
