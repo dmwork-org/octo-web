@@ -61,6 +61,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     const [managePanelVisible, setManagePanelVisible] = useState(false)
     const categoryCtxMenuRef = useRef<ContextMenusContext | null>(null)
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
+    const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(null)
 
     const handleViewModeChange = (mode: ViewMode) => {
         setViewMode(mode)
@@ -136,7 +137,10 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             {
                 title: "重命名",
                 icon: "M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z m-2-2 4 4",
-                onClick: () => setManagePanelVisible(true),
+                onClick: () => {
+                    setRenamingCategoryId(categoryId)
+                    setActiveCategoryId(null)
+                },
             },
             {
                 title: "上移",
@@ -181,10 +185,25 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 ungroupedConversations={ungroupedConvs.length > 0 ? ConvListWithMenu(ungroupedConvs) : undefined}
                 onCreateCategory={onOpenCreateCategory}
                 onManageCategories={() => setManagePanelVisible(true)}
+                activeCategoryId={activeCategoryId}
+                renamingCategoryId={renamingCategoryId}
+                onRenameConfirm={async (id, newName) => {
+                    await onRenameCategory(id, newName)
+                    setRenamingCategoryId(null)
+                }}
+                onRenameCancel={() => setRenamingCategoryId(null)}
                 onCategoryContextMenu={(categoryId, e) => {
                     e.preventDefault()
                     setActiveCategoryId(categoryId)
-                    setTimeout(() => categoryCtxMenuRef.current?.show(e), 0)
+                    setTimeout(() => {
+                        categoryCtxMenuRef.current?.show(e)
+                        // 菜单关闭时清除高亮：监听下一次点击
+                        const clear = () => {
+                            setActiveCategoryId(null)
+                            document.removeEventListener('mousedown', clear, true)
+                        }
+                        document.addEventListener('mousedown', clear, true)
+                    }, 0)
                 }}
             />
 

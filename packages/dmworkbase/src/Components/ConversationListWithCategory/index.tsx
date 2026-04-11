@@ -27,6 +27,10 @@ export interface ConversationListWithCategoryProps {
     onCreateCategory?: () => void
     onManageCategories?: () => void
     onCategoryContextMenu?: (categoryId: string, e: React.MouseEvent) => void
+    activeCategoryId?: string | null       // 右键菜单打开时的高亮分组
+    renamingCategoryId?: string | null     // 行内重命名中的分组
+    onRenameConfirm?: (id: string, newName: string) => void
+    onRenameCancel?: () => void
 }
 
 const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> = ({
@@ -41,6 +45,10 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
     onCreateCategory,
     onManageCategories,
     onCategoryContextMenu,
+    activeCategoryId,
+    renamingCategoryId,
+    onRenameConfirm,
+    onRenameCancel,
 }) => {
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
@@ -90,6 +98,10 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
                         isCollapsed={collapsedIds.has(cat.id)}
                         onToggle={() => toggleCollapse(cat.id)}
                         onContextMenu={onCategoryContextMenu ? (e) => onCategoryContextMenu(cat.id, e) : undefined}
+                        isActive={activeCategoryId === cat.id}
+                        isEditing={renamingCategoryId === cat.id}
+                        onRenameConfirm={onRenameConfirm ? (newName) => onRenameConfirm(cat.id, newName) : undefined}
+                        onRenameCancel={onRenameCancel}
                     >
                         {cat.conversations}
                     </CategorySection>

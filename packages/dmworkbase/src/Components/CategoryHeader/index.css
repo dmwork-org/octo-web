@@ -18,6 +18,30 @@
     opacity: 0.6;
 }
 
+/* 右键菜单打开时的 active 态 */
+.wk-category-header--active {
+    background: var(--wk-bg-hover);
+}
+
+/* 行内重命名编辑态 */
+.wk-category-header--editing {
+    background: var(--wk-purple-alpha-04);
+}
+
+.wk-category-header__rename-input {
+    flex: 1;
+    height: 20px;
+    padding: 0 6px;
+    border: 1px solid var(--wk-brand-primary);
+    border-radius: var(--wk-r-xs, 4px);
+    font: 600 12px var(--wk-font-sans);
+    color: var(--wk-text-primary);
+    background: var(--wk-bg-surface);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--wk-purple-alpha-12);
+    min-width: 0;
+}
+
 /* 折叠箭头 */
 .wk-category-header__arrow {
     width: 14px;

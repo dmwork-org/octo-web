@@ -14,6 +14,10 @@ export interface CategorySectionProps {
     onToggle: () => void
     onContextMenu?: (e: React.MouseEvent) => void
     children?: React.ReactNode
+    isActive?: boolean   // 右键菜单打开时高亮
+    isEditing?: boolean  // 行内重命名编辑态
+    onRenameConfirm?: (newName: string) => void
+    onRenameCancel?: () => void
 }
 
 const CategorySection: React.FC<CategorySectionProps> = ({
@@ -22,8 +26,11 @@ const CategorySection: React.FC<CategorySectionProps> = ({
     onToggle,
     onContextMenu,
     children,
+    isActive,
+    isEditing,
+    onRenameConfirm,
+    onRenameCancel,
 }) => {
-    // 优先用外部传入的 isEmpty，否则根据 children 判断
     const isEmpty = category.isEmpty ?? (!children || (Array.isArray(children) && children.length === 0))
 
     return (
@@ -36,6 +43,10 @@ const CategorySection: React.FC<CategorySectionProps> = ({
                 isEmpty={isEmpty}
                 onToggle={onToggle}
                 onContextMenu={onContextMenu}
+                isActive={isActive}
+                isEditing={isEditing}
+                onRenameConfirm={onRenameConfirm}
+                onRenameCancel={onRenameCancel}
             />
             <div
                 className={`wk-category-section__content ${
