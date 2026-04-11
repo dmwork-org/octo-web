@@ -13,6 +13,8 @@ import "./index.css"
 import { Badge, Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { EndpointID } from "../../Service/Const";
+import { Hash } from "lucide-react";
+import ThreadIcon from "../Icons/ThreadIcon";
 import ContextMenus, { ContextMenusContext, ContextMenusData } from "../ContextMenus";
 import { ChannelSettingManager } from "../../Service/ChannelSetting";
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
@@ -199,7 +201,12 @@ export default class ConversationList extends Component<ConversationListProps, C
                     <div className="wk-conversationlist-item-right-first-line">
                         <div className="wk-conversationlist-item-name">
                             <h3>
-                                {conversationWrap.channel.channelType === ChannelTypeCommunityTopic && <span className="wk-thread-prefix">#</span>}
+                                {conversationWrap.channel.channelType === ChannelTypeCommunityTopic && (
+                                  <ThreadIcon size={13} className="wk-conv-channel-icon wk-conv-thread-icon" />
+                                )}
+                                {conversationWrap.channel.channelType === ChannelTypeGroup && (
+                                  <Hash size={13} className="wk-conv-channel-icon wk-conv-hash-icon" />
+                                )}
                                 {channelInfo?.orgData.displayName}
                             </h3>
                             {channelInfo?.orgData?.robot === 1 && <AiBadge />}

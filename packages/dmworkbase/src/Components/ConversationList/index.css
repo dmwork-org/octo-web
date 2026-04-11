@@ -375,3 +375,19 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conversationlist-thread-overflow:hover {
     color: var(--wk-brand-primary);
 }
+
+/* 会话列表频道 icon */
+.wk-conv-channel-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-right: 3px;
+  margin-top: -1px;
+  color: var(--wk-text-secondary);
+}
+.wk-conv-thread-icon {
+  color: var(--wk-text-tertiary, #999);
+}
+.wk-conv-hash-icon {
+  color: var(--wk-text-secondary, #666);
+}
