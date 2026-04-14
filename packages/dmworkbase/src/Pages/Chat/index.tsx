@@ -530,6 +530,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
               >
                 <div className="wk-chat-content-left">
                   <div className="wk-chat-search">
+                    {/* Space 名称标题 */}
+                    {vm.selectedSpace && (
+                      <div className="wk-chat-space-name">{vm.selectedSpace.name}</div>
+                    )}
                     <div className="wk-chat-header-actions">
                       <NavSignalBadge showText />
                       <div

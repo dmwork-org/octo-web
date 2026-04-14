@@ -116,15 +116,11 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
 
     return (
         <div className="wk-conv-with-category">
-            <div className="wk-conv-with-category__toggle-wrap">
-                <ViewToggle value={viewMode} onChange={onViewModeChange} />
-            </div>
-
             <div className="wk-conv-with-category__body">
-                {viewMode === "all" ? allConversations : renderGroupedBody()}
+                {renderGroupedBody()}
             </div>
 
-            {viewMode === "grouped" && !isLoading && !error && (
+            {!isLoading && !error && (
                 <div className="wk-conv-with-category__footer">
                     <AddCategoryButton onClick={onCreateCategory ?? (() => {})} />
                     {onManageCategories && (
