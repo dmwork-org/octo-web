@@ -34,10 +34,12 @@ interface CompactGroupItemProps {
     selected: boolean
     onClick: () => void
     onContextMenu: (e: React.MouseEvent) => void
+    /** 该群聊有子区，需要在 # icon 下方画竖线 */
+    hasThreads?: boolean
 }
 
 const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
-    conversationWrap, selected, onClick, onContextMenu,
+    conversationWrap, selected, onClick, onContextMenu, hasThreads,
 }) => {
     const channelInfo = conversationWrap.channelInfo
     const isThread = conversationWrap.channel.channelType === ChannelTypeCommunityTopic
@@ -68,6 +70,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
                 conversationWrap.unread > 0 ? "wk-conv-compact-item--unread" : undefined,
                 isThread ? "wk-conv-compact-item--thread" : undefined,
                 isDragging ? "wk-conv-compact-item--dragging" : undefined,
+                hasThreads ? "wk-conv-compact-item--has-threads" : undefined,
             )}
             onClick={onClick}
             onContextMenu={onContextMenu}
@@ -270,6 +273,7 @@ export default class ConversationList extends Component<ConversationListProps, C
                     key={conversationWrap.channel.getChannelKey()}
                     conversationWrap={conversationWrap}
                     selected={selected}
+                    hasThreads={hasThreads}
                     onClick={() => { if (this.props.onClick) this.props.onClick(conversationWrap) }}
                     onContextMenu={(e) => { this._handleContextMenu(conversationWrap, e) }}
                 />

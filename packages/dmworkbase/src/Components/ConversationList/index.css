@@ -600,3 +600,20 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     line-height: 1;
     flex-shrink: 0;
 }
+
+/* 父群聊有子区时，# icon 下方延伸竖线，连接下面的子区 */
+.wk-conv-compact-item--has-threads {
+    position: relative;
+}
+
+.wk-conv-compact-item--has-threads::after {
+    content: '';
+    position: absolute;
+    /* # icon 中心位置：drag-handle 默认隐藏(0) + icon-container padding(8) + icon/2(9) = 17px */
+    left: 17px;
+    /* 从 item 中间往下 */
+    top: 50%;
+    bottom: -1px; /* 延伸到下一个 item 顶部 */
+    width: 1.5px;
+    background: var(--wk-border-default, rgba(0,0,0,0.12));
+}
