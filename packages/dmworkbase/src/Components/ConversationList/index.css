@@ -586,11 +586,6 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     color: var(--wk-brand-primary, #7C5CFC);
 }
 
-.wk-conv-compact-thread-overflow__arrow {
-    font-size: 12px;
-    line-height: 1;
-    flex-shrink: 0;
-}
 
 /* 父群聊有子区时，# icon 下方延伸竖线，连接下面的子区 */
 .wk-conv-compact-item--has-threads {

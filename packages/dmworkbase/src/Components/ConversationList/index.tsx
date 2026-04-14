@@ -577,10 +577,7 @@ export default class ConversationList extends Component<ConversationListProps, C
                                 className={`wk-conv-compact-thread-overflow${isExpanded ? ' wk-conv-compact-thread-overflow--expanded' : ''}`}
                                 onClick={toggleExpand}
                             >
-                                <span className="wk-conv-compact-thread-overflow__arrow">
-                                    {isExpanded ? '⌄' : '›'}
-                                </span>
-                                {isExpanded ? `收起 ${item.count} 个 Thread` : `展开 ${item.count} 个 Thread`}
+                                {isExpanded ? '收起' : `+ ${item.count} 个子区`}
                             </div>
                         </React.Fragment>
                     )
