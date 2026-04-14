@@ -541,17 +541,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     border-bottom-left-radius: 3px;
 }
 
-/* 非最后一个子区（后面还有子区或 overflow 控件）：延伸竖线到下方 */
-.wk-conv-compact-item--thread:has(+ .wk-conv-compact-item--thread)::before,
-.wk-conv-compact-item--thread:has(+ .wk-conv-compact-thread-overflow)::before {
-    content: '';
-    position: absolute;
-    left: 30px;
-    top: 50%;
-    bottom: 0;
-    width: 1.5px;
-    background: var(--wk-border-default, rgba(0,0,0,0.12));
-}
+/* 子区间不需要延伸竖线，每个子区靠自身 ::after 的 L 形体现层级 */
 
 /* compact 模式「+N 个子区」/ 「收起」 overflow 控件 */
 .wk-conv-compact-thread-overflow {
@@ -567,17 +557,17 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     position: relative;
 }
 
-/* overflow 控件：上半段竖线 + L 形水平段（贴子区左边） */
+/* overflow 控件：只保留 L 横线（无上方竖线） */
 .wk-conv-compact-thread-overflow::after {
     content: '';
     position: absolute;
     left: 30px;
-    top: 0;
-    height: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 1.5px;
     width: 10px;
-    border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
-    border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
-    border-bottom-left-radius: 3px;
+    background: var(--wk-border-default, rgba(0,0,0,0.12));
+    border-radius: 1px;
 }
 
 /* 展开态控件置底，不需要下方延伸线 */
@@ -597,24 +587,4 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     position: relative;
 }
 
-.wk-conv-compact-item--has-threads::after {
-    content: '';
-    position: absolute;
-    left: 30px;
-    top: 50%;
-    bottom: 0;
-    width: 1.5px;
-    background: var(--wk-border-default, rgba(0,0,0,0.12));
-}
-
-/* 父群聊上方白色覆盖，遮住前一个 item 的 ::before 延伸线 */
-.wk-conv-compact-item--has-threads::before {
-    content: '';
-    position: absolute;
-    left: 30px;
-    top: 0;
-    height: 50%;
-    width: 1.5px;
-    background: var(--wk-bg-base, #F7F8FA);
-    z-index: 1;
-}
+/* 父群聊有子区：不画竖线，连接线靠子区自身的 ::after L 形体现 */
