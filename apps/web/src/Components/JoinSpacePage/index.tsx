@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { WKApp } from "@octo/base";
+import { WKApp, toJoinApprovalStatus } from "@octo/base";
 import { SpaceService } from "@octo/base";
 import { Button, Input, Toast } from "@douyinfe/semi-ui";
 import "./index.css";
@@ -66,6 +66,19 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
         setJoinLoading(true);
         try {
             const result: any = await SpaceService.shared.joinSpace(inviteInfo.invite_code);
+            const status = result?.status;
+
+            if (status === "NEED_APPROVAL" || status === "PENDING") {
+                // 审批状态：先调 onSuccess 离开 JoinSpacePage，再触发钩子渲染审批结果页
+                // 顺序保证 Layout 先切出 JoinSpacePage，再渲染 JoinApprovalResult，避免中间态
+                onSuccess();
+                WKApp.endpoints.onJoinApproval(
+                    toJoinApprovalStatus(status),
+                    inviteInfo.invite_code
+                );
+                return;
+            }
+
             setCurrentSpace(result?.space_id || inviteInfo.space_id);
             Toast.success("已加入 " + inviteInfo.space_name);
             onSuccess();
@@ -74,7 +87,6 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
             if (msg.includes("已满") || msg.includes("SPACE_FULL")) {
                 Toast.error("空间已满，无法加入");
             } else if (msg.includes("已是成员") || msg.includes("already")) {
-                // 已是成员也算成功，直接进入
                 setCurrentSpace(inviteInfo.space_id);
                 onSuccess();
             } else {

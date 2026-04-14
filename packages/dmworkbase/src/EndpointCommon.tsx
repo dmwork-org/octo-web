@@ -16,9 +16,23 @@ export class ShowConversationOptions {
   initLocateMessageSeq?: number;
 }
 
+/**
+ * Layout 层渲染审批结果页使用的状态枚举（snake_case），
+ * 对应 SpaceService.JoinSpaceStatus（SCREAMING_SNAKE_CASE，来自后端）：
+ *   "NEED_APPROVAL" → "need_approval"
+ *   "PENDING"       → "pending"
+ */
+export type JoinApprovalStatus = "need_approval" | "pending"
+
+/** 将后端返回的 JoinSpaceStatus 映射为 JoinApprovalStatus */
+export function toJoinApprovalStatus(status: "NEED_APPROVAL" | "PENDING"): JoinApprovalStatus {
+    return status === "NEED_APPROVAL" ? "need_approval" : "pending"
+}
+
 export class EndpointCommon {
   private _onLogins: VoidFunction[] = []; // 登录成功
   private _onNeedJoinSpaces: VoidFunction[] = []; // 需要加入 Space 引导
+  private _onJoinApprovals: Array<(status: JoinApprovalStatus, inviteCode: string) => void> = []; // 加入审批状态
 
   constructor() {
     this.registerShowConversation();
@@ -262,6 +276,26 @@ export class EndpointCommon {
   /** 触发"需要加入 Space"引导，Wave 2 注册路由回调后生效 */
   onNeedJoinSpace() {
     [...this._onNeedJoinSpaces].forEach(fn => fn());
+  }
+
+  /** 注册加入 Space 审批回调（Layout 监听，统一渲染审批结果页） */
+  addOnJoinApproval(v: (status: JoinApprovalStatus, inviteCode: string) => void) {
+    this._onJoinApprovals.push(v);
+  }
+
+  removeOnJoinApproval(v: (status: JoinApprovalStatus, inviteCode: string) => void) {
+    const len = this._onJoinApprovals.length;
+    for (let i = 0; i < len; i++) {
+      if (v === this._onJoinApprovals[i]) {
+        this._onJoinApprovals.splice(i, 1);
+        return;
+      }
+    }
+  }
+
+  /** 触发加入 Space 审批状态，统一由 Layout state 渲染审批结果页 */
+  onJoinApproval(status: JoinApprovalStatus, inviteCode: string) {
+    [...this._onJoinApprovals].forEach(fn => fn(status, inviteCode));
   }
 }
 

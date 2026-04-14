@@ -8,11 +8,15 @@ import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/upda
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
 import { getSid, getQueryParam } from "@octo/base";
+import type { JoinApprovalStatus } from "@octo/base";
+import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
+import JoinApprovalResult from "../Components/JoinApprovalResult";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
+    joinApproval?: { status: JoinApprovalStatus; inviteCode: string };
 }
 
 export default class AppLayout extends Component<{}, AppLayoutState> {
@@ -20,6 +24,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
 
     onLogin!: () => void
     onNeedJoinSpace!: () => void
+    onJoinApproval!: (status: JoinApprovalStatus, inviteCode: string) => void
     private _spaceChecked = false; // 冷启动 Space 检测只跑一次
 
     componentDidMount() {
@@ -28,6 +33,12 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             this.setState({ showJoinSpace: true });
         };
         WKApp.endpoints.addOnNeedJoinSpace(this.onNeedJoinSpace);
+
+        // 审批结果统一渲染：任何入口 join 返回 NEED_APPROVAL/PENDING 都走这里
+        this.onJoinApproval = (status, inviteCode) => {
+            this.setState({ joinApproval: { status, inviteCode } });
+        };
+        WKApp.endpoints.addOnJoinApproval(this.onJoinApproval);
 
         // T5: 冷启动已登录检测 — 用户直接打开 App 恢复登录态时，检查是否有 Space
         if (WKApp.shared.isLogined()) {
@@ -48,31 +59,35 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // 检查是否有待处理的邀请码（验证格式防止 XSS/Open Redirect）
             const pendingInvite = localStorage.getItem("pendingInviteCode");
             if (pendingInvite && /^[a-zA-Z0-9_-]+$/.test(pendingInvite)) {
-                // 自动加入 Space，不再跳回邀请页
                 WKApp.apiClient.post(`/space/join`, { invite_code: pendingInvite })
                     .then((result: any) => {
+                        // 成功路径才删 pendingInviteCode
                         localStorage.removeItem("pendingInviteCode");
-                        const spaceId = result?.space_id;
-                        if (spaceId) {
-                            localStorage.setItem('currentSpaceId', spaceId);
+                        const status = result?.status;
+                        if (status === "NEED_APPROVAL" || status === "PENDING") {
+                            // 审批状态：统一走全局钩子，Layout state 渲染审批结果页
+                            WKApp.endpoints.onJoinApproval(
+                                toJoinApprovalStatus(status),
+                                pendingInvite
+                            );
+                            return;
                         }
+                        const spaceId = result?.space_id;
+                        if (spaceId) localStorage.setItem('currentSpaceId', spaceId);
+                        goMain();
                     })
                     .catch((e: any) => {
                         const msg = e?.msg || '';
                         if (msg.includes('已满') || msg.includes('SPACE_FULL')) {
-                            // 满员：不清 pendingInviteCode，留重试机会
+                            // SPACE_FULL 保留 pendingInviteCode，让用户下次重试
                             import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error('空间已满，无法加入'));
                         } else if (msg.includes('已是成员') || msg.includes('already')) {
-                            // 已是成员：静默处理
                             localStorage.removeItem("pendingInviteCode");
                             if (e?.space_id) localStorage.setItem('currentSpaceId', e.space_id);
                         } else {
-                            // 邀请码无效/过期
                             localStorage.removeItem("pendingInviteCode");
                             console.warn('Auto-join space failed:', msg);
                         }
-                    })
-                    .finally(() => {
                         goMain();
                     });
                 return;
@@ -88,6 +103,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     componentWillUnmount() {
         WKApp.endpoints.removeOnLogin(this.onLogin);
         WKApp.endpoints.removeOnNeedJoinSpace(this.onNeedJoinSpace);
+        WKApp.endpoints.removeOnJoinApproval(this.onJoinApproval);
     }
 
     /**
@@ -168,6 +184,18 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     }
 
     render() {
+        const { joinApproval } = this.state;
+
+        // 审批结果页：任何入口 join 返回 NEED_APPROVAL/PENDING 时，统一由 Layout state 渲染
+        if (joinApproval) {
+            return (
+                <JoinApprovalResult
+                    status={joinApproval.status}
+                    onDismiss={() => this.setState({ joinApproval: undefined })}
+                />
+            );
+        }
+
         // Wave 2: 无 Space 引导页（覆盖主界面）
         if (this.state.showJoinSpace) {
             return (

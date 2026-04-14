@@ -1,0 +1,58 @@
+.wk-join-approval {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: var(--wk-brand-gradient);
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+.wk-join-approval-card {
+    background: var(--wk-bg-surface);
+    border-radius: 16px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 400px;
+    min-width: 320px;
+    text-align: center;
+    box-shadow: var(--wk-shadow-lg);
+    color: var(--wk-text-primary);
+}
+
+.wk-join-approval-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+    line-height: 1;
+}
+
+.wk-join-approval-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--wk-text-primary);
+    margin: 0 0 12px;
+}
+
+.wk-join-approval-desc {
+    font-size: 14px;
+    color: var(--wk-text-secondary);
+    line-height: 1.6;
+    margin: 0 0 32px;
+}
+
+/* 用更具体的选择器覆盖 Semi Button，替代 !important */
+.wk-join-approval-card .wk-join-approval-btn.semi-button {
+    width: 100%;
+    height: 44px;
+    font-size: 16px;
+    border-radius: 8px;
+    background-color: var(--wk-brand-primary);
+    border-color: var(--wk-brand-primary);
+    color: var(--wk-text-inverse);
+}
+
+.wk-join-approval-card .wk-join-approval-btn.semi-button:hover {
+    background-color: var(--wk-brand-primary-hover);
+    border-color: var(--wk-brand-primary-hover);
+}
