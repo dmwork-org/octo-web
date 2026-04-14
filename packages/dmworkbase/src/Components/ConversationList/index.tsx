@@ -446,7 +446,8 @@ export default class ConversationList extends Component<ConversationListProps, C
 
     // 将子区放在父群组后面，最多显示2个，超出部分用计数表示
     private groupThreadsWithParent(convs: ConversationWrap[]): { items: Array<ConversationWrap | { type: 'thread-overflow'; parentGroupId: string; count: number }>, threadsByParent: Map<string, ConversationWrap[]> } {
-        const MAX_VISIBLE_THREADS = 2
+        // compact 模式显示全部子区，非 compact 最多 2 个（超出用 overflow indicator）
+        const MAX_VISIBLE_THREADS = this.props.compact ? Infinity : 2
 
         // 分离群组和子区
         const threads: ConversationWrap[] = []
@@ -579,8 +580,8 @@ export default class ConversationList extends Component<ConversationListProps, C
 
         const renderItem = (item: ConversationWrap | { type: 'thread-overflow'; parentGroupId: string; count: number }) => {
             if ('type' in item && item.type === 'thread-overflow') {
-                // compact 模式：折叠时不显示 overflow indicator
-                if (compact && collapsedGroupIds.has(item.parentGroupId)) return null
+                // compact 模式：overflow indicator 完全不渲染（子区由折叠箭头控制）
+                if (compact) return null
                 return (
                     <div
                         key={`overflow-${item.parentGroupId}`}
