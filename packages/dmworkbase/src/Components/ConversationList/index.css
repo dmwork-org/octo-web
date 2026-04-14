@@ -524,7 +524,8 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 /* compact 模式子区 L连接线 */
 .wk-conv-compact-item--thread {
     position: relative;
-    padding-left: 28px;
+    /* 子区明显缩进，体现父子层级 */
+    padding-left: 40px;
 }
 
 /* L连接线：竖线从 left: 17px（父群聊 icon 中心）向右弯折连接子区 */
@@ -557,7 +558,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 8px 3px 28px;
+    padding: 3px 8px 3px 40px;
     font-size: 11px;
     color: var(--wk-text-tertiary, #9498A8);
     cursor: pointer;
