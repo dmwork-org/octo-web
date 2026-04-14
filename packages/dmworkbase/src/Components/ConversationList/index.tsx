@@ -70,7 +70,6 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
         <div
             ref={setNodeRef}
             style={style}
-            key={conversationWrap.channel.getChannelKey()}
             className={classNames(
                 "wk-conv-compact-item",
                 selected ? "wk-conv-compact-item--selected" : undefined,

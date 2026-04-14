@@ -74,11 +74,21 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     type DragData =
         | { type: 'category'; categoryId: string }
         | { type: 'group'; groupNo: string }
+
+    function isDragData(d: unknown): d is DragData {
+        if (!d || typeof d !== 'object') return false
+        const obj = d as Record<string, unknown>
+        if (obj.type === 'category') return typeof obj.categoryId === 'string'
+        if (obj.type === 'group') return typeof obj.groupNo === 'string'
+        return false
+    }
+
     const [activeDragData, setActiveDragData] = useState<DragData | null>(null)
 
     const handleDragStart = (event: DragStartEvent) => {
         setActiveDragId(String(event.active.id))
-        setActiveDragData(event.active.data.current)
+        const d = event.active.data.current
+        setActiveDragData(isDragData(d) ? d : null)
     }
 
     const handleDragEnd = (event: DragEndEvent) => {
