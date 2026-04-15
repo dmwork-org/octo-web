@@ -3,6 +3,8 @@ import { Button, TextArea, Spin, Modal } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
+import { ChannelTypeCommunityTopic } from "../../Service/Const";
+import { parseThreadChannelId } from "../../Service/Thread";
 import "./index.css";
 
 export interface GroupMdEditorProps {
@@ -59,10 +61,32 @@ export class GroupMdEditor extends Component<
     this.loadContent();
   }
 
+  private isThreadMd(): boolean {
+    return this.props.channel.channelType === ChannelTypeCommunityTopic;
+  }
+
+  private getThreadInfo(): { groupNo: string; shortId: string } | null {
+    return parseThreadChannelId(this.props.channel.channelID);
+  }
+
   loadContent = async () => {
-    const { channel } = this.props;
     try {
-      const resp = await WKApp.dataSource.channelDataSource.getGroupMd(channel);
+      let resp;
+      if (this.isThreadMd()) {
+        const parsed = this.getThreadInfo();
+        if (!parsed) {
+          this.setState({ loading: false });
+          return;
+        }
+        resp = await WKApp.dataSource.channelDataSource.getThreadMd(
+          parsed.groupNo,
+          parsed.shortId
+        );
+      } else {
+        resp = await WKApp.dataSource.channelDataSource.getGroupMd(
+          this.props.channel
+        );
+      }
       this.setState({
         content: resp?.content || "",
         originalContent: resp?.content || "",
@@ -75,7 +99,6 @@ export class GroupMdEditor extends Component<
   };
 
   handleSave = async () => {
-    const { channel } = this.props;
     const { content } = this.state;
 
     const byteLen = getByteLength(content);
@@ -86,10 +109,24 @@ export class GroupMdEditor extends Component<
 
     this.setState({ saving: true });
     try {
-      const resp = await WKApp.dataSource.channelDataSource.updateGroupMd(
-        channel,
-        content
-      );
+      let resp;
+      if (this.isThreadMd()) {
+        const parsed = this.getThreadInfo();
+        if (!parsed) {
+          this.setState({ saving: false });
+          return;
+        }
+        resp = await WKApp.dataSource.channelDataSource.updateThreadMd(
+          parsed.groupNo,
+          parsed.shortId,
+          content
+        );
+      } else {
+        resp = await WKApp.dataSource.channelDataSource.updateGroupMd(
+          this.props.channel,
+          content
+        );
+      }
       this.setState({
         originalContent: content,
         version: resp.version,
@@ -107,9 +144,22 @@ export class GroupMdEditor extends Component<
       title: "删除 GROUP.md",
       content: "确定要删除 GROUP.md 吗？此操作不可撤销。",
       onOk: async () => {
-        const { channel } = this.props;
         try {
-          await WKApp.dataSource.channelDataSource.deleteGroupMd(channel);
+          if (this.isThreadMd()) {
+            const parsed = this.getThreadInfo();
+            if (!parsed) {
+              Toast.error("无法解析子区信息");
+              return;
+            }
+            await WKApp.dataSource.channelDataSource.deleteThreadMd(
+              parsed.groupNo,
+              parsed.shortId
+            );
+          } else {
+            await WKApp.dataSource.channelDataSource.deleteGroupMd(
+              this.props.channel
+            );
+          }
           this.setState({
             content: "",
             originalContent: "",

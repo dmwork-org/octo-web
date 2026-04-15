@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import { SpaceService } from "../../Service/SpaceService";
 import { InviteInfo, JoinStep } from "./index";
+import WKApp from "../../App";
+import { toJoinApprovalStatus } from "../../EndpointCommon";
 
 export interface UseJoinSpaceOptions {
     onSuccess?: (spaceId: string) => void;
@@ -74,7 +76,20 @@ export function useJoinSpace({ onSuccess, onClose }: UseJoinSpaceOptions = {}) {
         if (!inviteInfo) return;
         setJoinLoading(true);
         try {
-            const result: any = await SpaceService.shared.joinSpace(inviteInfo.invite_code);
+            const result = await SpaceService.shared.joinSpace(inviteInfo.invite_code);
+            const status = result?.status;
+
+            if (status === "NEED_APPROVAL" || status === "PENDING") {
+                // 审批状态：关闭弹窗，触发全局钩子，由 Layout 统一渲染审批结果页
+                reset();
+                onClose?.();
+                WKApp.endpoints.onJoinApproval(
+                    toJoinApprovalStatus(status),
+                    inviteInfo.invite_code
+                );
+                return;
+            }
+
             const spaceId = result?.space_id || inviteInfo.space_id;
             Toast.success(`已加入 ${inviteInfo.space_name}`);
             reset();

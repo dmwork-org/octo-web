@@ -151,7 +151,7 @@ export class ChannelDataSource implements IChannelDataSource {
         return WKApp.apiClient.post(`groups/${channel.channelID}/blacklist/remove`, { uids: uids })
     }
 
-    getGroupMd(channel: Channel): Promise<any> {
+    getGroupMd(channel: Channel): Promise<{ content: string; version: number }> {
         return WKApp.apiClient.get(`groups/${channel.channelID}/md`)
     }
 
@@ -161,6 +161,18 @@ export class ChannelDataSource implements IChannelDataSource {
 
     deleteGroupMd(channel: Channel): Promise<void> {
         return WKApp.apiClient.delete(`groups/${channel.channelID}/md`)
+    }
+
+    getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }> {
+        return WKApp.apiClient.get(`groups/${groupNo}/threads/${shortId}/md`)
+    }
+
+    updateThreadMd(groupNo: string, shortId: string, content: string): Promise<{ version: number }> {
+        return WKApp.apiClient.put(`groups/${groupNo}/threads/${shortId}/md`, { content })
+    }
+
+    deleteThreadMd(groupNo: string, shortId: string): Promise<void> {
+        return WKApp.apiClient.delete(`groups/${groupNo}/threads/${shortId}/md`)
     }
 
     setBotAdmin(channel: Channel, uid: string): Promise<void> {
@@ -267,6 +279,11 @@ export class ChannelDataSource implements IChannelDataSource {
             unread_count: data.unread_count,
             last_message_content: data.last_message_content,
             last_message_sender_name: data.last_message_sender_name,
+            has_thread_md: !!data.has_thread_md,
+            thread_md_version: data.thread_md_version || 0,
+            thread_md_updated_at: data.thread_md_updated_at,
+            group_name: data.group_name,
+            last_message_at: data.last_message_at,
         }
     }
 }

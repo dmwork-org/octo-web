@@ -1,0 +1,63 @@
+/* SidebarTabBar — 群聊/私聊 Tab 切换栏 */
+.wk-sidebar-tabbar {
+    display: flex;
+    padding: 0 var(--wk-sp-3, 12px);
+    gap: 2px;
+    border-bottom: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+    flex-shrink: 0;
+}
+
+.wk-sidebar-tabbar__btn {
+    flex: 1;
+    padding: 8px 0;
+    border: none;
+    background: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--wk-text-tertiary, #9498A8);
+    cursor: pointer;
+    position: relative;
+    transition: color 200ms;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: inherit;
+}
+
+.wk-sidebar-tabbar__btn:hover {
+    color: var(--wk-text-secondary, #5C6070);
+}
+
+.wk-sidebar-tabbar__btn--active {
+    color: var(--wk-text-primary, #1A1C24);
+}
+
+/* 激活态底部渐变指示线 */
+.wk-sidebar-tabbar__btn--active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    border-radius: 1px;
+    background: linear-gradient(135deg, var(--wk-brand-from, #7C5CFC), var(--wk-brand-to, #00D4AA));
+}
+
+/* 未读角标 */
+.wk-sidebar-tabbar__badge {
+    min-width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: var(--wk-red, #E5405E);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    flex-shrink: 0;
+    line-height: 1;
+}

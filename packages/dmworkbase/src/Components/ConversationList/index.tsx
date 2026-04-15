@@ -8,6 +8,8 @@ import { Modal } from "@douyinfe/semi-ui";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
 import { getTimeStringAutoShort2 } from '../../Utils/time'
 import classNames from "classnames";
+import { useDraggable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 
 import "./index.css"
 import { Badge, Toast } from "@douyinfe/semi-ui";
@@ -24,13 +26,105 @@ import { FlameMessageCell } from "../../Messages/Flame";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import ConversationVM from "../Conversation/vm";
-export type ConvFilter = 'all' | 'human' | 'ai' | 'group'
+export type ConvFilter = 'all' | 'human' | 'ai' | 'group' | 'dm'
+
+// ── CompactGroupItem：群聊 Tab 紧凑 item，支持拖拽 ──────────────────────
+interface CompactGroupItemProps {
+    conversationWrap: ConversationWrap
+    selected: boolean
+    onClick: () => void
+    onContextMenu: (e: React.MouseEvent) => void
+    /** 该群聊有子区，需要在 # icon 下方画竖线 */
+    hasThreads?: boolean
+}
+
+const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
+    conversationWrap, selected, onClick, onContextMenu, hasThreads,
+}) => {
+    const channelInfo = conversationWrap.channelInfo
+    // channelInfo 未加载时主动拉取，加载完触发 re-render
+    React.useEffect(() => {
+        if (!channelInfo) {
+            WKSDK.shared().channelManager.fetchChannelInfo(conversationWrap.channel)
+        }
+    }, [conversationWrap.channel.channelID])
+
+    const isThread = conversationWrap.channel.channelType === ChannelTypeCommunityTopic
+
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+        id: `grp::${conversationWrap.channel.channelID}`,
+        data: {
+            type: 'group',
+            groupNo: conversationWrap.channel.channelID,
+        },
+        // 子区不参与跨分组拖拽
+        disabled: isThread,
+    })
+
+    const style: React.CSSProperties = {
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.4 : undefined,
+    }
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={classNames(
+                "wk-conv-compact-item",
+                selected ? "wk-conv-compact-item--selected" : undefined,
+                conversationWrap.unread > 0 ? "wk-conv-compact-item--unread" : undefined,
+                isThread ? "wk-conv-compact-item--thread" : undefined,
+                isDragging ? "wk-conv-compact-item--dragging" : undefined,
+                hasThreads ? "wk-conv-compact-item--has-threads" : undefined,
+            )}
+            onClick={onClick}
+            onContextMenu={onContextMenu}
+        >
+            {/* 拖拽 handle（非子区才显示） */}
+            {!isThread && (
+                <span
+                    className="wk-conv-compact-drag-handle"
+                    {...attributes}
+                    {...listeners}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
+                        <circle cx="3" cy="3" r="1.2" fill="currentColor" />
+                        <circle cx="7" cy="3" r="1.2" fill="currentColor" />
+                        <circle cx="3" cy="7" r="1.2" fill="currentColor" />
+                        <circle cx="7" cy="7" r="1.2" fill="currentColor" />
+                        <circle cx="3" cy="11" r="1.2" fill="currentColor" />
+                        <circle cx="7" cy="11" r="1.2" fill="currentColor" />
+                    </svg>
+                </span>
+            )}
+            <span className="wk-conv-compact-icon">
+                {isThread
+                    ? <ThreadIcon size={13} />
+                    : <Hash size={14} strokeWidth={2} />
+                }
+            </span>
+            <span className="wk-conv-compact-name">
+                {channelInfo?.orgData.displayName ?? conversationWrap.channel.channelID}
+            </span>
+            {conversationWrap.unread > 0 && (
+                <span className="wk-conv-compact-badge">
+                    {conversationWrap.unread > 99 ? '99+' : conversationWrap.unread}
+                </span>
+            )}
+        </div>
+    )
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 export interface ConversationListProps {
     conversations: ConversationWrap[]
     select?: Channel
     /** 外部控制过滤，不传则内部默认 'all' */
     filter?: ConvFilter
+    /** 紧凑模式：隐藏头像/消息预览/时间戳，显示 # icon，用于群聊 Tab */
+    compact?: boolean
     onClick?: (conversation: ConversationWrap) => void
     onClearMessages?: (channel: Channel) => void
     /** 点击 "+N 个子区" 时的回调，传入父群组 ID */
@@ -41,6 +135,8 @@ export interface ConversationListProps {
 
 export interface ConversationListState {
     selectConversationWrap?: ConversationWrap
+    /** compact 模式：已展开全部子区的父群聊 ID 集合（点击 +N 后加入） */
+    expandedGroupIds: Set<string>
 }
 
 export default class ConversationList extends Component<ConversationListProps, ConversationListState>{
@@ -50,7 +146,7 @@ export default class ConversationList extends Component<ConversationListProps, C
     constructor(props: ConversationListProps) {
         super(props)
 
-        this.state = {}
+        this.state = { expandedGroupIds: new Set() }
     }
 
     componentDidMount() {
@@ -70,6 +166,7 @@ export default class ConversationList extends Component<ConversationListProps, C
         WKSDK.shared().channelManager.removeListener(this.channelListener)
         TypingManager.shared.removeTypingListener(this.typingListener)
     }
+
 
     _handleScroll = () => {
         this.contextMenusContext.hide()
@@ -167,11 +264,26 @@ export default class ConversationList extends Component<ConversationListProps, C
     }
 
     conversationItem(conversationWrap: ConversationWrap, hasThreads = false) {
-        
-
         let channelInfo = conversationWrap.channelInfo
         if (!channelInfo) {
             WKSDK.shared().channelManager.fetchChannelInfo(conversationWrap.channel)
+        }
+
+        const { compact } = this.props
+
+        // ── Compact 模式（群聊 Tab）：用 CompactGroupItem 函数组件（支持拖拽） ──
+        if (compact) {
+            const selected = !!(this.props.select && this.props.select.isEqual(conversationWrap.channel))
+            return (
+                <CompactGroupItem
+                    key={conversationWrap.channel.getChannelKey()}
+                    conversationWrap={conversationWrap}
+                    selected={selected}
+                    hasThreads={hasThreads}
+                    onClick={() => { if (this.props.onClick) this.props.onClick(conversationWrap) }}
+                    onContextMenu={(e) => { this._handleContextMenu(conversationWrap, e) }}
+                />
+            )
         }
 
         const avatarKey = WKApp.shared.getChannelAvatarTag(conversationWrap.channel);
@@ -279,6 +391,8 @@ export default class ConversationList extends Component<ConversationListProps, C
         const channelInfo = conv.channelInfo
         // 群组和子区频道都归类到 group 过滤器
         if (filter === 'group') return conv.channel.channelType === ChannelTypeGroup || conv.channel.channelType === ChannelTypeCommunityTopic
+        // dm = human + ai（私聊 Tab 包含所有私聊会话）
+        if (filter === 'dm') return conv.channel.channelType === ChannelTypePerson
         if (filter === 'ai') {
             if (conv.channel.channelType !== ChannelTypePerson) return false
             // channelInfo 未加载时隐藏，等 channelInfoListener 触发重渲后再显示
@@ -424,9 +538,49 @@ export default class ConversationList extends Component<ConversationListProps, C
             }
         }
 
-        const { onThreadOverflowClick } = this.props
+        const { onThreadOverflowClick, compact } = this.props
+        const { expandedGroupIds } = this.state
+
         const renderItem = (item: ConversationWrap | { type: 'thread-overflow'; parentGroupId: string; count: number }) => {
             if ('type' in item && item.type === 'thread-overflow') {
+                if (compact) {
+                    // compact 模式：overflow indicator 改为「+N 个子区」/ 「收起」可切换
+                    const isExpanded = expandedGroupIds.has(item.parentGroupId)
+                    const toggleExpand = () => {
+                        this.setState(s => {
+                            const next = new Set(s.expandedGroupIds)
+                            if (next.has(item.parentGroupId)) next.delete(item.parentGroupId)
+                            else next.add(item.parentGroupId)
+                            return { expandedGroupIds: next }
+                        })
+                    }
+                    // 控件位置固定在前2个子区下方，展开的额外子区在控件下面
+                    const extraThreads = (threadsByParent.get(item.parentGroupId) ?? []).slice(2)
+                    return (
+                        <React.Fragment key={`overflow-${item.parentGroupId}`}>
+                            {/* 展开时：先渲染剩余子区，控件始终置底 */}
+                            {isExpanded && extraThreads.map(conv => {
+                                const selected = !!(this.props.select && this.props.select.isEqual(conv.channel))
+                                return (
+                                    <CompactGroupItem
+                                        key={conv.channel.getChannelKey()}
+                                        conversationWrap={conv}
+                                        selected={selected}
+                                        onClick={() => { if (this.props.onClick) this.props.onClick(conv) }}
+                                        onContextMenu={(e) => { this._handleContextMenu(conv, e) }}
+                                    />
+                                )
+                            })}
+                            {/* 展开/收起控件始终置底 */}
+                            <div
+                                className={`wk-conv-compact-thread-overflow${isExpanded ? ' wk-conv-compact-thread-overflow--expanded' : ''}`}
+                                onClick={toggleExpand}
+                            >
+                                {isExpanded ? '收起' : `+ ${item.count} 个子区`}
+                            </div>
+                        </React.Fragment>
+                    )
+                }
                 return (
                     <div
                         key={`overflow-${item.parentGroupId}`}
@@ -438,23 +592,21 @@ export default class ConversationList extends Component<ConversationListProps, C
                 )
             }
             const conv = item as ConversationWrap
+
+            // compact 模式展开：已展开分组的子区（overflow 之后的部分）是否显示
+            // 注意：groupThreadsWithParent 只给前 2 个，overflow 的在 threadsByParent 里
+            // 这里 item 已经是 groupThreadsWithParent 处理后的，超出的不在 items 里
+            // 所以只需要在 overflow click 后渲染额外的子区
+            // → 用 expandedGroupIds 控制是否渲染 threadsByParent 里超出 MAX 的部分（见下方额外渲染）
+
             const hasThreads = conv.channel.channelType === ChannelTypeGroup
                 && threadsByParent.has(conv.channel.channelID)
             return this.conversationItem(conv, hasThreads)
         }
 
         return <div id="wk-conversationlist" className="wk-conversationlist" onScroll={this._handleScroll}>
-            {/* 置顶区 */}
-            {finalPinned.length > 0 && <>
-                <div className="wk-conv-section">置顶</div>
-                {finalPinned.map(renderItem)}
-            </>}
-
-            {/* 最近 */}
-            {finalRecent.length > 0 && <>
-                {finalPinned.length > 0 && <div className="wk-conv-section">最近</div>}
-                {finalRecent.map(renderItem)}
-            </>}
+            {finalPinned.map(renderItem)}
+            {finalRecent.map(renderItem)}
         
 
             <ContextMenus onContext={(ctx) => {
@@ -499,23 +651,12 @@ export default class ConversationList extends Component<ConversationListProps, C
                     }
                 })
 
-                // 3. 移到分组（仅群聊，且有分组数据时显示）
+                // 3. 额外菜单项（移出分组 / 移到分组等，由上层通过 extraContextMenus 传入）
                 if (extraMenus.length > 0) {
-                    menus.push({
-                        title: "移到分组",
-                        icon: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
-                        children: extraMenus,
-                    })
+                    menus.push(...extraMenus)
                 }
 
-                // 4. 置顶 / 取消置顶
-                menus.push({
-                    title: channelInfo?.top ? "取消置顶" : "置顶",
-                    icon: "M12 2L2 7l10 5 10-5-10-5z M2 17l10 5 10-5 M2 12l10 5 10-5",
-                    onClick: () => { if (channelInfo) this.onTop(channelInfo) }
-                })
-
-                // 5. 免打扰 / 关闭免打扰
+                // 4. 免打扰 / 关闭免打扰
                 menus.push({
                     title: channelInfo?.mute ? "关闭免打扰" : "开启免打扰",
                     icon: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 0 1-3.46 0",

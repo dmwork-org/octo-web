@@ -71,6 +71,8 @@ export { default as SpaceMembers } from "./Components/SpaceMembers"
 export { default as SpaceSettings } from "./Components/SpaceSettings"
 export * from "./Service/SpaceService"
 
+export type { JoinApprovalStatus } from "./EndpointCommon"
+export { toJoinApprovalStatus } from "./EndpointCommon"
 export { ErrorBoundary, ErrorFallback } from "./Components/ErrorBoundary"
 export type { ErrorBoundaryProps, ErrorFallbackProps } from "./Components/ErrorBoundary"
 export { default as ConnectionStatus } from "./Components/ConnectionStatus"

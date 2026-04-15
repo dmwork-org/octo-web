@@ -53,11 +53,40 @@ body[theme-mode=dark] .wk-conversation-content {
 
 .wk-message-item-fold-session {
     justify-content: flex-start;
-    padding: var(--wk-sp-2) var(--wk-sp-4);
+    padding: var(--wk-sp-2) 0;
+}
+
+.wk-message-item-fold-session-shell {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--wk-sp-2);
+    margin-left: 15px;
+}
+
+.wk-message-item-fold-session-avatar {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    overflow: visible;
+}
+
+.wk-message-item-fold-session-avatar > * {
+    display: block;
+}
+
+.wk-message-item-fold-session-avatar-icon {
+    width: 32px;
+    height: 32px;
+    max-width: none;
 }
 
 .wk-message-item-fold-session-card {
     width: 100%;
+    flex: 1;
+    min-width: 0;
 }
 
 /* ── 折叠卡片展开区：紧凑列表样式 ── */

@@ -6,6 +6,7 @@ export interface UseVoiceInputOptions {
     maxDuration?: number
     onTranscribed?: (text: string, shouldReplace: boolean) => void
     onError?: (error: Error) => void
+    onRecordingFailed?: () => void
     getChatContext?: () => string | undefined
 }
 
@@ -27,7 +28,7 @@ function getSupportedMimeType(): string {
 }
 
 export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInputReturn {
-    const { maxDuration = 60, onTranscribed, onError, getChatContext } = options
+    const { maxDuration = 60, onTranscribed, onError, onRecordingFailed, getChatContext } = options
 
     const [isRecording, setIsRecording] = useState(false)
     const [isTranscribing, setIsTranscribing] = useState(false)
@@ -146,8 +147,9 @@ export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVo
             const error = err instanceof Error ? err : new Error("Microphone access denied")
             if (onError) onError(error)
             cleanup()
+            if (onRecordingFailed) onRecordingFailed()
         }
-    }, [isRecording, maxDuration, onError, cleanup])
+    }, [isRecording, maxDuration, onError, onRecordingFailed, cleanup])
 
     const stopRecordingAndTranscribe = useCallback((contextText?: string) => {
         if (contextText !== undefined) {

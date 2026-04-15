@@ -16,6 +16,16 @@ function formatDuration(seconds: number): string {
 }
 
 export default function VoiceInputIndicator({ onTranscribed, getCurrentText, getChatContext }: VoiceInputIndicatorProps) {
+    // Long-press ShiftLeft state
+    const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const preparingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const shiftRecordingRef = useRef(false)
+    const cancelPendingRef = useRef(false)
+    const [isPreparing, setIsPreparing] = useState(false)
+
+    const PREPARING_DELAY_MS = 300
+    const RECORDING_DELAY_MS = 500
+
     const {
         isRecording,
         isTranscribing,
@@ -34,6 +44,11 @@ export default function VoiceInputIndicator({ onTranscribed, getCurrentText, get
                 Toast.error(error.message || "Voice transcription failed")
             }
         },
+        onRecordingFailed: () => {
+            shiftRecordingRef.current = false
+            cancelPendingRef.current = false
+            setIsPreparing(false)
+        },
     })
 
     // Refs to avoid closure staleness in timer/keyboard callbacks
@@ -46,18 +61,31 @@ export default function VoiceInputIndicator({ onTranscribed, getCurrentText, get
     const isTranscribingRef = useRef(isTranscribing)
     isTranscribingRef.current = isTranscribing
 
-    // Long-press ShiftLeft state
-    const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const shiftRecordingRef = useRef(false)
-    const [isPreparing, setIsPreparing] = useState(false)
-
     const clearShiftTimer = () => {
         if (shiftTimerRef.current !== null) {
             clearTimeout(shiftTimerRef.current)
             shiftTimerRef.current = null
         }
+        if (preparingTimerRef.current !== null) {
+            clearTimeout(preparingTimerRef.current)
+            preparingTimerRef.current = null
+        }
         setIsPreparing(false)
     }
+
+    // Handle transition from preparing/pending -> actual recording or auto-cancel.
+    useEffect(() => {
+        if (isRecording && cancelPendingRef.current) {
+            cancelPendingRef.current = false
+            shiftRecordingRef.current = false
+            setIsPreparing(false)
+            cancelRecording()
+            return
+        }
+        if (isRecording) {
+            setIsPreparing(false)
+        }
+    }, [isRecording, cancelRecording])
 
     // Keyboard shortcut: Shift + Cmd/Ctrl + Space, and long-press ShiftLeft
     useEffect(() => {
@@ -76,27 +104,30 @@ export default function VoiceInputIndicator({ onTranscribed, getCurrentText, get
             // Long-press ShiftLeft: start 500ms timer
             if (e.code === "ShiftLeft" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 if (!isRecordingRef.current && !isTranscribingRef.current && shiftTimerRef.current === null) {
-                    setIsPreparing(true)
+                    cancelPendingRef.current = false
+                    preparingTimerRef.current = setTimeout(() => {
+                        preparingTimerRef.current = null
+                        setIsPreparing(true)
+                    }, PREPARING_DELAY_MS)
                     shiftTimerRef.current = setTimeout(() => {
                         shiftTimerRef.current = null
-                        setIsPreparing(false)
                         shiftRecordingRef.current = true
                         startRecordingRef.current()
-                    }, 500)
+                    }, RECORDING_DELAY_MS)
                 }
                 return
             }
 
-            // Any other key pressed while waiting cancels the timer
-            // Ignore: repeated ShiftLeft, other modifier keys (IME may fire these),
-            // and composition events from input methods
             if (shiftTimerRef.current !== null && e.code !== "ShiftLeft") {
-                // Don't cancel for modifier keys or composition — IME switching
-                // on Shift often fires synthetic modifier/process events
-                const isModifier = e.code.startsWith("Shift") || e.code.startsWith("Control")
-                    || e.code.startsWith("Alt") || e.code.startsWith("Meta")
+                // Modifier chord (Ctrl/Meta/Alt pressed): cancel voice intent
+                if (e.code.startsWith("Control") || e.code.startsWith("Alt") || e.code.startsWith("Meta")) {
+                    clearShiftTimer()
+                    return
+                }
+                // IME-related events: do not cancel timer
+                const isIME = e.code.startsWith("Shift")
                     || e.key === "Process" || e.key === "Unidentified" || e.isComposing
-                if (!isModifier) {
+                if (!isIME) {
                     clearShiftTimer()
                 }
             }
@@ -106,6 +137,13 @@ export default function VoiceInputIndicator({ onTranscribed, getCurrentText, get
             // ShiftLeft released while timer is pending: cancel (normal Shift press)
             if (e.code === "ShiftLeft" && shiftTimerRef.current !== null) {
                 clearShiftTimer()
+                return
+            }
+
+            // ShiftLeft released while waiting for getUserMedia (recording not yet started)
+            if (e.code === "ShiftLeft" && shiftRecordingRef.current && !isRecordingRef.current) {
+                cancelPendingRef.current = true
+                shiftRecordingRef.current = false
                 return
             }
 

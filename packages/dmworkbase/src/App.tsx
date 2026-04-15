@@ -802,6 +802,7 @@ export class FriendApply {
 }
 
 export class ChatMenus {
+  key?: string;
   icon!: string;
   title!: string;
   sort?: number = 0;

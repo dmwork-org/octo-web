@@ -17,6 +17,15 @@ export interface Thread {
   unread_count?: number  // 未读数量
   last_message_content?: string  // 最后一条消息内容
   last_message_sender_name?: string  // 最后一条消息发送者名称
+
+  // GROUP.md 相关
+  has_thread_md?: boolean
+  thread_md_version?: number
+  thread_md_updated_at?: string
+
+  // 补齐后端已有字段
+  group_name?: string
+  last_message_at?: string
 }
 
 export enum ThreadStatus {

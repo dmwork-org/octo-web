@@ -3,7 +3,6 @@ import ViewToggle, { ViewMode } from "../ViewToggle"
 import CategorySection from "../CategorySection"
 import UngroupedSection from "../UngroupedSection"
 import CategoryEmptyState from "../CategoryEmptyState"
-import AddCategoryButton from "../AddCategoryButton"
 import "./index.css"
 
 export interface CategoryData {
@@ -16,8 +15,8 @@ export interface CategoryData {
 }
 
 export interface ConversationListWithCategoryProps {
-    viewMode: ViewMode
-    onViewModeChange: (mode: ViewMode) => void
+    viewMode?: ViewMode
+    onViewModeChange?: (mode: ViewMode) => void
     categories?: CategoryData[]
     ungroupedConversations?: React.ReactNode  // 未分组群聊，为空时不渲染 UngroupedSection
     isLoading?: boolean
@@ -25,8 +24,14 @@ export interface ConversationListWithCategoryProps {
     onRetry?: () => void
     allConversations?: React.ReactNode
     onCreateCategory?: () => void
-    onManageCategories?: () => void
+    /** 无任何群聊时（无分组且未分组为空）→ 空状态显示「发起群聊」 */
+    hasNoGroups?: boolean
+    onStartGroup?: () => void
     onCategoryContextMenu?: (categoryId: string, e: React.MouseEvent) => void
+    /** CategorySection 是否启用拖拽（useSortable + useDroppable） */
+    categorySectionDraggable?: boolean
+    /** UngroupedSection 是否启用 droppable */
+    ungroupedSectionDroppable?: boolean
     activeCategoryId?: string | null       // 右键菜单打开时的高亮分组
     renamingCategoryId?: string | null     // 行内重命名中的分组
     onRenameConfirm?: (id: string, newName: string) => void
@@ -43,12 +48,15 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
     onRetry,
     allConversations,
     onCreateCategory,
-    onManageCategories,
+    hasNoGroups,
+    onStartGroup,
     onCategoryContextMenu,
     activeCategoryId,
     renamingCategoryId,
     onRenameConfirm,
     onRenameCancel,
+    categorySectionDraggable,
+    ungroupedSectionDroppable,
 }) => {
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
@@ -85,8 +93,23 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
             )
         }
 
+        // 无自定义分组时：有群聊则直接显示未分组区，完全无群聊才显示空状态
         if (categories.length === 0) {
-            return <CategoryEmptyState onCreateCategory={onCreateCategory ?? (() => {})} />
+            if (hasNoGroups) {
+                return (
+                    <CategoryEmptyState
+                        onCreateCategory={onCreateCategory ?? (() => {})}
+                        noGroups
+                        onStartGroup={onStartGroup}
+                    />
+                )
+            }
+            // 有群聊但无自定义分组 → 直接显示未分组区，不走分组 UI
+            return (
+                <div className="wk-conv-with-category__body">
+                    {ungroupedConversations}
+                </div>
+            )
         }
 
         return (
@@ -102,38 +125,26 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
                         isEditing={renamingCategoryId === cat.id}
                         onRenameConfirm={onRenameConfirm ? (newName) => onRenameConfirm(cat.id, newName) : undefined}
                         onRenameCancel={onRenameCancel}
+                        draggable={categorySectionDraggable}
                     >
                         {cat.conversations}
                     </CategorySection>
                 ))}
-                {/* 未分组区域：有内容才渲染 */}
-                {ungroupedConversations && (
-                    <UngroupedSection>{ungroupedConversations}</UngroupedSection>
-                )}
+                {/* 未分组区域：始终渲染 */}
+                <UngroupedSection droppable={ungroupedSectionDroppable}>
+                    {ungroupedConversations}
+                </UngroupedSection>
             </>
         )
     }
 
     return (
         <div className="wk-conv-with-category">
-            <div className="wk-conv-with-category__toggle-wrap">
-                <ViewToggle value={viewMode} onChange={onViewModeChange} />
-            </div>
-
             <div className="wk-conv-with-category__body">
-                {viewMode === "all" ? allConversations : renderGroupedBody()}
+                {renderGroupedBody()}
             </div>
 
-            {viewMode === "grouped" && !isLoading && !error && (
-                <div className="wk-conv-with-category__footer">
-                    <AddCategoryButton onClick={onCreateCategory ?? (() => {})} />
-                    {onManageCategories && (
-                        <button className="wk-conv-with-category__manage-btn" onClick={onManageCategories}>
-                            管理分组
-                        </button>
-                    )}
-                </div>
-            )}
+
         </div>
     )
 }

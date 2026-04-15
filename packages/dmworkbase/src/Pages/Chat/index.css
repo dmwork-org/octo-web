@@ -111,6 +111,21 @@
 }
 
 /* ── Title Dropdown ── */
+/* Space 名称标题（替换原下拉菜单位置） */
+.wk-chat-space-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--wk-text-primary, #1A1C24);
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    padding: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .wk-chat-title-dropdown {
     position: relative;
     flex: 1;
@@ -353,6 +368,19 @@
     border-radius: 40%;
 }
 
+/* 群聊 header 的 # icon（替换头像） */
+.wk-chat-conversation-header-channel-hash-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 40%;
+    background: var(--wk-bg-secondary, #EEEEF0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--wk-text-secondary, #5C6070);
+    flex-shrink: 0;
+}
+
 .wk-chat-conversation-header-channel-info {
     display: flex;
     align-items: center;
@@ -368,14 +396,59 @@
     gap: 4px;
 }
 
-.wk-chat-conversation-header-parent-group {
-    color: var(--wk-text-secondary);
-    font-weight: 500;
+/* 面包屑容器 */
+.wk-chat-conversation-header-channel-info-name {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+    overflow: hidden;
 }
 
-.wk-chat-conversation-header-separator {
-    color: var(--wk-text-tertiary);
+/* 父群组 badge：# icon + 群组名，可点击 */
+.wk-chat-conversation-header-parent-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--wk-text-tertiary, #9498A8);
+    font-size: 13px;
     font-weight: 400;
+    cursor: pointer;
+    transition: color 150ms;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.wk-chat-conversation-header-parent-group:hover {
+    color: var(--wk-text-secondary, #5C6070);
+}
+
+.wk-chat-conversation-header-parent-group svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+/* 分隔符 › */
+.wk-chat-conversation-header-separator {
+    color: var(--wk-text-quaternary, #C4C7D0);
+    font-size: 11px;
+    font-weight: 300;
+    flex-shrink: 0;
+    user-select: none;
+    margin: 0 1px;
+}
+
+/* 子区名称（当前频道）：🧵 icon + 名称，加粗 */
+.wk-chat-conversation-header-thread-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--wk-text-primary, #1A1C24);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .wk-chat-conversation-header-content {
@@ -654,4 +727,32 @@ body[theme-mode=dark] .wk-chat-popover {
 }
 .wk-thread-dropdown-item:hover {
   background: var(--wk-bg-hover);
+}
+
+/* 群聊 Tab 下「创建分组」菜单项，对齐 ChatMenusPopover li 样式 */
+.wk-chat-menu-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 10px;
+    font-size: 13px;
+    color: var(--wk-text-primary, #1A1C24);
+    border-bottom: 1px solid var(--wk-border-subtle, rgba(0,0,0,0.05));
+}
+
+.wk-chat-menu-item:hover {
+    background: var(--wk-bg-hover, rgba(0,0,0,0.04));
+}
+
+/* 子区 header 的 🧵 icon（无圆形背景，直接显示） */
+.wk-chat-conversation-header-channel-thread-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 40%;
+    background: var(--wk-bg-secondary, #EEEEF0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--wk-text-secondary, #5C6070);
+    flex-shrink: 0;
 }

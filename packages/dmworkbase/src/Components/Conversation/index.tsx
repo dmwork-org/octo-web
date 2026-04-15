@@ -62,6 +62,9 @@ import AttachmentPreview from "../AttachmentPreview";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 
+const foldSessionAvatarIcon = new URL("./fold-session-avatar.svg", import.meta.url)
+  .href;
+
 const FoldImage: React.FC<{ src: string }> = ({ src }) => {
   const [open, setOpen] = React.useState(false);
   return (
@@ -864,58 +867,67 @@ export class Conversation
           last ? "wk-message-item-last" : undefined
         )}
       >
-        <FoldSessionCard
-          className="wk-message-item-fold-session-card"
-          participants={participants}
-          count={session.count}
-          selectionMode={this.vm.editOn}
-          isActive={session.isActive}
-          isExpanded={session.isExpanded}
-          appearing={session.shouldAppear}
-          flash={session.shouldMergeFlash}
-          showSummary={showSummary}
-          highlightSummary={session.highlightSummary}
-          summaryId={summaryId}
-          summarySender={summarySender}
-          summaryContent={this.renderFoldSessionSummary(summaryMessage)}
-          expandedContent={this.renderFoldSessionExpandedList(
-            session.expandedMessages
-          )}
-          onToggle={() => {
-            this.vm.toggleFoldSession(session.sessionId);
-          }}
-          summaryChecked={!!summaryMessage.checked}
-          summarySelectable={summarySelectable}
-          onSummaryToggleSelect={(checked) => {
-            if (!summarySelectable) {
-              return;
-            }
-            this.vm.checkedMessage(summaryMessage.message, checked);
-          }}
-          onAnimationEnd={(event) => {
-            if (event.target === event.currentTarget) {
-              if (
-                event.animationName === "wk-fold-session-appear" &&
-                session.shouldMergeFlash
-              ) {
+        <div className="wk-message-item-fold-session-shell">
+          <div className="wk-message-item-fold-session-avatar" aria-hidden="true">
+            <img
+              className="wk-message-item-fold-session-avatar-icon"
+              src={foldSessionAvatarIcon}
+              alt=""
+            />
+          </div>
+          <FoldSessionCard
+            className="wk-message-item-fold-session-card"
+            participants={participants}
+            count={session.count}
+            selectionMode={this.vm.editOn}
+            isActive={session.isActive}
+            isExpanded={session.isExpanded}
+            appearing={session.shouldAppear}
+            flash={session.shouldMergeFlash}
+            showSummary={showSummary}
+            highlightSummary={session.highlightSummary}
+            summaryId={summaryId}
+            summarySender={summarySender}
+            summaryContent={this.renderFoldSessionSummary(summaryMessage)}
+            expandedContent={this.renderFoldSessionExpandedList(
+              session.expandedMessages
+            )}
+            onToggle={() => {
+              this.vm.toggleFoldSession(session.sessionId);
+            }}
+            summaryChecked={!!summaryMessage.checked}
+            summarySelectable={summarySelectable}
+            onSummaryToggleSelect={(checked) => {
+              if (!summarySelectable) {
                 return;
               }
-              this.vm.clearFoldSessionAnimation(session.sessionId);
-            }
-          }}
-          onSummaryContextMenu={
-            summaryMessage.contentType !== MessageContentTypeConst.typing
-              ? (event) => {
-                  this.showContextMenus(summaryMessage.message, event);
+              this.vm.checkedMessage(summaryMessage.message, checked);
+            }}
+            onAnimationEnd={(event) => {
+              if (event.target === event.currentTarget) {
+                if (
+                  event.animationName === "wk-fold-session-appear" &&
+                  session.shouldMergeFlash
+                ) {
+                  return;
                 }
-              : undefined
-          }
-          onSummaryAnimationEnd={(event) => {
-            if (event.target === event.currentTarget) {
-              this.vm.clearFoldSessionSummaryHighlight(session.sessionId);
+                this.vm.clearFoldSessionAnimation(session.sessionId);
+              }
+            }}
+            onSummaryContextMenu={
+              summaryMessage.contentType !== MessageContentTypeConst.typing
+                ? (event) => {
+                    this.showContextMenus(summaryMessage.message, event);
+                  }
+                : undefined
             }
-          }}
-        />
+            onSummaryAnimationEnd={(event) => {
+              if (event.target === event.currentTarget) {
+                this.vm.clearFoldSessionSummaryHighlight(session.sessionId);
+              }
+            }}
+          />
+        </div>
       </div>
     );
   }

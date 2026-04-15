@@ -5,6 +5,7 @@ import { MessageSquare, Users } from 'lucide-react';
 import './index.css';
 import AppLayout from '../Layout';
 import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
+import { setFaviconBadge, clearFaviconBadge } from '../utils/faviconBadge';
 function App() {
   registerMenus()
   return (
@@ -52,6 +53,13 @@ async function registerMenus() {
     }
 
     m.badge = badge;
+
+    // 同步更新浏览器 Tab favicon 角标
+    if (badge > 0) {
+      setFaviconBadge(badge)
+    } else {
+      clearFaviconBadge()
+    }
 
     if ((window as any).__POWERED_ELECTRON__) {
       (window as any).ipc.send("conversation-anager-unread-count", badge);

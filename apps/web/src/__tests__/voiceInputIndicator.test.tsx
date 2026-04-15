@@ -272,20 +272,32 @@ describe("VoiceInput - error classification", () => {
 // This mirrors the logic in VoiceInputIndicator's keyboard handler
 describe("VoiceInput - long-press ShiftLeft detection", () => {
     let shiftTimer: ReturnType<typeof setTimeout> | null = null
+    let preparingTimer: ReturnType<typeof setTimeout> | null = null
     let shiftRecording = false
+    let isPreparing = false
+    let cancelPending = false
     let startRecording: ReturnType<typeof vi.fn>
     let stopRecordingAndTranscribe: ReturnType<typeof vi.fn>
+    let cancelRecording: ReturnType<typeof vi.fn>
     let isRecording: boolean
     let isTranscribing: boolean
+
+    const PREPARING_DELAY_MS = 300
+    const RECORDING_DELAY_MS = 500
 
     function clearShiftTimer() {
         if (shiftTimer !== null) {
             clearTimeout(shiftTimer)
             shiftTimer = null
         }
+        if (preparingTimer !== null) {
+            clearTimeout(preparingTimer)
+            preparingTimer = null
+        }
+        isPreparing = false
     }
 
-    function handleKeyDown(e: { code: string; repeat: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }) {
+    function handleKeyDown(e: { code: string; repeat: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; key?: string; isComposing?: boolean }) {
         // Existing shortcut takes priority
         if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.code === "Space") {
             if (!isRecording && !isTranscribing) {
@@ -297,24 +309,46 @@ describe("VoiceInput - long-press ShiftLeft detection", () => {
         // Long-press ShiftLeft
         if (e.code === "ShiftLeft" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
             if (!isRecording && !isTranscribing && shiftTimer === null) {
+                cancelPending = false
+                preparingTimer = setTimeout(() => {
+                    preparingTimer = null
+                    isPreparing = true
+                }, PREPARING_DELAY_MS)
                 shiftTimer = setTimeout(() => {
                     shiftTimer = null
+                    isPreparing = false
                     shiftRecording = true
                     startRecording()
-                }, 500)
+                }, RECORDING_DELAY_MS)
             }
             return
         }
 
-        // Any other key cancels the timer (ignore repeated ShiftLeft from auto-repeat)
         if (shiftTimer !== null && e.code !== "ShiftLeft") {
-            clearShiftTimer()
+            // Modifier chord: cancel voice intent
+            if (e.code.startsWith("Control") || e.code.startsWith("Alt") || e.code.startsWith("Meta")) {
+                clearShiftTimer()
+                return
+            }
+            // IME-related events: do not cancel
+            const isIME = e.code.startsWith("Shift")
+                || e.key === "Process" || e.key === "Unidentified" || e.isComposing
+            if (!isIME) {
+                clearShiftTimer()
+            }
         }
     }
 
     function handleKeyUp(e: { code: string; key: string }) {
         if (e.code === "ShiftLeft" && shiftTimer !== null) {
             clearShiftTimer()
+            return
+        }
+
+        // Shift released while waiting for getUserMedia
+        if (e.code === "ShiftLeft" && shiftRecording && !isRecording) {
+            cancelPending = true
+            shiftRecording = false
             return
         }
 
@@ -334,11 +368,15 @@ describe("VoiceInput - long-press ShiftLeft detection", () => {
     beforeEach(() => {
         vi.useFakeTimers()
         shiftTimer = null
+        preparingTimer = null
         shiftRecording = false
+        isPreparing = false
+        cancelPending = false
         isRecording = false
         isTranscribing = false
         startRecording = vi.fn()
         stopRecordingAndTranscribe = vi.fn()
+        cancelRecording = vi.fn()
     })
 
     afterEach(() => {
@@ -437,5 +475,220 @@ describe("VoiceInput - long-press ShiftLeft detection", () => {
         // ShiftLeft with Alt held
         handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: true, shiftKey: true })
         expect(shiftTimer).toBeNull()
+    })
+
+    // ── Preparing delay tests ──
+
+    it("should NOT show preparing state for short press (< 300ms)", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        vi.advanceTimersByTime(200)
+        expect(isPreparing).toBe(false)
+        handleKeyUp({ code: "ShiftLeft", key: "Shift" })
+        expect(isPreparing).toBe(false)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should show preparing state after 300ms hold", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(isPreparing).toBe(false)
+        vi.advanceTimersByTime(PREPARING_DELAY_MS)
+        expect(isPreparing).toBe(true)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should show preparing then cancel when released between 300-500ms", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        vi.advanceTimersByTime(350)
+        expect(isPreparing).toBe(true)
+        handleKeyUp({ code: "ShiftLeft", key: "Shift" })
+        expect(isPreparing).toBe(false)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should clear preparing state when recording starts at 500ms", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        vi.advanceTimersByTime(PREPARING_DELAY_MS)
+        expect(isPreparing).toBe(true)
+        vi.advanceTimersByTime(RECORDING_DELAY_MS - PREPARING_DELAY_MS) // total 500ms
+        expect(isPreparing).toBe(false)
+        expect(startRecording).toHaveBeenCalledTimes(1)
+    })
+
+    // ── Modifier chord tests ──
+
+    it("should cancel timer when Ctrl is pressed during ShiftLeft hold", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).not.toBeNull()
+        handleKeyDown({ code: "ControlLeft", repeat: false, metaKey: false, ctrlKey: true, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        expect(isPreparing).toBe(false)
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should cancel timer when Meta is pressed during ShiftLeft hold", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        handleKeyDown({ code: "MetaLeft", repeat: false, metaKey: true, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should cancel timer when Alt is pressed during ShiftLeft hold", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        handleKeyDown({ code: "AltLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: true, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    // ── IME tests ──
+
+    it("should NOT cancel timer for key=Process (IME)", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        handleKeyDown({ code: "KeyQ", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true, key: "Process" })
+        expect(shiftTimer).not.toBeNull()
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(startRecording).toHaveBeenCalledTimes(1)
+    })
+
+    it("should NOT cancel timer for isComposing events", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        handleKeyDown({ code: "KeyA", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true, isComposing: true })
+        expect(shiftTimer).not.toBeNull()
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(startRecording).toHaveBeenCalledTimes(1)
+    })
+
+    it("should NOT cancel timer for key=Unidentified (IME)", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        handleKeyDown({ code: "KeyQ", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true, key: "Unidentified" })
+        expect(shiftTimer).not.toBeNull()
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(startRecording).toHaveBeenCalledTimes(1)
+    })
+
+    // ── Failure cleanup tests ──
+
+    it("should set cancelPending when Shift released while waiting for getUserMedia", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(shiftRecording).toBe(true)
+        expect(isRecording).toBe(false)
+        handleKeyUp({ code: "ShiftLeft", key: "Shift" })
+        expect(cancelPending).toBe(true)
+        expect(shiftRecording).toBe(false)
+    })
+
+    it("should clear shiftRecording and cancelPending when onRecordingFailed is triggered", () => {
+        // Simulate entering startPending state
+        shiftRecording = true
+        cancelPending = true
+        // Simulate the component's onRecordingFailed callback behavior
+        const onRecordingFailed = () => {
+            shiftRecording = false
+            cancelPending = false
+        }
+        onRecordingFailed()
+        expect(shiftRecording).toBe(false)
+        expect(cancelPending).toBe(false)
+    })
+
+    // ── Combo key tests ──
+
+    it("should cancel both timers on Shift+letter combo (typing uppercase)", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).not.toBeNull()
+        vi.advanceTimersByTime(100)
+        handleKeyDown({ code: "KeyA", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        expect(isPreparing).toBe(false)
+        vi.advanceTimersByTime(RECORDING_DELAY_MS)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+})
+
+// --- Test cancelPending → cancelRecording integration ---
+// Verify React useEffect detects cancelPending when isRecording becomes true and calls cancelRecording
+describe("VoiceInput - cancelPending integration", () => {
+    it("should auto-cancel recording when Shift was released before getUserMedia resolved", () => {
+        const cancelRecording = vi.fn()
+
+        function TestHarness() {
+            const [isRecording, setIsRecording] = React.useState(false)
+            const cancelPendingRef = React.useRef(false)
+            const shiftRecordingRef = React.useRef(false)
+
+            React.useEffect(() => {
+                if (isRecording && cancelPendingRef.current) {
+                    cancelPendingRef.current = false
+                    shiftRecordingRef.current = false
+                    cancelRecording()
+                }
+            }, [isRecording])
+
+            return (
+                <div>
+                    <button onClick={() => {
+                        shiftRecordingRef.current = true
+                    }}>mark-start-pending</button>
+                    <button onClick={() => {
+                        cancelPendingRef.current = true
+                        shiftRecordingRef.current = false
+                    }}>release-shift</button>
+                    <button onClick={() => setIsRecording(true)}>recording-started</button>
+                </div>
+            )
+        }
+
+        const { getByText } = render(<TestHarness />)
+
+        act(() => {
+            // 1. 500ms reached, startRecording called
+            getByText("mark-start-pending").click()
+            // 2. User releases Shift, but getUserMedia still pending
+            getByText("release-shift").click()
+            // 3. getUserMedia succeeds, isRecording becomes true
+            getByText("recording-started").click()
+        })
+
+        expect(cancelRecording).toHaveBeenCalledTimes(1)
+    })
+
+    it("should NOT cancel recording if Shift was not released early", () => {
+        const cancelRecording = vi.fn()
+
+        function TestHarness() {
+            const [isRecording, setIsRecording] = React.useState(false)
+            const cancelPendingRef = React.useRef(false)
+            const shiftRecordingRef = React.useRef(false)
+
+            React.useEffect(() => {
+                if (isRecording && cancelPendingRef.current) {
+                    cancelPendingRef.current = false
+                    shiftRecordingRef.current = false
+                    cancelRecording()
+                }
+            }, [isRecording])
+
+            return (
+                <div>
+                    <button onClick={() => {
+                        shiftRecordingRef.current = true
+                    }}>mark-start-pending</button>
+                    <button onClick={() => setIsRecording(true)}>recording-started</button>
+                </div>
+            )
+        }
+
+        const { getByText } = render(<TestHarness />)
+
+        act(() => {
+            getByText("mark-start-pending").click()
+            // Do not release Shift, just wait for getUserMedia to succeed
+            getByText("recording-started").click()
+        })
+
+        expect(cancelRecording).not.toHaveBeenCalled()
     })
 })

@@ -308,9 +308,15 @@ export interface IChannelDataSource {
      */
     conversationExtraUpdate(conversationExtra: ConversationExtra): Promise<void>
 
-    getGroupMd(channel: Channel): Promise<any>
+    getGroupMd(channel: Channel): Promise<{ content: string; version: number }>
     updateGroupMd(channel: Channel, content: string): Promise<{ version: number }>
     deleteGroupMd(channel: Channel): Promise<void>
+
+    // 子区 GROUP.md
+    getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }>
+    updateThreadMd(groupNo: string, shortId: string, content: string): Promise<{ version: number }>
+    deleteThreadMd(groupNo: string, shortId: string): Promise<void>
+
     setBotAdmin(channel: Channel, uid: string): Promise<void>
     removeBotAdmin(channel: Channel, uid: string): Promise<void>
 }

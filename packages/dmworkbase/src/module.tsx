@@ -561,6 +561,7 @@ export default class BaseModule implements IModule {
     WKApp.shared.chatMenusRegister("chatmenus.startchat", (param) => {
       const isDark = WKApp.config.themeMode === ThemeMode.dark;
       return {
+        key: 'start-group',
         title: "发起群聊",
         icon: isDark ? new URL("./assets/popmenus_startchat_dark.png", import.meta.url).href : new URL("./assets/popmenus_startchat.png", import.meta.url).href,
         onClick: () => {
@@ -1242,7 +1243,7 @@ export default class BaseModule implements IModule {
               onClick: () => {
                 context.push(
                   <ChannelAvatar
-                    showUpload={data.isManagerOrCreatorOfMe}
+                    showUpload={false}
                     channel={channel}
                     context={context}
                   ></ChannelAvatar>,
@@ -1709,6 +1710,68 @@ export default class BaseModule implements IModule {
         });
       },
       500
+    );
+
+    // 子区 GROUP.md 设置项
+    WKApp.shared.channelSettingRegister(
+      "thread.md.setting",
+      (context) => {
+        const data = context.routeData() as ChannelSettingRouteData;
+        const channel = data.channel;
+        const channelInfo = data.channelInfo;
+        if (channel.channelType !== ChannelTypeCommunityTopic) {
+          return undefined;
+        }
+        const threadInfo = parseThreadChannelId(channel.channelID);
+        if (!threadInfo) {
+          return undefined;
+        }
+
+        const hasThreadMd = channelInfo?.orgData?.has_thread_md;
+        const mdVersion = channelInfo?.orgData?.thread_md_version || 0;
+
+        return new Section({
+          rows: [
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: "GROUP.md",
+                subTitle: hasThreadMd ? `已配置 v${mdVersion}` : "未配置",
+                onClick: () => {
+                  // 延迟获取最新数据
+                  const latestData = context.routeData() as ChannelSettingRouteData;
+                  const subscriberOfMe = latestData?.subscriberOfMe;
+                  const latestChannelInfo = latestData?.channelInfo;
+
+                  // 后端权限字段优先
+                  const backendCanEdit = !!latestChannelInfo?.orgData?.thread?.can_edit_thread_md;
+
+                  // 父群群主/管理员
+                  const isGroupOwnerOrManager = subscriberOfMe &&
+                    (subscriberOfMe.role === 1 || subscriberOfMe.role === 2);
+
+                  // 子区创建者
+                  const isThreadCreator =
+                    latestChannelInfo?.orgData?.thread?.creator_uid === WKApp.loginInfo.uid;
+
+                  const canEditMd = !!(backendCanEdit || isThreadCreator || isGroupOwnerOrManager);
+
+                  context.push(
+                    <GroupMdEditor
+                      channel={channel}
+                      canEdit={canEditMd}
+                    />,
+                    new RouteContextConfig({
+                      title: "GROUP.md",
+                    })
+                  );
+                },
+              },
+            }),
+          ],
+        });
+      },
+      1000
     );
 
     // 子区设置说明：

@@ -407,3 +407,191 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   justify-content: center;
   color: var(--wk-text-secondary);
 }
+
+/* ── Compact 模式（群聊 Tab）紧凑频道列表 ── */
+.wk-conv-compact-item {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-2, 8px);
+    padding: 5px var(--wk-sp-2, 8px);
+    border-radius: var(--wk-r-sm, 6px);
+    cursor: pointer;
+    min-height: 32px;
+    position: relative;
+    transition: background 200ms;
+}
+
+.wk-conv-compact-item:hover {
+    background: var(--wk-bg-hover, rgba(0,0,0,0.04));
+}
+
+.wk-conv-compact-item--selected {
+    background: rgba(124,92,252,0.06);
+}
+
+.wk-conv-compact-item--selected::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    border-radius: 0 2px 2px 0;
+    background: linear-gradient(135deg, var(--wk-brand-from, #7C5CFC), var(--wk-brand-to, #00D4AA));
+}
+
+/* 旧式 padding，已在下方的 position:relative 版本合并，保留 fallback */
+
+.wk-conv-compact-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--wk-text-tertiary, #9498A8);
+}
+
+.wk-conv-compact-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--wk-text-secondary, #5C6070);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wk-conv-compact-item--unread .wk-conv-compact-name {
+    font-weight: 600;
+    color: var(--wk-text-primary, #1A1C24);
+}
+
+.wk-conv-compact-badge {
+    min-width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: var(--wk-red, #E5405E);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    flex-shrink: 0;
+}
+
+/* 拖拽 handle */
+.wk-conv-compact-drag-handle {
+    flex-shrink: 0;
+    width: 14px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--wk-text-quaternary, #C4C7D0);
+    cursor: grab;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms;
+    margin-left: -4px;
+}
+
+.wk-conv-compact-item:hover .wk-conv-compact-drag-handle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.wk-conv-compact-drag-handle:active {
+    cursor: grabbing;
+}
+
+.wk-conv-compact-item--dragging {
+    opacity: 0.4;
+}
+
+/* DragOverlay ghost 样式 */
+.wk-conv-compact-item--ghost {
+    background: var(--wk-bg-base, #F7F8FA);
+    border: 1px solid var(--wk-brand-from, #7C5CFC);
+    border-radius: var(--wk-r-sm, 6px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    opacity: 0.9;
+}
+
+
+
+/* compact 模式子区 L连接线 */
+.wk-conv-compact-item--thread {
+    position: relative;
+    /* 子区明显缩进，体现父子层级 */
+    padding-left: 40px;
+}
+
+/* L连接线：left = 44px（# icon 中心 = 35 + 9），width = 4px，子区 padding-left: 48px */
+.wk-conv-compact-item--thread::after {
+    content: '';
+    position: absolute;
+    left: 30px;
+    top: 0;
+    height: 50%;
+    width: 10px;
+    border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-bottom-left-radius: 3px;
+}
+
+/* 子区间延伸竖线（├── 效果），最后一个子区（后面是 overflow 或无线）不延伸 */
+.wk-conv-compact-item--thread:has(+ .wk-conv-compact-item--thread)::before,
+.wk-conv-compact-item--thread:has(+ .wk-conv-compact-thread-overflow)::before {
+    content: '';
+    position: absolute;
+    left: 30px;
+    top: 50%;
+    bottom: 0;
+    width: 1.5px;
+    background: var(--wk-border-default, rgba(0,0,0,0.12));
+}
+
+/* compact 模式「+N 个子区」/ 「收起」 overflow 控件 */
+.wk-conv-compact-thread-overflow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px 3px 40px;
+    font-size: 11px;
+    color: var(--wk-text-tertiary, #9498A8);
+    cursor: pointer;
+    border-radius: var(--wk-r-sm, 4px);
+    transition: color 150ms;
+    position: relative;
+}
+
+/* overflow 控件：L 形（上方竖线 + 水平线），连接上方子区 */
+.wk-conv-compact-thread-overflow::after {
+    content: '';
+    position: absolute;
+    left: 30px;
+    top: 0;
+    height: 50%;
+    width: 10px;
+    border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-bottom-left-radius: 3px;
+}
+
+/* 展开态控件置底，不需要下方延伸线 */
+
+.wk-conv-compact-thread-overflow:hover {
+    color: var(--wk-brand-primary, #7C5CFC);
+}
+
+
+/* 父群聊有子区时，# icon 下方延伸竖线，连接下面的子区 */
+.wk-conv-compact-item--has-threads {
+    position: relative;
+}
+
+/* 父群聊有子区：不画竖线，连接线靠子区自身的 ::after L 形体现 */
