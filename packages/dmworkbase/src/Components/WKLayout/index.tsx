@@ -50,33 +50,38 @@ export class WKLayout extends Component<WKLayoutProps>{
 
     render() {
         const { onRenderTab, contentLeft,contentRight,onLeftContext,onRightContext } = this.props
+        const isExtension = (window as any).__POWERED_EXTENSION__
+
+        const tabElement = <div className="wk-layout-tab">
+            {
+                onRenderTab && onRenderTab(window.innerWidth <= smallScreenWidth ? ScreenSize.small : ScreenSize.normal)
+            }
+        </div>
+
+        const contentElement = <div className={classNames("wk-layout-content", this.rightContext?.viewCount() > 0 ? "wk-layout-open" : undefined)}>
+            <div className="wk-layout-content-left">
+                <WKViewQueue onContext={(context) => {
+                    if(onLeftContext) {
+                        onLeftContext(context)
+                    }
+                }}>
+                    {contentLeft}
+                </WKViewQueue>
+            </div>
+            <div className="wk-layout-content-right">
+                <WKViewQueue onContext={(context) => {
+                    this.rightContext = context
+                    if(onRightContext) {
+                        onRightContext(context)
+                    }
+                }}>
+                    {contentRight}
+                </WKViewQueue>
+            </div>
+        </div>
+
         return <div className="wk-layout">
-            <div className="wk-layout-tab">
-                {
-                    onRenderTab && onRenderTab(window.innerWidth <= smallScreenWidth ? ScreenSize.small : ScreenSize.normal)
-                }
-            </div>
-            <div className={classNames("wk-layout-content", this.rightContext?.viewCount() > 0 ? "wk-layout-open" : undefined)}>
-                <div className="wk-layout-content-left">
-                    <WKViewQueue onContext={(context) => {
-                        if(onLeftContext) {
-                            onLeftContext(context)
-                        }
-                    }}>
-                        {contentLeft}
-                    </WKViewQueue>
-                </div>
-                <div className="wk-layout-content-right">
-                    <WKViewQueue onContext={(context) => {
-                        this.rightContext = context
-                        if(onRightContext) {
-                            onRightContext(context)
-                        }
-                    }}>
-                        {contentRight}
-                    </WKViewQueue>
-                </div>
-            </div>
+            {isExtension ? <>{contentElement}{tabElement}</> : <>{tabElement}{contentElement}</>}
         </div>
     }
 }

@@ -1,0 +1,111 @@
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    var(--wk-brand-gradient-subtle),
+    linear-gradient(180deg, var(--wk-bg-base) 0%, var(--wk-bg-surface) 100%);
+  color: var(--wk-text-primary);
+  font-family: var(--wk-font-sans);
+}
+
+body {
+  min-width: 720px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.options-page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: var(--wk-sp-12) var(--wk-sp-6);
+}
+
+.options-card {
+  box-sizing: border-box;
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: var(--wk-sp-8);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-xl);
+  background: var(--wk-bg-elevated);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.options-header {
+  margin-bottom: var(--wk-sp-8);
+}
+
+.options-eyebrow {
+  display: inline-flex;
+  margin-bottom: var(--wk-sp-3);
+  padding: var(--wk-sp-1-5) var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.options-header h1 {
+  margin: 0;
+  font: var(--wk-text-h1);
+}
+
+.options-header p {
+  margin: var(--wk-sp-3) 0 0;
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-body);
+}
+
+.options-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
+.options-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-6);
+  padding: var(--wk-sp-5) var(--wk-sp-6);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-lg);
+  background: var(--wk-bg-surface);
+}
+
+.options-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1-5);
+}
+
+.options-title {
+  font: var(--wk-text-h3);
+}
+
+.options-description {
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-body);
+}
+
+@media (max-width: 767px) {
+  body {
+    min-width: 0;
+  }
+
+  .options-page {
+    padding: var(--wk-sp-5) var(--wk-sp-4);
+  }
+
+  .options-card {
+    padding: var(--wk-sp-5);
+  }
+
+  .options-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

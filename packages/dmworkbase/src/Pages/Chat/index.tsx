@@ -412,6 +412,7 @@ export class ChatContentPage extends Component<
                 shouldShowHistorySplit={true}
                 onContext={(ctx) => {
                   this.conversationContext = ctx;
+                  (WKApp.shared as any).activeConversationContext = ctx;
                   this.setState({
                     selectionMode: ctx.editOn(),
                     selectedCount: ctx.getCheckedMessageCount(),
