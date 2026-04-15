@@ -34,6 +34,7 @@ export type FileType =
   | "jsonl"
   | "text"
   | "excel"
+  | "ppt"
   | "video"
   | "audio"
   | "unknown";

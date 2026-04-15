@@ -33,6 +33,7 @@ const meta: Meta<typeof FilePreviewPanel> = {
 | 代码 | js, ts, py, java, go, rs, json, css, html, xml, yaml, sql 等 |
 | 纯文本 | txt, log, ini, conf, cfg |
 | Excel/CSV | xlsx, xls, csv |
+| PPT | ppt_html (后端转换后的 HTML 格式) |
 
 ## 扩展渲染器
 \`\`\`tsx
@@ -354,6 +355,78 @@ End of file.
     extension: "html",
     size: 1024,
   },
+  ppt: {
+    // PPT HTML 格式 - 模拟后端转换后的 PPT 数据
+    url:
+      "data:application/json;base64," +
+      btoaUnicode(
+        JSON.stringify({
+          total: 3,
+          data: [
+            {
+              index: 1,
+              content: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; padding: 40px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: calc(100vh - 80px); }
+    h1 { font-size: 48px; margin-bottom: 20px; }
+    p { font-size: 24px; opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <h1>PPT 预览演示</h1>
+  <p>第 1 页 - 封面</p>
+</body>
+</html>`,
+            },
+            {
+              index: 2,
+              content: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; padding: 40px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; }
+    h2 { color: #333; font-size: 36px; margin-bottom: 30px; }
+    ul { font-size: 24px; line-height: 2; }
+    li { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <h2>主要功能</h2>
+  <ul>
+    <li>支持预览/代码视图切换</li>
+    <li>自适应缩放显示</li>
+    <li>支持多页 PPT 滚动浏览</li>
+    <li>支持页面跳转</li>
+  </ul>
+</body>
+</html>`,
+            },
+            {
+              index: 3,
+              content: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; padding: 40px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #1a1a2e; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: calc(100vh - 80px); }
+    h2 { font-size: 42px; margin-bottom: 30px; }
+    p { font-size: 20px; opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <h2>谢谢观看</h2>
+  <p>第 3 页 - 结尾</p>
+</body>
+</html>`,
+            },
+          ],
+        })
+      ),
+    name: "presentation.ppt_html",
+    extension: "ppt_html",
+    size: 4096,
+  },
 };
 
 // 交互式 Story
@@ -578,6 +651,22 @@ export const HtmlPreview: Story = {
     docs: {
       description: {
         story: "HTML 文件预览，使用 iframe 渲染完整的 HTML 页面。",
+      },
+    },
+  },
+};
+
+// PPT 预览
+export const PptPreview: Story = {
+  args: {
+    file: mockFiles.ppt,
+    onClose: () => console.log("Close clicked"),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "PPT 文件预览（HTML 格式），支持多页滚动、预览/代码视图切换、自适应缩放。",
       },
     },
   },

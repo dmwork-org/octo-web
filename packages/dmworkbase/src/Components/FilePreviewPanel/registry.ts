@@ -14,6 +14,7 @@ import FallbackRenderer from "./renderers/FallbackRenderer";
 import ExcelRenderer from "./renderers/ExcelRenderer";
 import JsonRenderer from "./renderers/JsonRenderer";
 import JsonlRenderer from "./renderers/JsonlRenderer";
+import PptRenderer from "./renderers/PptRenderer";
 
 /**
  * 文件渲染器注册表
@@ -124,6 +125,14 @@ class FileRendererRegistry {
       type: "excel",
       extensions: ["xlsx", "xls", "xlsb", "xlsm", "csv"],
       renderer: ExcelRenderer,
+      needsFetch: true,
+    });
+
+    // PPT (HTML格式，后端转换后的 PPT)
+    this.register({
+      type: "ppt",
+      extensions: ["ppt_html"],
+      renderer: PptRenderer,
       needsFetch: true,
     });
   }
