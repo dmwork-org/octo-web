@@ -552,10 +552,18 @@ export default class ChatPage extends Component<any, ChatPageState> {
           const { activeTab } = this.state
           // 计算各 Tab 未读总数
           const groupUnread = vm.conversations.reduce((sum: number, c: ConversationWrap) => {
-            if (c.channel.channelType === ChannelTypeGroup || c.channel.channelType === ChannelTypeCommunityTopic) {
-              return sum + (c.unread || 0)
+            if (c.channel.channelType !== ChannelTypeGroup && c.channel.channelType !== ChannelTypeCommunityTopic) return sum
+            const info = c.channelInfo
+            if (info?.mute) return sum
+            // 子区：额外检查父群聊 mute
+            if (c.channel.channelType === ChannelTypeCommunityTopic) {
+              const parentGroupNo = info?.orgData?.parentGroupNo as string | undefined
+              if (parentGroupNo) {
+                const parentInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(parentGroupNo, ChannelTypeGroup))
+                if (parentInfo?.mute) return sum
+              }
             }
-            return sum
+            return sum + (c.unread || 0)
           }, 0)
           const dmUnread = vm.conversations.reduce((sum: number, c: ConversationWrap) => {
             if (c.channel.channelType === ChannelTypePerson) {

@@ -585,3 +585,18 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 /* 父群聊有子区：不画竖线，连接线靠子区自身的 ::after L 形体现 */
+
+/* compact 模式 mute 状态 */
+.wk-conv-compact-item--muted .wk-conv-compact-name {
+    opacity: 0.45;
+    color: var(--semi-color-text-2, #8a8f99);
+    font-weight: 400;
+}
+
+.wk-conv-compact-mute-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 2px;
+    opacity: 0.6;
+}

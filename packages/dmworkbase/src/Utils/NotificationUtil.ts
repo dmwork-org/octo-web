@@ -1,4 +1,4 @@
-import { Message, Channel } from "wukongimjssdk";
+import { Message, Channel, ChannelTypeGroup } from "wukongimjssdk";
 import WKApp from "../App";
 import WKSDK from "wukongimjssdk";
 
@@ -192,6 +192,16 @@ export class NotificationUtil {
     // Check if channel is muted
     if (channelInfo && channelInfo.mute) {
       return;
+    }
+
+    // 子区消息：额外检查父群聊 mute（只读 orgData.parentGroupNo，不依赖 Service 层解析）
+    const parentGroupNo = channelInfo?.orgData?.parentGroupNo as string | undefined
+    if (parentGroupNo) {
+      const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
+      const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+      if (parentChannelInfo?.mute) {
+        return
+      }
     }
 
     // Check if message should show red dot

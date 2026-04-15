@@ -51,6 +51,13 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
 
     const isThread = conversationWrap.channel.channelType === ChannelTypeCommunityTopic
 
+    // 子区继承父群聊 mute 状态
+    const parentGroupNo = isThread ? (channelInfo?.orgData?.parentGroupNo as string | undefined) : undefined
+    const parentChannelInfo = parentGroupNo
+        ? WKSDK.shared().channelManager.getChannelInfo(new Channel(parentGroupNo, ChannelTypeGroup))
+        : undefined
+    const effectiveMute = !!(channelInfo?.mute || parentChannelInfo?.mute)
+
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: `grp::${conversationWrap.channel.channelID}`,
         data: {
@@ -77,6 +84,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
                 isThread ? "wk-conv-compact-item--thread" : undefined,
                 isDragging ? "wk-conv-compact-item--dragging" : undefined,
                 hasThreads ? "wk-conv-compact-item--has-threads" : undefined,
+                effectiveMute ? "wk-conv-compact-item--muted" : undefined,
             )}
             onClick={onClick}
             onContextMenu={onContextMenu}
@@ -108,8 +116,16 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
             <span className="wk-conv-compact-name">
                 {channelInfo?.orgData.displayName ?? conversationWrap.channel.channelID}
             </span>
+            {effectiveMute && (
+                <span className="wk-conv-compact-mute-icon">
+                    <svg className="icon" viewBox="0 0 1131 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M914.688 892.736L64 236.224l38.784-50.88L271.36 315.648a300.288 300.288 0 0 1 246.976-157.952v-33.28c0-16.64 13.504-30.08 30.08-30.08h2.304c16.576 0 30.08 13.44 30.08 30.08v32.96a299.776 299.776 0 0 1 284.928 299.136v294.272l45.504 58.624 48.768 37.696-45.312 45.632zM234.624 480.384l506.88 391.232H140.416l94.272-121.536-0.064-269.696z" fill="#bfbfbf" /></svg>
+                </span>
+            )}
             {conversationWrap.unread > 0 && (
-                <span className="wk-conv-compact-badge">
+                <span
+                    className="wk-conv-compact-badge"
+                    style={{ backgroundColor: effectiveMute ? "var(--semi-color-text-2)" : undefined }}
+                >
                     {conversationWrap.unread > 99 ? '99+' : conversationWrap.unread}
                 </span>
             )}
