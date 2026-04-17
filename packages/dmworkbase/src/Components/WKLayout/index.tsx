@@ -11,6 +11,7 @@ const SPLITTER_MIN_WIDTH = 200
 const SPLITTER_MAX_WIDTH = 480
 const SPLITTER_DEFAULT_WIDTH = 300
 const SPLITTER_STORAGE_KEY = 'wk-layout-left-width'
+const MIN_RIGHT_WIDTH = 360  // minimum right panel width to keep chat usable
 
 export enum ScreenSize {
     normal,
@@ -36,7 +37,6 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     rightContext!: WKViewQueueContext
     routeLister!:VoidFunction
     private layoutRef = React.createRef<HTMLDivElement>()
-    private splitterRef = React.createRef<HTMLDivElement>()
     private dragStartX = 0        // mouse X when drag started
     private dragStartWidth = 0    // left panel width when drag started
     private lastWidth = SPLITTER_DEFAULT_WIDTH  // sync copy for localStorage persist
@@ -96,11 +96,23 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         document.body.style.userSelect = 'none'
     }
 
+    /** Calculate the effective max left width based on current container size */
+    private getMaxLeftWidth(): number {
+        if (!this.layoutRef.current) return SPLITTER_MAX_WIDTH
+        const contentEl = this.layoutRef.current.querySelector('.wk-layout-content') as HTMLElement
+        if (!contentEl) return SPLITTER_MAX_WIDTH
+        const available = contentEl.clientWidth  // excludes splitter width implicitly via flex
+        // Reserve MIN_RIGHT_WIDTH for the right panel + 8px for the splitter
+        const dynamicMax = available - MIN_RIGHT_WIDTH - 8
+        return Math.min(SPLITTER_MAX_WIDTH, Math.max(SPLITTER_MIN_WIDTH, dynamicMax))
+    }
+
     private onDragMove = (e: MouseEvent) => {
         // Use delta from drag start point — no need to know tab width or layout offset
         const delta = e.clientX - this.dragStartX
+        const maxWidth = this.getMaxLeftWidth()
         let newWidth = this.dragStartWidth + delta
-        newWidth = Math.max(SPLITTER_MIN_WIDTH, Math.min(SPLITTER_MAX_WIDTH, newWidth))
+        newWidth = Math.max(SPLITTER_MIN_WIDTH, Math.min(maxWidth, newWidth))
         this.lastWidth = newWidth
         this.setState({ leftWidth: newWidth })
     }
@@ -129,9 +141,13 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
             }
         </div>
 
+        // Clamp leftWidth against current container to prevent right panel collapse
+        const maxWidth = this.getMaxLeftWidth()
+        const clampedWidth = Math.max(SPLITTER_MIN_WIDTH, Math.min(maxWidth, leftWidth))
+
         // Apply dynamic width via CSS variable on the content container
         const contentStyle = isSmallScreen ? undefined : {
-            '--wk-width-layout-content-left': `${leftWidth}px`
+            '--wk-width-layout-content-left': `${clampedWidth}px`
         } as React.CSSProperties
 
         const contentElement = <div
