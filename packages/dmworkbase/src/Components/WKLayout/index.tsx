@@ -41,6 +41,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     private dragStartX = 0
     private dragStartWidth = 0
     private lastWidth = SPLITTER_DEFAULT_WIDTH
+    private cachedContainerWidth = 1200  // updated in mount + resize
 
     constructor(props: any) {
         super(props)
@@ -56,6 +57,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
     componentDidMount() {
         window.addEventListener("resize", this.gResize)
+        this.updateContainerWidth()
 
         this.routeLister = ()=>{
             this.setState({})
@@ -71,14 +73,22 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     }
 
     resize = throttle(() => {
+        this.updateContainerWidth()
         this.setState({})
     }, 100)
 
-    /** Get the content container's current width */
-    private getContainerWidth(): number {
-        if (!this.layoutRef.current) return 1200  // safe fallback
+    private updateContainerWidth() {
+        if (!this.layoutRef.current) return
         const contentEl = this.layoutRef.current.querySelector('.wk-layout-content') as HTMLElement
-        return contentEl ? contentEl.clientWidth : 1200
+        if (contentEl) {
+            this.cachedContainerWidth = contentEl.clientWidth
+        }
+    }
+
+    private onDoubleClick = () => {
+        this.lastWidth = SPLITTER_DEFAULT_WIDTH
+        this.setState({ leftWidth: SPLITTER_DEFAULT_WIDTH })
+        persistWidth(SPLITTER_DEFAULT_WIDTH)
     }
 
     private onDragStart = (e: React.MouseEvent) => {
@@ -94,18 +104,30 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
     private onDragMove = (e: MouseEvent) => {
         const delta = e.clientX - this.dragStartX
-        const containerWidth = this.getContainerWidth()
+        const containerWidth = this.cachedContainerWidth
         const newWidth = clampWidth(this.dragStartWidth + delta, containerWidth)
         this.lastWidth = newWidth
-        this.setState({ leftWidth: newWidth })
+
+        // Write CSS variables directly — skip React re-render during drag
+        const content = this.layoutRef.current?.querySelector('.wk-layout-content') as HTMLElement
+        if (content) {
+            const px = newWidth + 'px'
+            content.style.setProperty('--wk-width-layout-content-left', px)
+            content.style.setProperty('--wk-wdith-conversation-list', px)  // legacy typo
+        }
+        const left = this.layoutRef.current?.querySelector('.wk-layout-content-left') as HTMLElement
+        if (left) {
+            left.style.width = newWidth + 'px'
+        }
     }
 
     private onDragEnd = () => {
-        this.setState({ isDragging: false })
         document.removeEventListener('mousemove', this.onDragMove)
         document.removeEventListener('mouseup', this.onDragEnd)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
+        // Commit final width to React state (single re-render)
+        this.setState({ leftWidth: this.lastWidth, isDragging: false })
         persistWidth(this.lastWidth)
     }
 
@@ -121,9 +143,8 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
             }
         </div>
 
-        // Clamp against current container so window resize doesn't break layout
-        const containerWidth = this.getContainerWidth()
-        const clampedWidth = clampWidth(leftWidth, containerWidth)
+        // Clamp against cached container width so window resize doesn't break layout
+        const clampedWidth = clampWidth(leftWidth, this.cachedContainerWidth)
 
         const widthPx = `${clampedWidth}px`
 
@@ -165,6 +186,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
             <div
                 className={classNames("wk-layout-splitter", isDragging && "wk-layout-splitter-active")}
                 onMouseDown={this.onDragStart}
+                onDoubleClick={this.onDoubleClick}
             >
                 <div className="wk-layout-splitter-line" />
             </div>
