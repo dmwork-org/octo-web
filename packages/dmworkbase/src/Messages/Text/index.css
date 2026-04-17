@@ -57,9 +57,6 @@ body[theme-mode=dark] .wk-message-text-recv {
     cursor: pointer;
 }
 
-.wk-message-text-reply.wk-message-text-reply-recv {
-    color: var(--wk-text-secondary);
-}
 
 
 .wk-message-text-reply-author {
