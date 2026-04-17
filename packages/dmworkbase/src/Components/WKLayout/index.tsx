@@ -7,6 +7,11 @@ import "./index.css"
 
 const smallScreenWidth = 640 // 小屏最大宽度（index.css @media screen 里也需要改成这个值的大小）
 
+const SPLITTER_MIN_WIDTH = 200
+const SPLITTER_MAX_WIDTH = 480
+const SPLITTER_DEFAULT_WIDTH = 300
+const SPLITTER_STORAGE_KEY = 'wk-layout-left-width'
+
 export enum ScreenSize {
     normal,
     small
@@ -21,13 +26,42 @@ export interface WKLayoutProps {
 
 }
 
-export class WKLayout extends Component<WKLayoutProps>{
+interface WKLayoutState {
+    leftWidth: number
+    isDragging: boolean
+}
+
+export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     gResize!: (this: Window, ev: UIEvent) => any
     rightContext!: WKViewQueueContext
     routeLister!:VoidFunction
+    private layoutRef = React.createRef<HTMLDivElement>()
+    private splitterRef = React.createRef<HTMLDivElement>()
+    private dragStartX = 0        // mouse X when drag started
+    private dragStartWidth = 0    // left panel width when drag started
+    private lastWidth = SPLITTER_DEFAULT_WIDTH  // sync copy for localStorage persist
+
     constructor(props: any) {
         super(props)
         this.gResize = this.resize
+
+        // Restore saved width from localStorage
+        let savedWidth = SPLITTER_DEFAULT_WIDTH
+        try {
+            const stored = localStorage.getItem(SPLITTER_STORAGE_KEY)
+            if (stored) {
+                const parsed = parseInt(stored, 10)
+                if (!isNaN(parsed) && parsed >= SPLITTER_MIN_WIDTH && parsed <= SPLITTER_MAX_WIDTH) {
+                    savedWidth = parsed
+                }
+            }
+        } catch (_) {}
+
+        this.lastWidth = savedWidth
+        this.state = {
+            leftWidth: savedWidth,
+            isDragging: false,
+        }
     }
 
     componentDidMount() {
@@ -42,23 +76,68 @@ export class WKLayout extends Component<WKLayoutProps>{
     componentWillUnmount() {
         window.removeEventListener("resize", this.gResize)
         this.rightContext.removeRouteListener(this.routeLister)
+        // Clean up drag listeners in case unmount during drag
+        document.removeEventListener('mousemove', this.onDragMove)
+        document.removeEventListener('mouseup', this.onDragEnd)
     }
 
     resize = throttle(() => {
         this.setState({})
     }, 100)
 
+    private onDragStart = (e: React.MouseEvent) => {
+        e.preventDefault()
+        this.dragStartX = e.clientX
+        this.dragStartWidth = this.lastWidth
+        this.setState({ isDragging: true })
+        document.addEventListener('mousemove', this.onDragMove)
+        document.addEventListener('mouseup', this.onDragEnd)
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+    }
+
+    private onDragMove = (e: MouseEvent) => {
+        // Use delta from drag start point — no need to know tab width or layout offset
+        const delta = e.clientX - this.dragStartX
+        let newWidth = this.dragStartWidth + delta
+        newWidth = Math.max(SPLITTER_MIN_WIDTH, Math.min(SPLITTER_MAX_WIDTH, newWidth))
+        this.lastWidth = newWidth
+        this.setState({ leftWidth: newWidth })
+    }
+
+    private onDragEnd = () => {
+        this.setState({ isDragging: false })
+        document.removeEventListener('mousemove', this.onDragMove)
+        document.removeEventListener('mouseup', this.onDragEnd)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        // Persist width — use this.lastWidth (sync) instead of this.state (async)
+        try {
+            localStorage.setItem(SPLITTER_STORAGE_KEY, String(this.lastWidth))
+        } catch (_) {}
+    }
+
     render() {
         const { onRenderTab, contentLeft,contentRight,onLeftContext,onRightContext } = this.props
         const isExtension = (window as any).__POWERED_EXTENSION__
+        const isSmallScreen = window.innerWidth <= smallScreenWidth
+        const { leftWidth, isDragging } = this.state
 
         const tabElement = <div className="wk-layout-tab">
             {
-                onRenderTab && onRenderTab(window.innerWidth <= smallScreenWidth ? ScreenSize.small : ScreenSize.normal)
+                onRenderTab && onRenderTab(isSmallScreen ? ScreenSize.small : ScreenSize.normal)
             }
         </div>
 
-        const contentElement = <div className={classNames("wk-layout-content", this.rightContext?.viewCount() > 0 ? "wk-layout-open" : undefined)}>
+        // Apply dynamic width via CSS variable on the content container
+        const contentStyle = isSmallScreen ? undefined : {
+            '--wk-width-layout-content-left': `${leftWidth}px`
+        } as React.CSSProperties
+
+        const contentElement = <div
+            className={classNames("wk-layout-content", this.rightContext?.viewCount() > 0 ? "wk-layout-open" : undefined)}
+            style={contentStyle}
+        >
             <div className="wk-layout-content-left">
                 <WKViewQueue onContext={(context) => {
                     if(onLeftContext) {
@@ -67,6 +146,13 @@ export class WKLayout extends Component<WKLayoutProps>{
                 }}>
                     {contentLeft}
                 </WKViewQueue>
+            </div>
+            {/* Draggable splitter — hidden on small screens via CSS */}
+            <div
+                className={classNames("wk-layout-splitter", isDragging && "wk-layout-splitter-active")}
+                onMouseDown={this.onDragStart}
+            >
+                <div className="wk-layout-splitter-line" />
             </div>
             <div className="wk-layout-content-right">
                 <WKViewQueue onContext={(context) => {
@@ -80,8 +166,10 @@ export class WKLayout extends Component<WKLayoutProps>{
             </div>
         </div>
 
-        return <div className="wk-layout">
+        {/* Drag overlay to prevent iframe/content from capturing mouse events */}
+        return <div className="wk-layout" ref={this.layoutRef}>
             {isExtension ? <>{contentElement}{tabElement}</> : <>{tabElement}{contentElement}</>}
+            {isDragging && <div className="wk-layout-drag-overlay" />}
         </div>
     }
 }
