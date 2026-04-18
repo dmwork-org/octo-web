@@ -1,19 +1,18 @@
-import { vi } from 'vitest'
-/**
- * Unit tests for handleGlobalSearchClick file download URL validation
- * Tests that file download URLs are validated before being opened
- *
- * Fixes: https://github.com/Mininglamp-OSS/octo-web/issues/347
- */
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 import { isSafeUrl } from '../../../../packages/dmworkbase/src/Utils/security';
 
-// Mock the WKApp and its dependencies
+// Mock downloadFile
+vi.mock('../../../../packages/dmworkbase/src/Utils/download', () => ({
+    downloadFile: vi.fn(),
+}));
+
+// Mock WKApp
 vi.mock('../../../../packages/dmworkbase/src/App', () => ({
     default: {
         dataSource: {
             commonDataSource: {
-                getImageURL: vi.fn((url: string) => url)
+                getFileURL: vi.fn((url: string) => url)
             }
         },
         endpoints: {
@@ -22,25 +21,61 @@ vi.mock('../../../../packages/dmworkbase/src/App', () => ({
     }
 }));
 
-// Store original window.open
-const originalWindowOpen = window.open;
+// Mock vm.ts transitive dependencies
+vi.mock('wukongimjssdk', () => ({
+    default: {},
+    MessageContentType: {},
+    Channel: vi.fn(),
+    ChannelTypePerson: 1,
+    ChannelTypeGroup: 2,
+    ChannelInfo: vi.fn(),
+    Conversation: vi.fn(),
+    Message: vi.fn(),
+    ConnectStatus: {},
+    ConversationAction: {},
+    WKSDK: { shared: vi.fn(() => ({ connectManager: {}, conversationManager: {}, channelManager: {} })) },
+}));
+vi.mock('react-scroll', () => ({
+    animateScroll: { scrollToBottom: vi.fn() },
+    scroller: { scrollTo: vi.fn() },
+}));
+vi.mock('../../../../packages/dmworkbase/src/Service/Model', () => ({
+    ConversationWrap: vi.fn(),
+}));
+vi.mock('../../../../packages/dmworkbase/src/Service/Provider', () => ({
+    ProviderListener: class {},
+    default: class {},
+}));
+vi.mock('../../../../packages/dmworkbase/src/Service/ProhibitwordsService', () => ({
+    ProhibitwordsService: { shared: { filter: vi.fn((t: string) => t) } },
+}));
+vi.mock('../../../../packages/dmworkbase/src/Service/SpaceService', () => ({
+    shouldSkipChannelForSpace: vi.fn(),
+    shouldSkipPersonConversationForSpace: vi.fn(),
+    hasSpacePrefix: vi.fn(),
+    SpaceService: { shared: { getMembers: vi.fn() } },
+    Space: vi.fn(),
+}));
+vi.mock('../../../../packages/dmworkbase/src/Service/Const', () => ({
+    EndpointID: {},
+    MessageContentTypeConst: {},
+}));
+vi.mock('../../../../packages/dmworkbase/src/EndpointCommon', () => ({
+    ShowConversationOptions: class {},
+}));
+
+import { handleGlobalSearchClick } from '../../../../packages/dmworkbase/src/Pages/Chat/vm';
+import { downloadFile } from '../../../../packages/dmworkbase/src/Utils/download';
 
 describe('handleGlobalSearchClick file download URL validation', () => {
-    let mockWindowOpen: vi.Mock;
-
     beforeEach(() => {
-        mockWindowOpen = vi.fn();
-        window.open = mockWindowOpen;
-    });
-
-    afterEach(() => {
-        window.open = originalWindowOpen;
         vi.clearAllMocks();
     });
 
+    // ---- Existing isSafeUrl isolation tests (UNCHANGED) ----
+
     describe('URL validation integration', () => {
         it('should validate URL with isSafeUrl before opening', () => {
-            // Test that isSafeUrl correctly identifies safe URLs
             expect(isSafeUrl('https://example.com/file.pdf')).toBe(true);
             expect(isSafeUrl('http://example.com/file.pdf')).toBe(true);
         });
@@ -56,40 +91,6 @@ describe('handleGlobalSearchClick file download URL validation', () => {
 
         it('should reject file: protocol URLs', () => {
             expect(isSafeUrl('file:///etc/passwd')).toBe(false);
-        });
-    });
-
-    describe('file download URL construction', () => {
-        it('should properly append filename to URL without query string', () => {
-            const baseUrl = 'https://example.com/files/document.pdf';
-            const filename = 'my-document.pdf';
-            const expectedUrl = `${baseUrl}?filename=${encodeURIComponent(filename)}`;
-
-            // Simulate the logic from handleGlobalSearchClick
-            let downloadURL = baseUrl;
-            if (downloadURL.indexOf("?") != -1) {
-                downloadURL += "&filename=" + encodeURIComponent(filename);
-            } else {
-                downloadURL += "?filename=" + encodeURIComponent(filename);
-            }
-
-            expect(downloadURL).toBe(expectedUrl);
-        });
-
-        it('should properly append filename to URL with existing query string', () => {
-            const baseUrl = 'https://example.com/files/document.pdf?token=abc';
-            const filename = 'my-document.pdf';
-            const expectedUrl = `${baseUrl}&filename=${encodeURIComponent(filename)}`;
-
-            // Simulate the logic from handleGlobalSearchClick
-            let downloadURL = baseUrl;
-            if (downloadURL.indexOf("?") != -1) {
-                downloadURL += "&filename=" + encodeURIComponent(filename);
-            } else {
-                downloadURL += "?filename=" + encodeURIComponent(filename);
-            }
-
-            expect(downloadURL).toBe(expectedUrl);
         });
     });
 
@@ -117,6 +118,38 @@ describe('handleGlobalSearchClick file download URL validation', () => {
             safeUrls.forEach(url => {
                 expect(isSafeUrl(url)).toBe(true);
             });
+        });
+    });
+
+    // ---- New integration tests ----
+
+    describe('file download via downloadFile', () => {
+        it('should call downloadFile with getFileURL result, payload name, and payload size', async () => {
+            const item = {
+                payload: {
+                    url: 'https://cdn.example.com/files/document.pdf',
+                    name: 'my-document.pdf',
+                    size: 1024,
+                },
+            };
+            await handleGlobalSearchClick(item, 'file');
+            expect(downloadFile).toHaveBeenCalledWith(
+                'https://cdn.example.com/files/document.pdf',
+                'my-document.pdf',
+                { fileSize: 1024 },
+            );
+        });
+
+        it('should not call downloadFile for unsafe URLs', async () => {
+            const WKApp = (await import('../../../../packages/dmworkbase/src/App')).default;
+            vi.mocked(WKApp.dataSource.commonDataSource.getFileURL).mockReturnValueOnce(
+                'javascript:alert(1)'
+            );
+            const item = {
+                payload: { url: 'anything', name: 'evil.pdf', size: 0 },
+            };
+            await handleGlobalSearchClick(item, 'file');
+            expect(downloadFile).not.toHaveBeenCalled();
         });
     });
 });

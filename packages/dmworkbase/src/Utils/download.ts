@@ -1,0 +1,112 @@
+import { isSafeUrl } from "./security";
+
+export const BLOB_DOWNLOAD_SIZE_LIMIT = 100 * 1024 * 1024; // 100 MB
+
+/**
+ * Download a file with correct filename via fetch+Blob.
+ * Falls back to anchor-click on error or for oversized files.
+ */
+export async function downloadFile(
+    url: string,
+    filename: string,
+    opts?: {
+        fileSize?: number;
+        onProgress?: (pct: number) => void;
+        onStart?: () => void;
+        onEnd?: () => void;
+    },
+): Promise<void> {
+    if (!url) return;
+
+    // Resolve relative paths to absolute (relative URLs are same-origin)
+    const resolvedUrl = url.startsWith("/")
+        ? window.location.origin + url
+        : url;
+
+    if (!isSafeUrl(resolvedUrl)) return;
+
+    // Pre-check: skip fetch entirely when caller provides known file size
+    if (opts?.fileSize && opts.fileSize > BLOB_DOWNLOAD_SIZE_LIMIT) {
+        fallbackAnchorDownload(resolvedUrl, filename);
+        return;
+    }
+
+    opts?.onStart?.();
+    try {
+        const resp = await fetch(resolvedUrl);
+        if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
+
+        // Runtime Content-Length enforcement: abort before reading body
+        const contentLengthStr = resp.headers.get("Content-Length");
+        const declaredSize = contentLengthStr ? parseInt(contentLengthStr, 10) : NaN;
+        if (!isNaN(declaredSize) && declaredSize > BLOB_DOWNLOAD_SIZE_LIMIT) {
+            if (resp.body) {
+                resp.body.cancel().catch(() => {});
+            }
+            fallbackAnchorDownload(resolvedUrl, filename);
+            return;
+        }
+
+        // Stream body with runtime byte-count enforcement
+        if (resp.body) {
+            const reader = resp.body.getReader();
+            const chunks: Uint8Array[] = [];
+            let received = 0;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+                // Streaming byte limit: abort if actual data exceeds limit
+                if (received > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                    reader.cancel().catch(() => {});
+                    fallbackAnchorDownload(resolvedUrl, filename);
+                    return;
+                }
+                if (opts?.onProgress && !isNaN(declaredSize)) {
+                    opts.onProgress(Math.round((received / declaredSize) * 100));
+                }
+            }
+            const blob = new Blob(chunks);
+            triggerBlobDownload(blob, filename);
+        } else {
+            // Fallback for environments without ReadableStream body
+            const blob = await resp.blob();
+            if (blob.size > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                fallbackAnchorDownload(resolvedUrl, filename);
+                return;
+            }
+            triggerBlobDownload(blob, filename);
+        }
+    } catch {
+        // Fallback: anchor-click to URL directly (user gets hash name but at least gets the file)
+        fallbackAnchorDownload(resolvedUrl, filename);
+    } finally {
+        opts?.onEnd?.();
+    }
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;   // Blob URL is same-origin; download attribute works
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+}
+
+/**
+ * Fallback download via anchor-click (no new tab).
+ * Used when fetch+Blob fails or for oversized files.
+ * The filename hint works for same-origin; ignored for cross-origin.
+ */
+export function fallbackAnchorDownload(url: string, filename: string): void {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;  // Best-effort: works for same-origin, ignored for cross-origin
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}

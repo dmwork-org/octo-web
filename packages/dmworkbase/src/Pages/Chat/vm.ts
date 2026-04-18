@@ -13,6 +13,7 @@ import { EndpointID } from "../../Service/Const";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import { isSafeUrl } from "../../Utils/security";
+import { downloadFile } from "../../Utils/download";
 
 
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
@@ -496,17 +497,11 @@ export async function handleGlobalSearchClick(item: any, type: string,hideModal?
         }
         WKApp.endpoints.showConversation(new Channel(item.channel.channel_id, item.channel.channel_type), opts)
     } else if (type === "file") {
-        // 下载文件
-        const payload = item.payload
-        let downloadURL = WKApp.dataSource.commonDataSource.getImageURL(payload.url || '')
-        if (downloadURL.indexOf("?") != -1) {
-            downloadURL += "&filename=" + encodeURIComponent(payload.name)
-        } else {
-            downloadURL += "?filename=" + encodeURIComponent(payload.name)
-        }
+        const payload = item.payload;
+        const downloadURL = WKApp.dataSource.commonDataSource.getFileURL(payload.url || '');
         // Validate URL protocol to prevent XSS attacks (fixes #347)
         if (isSafeUrl(downloadURL)) {
-            window.open(`${downloadURL}`, 'top');
+            await downloadFile(downloadURL, payload.name || "file", { fileSize: payload.size });
         }
     }
 }

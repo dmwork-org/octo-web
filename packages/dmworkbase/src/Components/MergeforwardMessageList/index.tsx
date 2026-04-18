@@ -10,6 +10,7 @@ import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import WKViewQueueHeader from "../WKViewQueueHeader";
 import WKApp from "../../App";
+import { downloadFile } from "../../Utils/download";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
 
 import "./index.css"
@@ -139,16 +140,9 @@ export default class MergeforwardMessageList extends Component<MergeforwardMessa
             return (
                 <div
                     className={`wk-mergeforward-file${url ? " wk-mergeforward-file--clickable" : ""}`}
-                    onClick={() => {
-                        if (url && (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/"))) {
-                            const a = document.createElement("a")
-                            a.href = url
-                            a.download = fileContent.name || "file"
-                            a.target = "_blank"
-                            document.body.appendChild(a)
-                            a.click()
-                            document.body.removeChild(a)
-                        }
+                    onClick={async () => {
+                        if (!url) return
+                        await downloadFile(url, fileContent.name || "file", { fileSize: fileContent.size })
                     }}
                 >
                     <div className="wk-mergeforward-file__icon" style={{ backgroundColor: iconBg }}>

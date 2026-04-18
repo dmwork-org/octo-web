@@ -4,6 +4,7 @@ import { MessageCell } from "../MessageCell"
 import MessageBase from "../Base"
 import WKApp from "../../App"
 import { FileContent } from "./FileContent"
+import { downloadFile, BLOB_DOWNLOAD_SIZE_LIMIT, fallbackAnchorDownload } from "../../Utils/download"
 import { WKSDK, Task, TaskStatus } from "wukongimjssdk"
 import { Toast } from "@douyinfe/semi-ui"
 import WKModal from "../../Components/WKModal"
@@ -172,11 +173,52 @@ export class FileCell extends MessageCell<any, FileCellState> {
         if (!url || !isSafeURL(url)) return
 
         try {
+            // Text-file path: three-layer size guard, keep charset conversion logic
             if (isTextFile(content.extension, content.name)) {
-                // Text files: fetch as ArrayBuffer and decode as UTF-8 to avoid CDN charset issues
+                // Layer 1: Pre-check with known file size
+                if (content.size && content.size > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                    fallbackAnchorDownload(url, content.name || "file")
+                    return
+                }
+                // Text files: fetch and decode as UTF-8 to avoid CDN charset issues
                 const resp = await fetch(url)
-                const buf = await resp.arrayBuffer()
-                const text = new TextDecoder("utf-8").decode(buf)
+                // Layer 2: Content-Length check (catches oversized files when content.size is 0)
+                const cl = resp.headers.get("Content-Length")
+                if (cl && parseInt(cl, 10) > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                    fallbackAnchorDownload(url, content.name || "file")
+                    return
+                }
+                // Layer 3: Streaming byte-count enforcement
+                let textBuf: Uint8Array
+                if (resp.body) {
+                    const reader = resp.body.getReader()
+                    const chunks: Uint8Array[] = []
+                    let totalBytes = 0
+                    while (true) {
+                        const { done, value } = await reader.read()
+                        if (done) break
+                        totalBytes += value.byteLength
+                        if (totalBytes > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                            reader.cancel().catch(() => {})
+                            fallbackAnchorDownload(url, content.name || "file")
+                            return
+                        }
+                        chunks.push(value)
+                    }
+                    const combined = new Uint8Array(totalBytes)
+                    let offset = 0
+                    for (const chunk of chunks) { combined.set(chunk, offset); offset += chunk.byteLength }
+                    textBuf = combined
+                } else {
+                    // Fallback for environments without ReadableStream body
+                    const buf = await resp.arrayBuffer()
+                    if (buf.byteLength > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                        fallbackAnchorDownload(url, content.name || "file")
+                        return
+                    }
+                    textBuf = new Uint8Array(buf)
+                }
+                const text = new TextDecoder("utf-8").decode(textBuf)
                 const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
                 const blobUrl = URL.createObjectURL(blob)
                 const a = document.createElement("a")
@@ -186,14 +228,13 @@ export class FileCell extends MessageCell<any, FileCellState> {
                 a.click()
                 document.body.removeChild(a)
                 URL.revokeObjectURL(blobUrl)
+            // Non-text-file path: use shared downloadFile() utility
             } else {
-                const a = document.createElement("a")
-                a.href = url
-                a.download = content.name || "file"
-                a.target = "_blank"
-                document.body.appendChild(a)
-                a.click()
-                document.body.removeChild(a)
+                await downloadFile(url, content.name || "file", {
+                    fileSize: content.size,
+                    onStart: () => this.setState({ downloading: true }),
+                    onEnd: () => this.setState({ downloading: false }),
+                })
             }
         } catch {
             alert("文件下载失败")

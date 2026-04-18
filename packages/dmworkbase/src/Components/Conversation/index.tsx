@@ -56,6 +56,7 @@ import {
   getFileIconInfo,
 } from "../../Messages/File";
 import { ImageContent } from "../../Messages/Image";
+import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import AttachmentPreview from "../AttachmentPreview";
@@ -751,21 +752,17 @@ export class Conversation
       return (
         <div
           className="wk-fold-file"
-          onClick={() => {
+          onClick={async () => {
             const rawUrl = content.url || content.remoteUrl || "";
             if (!rawUrl) return;
-            const fileUrl =
+            let fileUrl =
               WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
             if (!fileUrl) return;
-            const a = document.createElement("a");
-            a.href = fileUrl.startsWith("http")
-              ? fileUrl
-              : window.location.origin + "/" + fileUrl.replace(/^\//, "");
-            a.download = content.name || "file";
-            a.target = "_blank";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            // Resolve relative URLs to absolute
+            if (!fileUrl.startsWith("http")) {
+              fileUrl = window.location.origin + "/" + fileUrl.replace(/^\//, "");
+            }
+            await downloadFile(fileUrl, content.name || "file", { fileSize: content.size });
           }}
         >
           <div
