@@ -8,6 +8,7 @@ interface UploadCredentials {
     downloadUrl: string
     method: string
     contentType: string
+    contentDisposition?: string
     key: string
     expiredTime: number
 }
@@ -51,8 +52,12 @@ export class MediaMessageUploadTask extends MessageTask {
         // 动态超时：每 MB 预留 10 秒，最低 2 分钟兜底
         const fileSizeMB = file.size / (1024 * 1024);
         const timeoutMs = Math.max(2 * 60 * 1000, fileSizeMB * 10 * 1000);
+        const headers: Record<string, string> = { "Content-Type": credentials.contentType }
+        if (credentials.contentDisposition) {
+            headers["Content-Disposition"] = credentials.contentDisposition
+        }
         const resp = await axios.put(credentials.uploadUrl, file, {
-            headers: { "Content-Type": credentials.contentType },
+            headers,
             signal: (this.controller = new AbortController()).signal,
             timeout: timeoutMs,
             onUploadProgress: e => {
