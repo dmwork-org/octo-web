@@ -21,8 +21,10 @@ export class MediaMessageUploadTask extends MessageTask {
             const param = new FormData();
             param.append("file", mediaContent.file);
             const fileName = this.getUUID();
-            const path = `/${this.message.channel.channelType}/${this.message.channel.channelID}/${fileName}${mediaContent.extension??""}`
-            const uploadURL = await  this.getUploadURL(path)
+            const ext = mediaContent.extension ?? ""
+            const path = `/${this.message.channel.channelType}/${this.message.channel.channelID}/${fileName}${ext}`
+            const contentDisposition = this.buildContentDisposition(mediaContent.file.name || `${fileName}${ext}`)
+            const uploadURL = await  this.getUploadURL(path, contentDisposition)
             if(uploadURL) {
                 await this.uploadFile(mediaContent.file,uploadURL)
 
@@ -74,9 +76,23 @@ export class MediaMessageUploadTask extends MessageTask {
         }
     }
 
+    buildContentDisposition(filename: string): string {
+        const encoded = encodeURIComponent(filename)
+        // RFC 2616 quoted-string: escape \ and "
+        const asciiName = filename
+            .replace(/[^\x20-\x7E]/g, '_')
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+        return `attachment; filename="${asciiName}"; filename*=UTF-8''${encoded}`
+    }
+
     // 获取上传路径
-    async getUploadURL(path:string) :Promise<string|undefined> {
-       const result = await WKApp.apiClient.get(`file/upload?path=${encodeURIComponent(path)}&type=chat`)
+    async getUploadURL(path:string, contentDisposition?:string) :Promise<string|undefined> {
+       let url = `file/upload?path=${encodeURIComponent(path)}&type=chat`
+       if (contentDisposition) {
+           url += `&contentDisposition=${encodeURIComponent(contentDisposition)}`
+       }
+       const result = await WKApp.apiClient.get(url)
        if(result) {
            return result.url
        }

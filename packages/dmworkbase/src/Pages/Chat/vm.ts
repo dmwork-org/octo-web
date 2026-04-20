@@ -505,7 +505,7 @@ export async function handleGlobalSearchClick(item: any, type: string,hideModal?
         const downloadURL = WKApp.dataSource.commonDataSource.getFileURL(payload.url);
         if (!downloadURL) return;
         if (isSafeUrl(downloadURL)) {
-            await downloadFile(downloadURL, payload.name || "file", { fileSize: payload.size });
+            await downloadFile(downloadURL, payload.name || "file");
         }
     }
 }
