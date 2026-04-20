@@ -21,19 +21,20 @@ export async function downloadFile(
     if (!url) return;
 
     // Resolve any URL format (relative, absolute, etc.) to full absolute URL
-    let resolvedUrl: string;
+    let parsedUrl: URL;
     try {
-        resolvedUrl = new URL(url, window.location.href).href;
+        parsedUrl = new URL(url, window.location.href);
     } catch {
         return; // Invalid URL
     }
 
+    const resolvedUrl = parsedUrl.href;
     if (!isSafeUrl(resolvedUrl)) return;
 
     const limit = opts?.sizeLimit ?? BLOB_DOWNLOAD_SIZE_LIMIT;
 
     // Same-origin: <a download> works natively, no need for fetch+blob
-    if (new URL(resolvedUrl).origin === window.location.origin) {
+    if (parsedUrl.origin === window.location.origin) {
         fallbackAnchorDownload(resolvedUrl, filename);
         return;
     }
@@ -93,8 +94,8 @@ export async function downloadFile(
             }
             triggerBlobDownload(blob, filename);
         }
-    } catch {
-        // Fallback: anchor-click to URL directly (user gets hash name but at least gets the file)
+    } catch (err) {
+        console.warn('[downloadFile] blob download failed, falling back to anchor:', err);
         fallbackAnchorDownload(resolvedUrl, filename);
     } finally {
         opts?.onEnd?.();

@@ -98,7 +98,6 @@ interface RestartableTask extends Task {
 }
 
 interface FileCellState {
-    downloading: boolean
     uploadProgress: number       // 0~100 整数百分比
     uploadStatus: TaskStatus | null
     textPreviewVisible: boolean
@@ -122,7 +121,6 @@ export class FileCell extends MessageCell<any, FileCellState> {
     constructor(props: any) {
         super(props)
         this.state = {
-            downloading: false,
             uploadProgress: 0,
             uploadStatus: null,
             textPreviewVisible: false,
@@ -186,6 +184,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                 // Layer 2: Content-Length check (catches oversized files when content.size is 0)
                 const cl = resp.headers.get("Content-Length")
                 if (cl && parseInt(cl, 10) > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                    if (resp.body) resp.body.cancel().catch(() => {})
                     fallbackAnchorDownload(url, content.name || "file")
                     return
                 }
@@ -233,8 +232,6 @@ export class FileCell extends MessageCell<any, FileCellState> {
             } else {
                 await downloadFile(url, content.name || "file", {
                     fileSize: content.size,
-                    onStart: () => this.setState({ downloading: true }),
-                    onEnd: () => this.setState({ downloading: false }),
                 })
             }
         } catch {

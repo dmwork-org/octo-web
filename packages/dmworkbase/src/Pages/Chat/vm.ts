@@ -497,8 +497,12 @@ export async function handleGlobalSearchClick(item: any, type: string,hideModal?
         }
         WKApp.endpoints.showConversation(new Channel(item.channel.channel_id, item.channel.channel_type), opts)
     } else if (type === "file") {
+        hideModal?.()
         const payload = item.payload;
-        const downloadURL = WKApp.dataSource.commonDataSource.getFileURL(payload.url || '');
+        let downloadURL = WKApp.dataSource.commonDataSource.getFileURL(payload.url || '');
+        if (downloadURL && !downloadURL.startsWith('http')) {
+            downloadURL = window.location.origin + '/' + downloadURL.replace(/^\//, '');
+        }
         // Validate URL protocol to prevent XSS attacks (fixes #347)
         if (isSafeUrl(downloadURL)) {
             await downloadFile(downloadURL, payload.name || "file", { fileSize: payload.size });
