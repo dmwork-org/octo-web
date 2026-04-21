@@ -4,7 +4,7 @@ import { MessageCell } from "../MessageCell"
 import MessageBase from "../Base"
 import WKApp from "../../App"
 import { FileContent } from "./FileContent"
-import { downloadFile, getPresignedPreviewUrl } from "../../Utils/download"
+import { downloadFile } from "../../Utils/download"
 import { WKSDK, Task, TaskStatus } from "wukongimjssdk"
 import { Toast } from "@douyinfe/semi-ui"
 import WKModal from "../../Components/WKModal"
@@ -173,7 +173,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
         await downloadFile(url, content.name || "file")
     }
 
-    handlePreview = async () => {
+    handlePreview = () => {
         const { message } = this.props
         const content = message.content as FileContent
         const url = this.getFileURL(content)
@@ -184,12 +184,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
             return
         }
 
-        try {
-            const previewUrl = await getPresignedPreviewUrl(url, content.name || "file")
-            window.open(previewUrl, "_blank")
-        } catch {
-            alert("文件预览失败")
-        }
+        window.open(url, "_blank")
     }
 
     handleTextPreview = async (url: string, name: string, extension: string) => {
