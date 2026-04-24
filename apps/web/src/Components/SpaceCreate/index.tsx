@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { Input, TextArea, Toast } from "@douyinfe/semi-ui";
-import { SpaceService, WKModal } from "@octo/base";
+import { SpaceService, WKModal, extractErrorMsg } from "@octo/base";
 import "./index.css";
 
 export interface SpaceCreateProps {
@@ -41,10 +41,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
             Toast.success("Space 创建成功");
             this.props.onSuccess();
         } catch (err: unknown) {
-            const msg = (err && typeof err === "object" && "msg" in err && typeof (err as { msg: unknown }).msg === "string")
-                ? (err as { msg: string }).msg
-                : "";
-            Toast.error(msg || "创建失败，请重试");
+            Toast.error(extractErrorMsg(err) || "创建失败，请重试");
             this.setState({ loading: false });
         }
     };

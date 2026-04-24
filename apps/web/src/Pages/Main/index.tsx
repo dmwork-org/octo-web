@@ -133,6 +133,8 @@ export class MainPage extends Component<{}, MainPageState> {
 
     render() {
         const { allSpaces, showJoinSpace, showMeInfo } = this.state;
+        // 客户端 UI 可见性控制：仅在用户拥有任一 Space 的 owner/admin 角色时显示入口；
+        // 真正的接口鉴权由 admin SPA 后端负责。allSpaces 来自登录后刷新，角色变更需重新加载。
         const canManageSpace = allSpaces.some(s => s.role === 1 || s.role === 2);
 
         return (

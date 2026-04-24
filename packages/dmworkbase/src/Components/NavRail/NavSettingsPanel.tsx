@@ -96,6 +96,8 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     {canManageSpace && (
                         <li onClick={() => {
                             onToggleSetting();
+                            // /space 是独立打包的 admin SPA（同源），React Router 不识别，必须整页跳转；
+                            // 真实鉴权由 admin 后端负责，此处仅用于 UI 可见性控制。
                             window.location.href = "/space";
                         }}>
                             空间管理
