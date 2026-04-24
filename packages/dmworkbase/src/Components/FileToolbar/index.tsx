@@ -1,73 +1,121 @@
-import React from "react"
-import { Component, ReactNode } from "react"
-import ConversationContext from "../Conversation/context"
-import { Toast } from "@douyinfe/semi-ui"
-import IconClick from "../IconClick"
+import React from "react";
+import { Component, ReactNode, createRef } from "react";
+import ConversationContext from "../Conversation/context";
+import { Toast } from "@douyinfe/semi-ui";
+import IconClick from "../IconClick";
 
-import "./index.css"
+import "./index.css";
 
 interface FileToolbarProps {
-    conversationContext: ConversationContext
-    icon: string | React.ReactNode
+  conversationContext: ConversationContext;
+  icon: string | React.ReactNode;
 }
 
 export default class FileToolbar extends Component<FileToolbarProps> {
-    $fileInput: any
+  $fileInput: HTMLInputElement | null = null;
+  pasteListen!: (event: ClipboardEvent) => void;
+  private containerRef = createRef<HTMLDivElement>();
 
-    onFileClick = (event: any) => {
-        event.target.value = ""
-    }
+  componentDidMount() {
+    const { conversationContext } = this.props;
 
-    onFileChange = () => {
-        const { conversationContext } = this.props
-        const files = Array.from(this.$fileInput.files as FileList)
-        if (!files || files.length === 0) return
+    // 粘贴文件 → 入队
+    // 当主群聊和子区同时打开时，两个 FileToolbar 实例各挂一次全局 paste 事件。
+    // 通过比较焦点所在的 .wk-messageinput-box 和当前 toolbar 所在的 .wk-messageinput-box
+    // 确保只有焦点所在的输入框响应粘贴，避免重复上传。
+    this.pasteListen = (event: ClipboardEvent) => {
+      const activeBox = document.activeElement?.closest?.(
+        ".wk-messageinput-box"
+      );
+      const myBox = this.containerRef.current?.closest?.(
+        ".wk-messageinput-box"
+      );
+      if (!activeBox || !myBox || activeBox !== myBox) return;
 
-        // 同名文件轻量提示
-        const currentNames = new Set(conversationContext.getPendingAttachments().map(f => f.name))
-        const hasDuplicate = files.some(f => currentNames.has(f.name))
-        if (hasDuplicate) {
-            Toast.warning("包含同名文件，已追加到待发送列表")
+      // 优先从 files 获取
+      let files: File[] = Array.from(event.clipboardData?.files || []);
+
+      // 截图粘贴时 files 可能为空，需要从 items 中获取
+      if (files.length === 0 && event.clipboardData?.items) {
+        const items: DataTransferItem[] = Array.from(event.clipboardData.items);
+        for (const item of items) {
+          if (item.kind === "file") {
+            const file = item.getAsFile();
+            if (file) {
+              files.push(file);
+            }
+          }
         }
+      }
 
-        const err = conversationContext.addPendingAttachments(files)
-        if (err) {
-            Toast.error(err)
-        }
+      if (files.length > 0) {
+        event.preventDefault();
+        const err = conversationContext.addPendingAttachments(files);
+        if (err) Toast.error(err);
+      }
+    };
+    document.addEventListener("paste", this.pasteListen);
+
+    // 拖拽文件 → 入队
+    conversationContext.setDragFileCallback((file: File) => {
+      const err = conversationContext.addPendingAttachments([file]);
+      if (err) Toast.error(err);
+    });
+  }
+
+  componentWillUnmount() {
+    document.removeEventListener("paste", this.pasteListen);
+  }
+
+  onFileClick = (event: React.MouseEvent<HTMLInputElement>) => {
+    (event.target as HTMLInputElement).value = "";
+  };
+
+  onFileChange = () => {
+    const { conversationContext } = this.props;
+    const files = Array.from(this.$fileInput?.files || []);
+    if (!files || files.length === 0) return;
+
+    // 同名文件轻量提示
+    const currentNames = new Set(
+      conversationContext.getPendingAttachments().map((f) => f.name)
+    );
+    const hasDuplicate = files.some((f) => currentNames.has(f.name));
+    if (hasDuplicate) {
+      Toast.warning("包含同名文件，已追加到待发送列表");
     }
 
-    chooseFile = () => {
-        this.$fileInput.click()
+    const err = conversationContext.addPendingAttachments(files);
+    if (err) {
+      Toast.error(err);
     }
+  };
 
-    // 供拖拽入队使用（被 Conversation 的 onDrop 调用）
-    addFiles = (files: File[]) => {
-        const { conversationContext } = this.props
-        const err = conversationContext.addPendingAttachments(files)
-        if (err) {
-            Toast.error(err)
-        }
-    }
+  chooseFile = () => {
+    this.$fileInput.click();
+  };
 
-    render(): ReactNode {
-        const { icon } = this.props
+  render(): ReactNode {
+    const { icon } = this.props;
 
-        return (
-            <div className="wk-filetoolbar">
-                <IconClick
-                    icon={typeof icon === 'string' ? <img src={icon} alt="" /> : icon}
-                    onClick={this.chooseFile}
-                    size="sm"
-                />
-                <input
-                    onClick={this.onFileClick}
-                    onChange={this.onFileChange}
-                    ref={(ref) => { this.$fileInput = ref }}
-                    type="file"
-                    multiple={true}
-                    style={{ display: "none" }}
-                />
-            </div>
-        )
-    }
+    return (
+      <div className="wk-filetoolbar" ref={this.containerRef}>
+        <IconClick
+          icon={typeof icon === "string" ? <img src={icon} alt="" /> : icon}
+          onClick={this.chooseFile}
+          size="sm"
+        />
+        <input
+          onClick={this.onFileClick}
+          onChange={this.onFileChange}
+          ref={(ref) => {
+            this.$fileInput = ref;
+          }}
+          type="file"
+          multiple={true}
+          style={{ display: "none" }}
+        />
+      </div>
+    );
+  }
 }
