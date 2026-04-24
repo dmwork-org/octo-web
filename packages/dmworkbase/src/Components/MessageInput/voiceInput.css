@@ -27,13 +27,8 @@
 }
 
 .wk-voice-button--recording {
-  background-color: var(--wk-voice-recording-bg, #f8f5fe);
-  color: var(--wk-voice-recording-color, #9760f6);
-}
-
-[theme-mode="dark"] .wk-voice-button--recording {
-  background-color: var(--wk-voice-recording-bg-dark, rgba(151, 96, 246, 0.15));
-  color: var(--wk-voice-recording-color-dark, #b794f6);
+  background-color: var(--wk-voice-recording-bg);
+  color: var(--wk-voice-recording-color);
 }
 
 .wk-voice-button--disabled {
@@ -147,7 +142,7 @@
 
 .wk-voice-wave-bar {
   width: 3px;
-  background-color: #7f3bf5;
+  background-color: var(--wk-voice-wave-color);
   border-radius: 1.5px;
   animation: wk-voice-wave 0.8s ease-in-out infinite;
 }

@@ -11,140 +11,151 @@
    ============================================================ */
 :root {
   /* ── Brand（Figma: 主色是深黑 #1C1C23，无渐变） ── */
-  --wk-brand-primary:         var(--wk-brand-black);     /* Figma: 主按钮/卡片/选中态 */
-  --wk-brand-primary-hover:   var(--wk-brand-black-hover);
-  --wk-brand-from:            var(--wk-brand-black);     /* 保留以兼容，无渐变 */
-  --wk-brand-to:              var(--wk-brand-black);     /* 同色 = 无渐变 */
-  --wk-brand-gradient:        var(--wk-brand-primary);   /* 兼容：6+ 处引用，值=纯色 */
-  --wk-brand-gradient-hover:  var(--wk-brand-primary-hover);
+  --wk-brand-primary: var(--wk-brand-black); /* Figma: 主按钮/卡片/选中态 */
+  --wk-brand-primary-hover: var(--wk-brand-black-hover);
+  --wk-brand-from: var(--wk-brand-black); /* 保留以兼容，无渐变 */
+  --wk-brand-to: var(--wk-brand-black); /* 同色 = 无渐变 */
+  --wk-brand-gradient: var(--wk-brand-primary); /* 兼容：6+ 处引用，值=纯色 */
+  --wk-brand-gradient-hover: var(--wk-brand-primary-hover);
   --wk-brand-gradient-subtle: rgba(28, 28, 35, 0.08);
-  --wk-brand-glow:            rgba(28, 28, 35, 0.20);
+  --wk-brand-glow: rgba(28, 28, 35, 0.2);
 
   /* ── AI 功能色 / 链接色（紫色，仅用于 AI 相关元素） ── */
-  --wk-color-accent:          var(--wk-purple-500);    /* Figma: Thread 链接、AI 标签 */
-  --wk-color-accent-hover:    var(--wk-purple-600);
+  --wk-color-accent: var(--wk-purple-500); /* Figma: Thread 链接、AI 标签 */
+  --wk-color-accent-hover: var(--wk-purple-600);
 
   /* ── Status & Fixed（Figma 色值） ── */
-  --wk-color-online:      var(--wk-green-dark);    /* Figma: #52C41A 在线状态绿 */
-  --wk-color-white:       #ffffff;                 /* 固定白色（不跟主题走） */
-  --wk-color-danger:      var(--wk-red-light);     /* Figma: #F54A45 未读badge/红点 */
-  --wk-success-tint-10:   rgba(65, 205, 89, 0.10); /* Figma: success 色半透明背景 */
-  --wk-shadow-dropdown:   0 12px 32px var(--wk-black-alpha-12); /* 弹窗阴影 */
+  --wk-color-online: var(--wk-green-dark); /* Figma: #52C41A 在线状态绿 */
+  --wk-color-white: #ffffff; /* 固定白色（不跟主题走） */
+  --wk-color-danger: var(--wk-red-light); /* Figma: #F54A45 未读badge/红点 */
+  --wk-success-tint-10: rgba(
+    65,
+    205,
+    89,
+    0.1
+  ); /* Figma: success 色半透明背景 */
+  --wk-shadow-dropdown: 0 12px 32px var(--wk-black-alpha-12); /* 弹窗阴影 */
 
   /* ── Brand tint（主色半透明，基于 #1C1C23） ── */
   --wk-brand-tint-03: rgba(28, 28, 35, 0.03);
   --wk-brand-tint-04: rgba(28, 28, 35, 0.04);
   --wk-brand-tint-06: rgba(28, 28, 35, 0.06);
   --wk-brand-tint-08: rgba(28, 28, 35, 0.08);
-  --wk-brand-tint-10: rgba(28, 28, 35, 0.10);
+  --wk-brand-tint-10: rgba(28, 28, 35, 0.1);
   --wk-brand-tint-12: rgba(28, 28, 35, 0.12);
   --wk-brand-tint-15: rgba(28, 28, 35, 0.15);
   --wk-brand-tint-35: rgba(28, 28, 35, 0.35);
-  --wk-brand-accent:  var(--wk-brand-black);
+  --wk-brand-accent: var(--wk-brand-black);
 
   /* ── Icon & Text opacity（基于主色的不同透明度） ── */
-  --wk-icon-muted:    rgba(28, 28, 35, 0.4);   /* 40% icon/三角 */
-  --wk-icon-default:  rgba(28, 28, 35, 0.6);   /* 60% 默认 icon */
-  --wk-icon-hover:    rgba(28, 28, 35, 0.7);   /* 70% hover */
-  --wk-text-strong:   rgba(28, 28, 35, 0.9);   /* 90% 强调文本 */
+  --wk-icon-muted: rgba(28, 28, 35, 0.4); /* 40% icon/三角 */
+  --wk-icon-default: rgba(28, 28, 35, 0.6); /* 60% 默认 icon */
+  --wk-icon-hover: rgba(28, 28, 35, 0.7); /* 70% hover */
+  --wk-text-strong: rgba(28, 28, 35, 0.9); /* 90% 强调文本 */
 
   /* ── Badge colors ── */
-  --wk-badge-danger-bg:   rgba(245, 74, 69, 0.15);  /* 淡红背景 */
-  --wk-badge-danger-text: #F54A45;                   /* 红色文字 */
+  --wk-badge-danger-bg: rgba(245, 74, 69, 0.15); /* 淡红背景 */
+  --wk-badge-danger-text: #f54a45; /* 红色文字 */
 
   /* ── Background hover states ── */
-  --wk-bg-item-hover: rgba(46, 50, 56, 0.09);   /* hover 态背景 */
-  --wk-bg-tab:        rgba(52, 59, 58, 0.05);   /* tab 背景 */
+  --wk-bg-item-hover: rgba(46, 50, 56, 0.09); /* hover 态背景 */
+  --wk-bg-tab: rgba(52, 59, 58, 0.05); /* tab 背景 */
 
   /* ── Accent tint（AI/链接紫色半透明） ── */
   --wk-accent-tint-06: rgba(127, 59, 245, 0.06);
   --wk-accent-tint-08: rgba(127, 59, 245, 0.08);
-  --wk-accent-tint-10: rgba(127, 59, 245, 0.10);
+  --wk-accent-tint-10: rgba(127, 59, 245, 0.1);
   --wk-accent-tint-12: rgba(127, 59, 245, 0.12);
 
+  /* ── Voice input（语音输入专用） ── */
+  --wk-voice-wave-color: #7f3bf5;
+  --wk-voice-recording-bg: #f8f5fe;
+  --wk-voice-recording-color: #9760f6;
+
   /* ── Typography — 字体族（Figma: PingFang SC + Inter） ── */
-  --wk-font-sans: 'PingFang SC', 'Inter', -apple-system, BlinkMacSystemFont, 'Noto Sans SC', sans-serif;
-  --wk-font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --wk-font-sans: "PingFang SC", "Inter", -apple-system, BlinkMacSystemFont,
+    "Noto Sans SC", sans-serif;
+  --wk-font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 
   /* ── Typography — 字号 ── */
-  --wk-text-size-badge:   9px;  /* badge/label 极小字号 */
-  --wk-text-size-tiny:    10px;
-  --wk-text-size-xs:      11px;
-  --wk-text-size-sm:      12px;
-  --wk-text-size-base:    13px;
-  --wk-text-size-md:      14px;
-  --wk-text-size-lg:      15px;
-  --wk-text-size-xl:      16px;
-  --wk-text-size-2xl:     18px;
-  --wk-text-size-3xl:     22px;
-  --wk-text-size-4xl:     28px;
+  --wk-text-size-badge: 9px; /* badge/label 极小字号 */
+  --wk-text-size-tiny: 10px;
+  --wk-text-size-xs: 11px;
+  --wk-text-size-sm: 12px;
+  --wk-text-size-base: 13px;
+  --wk-text-size-md: 14px;
+  --wk-text-size-lg: 15px;
+  --wk-text-size-xl: 16px;
+  --wk-text-size-2xl: 18px;
+  --wk-text-size-3xl: 22px;
+  --wk-text-size-4xl: 28px;
 
   /* ── Typography — 字重 ── */
-  --wk-font-regular:  400;
-  --wk-font-medium:   500;
+  --wk-font-regular: 400;
+  --wk-font-medium: 500;
   --wk-font-semibold: 600;
-  --wk-font-bold:     700;
+  --wk-font-bold: 700;
 
   /* ── Typography — 行高 ── */
-  --wk-leading-tight:  1.25;
-  --wk-leading-snug:   1.35;
+  --wk-leading-tight: 1.25;
+  --wk-leading-snug: 1.35;
   --wk-leading-normal: 1.5;
-  --wk-leading-loose:  1.6;
+  --wk-leading-loose: 1.6;
 
   /* ── Typography — 组合快捷（font shorthand） ── */
-  --wk-text-h1:           700 28px/1.25 var(--wk-font-sans);
-  --wk-text-h2:           700 22px/1.3  var(--wk-font-sans);
-  --wk-text-h3:           600 16px/1.35 var(--wk-font-sans);
-  --wk-text-h4:           600 14px/1.4  var(--wk-font-sans);
-  --wk-text-body:         400 14px/1.5  var(--wk-font-sans);
-  --wk-text-body-medium:  500 14px/1.5  var(--wk-font-sans);
-  --wk-text-caption:      400 12px/1.5  var(--wk-font-sans);
-  --wk-text-tiny:         500 10px/1.4  var(--wk-font-sans);
-  --wk-text-code:         400 13px/1.6  var(--wk-font-mono);
-  --wk-text-mono-sm:      400 11px/1.4  var(--wk-font-mono);
+  --wk-text-h1: 700 28px/1.25 var(--wk-font-sans);
+  --wk-text-h2: 700 22px/1.3 var(--wk-font-sans);
+  --wk-text-h3: 600 16px/1.35 var(--wk-font-sans);
+  --wk-text-h4: 600 14px/1.4 var(--wk-font-sans);
+  --wk-text-body: 400 14px/1.5 var(--wk-font-sans);
+  --wk-text-body-medium: 500 14px/1.5 var(--wk-font-sans);
+  --wk-text-caption: 400 12px/1.5 var(--wk-font-sans);
+  --wk-text-tiny: 500 10px/1.4 var(--wk-font-sans);
+  --wk-text-code: 400 13px/1.6 var(--wk-font-mono);
+  --wk-text-mono-sm: 400 11px/1.4 var(--wk-font-mono);
 
   /* ── Spacing — 4px 栅格 ── */
   --wk-sp-0-5: 2px;
-  --wk-sp-1:   4px;
+  --wk-sp-1: 4px;
   --wk-sp-1-5: 6px;
-  --wk-sp-2:   8px;
-  --wk-sp-3:   12px;
-  --wk-sp-4:  16px;
-  --wk-sp-5:  20px;
-  --wk-sp-6:  24px;
-  --wk-sp-8:  32px;
+  --wk-sp-2: 8px;
+  --wk-sp-3: 12px;
+  --wk-sp-4: 16px;
+  --wk-sp-5: 20px;
+  --wk-sp-6: 24px;
+  --wk-sp-8: 32px;
   --wk-sp-10: 40px;
   --wk-sp-12: 48px;
 
   /* ── Border Radius ── */
-  --wk-r-xs:   3px;    /* Figma: Tag, 导航项 */
-  --wk-r-sm:   6px;
-  --wk-r-md:   8px;    /* Figma: 消息气泡, 图片 */
-  --wk-r-lg:   16px;   /* Figma: 头像 */
-  --wk-r-xl:   20px;
+  --wk-r-xs: 3px; /* Figma: Tag, 导航项 */
+  --wk-r-sm: 6px;
+  --wk-r-md: 8px; /* Figma: 消息气泡, 图片 */
+  --wk-r-lg: 16px; /* Figma: 头像 */
+  --wk-r-xl: 20px;
   --wk-r-full: 9999px;
   --wk-r-circle: 50%; /* circle — for avatars; distinct from --wk-r-full (9999px pill shape) */
 
   /* ── Animation ── */
-  --wk-ease:        cubic-bezier(0.16, 1, 0.3, 1);
+  --wk-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --wk-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --wk-dur-fast:    150ms;
-  --wk-dur:         200ms;
-  --wk-dur-slow:    350ms;
+  --wk-dur-fast: 150ms;
+  --wk-dur: 200ms;
+  --wk-dur-slow: 350ms;
 
   /* ── Layout（Figma 尺寸） ── */
-  --wk-nav-w:       56px;    /* Figma: 侧边栏折叠宽度 */
-  --wk-sidebar-w:   240px;   /* Figma 参考值；实际宽度由用户拖拽控制，默认 300px (App.css --wk-width-layout-content-left) */
+  --wk-nav-w: 56px; /* Figma: 侧边栏折叠宽度 */
+  --wk-sidebar-w: 240px; /* Figma 参考值；实际宽度由用户拖拽控制，默认 300px (App.css --wk-width-layout-content-left) */
   --wk-task-rail-w: 320px;
 
   /* ── Z-index ── */
-  --wk-z-base:     0;
-  --wk-z-raised:   10;
-  --wk-z-sticky:   50;
+  --wk-z-base: 0;
+  --wk-z-raised: 10;
+  --wk-z-sticky: 50;
   --wk-z-dropdown: 100;
-  --wk-z-modal:    200;
-  --wk-z-toast:    300;
-  --wk-z-tooltip:  400;
+  --wk-z-modal: 200;
+  --wk-z-toast: 300;
+  --wk-z-tooltip: 400;
 }
 
 /* ============================================================
@@ -152,37 +163,39 @@
    ============================================================ */
 :root {
   /* 背景层（Figma 色值） */
-  --wk-bg-deep:     var(--wk-neutral-50);    /* Figma: #F5F6F7 侧边栏/列表背景 */
-  --wk-bg-base:     var(--wk-neutral-50);    /* Figma: #F5F6F7 */
-  --wk-bg-surface:  var(--wk-neutral-0);     /* Figma: #FFFFFF 内容区 */
-  --wk-bg-elevated: var(--wk-neutral-100);   /* Figma: #F2F3F4 Tag/系统消息 */
-  --wk-bg-hover:    var(--wk-neutral-150);   /* Figma: #DFE0E2 */
-  --wk-bg-active:   var(--wk-neutral-200);   /* Figma: #D9D9D9 */
-  --wk-bg-navrail:  var(--wk-neutral-50);    /* Figma: 侧边栏与列表同色 #F5F6F7 */
-  --wk-bg-selection-header: #FAF9FF;
+  --wk-bg-deep: var(--wk-neutral-50); /* Figma: #F5F6F7 侧边栏/列表背景 */
+  --wk-bg-base: var(--wk-neutral-50); /* Figma: #F5F6F7 */
+  --wk-bg-surface: var(--wk-neutral-0); /* Figma: #FFFFFF 内容区 */
+  --wk-bg-elevated: var(--wk-neutral-100); /* Figma: #F2F3F4 Tag/系统消息 */
+  --wk-bg-hover: var(--wk-neutral-150); /* Figma: #DFE0E2 */
+  --wk-bg-active: var(--wk-neutral-200); /* Figma: #D9D9D9 */
+  --wk-bg-navrail: var(--wk-neutral-50); /* Figma: 侧边栏与列表同色 #F5F6F7 */
+  --wk-bg-selection-header: #faf9ff;
 
   /* 文字（Figma 色值） */
-  --wk-text-primary:   var(--wk-neutral-800);  /* Figma: #1F2329 标题/组织名 */
-  --wk-text-secondary: var(--wk-neutral-400);   /* Figma: #555B61 */
-  --wk-text-tertiary:  var(--wk-neutral-300);   /* Figma: #6B7075 */
-  --wk-text-accent:    var(--wk-purple-500);    /* Figma: #7F3BF5 AI链接/Thread（紫色点缀） */
-  --wk-text-inverse:   var(--wk-neutral-0);
+  --wk-text-primary: var(--wk-neutral-800); /* Figma: #1F2329 标题/组织名 */
+  --wk-text-secondary: var(--wk-neutral-400); /* Figma: #555B61 */
+  --wk-text-tertiary: var(--wk-neutral-300); /* Figma: #6B7075 */
+  --wk-text-accent: var(
+    --wk-purple-500
+  ); /* Figma: #7F3BF5 AI链接/Thread（紫色点缀） */
+  --wk-text-inverse: var(--wk-neutral-0);
 
   /* 边框 */
-  --wk-border-subtle:  var(--wk-black-alpha-05);
+  --wk-border-subtle: var(--wk-black-alpha-05);
   --wk-border-default: var(--wk-black-alpha-08);
-  --wk-border-strong:  var(--wk-black-alpha-14);
-  --wk-border-glow:    var(--wk-purple-alpha-25);
+  --wk-border-strong: var(--wk-black-alpha-14);
+  --wk-border-glow: var(--wk-purple-alpha-25);
 
   /* 功能色（Figma 色值） */
-  --wk-color-success:    var(--wk-green-light);  /* Figma: #41CD59 */
+  --wk-color-success: var(--wk-green-light); /* Figma: #41CD59 */
   --wk-color-success-bg: rgba(65, 205, 89, 0.08);
-  --wk-color-warning:    var(--wk-amber-light);  /* Figma: #FC8800 */
+  --wk-color-warning: var(--wk-amber-light); /* Figma: #FC8800 */
   --wk-color-warning-bg: rgba(252, 136, 0, 0.08);
-  --wk-color-error:      var(--wk-red-light);    /* Figma: #F54A45 */
-  --wk-color-error-bg:   rgba(245, 74, 69, 0.08);
-  --wk-color-info:       var(--wk-blue-light);   /* Figma: #0077FA */
-  --wk-color-info-bg:    rgba(0, 119, 250, 0.08);
+  --wk-color-error: var(--wk-red-light); /* Figma: #F54A45 */
+  --wk-color-error-bg: rgba(245, 74, 69, 0.08);
+  --wk-color-info: var(--wk-blue-light); /* Figma: #0077FA */
+  --wk-color-info-bg: rgba(0, 119, 250, 0.08);
 
   /* Space avatar 背景色（用于 Space 首字母头像，6 种轮换） */
   --wk-space-color-1: #667eea;
@@ -193,103 +206,107 @@
   --wk-space-color-6: #fa709a;
 
   /* AI 专属 */
-  --wk-ai-surface:   rgba(127, 59, 245, 0.03);
-  --wk-ai-border:    var(--wk-purple-alpha-12);
-  --wk-ai-glow:      var(--wk-purple-alpha-06);
-  --wk-ai-panel-bg:  #FAFAFF;
+  --wk-ai-surface: rgba(127, 59, 245, 0.03);
+  --wk-ai-border: var(--wk-purple-alpha-12);
+  --wk-ai-glow: var(--wk-purple-alpha-06);
+  --wk-ai-panel-bg: #fafaff;
 
   /* 消息气泡双色 */
-  --wk-bg-self:   #E5F5F1;  /* 自己的消息 — 淡青 */
-  --wk-bg-bubble: #FAFAFF;  /* 他人 & AI 消息 — 微紫白 */
+  --wk-bg-self: #e5f5f1; /* 自己的消息 — 淡青 */
+  --wk-bg-bubble: #fafaff; /* 他人 & AI 消息 — 微紫白 */
 
   /* Shadow */
-  --wk-shadow-sm:   0 1px 2px var(--wk-black-alpha-06);
-  --wk-shadow-md:   0 4px 12px var(--wk-black-alpha-08);
-  --wk-shadow-lg:   0 8px 24px var(--wk-black-alpha-12);
+  --wk-shadow-sm: 0 1px 2px var(--wk-black-alpha-06);
+  --wk-shadow-md: 0 4px 12px var(--wk-black-alpha-08);
+  --wk-shadow-lg: 0 8px 24px var(--wk-black-alpha-12);
   --wk-shadow-glow: 0 0 20px var(--wk-purple-alpha-08);
 
   /* Code */
-  --wk-code-bg:     #1F2937;
+  --wk-code-bg: #1f2937;
   --wk-code-border: var(--wk-black-alpha-12);
 
   /* Semi Design token 覆盖 */
-  --semi-color-primary:       var(--wk-brand-primary);
+  --semi-color-primary: var(--wk-brand-primary);
   --semi-color-primary-hover: var(--wk-brand-primary-hover);
-  --semi-color-bg-0:          var(--wk-bg-base);
-  --semi-color-bg-1:          var(--wk-bg-surface);
-  --semi-color-text-0:        var(--wk-text-primary);
-  --semi-color-text-1:        var(--wk-text-secondary);
-  --semi-color-text-2:        var(--wk-text-tertiary);
-  --semi-color-border:        var(--wk-border-default);
+  --semi-color-bg-0: var(--wk-bg-base);
+  --semi-color-bg-1: var(--wk-bg-surface);
+  --semi-color-text-0: var(--wk-text-primary);
+  --semi-color-text-1: var(--wk-text-secondary);
+  --semi-color-text-2: var(--wk-text-tertiary);
+  --semi-color-border: var(--wk-border-default);
 }
 
 /* ============================================================
    Dark Theme — body[theme-mode=dark]
-   
+
    ⚠️ 暗黑模式当前已关闭（App.tsx 强制 ThemeMode.light），设置面板无切换入口
    保留以下 CSS 变量定义以备后续重启暗黑模式功能
    ============================================================ */
-body[theme-mode=dark] {
+body[theme-mode="dark"] {
   /* 背景层 */
-  --wk-bg-deep:     var(--wk-neutral-900);
-  --wk-bg-base:     var(--wk-neutral-850);
-  --wk-bg-surface:  var(--wk-neutral-800);
+  --wk-bg-deep: var(--wk-neutral-900);
+  --wk-bg-base: var(--wk-neutral-850);
+  --wk-bg-surface: var(--wk-neutral-800);
   --wk-bg-elevated: var(--wk-neutral-700);
-  --wk-bg-hover:    var(--wk-neutral-600);
-  --wk-bg-active:   var(--wk-neutral-500);
-  --wk-bg-navrail:  var(--wk-bg-deep); /* NavRail 暗色背景跟随主背景 */
-  --wk-bg-selection-header: color-mix(in srgb, var(--wk-brand-accent) 14%, var(--wk-bg-base));
+  --wk-bg-hover: var(--wk-neutral-600);
+  --wk-bg-active: var(--wk-neutral-500);
+  --wk-bg-navrail: var(--wk-bg-deep); /* NavRail 暗色背景跟随主背景 */
+  --wk-bg-selection-header: color-mix(
+    in srgb,
+    var(--wk-brand-accent) 14%,
+    var(--wk-bg-base)
+  );
 
   /* 文字 */
-  --wk-text-primary:   #E4E6ED;
+  --wk-text-primary: #e4e6ed;
   --wk-text-secondary: var(--wk-neutral-300);
-  --wk-text-tertiary:  #7A7F96;
-  --wk-text-accent:    var(--wk-purple-400);  /* 暗色下用浅紫 */
-  --wk-text-inverse:   var(--wk-neutral-900);
+  --wk-text-tertiary: #7a7f96;
+  --wk-text-accent: var(--wk-purple-400); /* 暗色下用浅紫 */
+  --wk-text-inverse: var(--wk-neutral-900);
 
   /* 边框 */
-  --wk-border-subtle:  var(--wk-white-alpha-04);
+  --wk-border-subtle: var(--wk-white-alpha-04);
   --wk-border-default: var(--wk-white-alpha-07);
-  --wk-border-strong:  var(--wk-white-alpha-12);
-  --wk-border-glow:    var(--wk-purple-alpha-20);
+  --wk-border-strong: var(--wk-white-alpha-12);
+  --wk-border-glow: var(--wk-purple-alpha-20);
 
   /* 功能色 */
-  --wk-color-success:    var(--wk-green-dark);
+  --wk-color-success: var(--wk-green-dark);
   --wk-color-success-bg: var(--wk-teal-alpha-10);
-  --wk-color-warning:    var(--wk-amber-dark);
-  --wk-color-warning-bg: rgba(255, 173, 51, 0.10);
-  --wk-color-error:      var(--wk-red-dark);
-  --wk-color-error-bg:   rgba(255, 92, 114, 0.10);
-  --wk-color-info:       var(--wk-blue-dark);
-  --wk-color-info-bg:    rgba(92, 154, 255, 0.10);
+  --wk-color-warning: var(--wk-amber-dark);
+  --wk-color-warning-bg: rgba(255, 173, 51, 0.1);
+  --wk-color-error: var(--wk-red-dark);
+  --wk-color-error-bg: rgba(255, 92, 114, 0.1);
+  --wk-color-info: var(--wk-blue-dark);
+  --wk-color-info-bg: rgba(92, 154, 255, 0.1);
 
   /* AI 专属 */
-  --wk-ai-surface:   var(--wk-purple-alpha-04);
-  --wk-ai-border:    var(--wk-purple-alpha-12);
-  --wk-ai-glow:      var(--wk-purple-alpha-06);
-  --wk-ai-panel-bg:  var(--wk-bg-base);
+  --wk-ai-surface: var(--wk-purple-alpha-04);
+  --wk-ai-border: var(--wk-purple-alpha-12);
+  --wk-ai-glow: var(--wk-purple-alpha-06);
+  --wk-ai-panel-bg: var(--wk-bg-base);
 
   /* 消息气泡双色 */
-  --wk-bg-self:   #1A2E2A;  /* 自己的消息 — 暗色淡青 */
-  --wk-bg-bubble: #1A1A2E;  /* 他人 & AI 消息 — 暗色微紫 */
+  --wk-bg-self: #1a2e2a; /* 自己的消息 — 暗色淡青 */
+  --wk-bg-bubble: #1a1a2e; /* 他人 & AI 消息 — 暗色微紫 */
 
   /* Shadow */
-  --wk-shadow-sm:   0 1px 2px var(--wk-black-alpha-30);
-  --wk-shadow-md:   0 4px 12px var(--wk-black-alpha-40);
-  --wk-shadow-lg:   0 8px 24px var(--wk-black-alpha-50);
+  --wk-shadow-sm: 0 1px 2px var(--wk-black-alpha-30);
+  --wk-shadow-md: 0 4px 12px var(--wk-black-alpha-40);
+  --wk-shadow-lg: 0 8px 24px var(--wk-black-alpha-50);
   --wk-shadow-glow: 0 0 20px var(--wk-purple-alpha-12);
 
   /* Code */
-  --wk-code-bg:     var(--wk-neutral-900);
+  --wk-code-bg: var(--wk-neutral-900);
   --wk-code-border: var(--wk-white-alpha-07);
 
   /* Semi Design token 覆盖 */
-  --semi-color-primary:       var(--wk-brand-primary);
+  --semi-color-primary: var(--wk-brand-primary);
   --semi-color-primary-hover: var(--wk-brand-primary-hover);
-  --semi-color-bg-0:          var(--wk-bg-surface);
-  --semi-color-bg-1:          var(--wk-bg-elevated);
-  --semi-color-text-0:        var(--wk-text-primary);
-  --semi-color-text-1:        var(--wk-text-secondary);
-  --semi-color-text-2:        var(--wk-text-tertiary);
-  --semi-color-border:        var(--wk-border-default);
+  --semi-color-bg-0: var(--wk-bg-surface);
+  --semi-color-bg-1: var(--wk-bg-elevated);
+  --semi-color-text-0: var(--wk-text-primary);
+  --semi-color-text-1: var(--wk-text-secondary);
+  --semi-color-text-2: var(--wk-text-tertiary);
+  --semi-color-border: var(--wk-border-default);
 }
