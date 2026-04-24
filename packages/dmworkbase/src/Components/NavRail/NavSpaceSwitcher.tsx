@@ -21,7 +21,7 @@ function IconBuilding() {
     );
 }
 
-import { IconJoinSpace, IconCreateSpace } from "./icons";
+import { IconJoinSpace } from "./icons";
 
 export interface NavSpaceSwitcherProps {
     spaces: Space[];
@@ -29,7 +29,6 @@ export interface NavSpaceSwitcherProps {
     onSpaceSelect: (spaceId: string) => void;
     onCopyInviteLink?: (spaceId: string, e: React.MouseEvent) => void;
     onJoinSpace?: () => void;
-    onCreateSpace?: () => void;
 }
 
 interface NavSpaceSwitcherState {
@@ -68,7 +67,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
     };
 
     render() {
-        const { spaces, currentSpaceId, onSpaceSelect, onCopyInviteLink, onJoinSpace, onCreateSpace } = this.props;
+        const { spaces, currentSpaceId, onSpaceSelect, onCopyInviteLink, onJoinSpace } = this.props;
         const { open } = this.state;
         const current = spaces.find(s => s.space_id === currentSpaceId);
 
@@ -124,28 +123,17 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                                 ))}
                             </div>
                             {/* 固定底部操作区 */}
-                            {(onJoinSpace || onCreateSpace) && (
+                            {onJoinSpace && (
                                 <>
                                     <div className="wk-navrail__dropdown-divider" />
                                     <div className="wk-navrail__dropdown-actions">
-                                        {onJoinSpace && (
-                                            <ActionListItem
-                                                icon={<IconJoinSpace />}
-                                                label="加入 Space"
-                                                variant="join"
-                                                compact
-                                                onClick={() => { this.handleClose(); onJoinSpace(); }}
-                                            />
-                                        )}
-                                        {onCreateSpace && (
-                                            <ActionListItem
-                                                icon={<IconCreateSpace />}
-                                                label="创建 Space"
-                                                variant="create"
-                                                compact
-                                                onClick={() => { this.handleClose(); onCreateSpace(); }}
-                                            />
-                                        )}
+                                        <ActionListItem
+                                            icon={<IconJoinSpace />}
+                                            label="加入 Space"
+                                            variant="join"
+                                            compact
+                                            onClick={() => { this.handleClose(); onJoinSpace(); }}
+                                        />
                                     </div>
                                 </>
                             )}

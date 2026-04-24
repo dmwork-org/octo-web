@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import React from "react";
 import { IconPlus, IconSearch, IconChevronRight, IconSetting } from "@douyinfe/semi-icons";
 
-import { IconJoinSpace, IconCreateSpace } from "../NavRail/icons";
+import { IconJoinSpace } from "../NavRail/icons";
 import ActionListItem from "./index";
 import "../../theme/index.css";
 
@@ -93,12 +93,6 @@ export const CompactVariants: Story = {
                 icon={<IconJoinSpace />}
                 label="加入 Space"
                 variant="join"
-                compact
-            />
-            <ActionListItem
-                icon={<IconCreateSpace />}
-                label="创建 Space"
-                variant="create"
                 compact
             />
         </CompactContainer>

@@ -5,7 +5,7 @@ import type { NavRailProps } from "./index";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
 import SpaceItem from "../SpaceItem";
 import ActionListItem from "../ActionListItem";
-import { IconJoinSpace, IconCreateSpace } from "./icons";
+import { IconJoinSpace } from "./icons";
 import "../../theme/index.css";
 
 const mockSpaces = [
@@ -23,7 +23,6 @@ const defaultArgs: NavRailProps = {
     onSpaceSelect: (id) => console.log("space selected:", id),
     onItemClick: (key) => console.log("nav item clicked:", key),
     onJoinSpace: () => console.log("join space"),
-    onCreateSpace: () => console.log("create space"),
     onSettingsClick: () => console.log("settings"),
     onAvatarClick: () => console.log("avatar"),
 };
@@ -103,7 +102,6 @@ export const SpaceDropdownOpen = {
                 <div className="wk-navrail__dropdown-divider" />
                 <div className="wk-navrail__dropdown-actions">
                     <ActionListItem icon={<IconJoinSpace />} label="加入 Space" variant="join" compact />
-                    <ActionListItem icon={<IconCreateSpace />} label="创建 Space" variant="create" compact />
                 </div>
             </div>
         </div>

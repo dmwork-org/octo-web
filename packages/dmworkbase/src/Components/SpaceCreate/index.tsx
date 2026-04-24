@@ -3,6 +3,7 @@ import { Toast, Checkbox } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import WKInput from "../WKInput";
 import { SpaceService } from "../../Service/SpaceService";
+import { extractErrorMsg } from "../../Service/APIClient";
 import WKButton from "../WKButton";
 import InputEdit from "../InputEdit";
 import "./index.css";
@@ -46,8 +47,8 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
             this.setState({ name: "", description: "", joinMode: 0, inviteUrl: invite.invite_url, loading: false });
             Toast.success("Space 创建成功");
             this.props.onSuccess(resp.space_id);
-        } catch {
-            Toast.error("创建失败，请重试");
+        } catch (err: unknown) {
+            Toast.error(extractErrorMsg(err) || "创建失败，请重试");
             this.setState({ loading: false });
         }
     };

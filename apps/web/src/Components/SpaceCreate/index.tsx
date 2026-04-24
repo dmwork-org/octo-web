@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { Input, TextArea, Toast } from "@douyinfe/semi-ui";
-import { SpaceService, WKModal } from "@octo/base";
+import { SpaceService, WKModal, extractErrorMsg } from "@octo/base";
 import "./index.css";
 
 export interface SpaceCreateProps {
@@ -40,8 +40,8 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
             this.setState({ inviteUrl: invite.invite_url, loading: false });
             Toast.success("Space 创建成功");
             this.props.onSuccess();
-        } catch {
-            Toast.error("创建失败，请重试");
+        } catch (err: unknown) {
+            Toast.error(extractErrorMsg(err) || "创建失败，请重试");
             this.setState({ loading: false });
         }
     };
