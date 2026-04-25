@@ -35,6 +35,7 @@ export { default as FileHelper } from './Utils/filehelper'
 export *  from './Utils/filehelper'
 export { NotificationUtil, notificationUtil } from './Utils/NotificationUtil'
 export * from './Utils/NotificationUtil'
+export * from './Utils/clipboard'
 
 export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"

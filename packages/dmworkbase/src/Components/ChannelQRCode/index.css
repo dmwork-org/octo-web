@@ -89,3 +89,10 @@ body[theme-mode=dark] .wk-channelqrcode-qrcode-mask {
     align-items: center;
     justify-content: center;
 }
+
+.wk-channelqrcode-actions {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding: 4px 0 20px 0;
+}
