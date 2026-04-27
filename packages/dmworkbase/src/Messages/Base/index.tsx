@@ -18,6 +18,7 @@ import {
 } from "../../Service/Const";
 import { IConversationProvider } from "../../Service/DataSource/DataProvider";
 import WKApp from "../../App";
+import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { css } from "@emotion/react";
 // import ClockLoader from "react-spinners/ClockLoader";
 import Checkbox from "../../Components/Checkbox";
@@ -280,24 +281,40 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const showAvatar = this.needAvatar();
     const timeStr = moment(message.timestamp * 1000).format("HH:mm");
 
-    // 外部群成员来源标记（YUJ-53）：优先读 msg-level 字段
-    // message.fromIsExternal / message.fromSourceSpaceName（YUJ-50 后端
-    // /message/channel/sync payload 扩展），未提供时回落到 channelInfo.orgData。
-    // 系统消息 / 机器人 / 内部成员 (from_is_external=0 或缺失) 不展示。
+    // 外部群成员来源标记（YUJ-53 / YUJ-64）：按当前查看 Space 相对渲染。
+    // 优先读 msg-level 新字段 from_home_space_id / from_home_space_name；
+    // 缺失时回落到旧 msg-level (from_is_external/from_source_space_name)，
+    // 再回落到 channelInfo.orgData。系统消息 / 机器人 / AI 不展示。
     const isGroupMsg = message.channel.channelType === ChannelTypeGroup;
-    const msgSourceSpaceName = message.fromSourceSpaceName;
-    const orgSourceSpaceName = channelInfo?.orgData?.source_space_name as
-      | string
-      | undefined;
-    const hasMsgLevelExt = message.fromIsExternal && !!msgSourceSpaceName;
-    const hasOrgLevelExt =
-      isGroupMsg &&
-      channelInfo?.orgData?.is_external === 1 &&
-      !!orgSourceSpaceName;
-    const showExtOrigin = !isAi && (hasMsgLevelExt || hasOrgLevelExt);
-    const extSourceSpaceName = hasMsgLevelExt
-      ? msgSourceSpaceName
-      : orgSourceSpaceName;
+    const viewerSpaceId = WKApp.shared.currentSpaceId;
+    const msgRes = resolveExternalForViewer({
+      homeSpaceId: message.fromHomeSpaceId,
+      homeSpaceName: message.fromHomeSpaceName,
+      isExternalLegacy: message.fromIsExternal ? 1 : 0,
+      sourceSpaceNameLegacy: message.fromSourceSpaceName,
+      viewerSpaceId,
+    });
+    const hasMsgLevelExt =
+      !!message.fromHomeSpaceId ||
+      (message.fromIsExternal && !!message.fromSourceSpaceName);
+    const orgRes = isGroupMsg
+      ? resolveExternalForViewer({
+          homeSpaceId: channelInfo?.orgData?.home_space_id as
+            | string
+            | undefined,
+          homeSpaceName: channelInfo?.orgData?.home_space_name as
+            | string
+            | undefined,
+          isExternalLegacy: channelInfo?.orgData?.is_external,
+          sourceSpaceNameLegacy: channelInfo?.orgData?.source_space_name as
+            | string
+            | undefined,
+          viewerSpaceId,
+        })
+      : { isExternal: false, sourceSpaceName: "" };
+    const extResolved = hasMsgLevelExt ? msgRes : orgRes;
+    const showExtOrigin = !isAi && extResolved.isExternal;
+    const extSourceSpaceName = extResolved.sourceSpaceName;
 
     return (
       <div

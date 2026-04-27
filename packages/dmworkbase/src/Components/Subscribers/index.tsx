@@ -10,6 +10,7 @@ import WKBase, { WKBaseContext } from "../WKBase";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { SubscriberList } from "./list";
 import { Tag } from "@douyinfe/semi-ui";
+import { resolveExternalForViewer } from "../../Utils/externalViewer";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -22,8 +23,14 @@ export class Subscribers extends Component<SubscribersProps> {
   baseContext!: WKBaseContext;
 
   subscriberUI(subscriber: Subscriber) {
-    const isExternal = subscriber.orgData?.is_external === 1;
-    const sourceSpaceName = subscriber.orgData?.source_space_name;
+    // YUJ-64: 外部 Tag 与来源按当前查看 Space 相对渲染。
+    // 优先新字段 home_space_id / home_space_name，缺失时回落旧字段。
+    const { isExternal, sourceSpaceName } = resolveExternalForViewer({
+      homeSpaceId: subscriber.orgData?.home_space_id,
+      homeSpaceName: subscriber.orgData?.home_space_name,
+      isExternalLegacy: subscriber.orgData?.is_external,
+      sourceSpaceNameLegacy: subscriber.orgData?.source_space_name,
+    });
     return (
       <div
         key={subscriber.uid}

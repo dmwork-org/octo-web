@@ -113,6 +113,19 @@ export class Convert {
             (message as any).from_source_space_name = fromSourceSpaceName
         }
 
+        // YUJ-64 / YUJ-63：新增 msg-level 字段 from_home_space_id /
+        // from_home_space_name，表示消息发送者真正归属的 Space。消费方
+        // （MessageWrap + 消息头渲染）据此按当前查看 Space 做相对外部判定，
+        // 替换旧的 is_external 绝对值。
+        const fromHomeSpaceId = msgMap["from_home_space_id"]
+        if (fromHomeSpaceId !== undefined && fromHomeSpaceId !== null) {
+            (message as any).from_home_space_id = fromHomeSpaceId
+        }
+        const fromHomeSpaceName = msgMap["from_home_space_name"]
+        if (fromHomeSpaceName !== undefined && fromHomeSpaceName !== null) {
+            (message as any).from_home_space_name = fromHomeSpaceName
+        }
+
         return message
     }
 

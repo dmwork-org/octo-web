@@ -96,6 +96,7 @@ import { GroupManagement } from "./Components/GroupManagement";
 import { handleGlobalSearchClick } from "./Pages/Chat/vm";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
+import { resolveExternalForViewer } from "./Utils/externalViewer";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import {
   ThreadCreatedCell,
@@ -989,14 +990,24 @@ export default class BaseModule implements IModule {
           return;
         }
 
-        // 外部群成员：优先读取群成员接口的 source_space_name
-        // （1v1 users/{uid} 接口不具备群内外部成员上下文，source_desc 会为空）
-        const sourceSpaceName =
-          (fromSubscriberOfUser?.orgData?.source_space_name as
-            | string
-            | undefined) || "";
-        const isExternalMember =
-          fromSubscriberOfUser?.orgData?.is_external === 1;
+        // 外部群成员：YUJ-64 改为按当前查看 Space 相对判定。
+        // 优先读 home_space_id / home_space_name（YUJ-63 后端扩展），缺失时
+        // 回落到旧的 is_external + source_space_name（1v1 users/{uid} 接口不具备
+        // 群内外部成员上下文，source_desc 会为空）。
+        const { isExternal: isExternalMember, sourceSpaceName } =
+          resolveExternalForViewer({
+            homeSpaceId: fromSubscriberOfUser?.orgData?.home_space_id as
+              | string
+              | undefined,
+            homeSpaceName: fromSubscriberOfUser?.orgData?.home_space_name as
+              | string
+              | undefined,
+            isExternalLegacy: fromSubscriberOfUser?.orgData?.is_external as
+              | number
+              | undefined,
+            sourceSpaceNameLegacy: fromSubscriberOfUser?.orgData
+              ?.source_space_name as string | undefined,
+          });
 
         if (isExternalMember) {
           if (!sourceSpaceName || sourceSpaceName.trim() === "") {

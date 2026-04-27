@@ -3,6 +3,8 @@ import React from "react";
 import { Component } from "react";
 import { BubblePosition, MessageWrap } from "../../Service/Model";
 import AiBadge from "../../Components/AiBadge";
+import WKApp from "../../App";
+import { resolveExternalForViewer } from "../../Utils/externalViewer";
 
 const titleColors = ["#8C8DFF", "#7983C2", "#6D8DDE", "#5979F0", "#6695DF", "#8F7AC5",
     "#9D77A5", "#8A64D0", "#AA66C3", "#A75C96", "#C8697D", "#B74D62",
@@ -52,17 +54,35 @@ export default class MessageHead extends Component<MessageHeadProps> {
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
         const isGroupMsg = message.channel.channelType === ChannelTypeGroup
         const isBot = channelInfo?.orgData?.robot === 1
-        // 外部群成员来源标记（YUJ-53）：
-        // 优先读 msg-level 字段 message.fromIsExternal / message.fromSourceSpaceName
-        // （YUJ-50 后端 /message/channel/sync payload 扩展）。
-        // 后端未扩展 /users/{uid} 端点，故对 channelInfo.orgData.is_external 做
-        // 向后兼容回落——若未来 /users/{uid} 也补齐该字段仍可继续工作。
-        const msgSourceSpaceName = message.fromSourceSpaceName
-        const orgSourceSpaceName = channelInfo?.orgData?.source_space_name as string | undefined
-        const hasMsgLevel = message.fromIsExternal && !!msgSourceSpaceName
-        const hasOrgLevel = isGroupMsg && channelInfo?.orgData?.is_external === 1 && !!orgSourceSpaceName
-        const isExternalMember = hasMsgLevel || hasOrgLevel
-        const sourceSpaceName = hasMsgLevel ? msgSourceSpaceName : orgSourceSpaceName
+        // 外部群成员来源标记（YUJ-53 / YUJ-64）：
+        // 消息级 home_space_id/home_space_name 与 is_external/source_space_name
+        // 由 Convert.toMessage 从 /message/channel/sync 响应透传。优先新字段，
+        // 缺失时回落到 channelInfo.orgData 上的对应字段（向后兼容）。
+        const viewerSpaceId = WKApp.shared.currentSpaceId
+        // 1) msg-level：YUJ-64 新字段为主，YUJ-50 旧字段降级
+        const msgRes = resolveExternalForViewer({
+            homeSpaceId: message.fromHomeSpaceId,
+            homeSpaceName: message.fromHomeSpaceName,
+            isExternalLegacy: message.fromIsExternal ? 1 : 0,
+            sourceSpaceNameLegacy: message.fromSourceSpaceName,
+            viewerSpaceId,
+        })
+        const hasMsgLevel = !!message.fromHomeSpaceId ||
+            (message.fromIsExternal && !!message.fromSourceSpaceName)
+        // 2) org-level 回落：仅当 msg-level 完全缺失时使用 channelInfo.orgData
+        const orgHomeSpaceId = channelInfo?.orgData?.home_space_id as string | undefined
+        const orgHomeSpaceName = channelInfo?.orgData?.home_space_name as string | undefined
+        const orgRes = isGroupMsg
+            ? resolveExternalForViewer({
+                homeSpaceId: orgHomeSpaceId,
+                homeSpaceName: orgHomeSpaceName,
+                isExternalLegacy: channelInfo?.orgData?.is_external,
+                sourceSpaceNameLegacy: channelInfo?.orgData?.source_space_name,
+                viewerSpaceId,
+            })
+            : { isExternal: false, sourceSpaceName: "" }
+        const isExternalMember = hasMsgLevel ? msgRes.isExternal : orgRes.isExternal
+        const sourceSpaceName = hasMsgLevel ? msgRes.sourceSpaceName : orgRes.sourceSpaceName
         return <>
            {
                 this.needTitle()?( <div className="textTitle" style={{color:getTitleColor(channelInfo?.orgData?.displayName)}}>
