@@ -31,17 +31,6 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   viewMode: externalViewMode,
   onViewModeChange,
 }) => {
-  // 文件大小检查（超过 20MB 不渲染）
-  if (file.size && isFileTooLarge(file.size)) {
-    return (
-      <FileTooLarge
-        fileName={file.name}
-        fileSize={file.size}
-        fileUrl={file.url}
-      />
-    );
-  }
-
   // 内部视图模式状态（当外部不传入时使用）
   const [internalViewMode, setInternalViewMode] = useState<
     "preview" | "source"
@@ -142,6 +131,17 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     return () => window.removeEventListener("message", handleMessage);
   }, [viewMode, blobUrl, handleViewModeChange, onError]);
 
+  // 文件大小检查（超过 20MB 不渲染）- 移到 hooks 之后
+  if (file.size && isFileTooLarge(file.size)) {
+    return (
+      <FileTooLarge
+        fileName={file.name}
+        fileSize={file.size}
+        fileUrl={file.url}
+      />
+    );
+  }
+
   // 内容加载中
   if (contentLoading) {
     return <RendererState type="loading" />;
@@ -217,7 +217,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
           }`}
           onLoad={handleIframeLoad}
           onError={handleIframeError}
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts"
           title={file.name}
         />
       )}

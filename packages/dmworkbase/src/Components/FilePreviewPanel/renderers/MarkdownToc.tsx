@@ -30,7 +30,6 @@ export interface MarkdownTocProps {
  */
 export function extractTocItems(content: string): TocItem[] {
   if (!content) {
-    console.log("[extractTocItems] no content");
     return [];
   }
 

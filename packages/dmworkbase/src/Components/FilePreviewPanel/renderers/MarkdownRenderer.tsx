@@ -31,16 +31,16 @@ export interface MarkdownRendererProps extends BaseRendererProps {
 }
 
 /**
- * 节流函数
+ * 带取消功能的节流函数
  */
 function throttle<T extends (...args: unknown[]) => void>(
   fn: T,
   delay: number
-): T {
+): T & { cancel: () => void } {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return ((...args: unknown[]) => {
+  const throttled = ((...args: unknown[]) => {
     const now = Date.now();
     const remaining = delay - (now - lastCall);
 
@@ -58,7 +58,17 @@ function throttle<T extends (...args: unknown[]) => void>(
         fn(...args);
       }, remaining);
     }
-  }) as T;
+  }) as T & { cancel: () => void };
+
+  // 暴露 cancel 方法用于清理
+  throttled.cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+
+  return throttled;
 }
 
 /**
@@ -80,17 +90,6 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   onTocToggle,
   onTocAvailableChange,
 }) => {
-  // 文件大小检查（超过 20MB 不渲染）
-  if (file.size && isFileTooLarge(file.size)) {
-    return (
-      <FileTooLarge
-        fileName={file.name}
-        fileSize={file.size}
-        fileUrl={file.url}
-      />
-    );
-  }
-
   // 内部状态（当外部未控制时使用）
   const [internalViewMode, setInternalViewMode] = useState<
     "preview" | "source"
@@ -111,9 +110,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   });
 
   // 检测是否为大文件（超过限制强制使用源码模式）
+  // 使用 TextEncoder 替代 Blob 计算 size，避免内存浪费
   const isLargeFile = useMemo(() => {
     if (!content) return false;
-    const contentSize = new Blob([content]).size;
+    const contentSize = new TextEncoder().encode(content).length;
     return contentSize > MARKDOWN_PREVIEW_LIMIT;
   }, [content]);
 
@@ -159,7 +159,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         }
       }
     },
-    [onViewModeChange, isTocOpen, onTocToggle]
+    [onViewModeChange, isTocOpen, onTocToggle, isLargeFile]
   );
 
   // 处理 TOC 展开/收起
@@ -172,6 +172,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   }, [onTocToggle, internalTocOpen]);
 
   // 处理 TOC 项目点击（滚动到对应位置）
+  // 使用 id 直接 querySelector 查找元素，更安全
   const handleTocItemClick = useCallback(
     (id: string) => {
       setActiveTocId(id);
@@ -180,15 +181,20 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       const contentEl = contentRef.current;
       if (!contentEl) return;
 
-      // 查找所有标题元素
-      const headings = contentEl.querySelectorAll("h2, h3");
+      // 使用 data-toc-id 属性查找目标元素，更安全
+      // 如果没有 data-toc-id，回退到按索引查找
+      let targetEl = contentEl.querySelector(`[data-toc-id="${id}"]`);
 
-      // 找到目标标题的索引（使用已缓存的 tocItems）
-      const targetIndex = tocItems.findIndex((item) => item.id === id);
-      if (targetIndex === -1 || targetIndex >= headings.length) return;
+      if (!targetEl) {
+        // 回退方案：查找所有标题元素并按索引匹配
+        const headings = contentEl.querySelectorAll("h2, h3");
+        const targetIndex = tocItems.findIndex((item) => item.id === id);
+        if (targetIndex !== -1 && targetIndex < headings.length) {
+          targetEl = headings[targetIndex];
+        }
+      }
 
       // 滚动到目标位置
-      const targetEl = headings[targetIndex];
       if (targetEl) {
         targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
       }
@@ -229,8 +235,24 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     }, 100); // 100ms 节流
 
     contentEl.addEventListener("scroll", handleScroll, { passive: true });
-    return () => contentEl.removeEventListener("scroll", handleScroll);
+
+    // 清理：移除事件监听器并取消节流定时器
+    return () => {
+      contentEl.removeEventListener("scroll", handleScroll);
+      handleScroll.cancel();
+    };
   }, [isTocOpen, effectiveViewMode, content, tocItems]);
+
+  // 文件大小检查（超过 20MB 不渲染）- 移到 hooks 之后
+  if (file.size && isFileTooLarge(file.size)) {
+    return (
+      <FileTooLarge
+        fileName={file.name}
+        fileSize={file.size}
+        fileUrl={file.url}
+      />
+    );
+  }
 
   // 加载状态
   if (loading) {

@@ -96,6 +96,7 @@ const HtmlIframeRenderer = forwardRef<
           } ${iframeClassName || ""}`}
           style={iframeStyle}
           onLoad={handleLoad}
+          sandbox="allow-scripts"
         />
       )}
       {url && !blobUrl && (
@@ -107,6 +108,7 @@ const HtmlIframeRenderer = forwardRef<
           } ${iframeClassName || ""}`}
           style={iframeStyle}
           onLoad={handleLoad}
+          sandbox="allow-scripts"
         />
       )}
     </>

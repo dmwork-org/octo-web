@@ -69,7 +69,7 @@ export type RenderMode = "highlight" | "plain" | "too-large";
 
 export function getRenderMode(size: number): RenderMode {
   if (size <= FILE_SIZE_THRESHOLD.HIGHLIGHT) return "highlight";
-  if (size <= FILE_SIZE_THRESHOLD.PLAIN_TEXT) return "plain";
+  // PLAIN_TEXT (1MB) < MAX_PREVIEW (20MB)，所以只需检查 MAX_PREVIEW
   if (size <= FILE_SIZE_THRESHOLD.MAX_PREVIEW) return "plain";
   return "too-large";
 }
