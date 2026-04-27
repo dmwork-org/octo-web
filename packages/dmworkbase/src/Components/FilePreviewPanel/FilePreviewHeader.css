@@ -1,0 +1,266 @@
+/* ============================================
+   FilePreviewHeader - 文件预览面板 Header 样式
+   类名前缀: wk-file-preview-header
+   ============================================ */
+
+.wk-file-preview-header {
+  height: var(--wk-height-chat-conversation-header);
+  min-height: var(--wk-height-chat-conversation-header);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-default);
+  background-color: var(--wk-bg-surface);
+  gap: var(--wk-sp-2);
+}
+
+/* ============================================
+   左侧区域：返回按钮 + 文件选择器 + 视图切换
+   ============================================ */
+
+.wk-file-preview-header__left {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  flex-shrink: 0;
+}
+
+/* 通用按钮样式 */
+.wk-file-preview-header__btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  color: var(--wk-text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.wk-file-preview-header__btn:hover {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-file-preview-header__btn--close:hover {
+  background: var(--wk-color-danger-light, rgba(239, 68, 68, 0.1));
+  color: var(--wk-color-danger, #ef4444);
+}
+
+/* ============================================
+   文件下拉选择器
+   ============================================ */
+
+.wk-file-preview-header__dropdown {
+  position: relative;
+}
+
+.wk-file-preview-header__dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  background: var(--wk-bg-hover);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  color: var(--wk-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s;
+  max-width: 200px;
+}
+
+.wk-file-preview-header__dropdown-btn:hover,
+.wk-file-preview-header__dropdown-btn--open {
+  background: var(--wk-bg-active);
+}
+
+.wk-file-preview-header__dropdown-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-file-preview-header__dropdown-caret {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-file-preview-header__dropdown-caret--open {
+  transform: rotate(180deg);
+}
+
+/* 下拉面板 */
+.wk-file-preview-header__dropdown-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 240px;
+  max-width: 320px;
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  box-shadow: var(--wk-shadow-lg);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.wk-file-preview-header__dropdown-title {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--wk-text-tertiary);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-file-preview-header__dropdown-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.wk-file-preview-header__dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wk-file-preview-header__dropdown-item:hover {
+  background: var(--wk-bg-hover);
+}
+
+.wk-file-preview-header__dropdown-item--active {
+  background: var(--wk-bg-active);
+}
+
+.wk-file-preview-header__dropdown-item--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--wk-color-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+.wk-file-preview-header__dropdown-item-badge {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.wk-file-preview-header__dropdown-item-icon {
+  color: var(--wk-text-secondary);
+  flex-shrink: 0;
+}
+
+.wk-file-preview-header__dropdown-item-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--wk-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-file-preview-header__dropdown-footer {
+  padding: 6px 12px;
+  font-size: 10px;
+  color: var(--wk-text-tertiary);
+  border-top: 1px solid var(--wk-border-subtle);
+  text-align: center;
+}
+
+/* ============================================
+   分隔符
+   ============================================ */
+
+.wk-file-preview-header__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--wk-border-default);
+  margin: 0 4px;
+}
+
+/* ============================================
+   视图切换（预览/源码）
+   ============================================ */
+
+.wk-file-preview-header__view-toggle {
+  display: flex;
+  align-items: center;
+  background: var(--wk-bg-hover);
+  border-radius: var(--wk-r-sm);
+  padding: 2px;
+}
+
+.wk-file-preview-header__view-toggle-btn {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--wk-r-sm) - 2px);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wk-text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.wk-file-preview-header__view-toggle-btn:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-file-preview-header__view-toggle-btn--active {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================
+   中间区域：类型相关工具
+   ============================================ */
+
+.wk-file-preview-header__mid {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* ============================================
+   右侧区域：操作按钮
+   ============================================ */
+
+.wk-file-preview-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   响应式：小屏幕隐藏部分按钮
+   ============================================ */
+
+@media (max-width: 480px) {
+  .wk-file-preview-header__dropdown-text {
+    max-width: 100px;
+  }
+
+  .wk-file-preview-header__view-toggle {
+    display: none;
+  }
+
+  .wk-file-preview-header__sep {
+    display: none;
+  }
+}

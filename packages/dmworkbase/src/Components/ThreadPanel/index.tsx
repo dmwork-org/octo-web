@@ -12,15 +12,7 @@ import {
   buildThreadChannelId,
 } from "../../Service/Thread";
 import { ThreadPanelVM, ThreadPanelState } from "./vm";
-import {
-  X,
-  Plus,
-  ChevronDown,
-  ArrowLeft,
-  MoreHorizontal,
-  Download,
-  ExternalLink,
-} from "lucide-react";
+import { X, Plus, ChevronDown, ArrowLeft, MoreHorizontal } from "lucide-react";
 import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
@@ -31,6 +23,7 @@ import { formatRelativeTime } from "../../Utils/time";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
 import { getExtension } from "../FilePreviewPanel/types";
+import FilePreviewHeader from "../FilePreviewPanel/FilePreviewHeader";
 import {
   SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
@@ -64,6 +57,8 @@ interface ThreadPanelComponentState {
   showMoreMenu: boolean;
   panelWidth: number;
   isDragging: boolean;
+  /** 文件预览视图模式 */
+  fileViewMode: "preview" | "source";
 }
 
 export default class ThreadPanel extends Component<
@@ -105,6 +100,7 @@ export default class ThreadPanel extends Component<
       showMoreMenu: false,
       panelWidth: savedWidth,
       isDragging: false,
+      fileViewMode: "preview",
     };
   }
 
@@ -483,71 +479,46 @@ export default class ThreadPanel extends Component<
     });
   };
 
-  private handleFileDownload = () => {
-    const { filePreview } = this.props;
-    if (!filePreview) return;
-    const a = document.createElement("a");
-    a.href = filePreview.url;
-    a.download = filePreview.name || "file";
-    a.target = "_blank";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  private handleFileOpenExternal = () => {
-    const { filePreview } = this.props;
-    if (!filePreview) return;
-    window.open(filePreview.url, "_blank");
-  };
-
   private renderHeader() {
     const { onClose, filePreview, onFilePreviewClose } = this.props;
     const { view, vmState, showMoreMenu } = this.state;
     const thread = vmState.thread;
 
-    // 文件预览模式的 header
+    // 文件预览模式：使用 FilePreviewHeader 组件
     if (filePreview) {
       // 判断是否有子区可返回（groupNo 存在表示是从群聊的子区面板进入的）
       const canReturnToThread = !!this.props.groupNo;
 
+      // 判断是否需要显示视图切换（代码/HTML 等类型）
+      const ext = getExtension(filePreview.extension, filePreview.name);
+      const showViewToggle = [
+        "html",
+        "htm",
+        "md",
+        "markdown",
+        "js",
+        "jsx",
+        "ts",
+        "tsx",
+        "css",
+        "scss",
+        "less",
+        "json",
+        "xml",
+        "yaml",
+        "yml",
+      ].includes(ext);
+
       return (
-        <div className="wk-thread-panel-header">
-          {/* 返回子区按钮 - 仅在群聊的子区面板内打开文件预览时显示 */}
-          {canReturnToThread && (
-            <div
-              className="wk-thread-panel-header-btn"
-              onClick={onFilePreviewClose}
-              title="返回子区"
-            >
-              <ArrowLeft size={16} />
-            </div>
-          )}
-
-          <div className="wk-thread-panel-header-title">
-            <span title={filePreview.name}>{filePreview.name}</span>
-          </div>
-
-          <div className="wk-thread-panel-header-actions">
-            <div
-              className="wk-thread-panel-header-btn"
-              onClick={this.handleFileOpenExternal}
-              title="在新窗口打开"
-            >
-              <ExternalLink size={16} />
-            </div>
-            <div
-              className="wk-thread-panel-header-btn"
-              onClick={this.handleFileDownload}
-              title="下载"
-            >
-              <Download size={16} />
-            </div>
-            <div className="wk-thread-panel-header-btn" onClick={onClose}>
-              <X size={18} />
-            </div>
-          </div>
-        </div>
+        <FilePreviewHeader
+          file={filePreview}
+          showBackButton={canReturnToThread}
+          onBack={onFilePreviewClose}
+          onClose={onClose}
+          showViewToggle={showViewToggle}
+          viewMode={this.state.fileViewMode}
+          onViewModeChange={(mode) => this.setState({ fileViewMode: mode })}
+        />
       );
     }
 

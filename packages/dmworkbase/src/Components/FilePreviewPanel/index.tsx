@@ -94,5 +94,12 @@ export * from "./renderers";
 // 导出类型定义
 export * from "./types";
 
+// 导出 Header 组件
+export { FilePreviewHeader } from "./FilePreviewHeader";
+export type {
+  FilePreviewHeaderProps,
+  ConversationFile,
+} from "./FilePreviewHeader";
+
 export default FilePreviewPanel;
 export { FilePreviewPanel };
