@@ -340,12 +340,6 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
                     }`}
                     onClick={() => handleFileClick(fileItem)}
                   >
-                    <span
-                      className="wk-file-preview-header__dropdown-item-badge"
-                      title={fileItem.isAiGenerated ? "AI 生成" : "用户上传"}
-                    >
-                      {fileItem.isAiGenerated ? "✨" : "📎"}
-                    </span>
                     <span className="wk-file-preview-header__dropdown-item-icon">
                       {getFileIcon(fileItem.extension)}
                     </span>
