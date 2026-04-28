@@ -166,6 +166,17 @@ export default function VoiceInputIndicator({
     });
   }, []);
 
+  // 计算菜单位置
+  const updateMenuPosition = useCallback(() => {
+    if (buttonGroupRef.current) {
+      const rect = buttonGroupRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.top - 8, // 8px gap above button
+        left: rect.right - 160, // align right edge, menu width is 160px
+      });
+    }
+  }, []);
+
   // Update position when recording or transcribing, and on window resize/scroll
   useEffect(() => {
     if (!isRecording && !isTranscribing) {
@@ -395,17 +406,6 @@ export default function VoiceInputIndicator({
     VOICE_MODES.find((m) => m.value === voiceMode)?.label || "语音输入";
 
   // Hover handlers - show menu on hover, hide on leave
-  // 计算菜单位置
-  const updateMenuPosition = useCallback(() => {
-    if (buttonGroupRef.current) {
-      const rect = buttonGroupRef.current.getBoundingClientRect();
-      setMenuPosition({
-        top: rect.top - 8, // 8px gap above button
-        left: rect.right - 160, // align right edge, menu width is 160px
-      });
-    }
-  }, []);
-
   const handleMouseEnter = () => {
     if (!isOnline) return;
     // Clear any pending hide timeout
