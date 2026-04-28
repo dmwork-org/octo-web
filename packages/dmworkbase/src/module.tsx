@@ -505,6 +505,22 @@ export default class BaseModule implements IModule {
       return false;
     }
 
+    // 已屏蔽（免打扰）的 channel 不播提示音、不发通知
+    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(message.channel);
+    if (channelInfo?.mute) {
+      return false;
+    }
+    // 子区消息：额外检查父群聊 mute
+    const parentGroupNo = channelInfo?.orgData?.parentGroupNo as string | undefined;
+    if (parentGroupNo) {
+      const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+        new Channel(parentGroupNo, ChannelTypeGroup)
+      );
+      if (parentChannelInfo?.mute) {
+        return false;
+      }
+    }
+
     return true;
   }
 
