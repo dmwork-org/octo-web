@@ -45,7 +45,6 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   const viewMode = externalViewMode ?? internalViewMode;
 
   const [iframeLoading, setIframeLoading] = useState(true);
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -76,14 +75,10 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     [onViewModeChange]
   );
 
-  // 当内容加载完成后，创建 Blob URL
+  // 切换到预览模式时重置加载状态
   useEffect(() => {
     if (content && viewMode === "preview") {
-      const blob = new Blob([content], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      setBlobUrl(url);
       setIframeLoading(true);
-      return () => URL.revokeObjectURL(url);
     }
   }, [content, viewMode]);
 
@@ -118,7 +113,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
 
   // 监听 iframe 内部的 JS 错误
   useEffect(() => {
-    if (viewMode !== "preview" || !blobUrl) return;
+    if (viewMode !== "preview" || !content) return;
 
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -141,7 +136,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [viewMode, blobUrl, handleViewModeChange, onError]);
+  }, [viewMode, content, handleViewModeChange, onError]);
 
   // 使用 useEffect 通知错误，避免在渲染阶段调用外部回调
   useEffect(() => {
@@ -215,7 +210,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     );
   }
 
-  // 预览模式
+  // 预览模式：使用 srcdoc 代替 blob URL，避免 CSP 阻止 blob: 协议
   return (
     <div className="wk-file-preview-html-renderer wk-file-preview-html-renderer--preview">
       {iframeLoading && (
@@ -226,19 +221,17 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
           </span>
         </div>
       )}
-      {blobUrl && (
-        <iframe
-          ref={iframeRef}
-          src={blobUrl}
-          className={`wk-file-preview-html-renderer__iframe ${
-            iframeLoading ? "wk-file-preview-html-renderer__iframe--hidden" : ""
-          }`}
-          onLoad={handleIframeLoad}
-          onError={handleIframeError}
-          sandbox="allow-scripts"
-          title={file.name}
-        />
-      )}
+      <iframe
+        ref={iframeRef}
+        srcDoc={content}
+        className={`wk-file-preview-html-renderer__iframe ${
+          iframeLoading ? "wk-file-preview-html-renderer__iframe--hidden" : ""
+        }`}
+        onLoad={handleIframeLoad}
+        onError={handleIframeError}
+        sandbox="allow-scripts"
+        title={file.name}
+      />
     </div>
   );
 };
