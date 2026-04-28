@@ -17,8 +17,7 @@ export interface ImageRendererProps extends BaseRendererProps {
  * 1. 智能适应模式（auto/cover/contain）
  * 2. 使用 ResizeObserver 监测容器尺寸变化
  * 3. 加载中/加载失败状态显示
- * 4. hover 时显示操作按钮（下载、在新窗口打开）
- * 5. 圆角和过渡动画
+ * 4. 圆角和过渡动画
  */
 const ImageRenderer: React.FC<ImageRendererProps> = ({
   file,
@@ -74,21 +73,6 @@ const ImageRenderer: React.FC<ImageRendererProps> = ({
     setLoading(true);
     setHasError(false);
   }, []);
-
-  const handleDownload = useCallback(() => {
-    const link = document.createElement("a");
-    link.href = file.url;
-    link.download = file.name;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [file.url, file.name]);
-
-  const handleOpenInNewWindow = useCallback(() => {
-    window.open(file.url, "_blank", "noopener,noreferrer");
-  }, [file.url]);
 
   // 文件大小检查（超过 20MB 不渲染）- 移到 hooks 之后
   if (file.size && isFileTooLarge(file.size)) {
@@ -186,51 +170,6 @@ const ImageRenderer: React.FC<ImageRendererProps> = ({
           onLoad={handleLoad}
           onError={handleError}
         />
-
-        {!loading && (
-          <div className="wk-file-preview-image-renderer__actions">
-            <button
-              className="wk-file-preview-image-renderer__action-btn"
-              onClick={handleDownload}
-              title="下载"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            </button>
-            <button
-              className="wk-file-preview-image-renderer__action-btn"
-              onClick={handleOpenInNewWindow}
-              title="在新窗口打开"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

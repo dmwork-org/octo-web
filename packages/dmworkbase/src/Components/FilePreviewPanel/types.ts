@@ -12,6 +12,8 @@ export interface FilePreviewInfo {
   sourceChannelType?: number;
   /** 消息 ID（用于标记激活态） */
   messageId?: string;
+  /** 文件分类（image/video/document/code 等，用于判断文件类型） */
+  category?: string;
 }
 
 /** 渲染器状态数据（内部使用） */

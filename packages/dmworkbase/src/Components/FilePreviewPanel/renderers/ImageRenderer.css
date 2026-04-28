@@ -12,6 +12,8 @@
   height: 100%;
   overflow: hidden;
   background: var(--wk-bg-base);
+  padding: var(--wk-sp-6);
+  box-sizing: border-box;
 }
 
 /* 图片内容容器 - 用于包裹图片和操作按钮 */
@@ -153,59 +155,6 @@
   background: var(--wk-bg-active);
 }
 
-/* 操作按钮容器 */
-.wk-file-preview-image-renderer__actions {
-  position: absolute;
-  top: var(--wk-sp-3);
-  right: var(--wk-sp-3);
-  display: flex;
-  gap: var(--wk-sp-1);
-  padding: var(--wk-sp-1);
-  background: var(--wk-bg-mask-heavy);
-  backdrop-filter: blur(4px);
-  border-radius: var(--wk-r-sm);
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  pointer-events: none;
-}
-
-.wk-file-preview-image-renderer__content:hover
-  .wk-file-preview-image-renderer__actions {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-/* 操作按钮 */
-.wk-file-preview-image-renderer__action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--wk-text-inverse);
-  border-radius: var(--wk-r-xs);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.wk-file-preview-image-renderer__action-btn:hover {
-  background: var(--wk-bg-mask-light);
-}
-
-.wk-file-preview-image-renderer__action-btn:active {
-  background: var(--wk-bg-mask-medium);
-}
-
-.wk-file-preview-image-renderer__action-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
 /* 暗色模式适配 */
 body[theme-mode="dark"] .wk-file-preview-image-renderer {
   background: var(--wk-bg-base);
@@ -213,8 +162,4 @@ body[theme-mode="dark"] .wk-file-preview-image-renderer {
 
 body[theme-mode="dark"] .wk-file-preview-image-renderer__error {
   background: var(--wk-bg-subtle);
-}
-
-body[theme-mode="dark"] .wk-file-preview-image-renderer__actions {
-  background: var(--wk-bg-mask-heavy);
 }

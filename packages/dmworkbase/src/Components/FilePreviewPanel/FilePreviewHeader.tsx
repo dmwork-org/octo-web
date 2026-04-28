@@ -40,6 +40,8 @@ export interface ConversationFile {
   senderName?: string;
   /** 发送时间戳（秒） */
   timestamp?: number;
+  /** 文件分类（image/video/file 等） */
+  category?: string;
 }
 
 export interface FilePreviewHeaderProps {

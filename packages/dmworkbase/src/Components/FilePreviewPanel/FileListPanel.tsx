@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   File,
   FileImage,
@@ -10,6 +10,7 @@ import {
   FileAudio,
   FileVideo,
   X,
+  FolderOpen,
 } from "lucide-react";
 import { ConversationFile } from "./FilePreviewHeader";
 import { formatFileSize } from "./config";
@@ -24,6 +25,17 @@ export interface FileListPanelProps {
   onFileSelect?: (file: ConversationFile) => void;
   /** 关闭面板回调 */
   onClose?: () => void;
+  /** 是否还有更多数据 */
+  hasMore?: boolean;
+  /** 是否正在加载更多 */
+  loadingMore?: boolean;
+  /** 加载更多回调 */
+  onLoadMore?: () => void;
+}
+
+/** 判断是否为图片类型 */
+function isImageCategory(category?: string): boolean {
+  return category === "image";
 }
 
 /** 根据扩展名获取文件图标 */
@@ -106,16 +118,82 @@ function formatTime(timestamp?: number): string {
   }
 }
 
+/** 文件列表项组件 */
+const FileListItem: React.FC<{
+  file: ConversationFile;
+  isActive: boolean;
+  onSelect: () => void;
+}> = ({ file, isActive, onSelect }) => {
+  const [thumbError, setThumbError] = useState(false);
+  const isImage = isImageCategory(file.category);
+  // 图片类型直接用 url 作为缩略图
+  const showThumbnail = isImage && file.url && !thumbError;
+
+  return (
+    <div
+      className={`wk-file-list-panel__item ${
+        isActive ? "wk-file-list-panel__item--active" : ""
+      }`}
+      onClick={onSelect}
+      title={file.name}
+    >
+      {/* 文件图标或缩略图 */}
+      <span
+        className={`wk-file-list-panel__item-icon ${
+          showThumbnail ? "wk-file-list-panel__item-icon--thumbnail" : ""
+        }`}
+      >
+        {showThumbnail ? (
+          <img
+            src={file.url}
+            alt=""
+            className="wk-file-list-panel__item-thumbnail"
+            onError={() => setThumbError(true)}
+          />
+        ) : (
+          getFileIcon(file.extension)
+        )}
+      </span>
+
+      {/* 文件信息 */}
+      <div className="wk-file-list-panel__item-info">
+        <span className="wk-file-list-panel__item-name">{file.name}</span>
+        <div className="wk-file-list-panel__item-meta">
+          {file.senderName && (
+            <span className="wk-file-list-panel__item-sender">
+              {file.senderName}
+            </span>
+          )}
+          {/* 图片类型不展示大小 */}
+          {file.size && !isImage && (
+            <span className="wk-file-list-panel__item-size">
+              {formatFileSize(file.size)}
+            </span>
+          )}
+          {file.timestamp && (
+            <span className="wk-file-list-panel__item-time">
+              {formatTime(file.timestamp)}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /**
  * 侧边文件列表面板
  *
- * 显示对话内的所有文件，支持快速切换预览
+ * 显示对话内的所有文件，支持快速切换预览和触底加载
  */
 const FileListPanel: React.FC<FileListPanelProps> = ({
   files,
   currentFileUrl,
   onFileSelect,
   onClose,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }) => {
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -130,6 +208,25 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       }
     }
   }, [currentFileUrl]);
+
+  // 触底加载
+  useEffect(() => {
+    const listEl = listRef.current;
+    if (!listEl || !onLoadMore) return;
+
+    const handleScroll = () => {
+      if (loadingMore || !hasMore) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = listEl;
+      // 距离底部 50px 时触发加载
+      if (scrollHeight - scrollTop - clientHeight < 50) {
+        onLoadMore();
+      }
+    };
+
+    listEl.addEventListener("scroll", handleScroll);
+    return () => listEl.removeEventListener("scroll", handleScroll);
+  }, [hasMore, loadingMore, onLoadMore]);
 
   return (
     <div className="wk-file-list-panel">
@@ -151,49 +248,29 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       {/* 文件列表 */}
       <div className="wk-file-list-panel__list" ref={listRef}>
         {files.length === 0 ? (
-          <div className="wk-file-list-panel__empty">暂无文件</div>
+          <div className="wk-file-list-panel__empty">
+            <FolderOpen size={32} className="wk-file-list-panel__empty-icon" />
+            <span className="wk-file-list-panel__empty-text">暂无文件</span>
+          </div>
         ) : (
-          files.map((file) => (
-            <div
-              key={file.id}
-              className={`wk-file-list-panel__item ${
-                file.url === currentFileUrl
-                  ? "wk-file-list-panel__item--active"
-                  : ""
-              }`}
-              onClick={() => onFileSelect?.(file)}
-              title={file.name}
-            >
-              {/* 文件图标 */}
-              <span className="wk-file-list-panel__item-icon">
-                {getFileIcon(file.extension)}
-              </span>
-
-              {/* 文件信息 */}
-              <div className="wk-file-list-panel__item-info">
-                <span className="wk-file-list-panel__item-name">
-                  {file.name}
-                </span>
-                <div className="wk-file-list-panel__item-meta">
-                  {file.senderName && (
-                    <span className="wk-file-list-panel__item-sender">
-                      {file.senderName}
-                    </span>
-                  )}
-                  {file.size && (
-                    <span className="wk-file-list-panel__item-size">
-                      {formatFileSize(file.size)}
-                    </span>
-                  )}
-                  {file.timestamp && (
-                    <span className="wk-file-list-panel__item-time">
-                      {formatTime(file.timestamp)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))
+          <>
+            {files.map((file) => (
+              <FileListItem
+                key={file.id}
+                file={file}
+                isActive={file.url === currentFileUrl}
+                onSelect={() => onFileSelect?.(file)}
+              />
+            ))}
+            {/* 加载更多状态 */}
+            {loadingMore && (
+              <div className="wk-file-list-panel__loading">加载中...</div>
+            )}
+            {/* 没有更多数据 */}
+            {!hasMore && files.length > 0 && (
+              <div className="wk-file-list-panel__no-more">没有更多了</div>
+            )}
+          </>
         )}
       </div>
     </div>

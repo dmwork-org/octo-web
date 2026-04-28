@@ -13,6 +13,7 @@ import FallbackRenderer from "./renderers/FallbackRenderer";
 import ExcelRenderer from "./renderers/ExcelRenderer";
 import JsonRenderer from "./renderers/JsonRenderer";
 import JsonlRenderer from "./renderers/JsonlRenderer";
+import ImageRenderer from "./renderers/ImageRenderer";
 
 /**
  * 文件渲染器注册表
@@ -32,8 +33,13 @@ class FileRendererRegistry {
 
   /** 注册默认渲染器 */
   private registerDefaults() {
-    // 注意：图片不注册渲染器
-    // 需求 5.1 明确：图片、视频、音频在对话流内已渲染，不进入面板
+    // 图片
+    this.register({
+      type: "image",
+      extensions: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"],
+      renderer: ImageRenderer,
+      needsFetch: false,
+    });
 
     // PDF
     this.register({

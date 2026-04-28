@@ -29,6 +29,7 @@ import FilePreviewHeader, {
 import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
 import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
+import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
 import {
   SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
@@ -78,6 +79,10 @@ interface ThreadPanelComponentState {
   isFilePanelOpen: boolean;
   /** 文件列表是否加载中 */
   conversationFilesLoading: boolean;
+  /** 文件列表当前页码 */
+  conversationFilesPage: number;
+  /** 文件列表是否还有更多 */
+  conversationFilesHasMore: boolean;
 }
 
 export default class ThreadPanel extends Component<
@@ -125,6 +130,8 @@ export default class ThreadPanel extends Component<
       conversationFiles: [],
       isFilePanelOpen: false,
       conversationFilesLoading: false,
+      conversationFilesPage: 1,
+      conversationFilesHasMore: false,
     };
   }
 
@@ -279,55 +286,111 @@ export default class ThreadPanel extends Component<
     vm.load();
   }
 
-  /** 加载对话内文件列表 */
-  private async loadConversationFiles() {
+  /** 获取文件列表的频道信息 */
+  private getFileChannelInfo(): {
+    channelId: string;
+    channelType: number;
+  } | null {
     const { filePreview, groupNo } = this.props;
-    if (!filePreview) return;
+    if (!filePreview) return null;
 
     // 优先使用 filePreview 中的 sourceChannelId/sourceChannelType
     // 其次使用 groupNo（如果在群聊/子区中）
-    let channelId = filePreview.sourceChannelId || groupNo || "";
-    let channelType =
+    const channelId = filePreview.sourceChannelId || groupNo || "";
+    const channelType =
       filePreview.sourceChannelType ??
       (groupNo ? ChannelTypeGroup : ChannelTypePerson);
 
     if (!channelId) {
-      console.warn(
-        "[ThreadPanel] loadConversationFiles: no channelId available"
-      );
-      return;
+      console.warn("[ThreadPanel] getFileChannelInfo: no channelId available");
+      return null;
     }
+
+    return { channelId, channelType };
+  }
+
+  /** 将 API 返回的文件数据转换为 ConversationFile */
+  private mapFileToConversationFile(f: any): ConversationFile {
+    return {
+      id: String(f.message_id),
+      name: f.name,
+      extension: f.name.includes(".") ? f.name.split(".").pop() || "" : "",
+      url: f.url,
+      size: f.category === "image" ? undefined : f.size, // 图片类型没有大小
+      isAiGenerated: false, // TODO: 后端暂无此字段
+      senderUid: f.from_uid,
+      senderName: f.from_name,
+      timestamp: f.timestamp,
+      category: f.category,
+    };
+  }
+
+  /** 加载对话内文件列表（首次加载） */
+  private async loadConversationFiles() {
+    const channelInfo = this.getFileChannelInfo();
+    if (!channelInfo) return;
 
     this.setState({ conversationFilesLoading: true });
     try {
       const resp = await WKApp.dataSource.channelDataSource.channelFiles(
-        channelId,
-        channelType,
-        { limit: 100 }
+        channelInfo.channelId,
+        channelInfo.channelType,
+        { page: 1, limit: 30 }
       );
       const files: ConversationFile[] = resp.files
-        .map((f) => ({
-          id: String(f.message_id),
-          name: f.name,
-          extension: f.name.includes(".") ? f.name.split(".").pop() || "" : "",
-          url: f.url,
-          size: f.size,
-          isAiGenerated: false, // TODO: 后端暂无此字段
-          senderUid: f.from_uid,
-          senderName: f.from_name,
-          timestamp: f.timestamp,
-        }))
-        // 按 timestamp 升序排列（最早的在前面）
-        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        .map((f) => this.mapFileToConversationFile(f))
+        // 按 timestamp 降序排列（最新的在前面）
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       this.setState({
         conversationFiles: files,
         conversationFilesLoading: false,
+        conversationFilesPage: resp.page,
+        conversationFilesHasMore: resp.has_more,
       });
     } catch (err) {
       console.error("[ThreadPanel] loadConversationFiles failed:", err);
       this.setState({ conversationFilesLoading: false });
     }
   }
+
+  /** 加载更多文件（触底加载） */
+  private loadMoreConversationFiles = async () => {
+    const {
+      conversationFilesLoading,
+      conversationFilesHasMore,
+      conversationFilesPage,
+    } = this.state;
+
+    // 如果正在加载或没有更多数据，直接返回
+    if (conversationFilesLoading || !conversationFilesHasMore) return;
+
+    const channelInfo = this.getFileChannelInfo();
+    if (!channelInfo) return;
+
+    this.setState({ conversationFilesLoading: true });
+    try {
+      const nextPage = conversationFilesPage + 1;
+      const resp = await WKApp.dataSource.channelDataSource.channelFiles(
+        channelInfo.channelId,
+        channelInfo.channelType,
+        { page: nextPage, limit: 30 }
+      );
+      const newFiles: ConversationFile[] = resp.files
+        .map((f) => this.mapFileToConversationFile(f))
+        // 按 timestamp 降序排列（最新的在前面）
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+      this.setState((prevState) => ({
+        conversationFiles: [...prevState.conversationFiles, ...newFiles],
+        conversationFilesLoading: false,
+        conversationFilesPage: resp.page,
+        conversationFilesHasMore: resp.has_more,
+      }));
+    } catch (err) {
+      console.error("[ThreadPanel] loadMoreConversationFiles failed:", err);
+      this.setState({ conversationFilesLoading: false });
+    }
+  };
 
   private async loadThreads() {
     const { groupNo } = this.props;
@@ -592,6 +655,7 @@ export default class ThreadPanel extends Component<
       sourceChannelId: filePreview?.sourceChannelId,
       sourceChannelType: filePreview?.sourceChannelType,
       messageId: file.id, // ConversationFile.id 就是 message_id
+      category: file.category,
     };
     onFilePreviewChange(newPreview);
   };
@@ -939,12 +1003,22 @@ export default class ThreadPanel extends Component<
     if (!filePreview) return null;
 
     const ext = getExtension(filePreview.extension, filePreview.name);
+    const isImage = filePreview.category === "image";
     const isMarkdown = ["md", "markdown"].includes(ext);
     const isHtml = ["html", "htm"].includes(ext);
 
     const handleError = (error: string) => {
       console.error("FilePreview error:", error);
     };
+
+    // 图片类型（根据 category 判断，因为图片 URL 可能没有扩展名）
+    if (isImage) {
+      return (
+        <div className="wk-thread-panel-file-preview">
+          <ImageRenderer file={filePreview} onError={handleError} />
+        </div>
+      );
+    }
 
     // Markdown 文件使用增强的 MarkdownRenderer
     if (isMarkdown) {
@@ -1030,6 +1104,9 @@ export default class ThreadPanel extends Component<
                 currentFileUrl={filePreview.url}
                 onFileSelect={this.handleFileSelect}
                 onClose={() => this.setState({ isFilePanelOpen: false })}
+                hasMore={this.state.conversationFilesHasMore}
+                loadingMore={this.state.conversationFilesLoading}
+                onLoadMore={this.loadMoreConversationFiles}
               />
             )}
             {/* 文件预览内容 */}
