@@ -270,18 +270,15 @@
   transform: rotate(180deg);
 }
 
-/* 模式选择弹窗 - 匹配 Figma 设计 */
+/* 模式选择弹窗 - 匹配 Figma 设计，使用 Portal 渲染到 body */
 .wk-voice-mode-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
   width: 160px;
   padding: 4px 0;
   background-color: #ffffff;
   border-radius: 6px;
   box-shadow: 0px 4px 14px 0px rgba(0, 0, 0, 0.1),
     0px 0px 1px 0px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
+  z-index: 10000;
 }
 
 /* 暗色模式 */

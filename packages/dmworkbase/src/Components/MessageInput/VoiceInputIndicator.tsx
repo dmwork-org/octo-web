@@ -391,6 +391,22 @@ export default function VoiceInputIndicator({
     VOICE_MODES.find((m) => m.value === voiceMode)?.label || "语音输入";
 
   // Hover handlers - show menu on hover, hide on leave
+  // 计算菜单位置
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  const updateMenuPosition = useCallback(() => {
+    if (buttonGroupRef.current) {
+      const rect = buttonGroupRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.top - 8, // 8px gap above button
+        left: rect.right - 160, // align right edge, menu width is 160px
+      });
+    }
+  }, []);
+
   const handleMouseEnter = () => {
     if (!isOnline) return;
     // Clear any pending hide timeout
@@ -398,6 +414,7 @@ export default function VoiceInputIndicator({
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
     }
+    updateMenuPosition();
     setShowModeMenu(true);
   };
 
@@ -405,7 +422,7 @@ export default function VoiceInputIndicator({
     // Delay hiding menu to allow moving to it
     hoverTimeoutRef.current = setTimeout(() => {
       setShowModeMenu(false);
-    }, 150);
+    }, 300); // 增加延迟时间
   };
 
   // Menu hover handlers
@@ -419,7 +436,7 @@ export default function VoiceInputIndicator({
   const handleMenuMouseLeave = () => {
     hoverTimeoutRef.current = setTimeout(() => {
       setShowModeMenu(false);
-    }, 150);
+    }, 300); // 增加延迟时间
   };
 
   // Handle click/keyboard for voice button
@@ -627,29 +644,38 @@ export default function VoiceInputIndicator({
           <path d="M0.5 0.5L3 3.5L5.5 0.5H0.5Z" />
         </svg>
       </div>
-      {/* 模式选择弹窗 */}
-      {showModeMenu && (
-        <div
-          className="wk-voice-mode-menu"
-          ref={modeMenuRef}
-          onMouseEnter={handleMenuMouseEnter}
-          onMouseLeave={handleMenuMouseLeave}
-        >
-          {VOICE_MODES.map((mode) => (
-            <div
-              key={mode.value}
-              className={`wk-voice-mode-item ${
-                voiceMode === mode.value ? "wk-voice-mode-item--active" : ""
-              }`}
-              onClick={(e) => handleModeSelect(mode.value, e)}
-              role="menuitem"
-            >
-              <span className="wk-voice-mode-label">{mode.label}</span>
-              <span className="wk-voice-mode-desc">{mode.description}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* 模式选择弹窗 - 使用 Portal 渲染到 body */}
+      {showModeMenu &&
+        menuPosition &&
+        createPortal(
+          <div
+            className="wk-voice-mode-menu"
+            ref={modeMenuRef}
+            style={{
+              position: "fixed",
+              top: menuPosition.top,
+              left: menuPosition.left,
+              transform: "translateY(-100%)",
+            }}
+            onMouseEnter={handleMenuMouseEnter}
+            onMouseLeave={handleMenuMouseLeave}
+          >
+            {VOICE_MODES.map((mode) => (
+              <div
+                key={mode.value}
+                className={`wk-voice-mode-item ${
+                  voiceMode === mode.value ? "wk-voice-mode-item--active" : ""
+                }`}
+                onClick={(e) => handleModeSelect(mode.value, e)}
+                role="menuitem"
+              >
+                <span className="wk-voice-mode-label">{mode.label}</span>
+                <span className="wk-voice-mode-desc">{mode.description}</span>
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
