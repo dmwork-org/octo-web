@@ -10,7 +10,7 @@ import { ChatContextResult } from "../Conversation/chatContext";
 
 export interface UseVoiceInputOptions {
   maxDuration?: number;
-  onTranscribed?: (text: string, shouldReplace: boolean) => void;
+  onTranscribed?: (text: string) => void;
   onError?: (error: Error) => void;
   onRecordingFailed?: () => void;
   getChatContext?: () => ChatContextResult;
@@ -249,8 +249,7 @@ export default function useVoiceInput(
             recordingModeRef.current
           );
           if (result.text && onTranscribed) {
-            // 转写结果始终替换输入框所有文本
-            onTranscribed(result.text, true);
+            onTranscribed(result.text);
           }
         } catch (err) {
           // PRD: 转写失败时 Toast「转写失败，请重试」

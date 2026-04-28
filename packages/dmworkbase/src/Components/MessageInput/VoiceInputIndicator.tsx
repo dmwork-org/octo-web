@@ -9,14 +9,23 @@ import { VoiceMode } from "../../Service/VoiceService";
 
 type ReplaceMode = "all" | "selection" | "insert";
 
+/** 选区位置信息 */
+interface SelectionRange {
+  from: number;
+  to: number;
+}
+
 interface VoiceInputIndicatorProps {
   onTranscribed: (
     text: string,
     replaceMode: ReplaceMode,
-    savedSelectedText?: string
+    savedSelectedText?: string,
+    savedSelectionRange?: SelectionRange
   ) => void;
   getCurrentText?: () => string | undefined;
   getSelectedText?: () => string | undefined;
+  /** 获取当前选区的 ProseMirror 位置 */
+  getSelectionRange?: () => SelectionRange | undefined;
   getChatContext?: () => ChatContextResult;
 }
 
@@ -39,6 +48,7 @@ export default function VoiceInputIndicator({
   onTranscribed,
   getCurrentText,
   getSelectedText,
+  getSelectionRange,
   getChatContext,
 }: VoiceInputIndicatorProps) {
   // Voice mode menu state (不保存选中的模式，每次都是临时选择)
@@ -80,6 +90,8 @@ export default function VoiceInputIndicator({
   const hadSelectionRef = useRef(false);
   // 记录开始录音时选中的文本内容（用于后续定位替换）
   const savedSelectedTextRef = useRef<string | undefined>(undefined);
+  // 记录开始录音时选区的 ProseMirror 位置（优先使用位置替换，文本匹配作为兜底）
+  const savedSelectionRangeRef = useRef<SelectionRange | undefined>(undefined);
   // 记录当前录音使用的模式（用于 onTranscribed 回调）
   const recordingModeRef = useRef<VoiceMode>("append_only");
 
@@ -97,7 +109,13 @@ export default function VoiceInputIndicator({
       const mode = recordingModeRef.current;
       if (mode === "edit_only") {
         if (hadSelectionRef.current && savedSelectedTextRef.current) {
-          onTranscribed(text, "selection", savedSelectedTextRef.current);
+          // 传递选区位置和文本内容，优先使用位置替换
+          onTranscribed(
+            text,
+            "selection",
+            savedSelectedTextRef.current,
+            savedSelectionRangeRef.current
+          );
         } else {
           onTranscribed(text, "all");
         }
@@ -241,10 +259,12 @@ export default function VoiceInputIndicator({
             Toast.warning("网络不可用，无法使用语音功能");
             return;
           }
-          // 记录选中文本
+          // 记录选中文本和位置
           const selectedText = getSelectedText?.();
+          const selectionRange = getSelectionRange?.();
           hadSelectionRef.current = !!selectedText;
           savedSelectedTextRef.current = selectedText;
+          savedSelectionRangeRef.current = selectionRange;
           recordingModeRef.current = "append_only";
           startRecordingRef.current("append_only");
         }
@@ -278,10 +298,12 @@ export default function VoiceInputIndicator({
               return;
             }
             shiftRecordingRef.current = true;
-            // 记录选中文本
+            // 记录选中文本和位置
             const selectedText = getSelectedText?.();
+            const selectionRange = getSelectionRange?.();
             hadSelectionRef.current = !!selectedText;
             savedSelectedTextRef.current = selectedText;
+            savedSelectionRangeRef.current = selectionRange;
             recordingModeRef.current = "append_only";
             startRecordingRef.current("append_only");
           }, RECORDING_DELAY_MS);
@@ -400,10 +422,12 @@ export default function VoiceInputIndicator({
 
     // 直接用选中的模式开始录音（不保存到 state）
     if (isOnline) {
-      // 记录开始录音时是否有选中文本、选中文本内容和使用的模式
+      // 记录开始录音时是否有选中文本、选中文本内容、位置和使用的模式
       const selectedText = getSelectedText?.();
+      const selectionRange = getSelectionRange?.();
       hadSelectionRef.current = !!selectedText;
       savedSelectedTextRef.current = selectedText;
+      savedSelectionRangeRef.current = selectionRange;
       recordingModeRef.current = selectedMode;
       startRecording(selectedMode);
     }
@@ -419,8 +443,10 @@ export default function VoiceInputIndicator({
     }
     // 点击麦克风 icon 固定使用语音输入模式
     const selectedText = getSelectedText?.();
+    const selectionRange = getSelectionRange?.();
     hadSelectionRef.current = !!selectedText;
     savedSelectedTextRef.current = selectedText;
+    savedSelectionRangeRef.current = selectionRange;
     recordingModeRef.current = "append_only";
     startRecording("append_only");
   };

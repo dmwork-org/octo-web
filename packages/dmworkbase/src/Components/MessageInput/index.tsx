@@ -1027,7 +1027,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               onTranscribed={(
                 text: string,
                 replaceMode: "all" | "selection" | "insert",
-                savedSelectedText?: string
+                savedSelectedText?: string,
+                savedSelectionRange?: { from: number; to: number }
               ) => {
                 if (!editor) return;
 
@@ -1075,8 +1076,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                       content: [{ type: "paragraph", content }],
                     });
                   } else if (replaceMode === "selection" && savedSelectedText) {
-                    // 替换选中部分：根据保存的文本内容查找位置
-                    const range = findSelectionRange(savedSelectedText);
+                    // 替换选中部分：优先使用保存的位置，文本匹配作为兜底
+                    const range =
+                      savedSelectionRange ||
+                      findSelectionRange(savedSelectedText);
                     if (range) {
                       editor
                         .chain()
@@ -1099,8 +1102,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                     // 替换全部内容
                     editor.commands.setContent(text);
                   } else if (replaceMode === "selection" && savedSelectedText) {
-                    // 替换选中部分：根据保存的文本内容查找位置
-                    const range = findSelectionRange(savedSelectedText);
+                    // 替换选中部分：优先使用保存的位置，文本匹配作为兜底
+                    const range =
+                      savedSelectionRange ||
+                      findSelectionRange(savedSelectedText);
                     if (range) {
                       editor
                         .chain()
@@ -1125,6 +1130,12 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 const { from, to } = editor.state.selection;
                 if (from === to) return undefined; // 没有选中文字
                 return editor.state.doc.textBetween(from, to, " ");
+              }}
+              getSelectionRange={() => {
+                if (!editor) return undefined;
+                const { from, to } = editor.state.selection;
+                if (from === to) return undefined; // 没有选中文字
+                return { from, to };
               }}
               getChatContext={props.getChatContext}
             />
