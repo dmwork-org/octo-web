@@ -1124,12 +1124,28 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
                 editor.commands.focus();
               }}
-              getCurrentText={() => editor?.getText() || ""}
+              getCurrentText={() => {
+                if (!editor) return "";
+                // 过滤非文本节点（如图片/附件），只返回纯文本内容
+                return editor.state.doc.textBetween(
+                  0,
+                  editor.state.doc.content.size,
+                  " ",
+                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                );
+              }}
               getSelectedText={() => {
                 if (!editor) return undefined;
                 const { from, to } = editor.state.selection;
                 if (from === to) return undefined; // 没有选中文字
-                return editor.state.doc.textBetween(from, to, " ");
+                // 过滤非文本节点（如图片/附件），只返回纯文本内容
+                const text = editor.state.doc.textBetween(
+                  from,
+                  to,
+                  " ",
+                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                );
+                return text || undefined;
               }}
               getSelectionRange={() => {
                 if (!editor) return undefined;
