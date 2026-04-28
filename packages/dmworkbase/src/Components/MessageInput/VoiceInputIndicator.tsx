@@ -24,9 +24,9 @@ interface VoiceInputIndicatorProps {
 const FLOATING_GAP = 20;
 const INDICATOR_HEIGHT = 48;
 
-// Long-press timing constants (PRD: 400ms threshold)
-const PREPARING_DELAY_MS = 200;
-const LONG_PRESS_THRESHOLD_MS = 400;
+// Long-press timing constants
+const PREPARING_DELAY_MS = 300;
+const RECORDING_DELAY_MS = 500;
 
 // 模式配置 - 匹配 Figma 设计：语音输入 / 语音编辑
 const VOICE_MODES: { value: VoiceMode; label: string; description: string }[] =
@@ -44,12 +44,10 @@ export default function VoiceInputIndicator({
   // Voice mode menu state (不保存选中的模式，每次都是临时选择)
   const [showModeMenu, setShowModeMenu] = useState(false);
 
-  // fn+space 快捷键状态
-  const fnSpaceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Long-press ShiftLeft state
+  const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const preparingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fnSpaceDownTimeRef = useRef<number | null>(null);
-  const fnSpaceRecordingRef = useRef(false);
-  const fnSpaceModeRef = useRef<VoiceMode>("append_only");
+  const shiftRecordingRef = useRef(false);
   const cancelPendingRef = useRef(false);
   const [isPreparing, setIsPreparing] = useState(false);
 
@@ -149,16 +147,15 @@ export default function VoiceInputIndicator({
   const isTranscribingRef = useRef(isTranscribing);
   isTranscribingRef.current = isTranscribing;
 
-  const clearFnSpaceTimer = () => {
-    if (fnSpaceTimerRef.current !== null) {
-      clearTimeout(fnSpaceTimerRef.current);
-      fnSpaceTimerRef.current = null;
+  const clearShiftTimer = () => {
+    if (shiftTimerRef.current !== null) {
+      clearTimeout(shiftTimerRef.current);
+      shiftTimerRef.current = null;
     }
     if (preparingTimerRef.current !== null) {
       clearTimeout(preparingTimerRef.current);
       preparingTimerRef.current = null;
     }
-    fnSpaceDownTimeRef.current = null;
     setIsPreparing(false);
   };
 
@@ -223,139 +220,141 @@ export default function VoiceInputIndicator({
     };
   }, [isRecording, isTranscribing, updateFloatingPosition]);
 
-  // Keyboard shortcut: fn+space (PRD 要求)
-  // 短按 fn+space（< 400ms）→ 语音输入
-  // 长按 fn+space（≥ 400ms）→ 语音编辑
-  // 再次按 fn+space 或松开 → 停止录音
-  // Esc → 取消录音
+  // Keyboard shortcut: Shift + Cmd/Ctrl + Space, and long-press ShiftLeft
   useEffect(() => {
     if (!isVoiceEnabled) return;
 
-    // 检测是否为 fn+space（Fn 修饰键 + Space，或单独 Space 无其他修饰键）
-    const isFnSpace = (e: KeyboardEvent): boolean => {
-      if (e.code !== "Space") return false;
-      // 检查 Fn 修饰键状态（部分浏览器支持）
-      const fnPressed = e.getModifierState?.("Fn") ?? false;
-      // 如果有 Fn 修饰键，或者没有其他修饰键（Mac 上 fn+space 可能不触发 Fn 状态）
-      // 排除 Shift/Ctrl/Alt/Meta 组合
-      const noOtherModifiers =
-        !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey;
-      return fnPressed || noOtherModifiers;
-    };
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Esc 取消录音
+      // Esc to cancel recording
       if (e.code === "Escape" && isRecordingRef.current) {
         e.preventDefault();
         cancelRecording();
-        fnSpaceRecordingRef.current = false;
         return;
       }
 
-      // fn+space 快捷键
-      if (isFnSpace(e) && !e.repeat) {
-        e.preventDefault();
-
-        // 如果正在录音，再次按 fn+space 停止录音
-        if (isRecordingRef.current) {
-          fnSpaceRecordingRef.current = false;
-          const contextText = getCurrentText?.();
-          stopRecordingRef.current(contextText);
-          return;
+      // Existing shortcut: Shift+Cmd/Ctrl+Space
+      if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.code === "Space") {
+        if (!isRecordingRef.current && !isTranscribingRef.current) {
+          e.preventDefault();
+          // Check network status before starting
+          if (!isOnlineRef.current) {
+            Toast.warning("网络不可用，无法使用语音功能");
+            return;
+          }
+          // 记录选中文本
+          const selectedText = getSelectedText?.();
+          hadSelectionRef.current = !!selectedText;
+          savedSelectedTextRef.current = selectedText;
+          recordingModeRef.current = "append_only";
+          startRecordingRef.current("append_only");
         }
+        return;
+      }
 
-        // 如果正在转写，忽略
-        if (isTranscribingRef.current) return;
-
-        // 检查网络状态
-        if (!isOnlineRef.current) {
-          Toast.warning("网络不可用，无法使用语音功能");
-          return;
-        }
-
-        // 如果还没开始计时，记录按下时间
-        if (fnSpaceDownTimeRef.current === null) {
-          fnSpaceDownTimeRef.current = Date.now();
+      // Long-press ShiftLeft: start 500ms timer
+      if (
+        e.code === "ShiftLeft" &&
+        !e.repeat &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        if (
+          !isRecordingRef.current &&
+          !isTranscribingRef.current &&
+          shiftTimerRef.current === null
+        ) {
           cancelPendingRef.current = false;
-
-          // 显示准备状态
           preparingTimerRef.current = setTimeout(() => {
             preparingTimerRef.current = null;
             setIsPreparing(true);
           }, PREPARING_DELAY_MS);
-
-          // 长按 400ms 后进入语音编辑模式并开始录音
-          fnSpaceTimerRef.current = setTimeout(() => {
-            fnSpaceTimerRef.current = null;
-            setIsPreparing(false);
-            fnSpaceRecordingRef.current = true;
-            fnSpaceModeRef.current = "edit_only";
-            // 记录选中文本
-            const selectedText = getSelectedText?.();
-            hadSelectionRef.current = !!selectedText;
-            savedSelectedTextRef.current = selectedText;
-            recordingModeRef.current = "edit_only";
-            startRecordingRef.current("edit_only");
-          }, LONG_PRESS_THRESHOLD_MS);
-        }
-        return;
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      // fn+space 松开
-      if (e.code === "Space") {
-        const downTime = fnSpaceDownTimeRef.current;
-
-        // 如果计时器还在（< 400ms 松开），触发语音输入
-        if (fnSpaceTimerRef.current !== null && downTime !== null) {
-          const pressDuration = Date.now() - downTime;
-          clearFnSpaceTimer();
-
-          // 短按（< 400ms）→ 语音输入模式
-          if (pressDuration < LONG_PRESS_THRESHOLD_MS) {
-            e.preventDefault();
+          shiftTimerRef.current = setTimeout(() => {
+            shiftTimerRef.current = null;
+            // Check network status before starting
             if (!isOnlineRef.current) {
               Toast.warning("网络不可用，无法使用语音功能");
+              setIsPreparing(false);
               return;
             }
-            fnSpaceRecordingRef.current = true;
-            fnSpaceModeRef.current = "append_only";
-            // 记录选中文本（语音输入模式也可能有选中）
+            shiftRecordingRef.current = true;
+            // 记录选中文本
             const selectedText = getSelectedText?.();
             hadSelectionRef.current = !!selectedText;
             savedSelectedTextRef.current = selectedText;
             recordingModeRef.current = "append_only";
             startRecordingRef.current("append_only");
-          }
+          }, RECORDING_DELAY_MS);
+        }
+        return;
+      }
+
+      if (shiftTimerRef.current !== null && e.code !== "ShiftLeft") {
+        // Modifier chord (Ctrl/Meta/Alt pressed): cancel voice intent
+        if (
+          e.code.startsWith("Control") ||
+          e.code.startsWith("Alt") ||
+          e.code.startsWith("Meta")
+        ) {
+          clearShiftTimer();
           return;
         }
-
-        // 长按录音中松开 → 停止录音
-        if (fnSpaceRecordingRef.current && isRecordingRef.current) {
-          e.preventDefault();
-          fnSpaceRecordingRef.current = false;
-          const contextText = getCurrentText?.();
-          stopRecordingRef.current(contextText);
-          return;
+        // IME-related events: do not cancel timer
+        const isIME =
+          e.code.startsWith("Shift") ||
+          e.key === "Process" ||
+          e.key === "Unidentified" ||
+          e.isComposing;
+        if (!isIME) {
+          clearShiftTimer();
         }
+      }
+    };
 
-        // 长按但录音还没开始（等待麦克风权限）→ 取消
-        if (fnSpaceRecordingRef.current && !isRecordingRef.current) {
-          cancelPendingRef.current = true;
-          fnSpaceRecordingRef.current = false;
-          clearFnSpaceTimer();
-          return;
-        }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      // ShiftLeft released while timer is pending: cancel (normal Shift press)
+      if (e.code === "ShiftLeft" && shiftTimerRef.current !== null) {
+        clearShiftTimer();
+        return;
+      }
 
-        // 清理状态
-        fnSpaceDownTimeRef.current = null;
+      // ShiftLeft released while waiting for getUserMedia (recording not yet started)
+      if (
+        e.code === "ShiftLeft" &&
+        shiftRecordingRef.current &&
+        !isRecordingRef.current
+      ) {
+        cancelPendingRef.current = true;
+        shiftRecordingRef.current = false;
+        return;
+      }
+
+      // ShiftLeft released after long-press recording started: stop recording
+      if (
+        e.code === "ShiftLeft" &&
+        shiftRecordingRef.current &&
+        isRecordingRef.current
+      ) {
+        shiftRecordingRef.current = false;
+        e.preventDefault();
+        const contextText = getCurrentText?.();
+        stopRecordingRef.current(contextText);
+        return;
+      }
+
+      if (!isRecordingRef.current) return;
+      // Stop recording when any modifier key is released (existing Shift+Cmd+Space flow)
+      if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") {
+        // Don't stop if this was a long-press ShiftLeft release handled above
+        if (shiftRecordingRef.current) return;
+        e.preventDefault();
+        const contextText = getCurrentText?.();
+        stopRecordingRef.current(contextText);
       }
     };
 
     const handleBlurWhilePreparing = () => {
-      clearFnSpaceTimer();
-      fnSpaceRecordingRef.current = false;
+      clearShiftTimer();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -366,7 +365,7 @@ export default function VoiceInputIndicator({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlurWhilePreparing);
-      clearFnSpaceTimer();
+      clearShiftTimer();
     };
   }, [isVoiceEnabled, getCurrentText, getSelectedText, cancelRecording]);
 
