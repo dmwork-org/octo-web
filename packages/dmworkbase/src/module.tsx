@@ -104,6 +104,21 @@ import {
 } from "./Messages/ThreadCreated";
 import { parseThreadChannelId } from "./Service/Thread";
 
+/** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
+function fallbackCopy(text: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.cssText = "position:fixed;top:0;left:0;opacity:0;";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 export default class BaseModule implements IModule {
   messageTone?: Howl;
 
@@ -598,14 +613,14 @@ export default class BaseModule implements IModule {
             const selectedText = context.getCachedSelectedText?.();
             const textToCopy =
               selectedText || (message.content as MessageText).text || "";
-            (function (s) {
-              document.oncopy = function (e) {
-                e.clipboardData?.setData("text", s);
-                e.preventDefault();
-                document.oncopy = null;
-              };
-            })(textToCopy);
-            document.execCommand("Copy");
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(textToCopy).catch(() => {
+                // navigator.clipboard 失败时降级到 execCommand
+                fallbackCopy(textToCopy);
+              });
+            } else {
+              fallbackCopy(textToCopy);
+            }
           },
         };
       },

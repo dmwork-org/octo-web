@@ -478,7 +478,10 @@ export class Conversation
       if (text.length > 0) {
         const range = selection.getRangeAt(0);
         const target = event.target as HTMLElement;
-        const bubble = target.closest(".wk-message-base-bubble");
+        // 兼容旧气泡（.wk-message-base-bubble）和新 MessageRow 组件（.wk-msg-row-body）
+        const bubble =
+          target.closest(".wk-message-base-bubble") ??
+          target.closest(".wk-msg-row-body");
         if (bubble && bubble.contains(range.commonAncestorContainer)) {
           this._cachedSelectedText = text;
         }
