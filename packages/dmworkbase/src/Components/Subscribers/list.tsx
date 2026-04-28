@@ -242,32 +242,26 @@ export class SubscriberList extends Component<
                       <div className="wk-subscrierlist-item-content">
                         <div className="wk-subscrierlist-item-name">
                           {this.getShowName(item)}
+                          {/* YUJ-66: 「@SpaceName」后缀（企微风格），按当前查看 Space 相对渲染。
+                              观察者 home_space 与成员 home_space 不同时显示；自己看自己不显示。
+                              Bot 成员走同一规则（resolveExternalForViewer 对 bot 与人类对称）。*/}
+                          {isExternalToViewer && viewerSourceSpaceName && (
+                            <span
+                              className="wk-subscrierlist-item-space"
+                              title={`@${viewerSourceSpaceName}`}
+                            >
+                              @{viewerSourceSpaceName}
+                            </span>
+                          )}
                           {itemIsBot && <AiBadge />}
                           {itemIsBot && isBotAdmin && (
                             <Tag size="small" color="green" style={{ marginLeft: 4 }}>
                               Bot 管理员
                             </Tag>
                           )}
-                          {isExternalToViewer && (
-                            <>
-                              <Tag size="small" color="purple" style={{ marginLeft: 4 }}>
-                                外部
-                              </Tag>
-                              {viewerSourceSpaceName && (
-                                <span className="wk-subscrierlist-item-source">
-                                  来自 {viewerSourceSpaceName}
-                                </span>
-                              )}
-                            </>
-                          )}
                         </div>
                         <div className="wk-subscrierlist-item-desc">
                           {this.getRoleName(item)}
-                          {isExternalToViewer && viewerSourceSpaceName && (
-                            <span style={{ marginLeft: 6, color: "var(--semi-color-text-2)" }}>
-                              来自 {viewerSourceSpaceName}
-                            </span>
-                          )}
                         </div>
                       </div>
 

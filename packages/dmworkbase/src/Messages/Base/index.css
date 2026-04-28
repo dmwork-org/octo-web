@@ -109,10 +109,23 @@
     flex-shrink: 0;
 }
 
-/* 外部群成员消息头「来源」行（YUJ-51），紧贴 wk-msg-head 下方展示 */
+/* 外部群成员消息头「来源」行（YUJ-51，YUJ-66 起由 .wk-msg-head-space 行内替代） */
 .wk-msg-head-origin {
     margin-top: 0;
     margin-bottom: 4px;
+}
+
+/* YUJ-66: 消息气泡头部「@SpaceName」后缀，紧随昵称展示，小字次要色 */
+.wk-msg-head-space {
+    font-size: 12px;
+    font-weight: var(--wk-font-regular, 400);
+    color: var(--semi-color-text-2, var(--wk-text-secondary, rgba(9, 30, 66, 0.6)));
+    line-height: 1.3;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 1;
 }
 
 /* ── Bubble box ── */

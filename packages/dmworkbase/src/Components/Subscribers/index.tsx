@@ -9,7 +9,6 @@ import IndexTable, { IndexTableItem } from "../IndexTable";
 import WKBase, { WKBaseContext } from "../WKBase";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { SubscriberList } from "./list";
-import { Tag } from "@douyinfe/semi-ui";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 
 export interface SubscribersProps {
@@ -23,8 +22,8 @@ export class Subscribers extends Component<SubscribersProps> {
   baseContext!: WKBaseContext;
 
   subscriberUI(subscriber: Subscriber) {
-    // YUJ-64: 外部 Tag 与来源按当前查看 Space 相对渲染。
-    // 优先新字段 home_space_id / home_space_name，缺失时回落旧字段。
+    // YUJ-64/YUJ-66: 外部成员按当前查看 Space 相对渲染；采用企微风格
+    // 「昵称 @SpaceName」后缀格式，无紫色「外部」Tag、无「来自」前缀。
     const { isExternal, sourceSpaceName } = resolveExternalForViewer({
       homeSpaceId: subscriber.orgData?.home_space_id,
       homeSpaceName: subscriber.orgData?.home_space_name,
@@ -48,24 +47,13 @@ export class Subscribers extends Component<SubscribersProps> {
         <div className="wk-subscribers-item-name">
           {subscriber.remark || subscriber.name}
         </div>
-        {isExternal && (
-          <>
-            <Tag
-              size="small"
-              color="purple"
-              className="wk-subscribers-item-external-tag"
-            >
-              外部
-            </Tag>
-            {sourceSpaceName && (
-              <span
-                className="wk-subscribers-item-source"
-                title={`来自 ${sourceSpaceName}`}
-              >
-                来自 {sourceSpaceName}
-              </span>
-            )}
-          </>
+        {isExternal && sourceSpaceName && (
+          <span
+            className="wk-subscribers-item-space"
+            title={`@${sourceSpaceName}`}
+          >
+            @{sourceSpaceName}
+          </span>
         )}
       </div>
     );

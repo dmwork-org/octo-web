@@ -60,6 +60,20 @@
     line-height: var(--wk-text-size-sm);
 }
 
+/* YUJ-66: 侧栏缩略成员「@SpaceName」后缀（企微风格），小字居中 */
+.wk-subscribers-item-space {
+    margin-top: var(--wk-sp-0-5, 2px);
+    margin-left: 0;
+    font-size: var(--wk-text-size-tiny, 10px);
+    color: var(--wk-text-secondary);
+    text-align: center;
+    width: 100%;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    line-height: var(--wk-text-size-sm, 12px);
+}
+
 body[theme-mode=dark] .wk-subscribers-item-name {
     color: var(--wk-text-primary);
 }

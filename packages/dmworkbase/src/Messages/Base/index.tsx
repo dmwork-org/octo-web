@@ -396,16 +396,21 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                   >
                     {displayName}
                   </span>
+                  {/* YUJ-66: 外部群成员「@SpaceName」后缀（企微风格）。
+                      按当前查看 Space 相对渲染，观察者 home_space 与成员
+                      home_space 不同时显示；优先 msg-level，回落 orgData。*/}
+                  {showExtOrigin && extSourceSpaceName && (
+                    <span
+                      className="wk-msg-head-space"
+                      title={`@${extSourceSpaceName}`}
+                    >
+                      @{extSourceSpaceName}
+                    </span>
+                  )}
                   {channelInfo?.orgData?.robot === 1 && (
                     <AiBadge size="small" />
                   )}
                   <span className="wk-msg-head-time">{timeStr}</span>
-                </div>
-              )}
-              {/* 外部群成员来源标识（YUJ-53）：优先 msg-level，回落 orgData */}
-              {showHead && showExtOrigin && extSourceSpaceName && (
-                <div className="wk-msg-head-origin ext-origin">
-                  来源: {extSourceSpaceName}
                 </div>
               )}
 

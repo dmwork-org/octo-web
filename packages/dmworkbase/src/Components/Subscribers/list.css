@@ -30,6 +30,20 @@
     color: var(--wk-text-secondary);
 }
 
+/* YUJ-66: 成员列表「@SpaceName」后缀（企微风格），紧随昵称展示 */
+.wk-subscrierlist-item-space {
+    margin-left: 4px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--wk-text-secondary);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 12rem;
+    flex-shrink: 1;
+}
+
 .wk-subscrierlist-item-content {
     display: flex;
     width: 100%;

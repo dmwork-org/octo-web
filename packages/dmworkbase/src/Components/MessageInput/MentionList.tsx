@@ -9,6 +9,11 @@ interface MemberItem {
   isBot?: boolean
   id?: string
   display?: string
+  /**
+   * YUJ-66: 外部群成员相对当前查看 Space 的来源 Space 名称，用于「@SpaceName」
+   * 企微风格后缀。由 MessageInput 透传；同 Space / 自己 / 非外部时为空字符串。
+   */
+  sourceSpaceName?: string
 }
 
 interface MentionListProps {
@@ -96,6 +101,15 @@ export default forwardRef((props: MentionListProps, ref) => {
             </div>
             <div>
               <strong>{item.name || item.display}</strong>
+              {/* YUJ-66: @ 提醒选人弹窗的「@SpaceName」后缀（企微风格） */}
+              {item.sourceSpaceName && (
+                <span
+                  className="mention-list-item-space"
+                  title={`@${item.sourceSpaceName}`}
+                >
+                  @{item.sourceSpaceName}
+                </span>
+              )}
               {item.isBot && <AiBadge size="small" />}
             </div>
           </div>

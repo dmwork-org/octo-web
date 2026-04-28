@@ -16,6 +16,7 @@ import clazz from "classnames";
 import WKSDK, { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import hotkeys from "hotkeys-js";
 import WKApp from "../../App";
+import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import "./index.css";
 import { Notification } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../SlashCommandMenu";
@@ -373,24 +374,37 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                   name: "所有人",
                   icon: mentionAllIcon,
                   isBot: false,
+                  sourceSpaceName: "",
                 },
               ];
 
-            const items = localMembersRef.current.map((member) => ({
-              uid: member.uid,
-              name: member.name,
-              icon: WKApp.shared.avatarChannel(
-                new Channel(member.uid, ChannelTypePerson)
-              ),
-              // 直接从 Subscriber.orgData 取，不依赖 channelInfo 缓存是否已热
-              isBot: member.orgData?.robot === 1,
-            }));
+            const items = localMembersRef.current.map((member) => {
+              // YUJ-66: @选人弹窗按当前查看 Space 相对显示「@SpaceName」。
+              // 同 Space / 自己 / legacy 非外部 → 不显示 sourceSpaceName。
+              const ext = resolveExternalForViewer({
+                homeSpaceId: member.orgData?.home_space_id,
+                homeSpaceName: member.orgData?.home_space_name,
+                isExternalLegacy: member.orgData?.is_external,
+                sourceSpaceNameLegacy: member.orgData?.source_space_name,
+              });
+              return {
+                uid: member.uid,
+                name: member.name,
+                icon: WKApp.shared.avatarChannel(
+                  new Channel(member.uid, ChannelTypePerson)
+                ),
+                // 直接从 Subscriber.orgData 取，不依赖 channelInfo 缓存是否已热
+                isBot: member.orgData?.robot === 1,
+                sourceSpaceName: ext.isExternal ? ext.sourceSpaceName : "",
+              };
+            });
 
             items.unshift({
               uid: "-1",
               name: "所有人",
               icon: mentionAllIcon,
               isBot: false,
+              sourceSpaceName: "",
             });
 
             return items.filter((item) =>

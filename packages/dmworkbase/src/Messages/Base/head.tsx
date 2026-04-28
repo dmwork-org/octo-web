@@ -88,11 +88,14 @@ export default class MessageHead extends Component<MessageHeadProps> {
                 this.needTitle()?( <div className="textTitle" style={{color:getTitleColor(channelInfo?.orgData?.displayName)}}>
                 <div className="textTitle-name-row">
                     <span>{channelInfo?.orgData?.displayName}</span>
+                    {/* YUJ-66: 昵称后「@SpaceName」后缀（企微风格），按当前查看 Space 相对渲染 */}
+                    {isExternalMember && sourceSpaceName && (
+                        <span className="wk-msg-head-space" title={`@${sourceSpaceName}`}>
+                            @{sourceSpaceName}
+                        </span>
+                    )}
                     {isBot && <AiBadge size="small" />}
                 </div>
-                {isExternalMember && sourceSpaceName && (
-                    <span className="ext-origin">来源: {sourceSpaceName}</span>
-                )}
             </div>):null
            }
         </>

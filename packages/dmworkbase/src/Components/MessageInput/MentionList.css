@@ -26,3 +26,22 @@
 .mention-list-item .wk-messageinput-iconbox {
   margin-right: 8px;
 }
+
+/* YUJ-66: @ 提醒选人弹窗「@SpaceName」后缀（企微风格），小字次要色 */
+.mention-list-item-space {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--wk-text-secondary, rgba(9, 30, 66, 0.6));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12rem;
+  vertical-align: middle;
+}
+
+.mention-list-item.is-selected .mention-list-item-space,
+.mention-list-item:hover .mention-list-item-space {
+  color: var(--wk-text-inverse);
+  opacity: 0.8;
+}
