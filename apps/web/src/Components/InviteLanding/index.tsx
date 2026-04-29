@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { WKApp, toJoinApprovalStatus } from "@octo/base";
+import { WKApp, toJoinApprovalStatus, computeAndSaveJoinSuccess } from "@octo/base";
 import type { JoinSpaceStatus } from "@octo/base";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
 import "./index.css";
@@ -156,6 +156,10 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
                 this.redirectToLoginWithPendingInvite("请先登录后再加入");
                 return;
             }
+            // YUJ-106 / dmwork-web#1065: 在调用 /space/join 前先记住用户「当前 Space」。
+            // 多 Space 用户在非归属 Space 点邀请链接时，不应自动切换 currentSpaceId —
+            // 必须由用户显式点 toast 里的「切换过去」才切。这里在改动前快照下来。
+            const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
             const apiUrl = WKApp.apiClient.config.apiURL?.replace(/\/+$/, '');
             const resp = await fetch(`${apiUrl}/space/join`, {
                 method: 'POST',
@@ -180,10 +184,24 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
                 return;
             }
 
-            Toast.success("加入成功！");
-            const spaceId = this.state.info?.space_id || result?.space_id;
-            if (spaceId) {
-                localStorage.setItem('currentSpaceId', spaceId);
+            const joinedSpaceId = result?.space_id || this.state.info?.space_id || "";
+            const joinedSpaceName = this.state.info?.space_name || "";
+            // YUJ-106 / YUJ-112: 统一经 computeAndSaveJoinSuccess 计算 crossSpace 并
+            // 写 sessionStorage notice。Layout.onLogin 的 pendingInviteCode 分支也走
+            // 同一 helper，保证两条路径的 toast 行为一致。
+            const notice = computeAndSaveJoinSuccess(
+                {
+                    spaceId: joinedSpaceId,
+                    spaceName: joinedSpaceName,
+                    entityName: joinedSpaceName,
+                },
+                prevCurrentSpaceId,
+            );
+            const crossSpace = notice.crossSpace;
+
+            // 硬约束：不自动切换 currentSpace。只有非跨 Space（或无历史 Space）时才更新。
+            if (!crossSpace && joinedSpaceId) {
+                localStorage.setItem('currentSpaceId', joinedSpaceId);
             }
             // 跳转回主界面，带上正确的 sid
             const sid = this.findSid();

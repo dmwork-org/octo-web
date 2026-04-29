@@ -7,7 +7,7 @@ import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
-import { getSid, getQueryParam } from "@octo/base";
+import { getSid, getQueryParam, computeAndSaveJoinSuccess } from "@octo/base";
 import type { JoinApprovalStatus } from "@octo/base";
 import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
@@ -73,37 +73,58 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // 检查是否有待处理的邀请码（验证格式防止 XSS/Open Redirect）
             const pendingInvite = localStorage.getItem("pendingInviteCode");
             if (pendingInvite && /^[a-zA-Z0-9_-]+$/.test(pendingInvite)) {
-                WKApp.apiClient.post(`/space/join`, { invite_code: pendingInvite })
-                    .then((result: any) => {
-                        // 成功路径才删 pendingInviteCode
-                        localStorage.removeItem("pendingInviteCode");
-                        const status = result?.status;
-                        if (status === "NEED_APPROVAL" || status === "PENDING") {
-                            // 审批状态：统一走全局钩子，Layout state 渲染审批结果页
-                            WKApp.endpoints.onJoinApproval(
-                                toJoinApprovalStatus(status),
-                                pendingInvite
+                // YUJ-112 / dmwork-web#1068 Round 2：
+                // 登录+邀请路径也要弹 join-success toast（与 InviteLanding 直连加入走同一 helper）。
+                // 在调用 /space/join 前先快照 prevCurrentSpaceId，并预取 invite 信息拿 space_name。
+                const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
+                // 预取邀请信息以便 toast 显示「位于 xxx 空间」。失败时降级为空 spaceName
+                // （toast 也能显示常规「已加入」），不阻塞 auto-join 流程。
+                const fetchInviteInfo = WKApp.apiClient
+                    .get(`/space/invite/${pendingInvite}`)
+                    .catch(() => null as any);
+                fetchInviteInfo.then((inviteInfo: any) => {
+                    WKApp.apiClient.post(`/space/join`, { invite_code: pendingInvite })
+                        .then((result: any) => {
+                            // 成功路径才删 pendingInviteCode
+                            localStorage.removeItem("pendingInviteCode");
+                            const status = result?.status;
+                            if (status === "NEED_APPROVAL" || status === "PENDING") {
+                                // 审批状态：统一走全局钩子，Layout state 渲染审批结果页
+                                WKApp.endpoints.onJoinApproval(
+                                    toJoinApprovalStatus(status),
+                                    pendingInvite
+                                );
+                                return;
+                            }
+                            const spaceId = result?.space_id || inviteInfo?.space_id || "";
+                            const spaceName = inviteInfo?.space_name || "";
+                            // YUJ-112: 与 InviteLanding 复用同一个 helper 计算 crossSpace + 存 notice。
+                            const notice = computeAndSaveJoinSuccess(
+                                { spaceId, spaceName, entityName: spaceName },
+                                prevCurrentSpaceId,
                             );
-                            return;
-                        }
-                        const spaceId = result?.space_id;
-                        if (spaceId) localStorage.setItem('currentSpaceId', spaceId);
-                        goMain();
-                    })
-                    .catch((e: any) => {
-                        const msg = e?.msg || '';
-                        if (msg.includes('已满') || msg.includes('SPACE_FULL')) {
-                            // SPACE_FULL 保留 pendingInviteCode，让用户下次重试
-                            import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error('空间已满，无法加入'));
-                        } else if (msg.includes('已是成员') || msg.includes('already')) {
-                            localStorage.removeItem("pendingInviteCode");
-                            if (e?.space_id) localStorage.setItem('currentSpaceId', e.space_id);
-                        } else {
-                            localStorage.removeItem("pendingInviteCode");
-                            console.warn('Auto-join space failed:', msg);
-                        }
-                        goMain();
-                    });
+                            // 与 InviteLanding 一致：跨 Space 时不自动切换 currentSpaceId —
+                            // 等用户点 toast 里的「切换过去」按钮。
+                            if (!notice.crossSpace && spaceId) {
+                                localStorage.setItem('currentSpaceId', spaceId);
+                            }
+                            goMain();
+                        })
+                        .catch((e: any) => {
+                            const msg = e?.msg || '';
+                            if (msg.includes('已满') || msg.includes('SPACE_FULL')) {
+                                // SPACE_FULL 保留 pendingInviteCode，让用户下次重试
+                                import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error('空间已满，无法加入'));
+                            } else if (msg.includes('已是成员') || msg.includes('already')) {
+                                localStorage.removeItem("pendingInviteCode");
+                                if (e?.space_id) localStorage.setItem('currentSpaceId', e.space_id);
+                            } else {
+                                localStorage.removeItem("pendingInviteCode");
+                                console.warn('Auto-join space failed:', msg);
+                            }
+                            goMain();
+                        });
+                });
                 return;
             }
             goMain()

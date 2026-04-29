@@ -5,6 +5,7 @@ import MainVM from "./vm";
 import { EmptyStateIllustration } from "./EmptyStateIllustration";
 import { Space, SpaceService } from "@octo/base";
 import { JoinSpaceModalConnected, NavRail, MeInfo } from "@octo/base";
+import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
@@ -68,12 +69,38 @@ export class MainPage extends Component<{}, MainPageState> {
                 localStorage.removeItem("currentSpaceId");
                 try { WKApp.shared.notifyListener(); } catch (_) {}
             }
+            // YUJ-106 / dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
+            // Toast 无法跨 full-reload 存活。我们用 sessionStorage 把 notice 带过来，
+            // 在主界面挂载、Space 列表就绪之后再弹出。放在 .then() 内确保 spaces 已加载，
+            // 切换按钮按下时用户 Space 信息可用。
+            this.showPostJoinToastIfPending();
         }).catch((e) => { console.error('[NavRail] Failed to load spaces:', e); });
     }
 
     componentWillUnmount() {
         // 清理菜单刷新回调，避免组件卸载后触发 forceUpdate
         WKApp.menus.setRefresh = undefined;
+    }
+
+    /**
+     * YUJ-106 / dmwork-web#1065 — 消费 InviteLanding 留下的 postJoinNotice
+     * - 跨 Space：双行 toast + 「切换过去」按钮；onSwitch 里调 handleSpaceSelected
+     * - 同 Space / 单 Space：常规单行 toast
+     * 只执行一次（consumeJoinSuccessNotice 读取后即清）。
+     */
+    private showPostJoinToastIfPending() {
+        const notice = consumeJoinSuccessNotice();
+        if (!notice || !notice.spaceId) return;
+        showJoinSuccessToast({
+            entityName: notice.entityName || notice.spaceName || "",
+            spaceName: notice.spaceName || "",
+            crossSpace: !!notice.crossSpace,
+            onSwitch: () => {
+                // 显式切换到归属 Space —— 走与 NavRail 点击相同的路径，
+                // 保证 mittBus('space-changed') + notifyListener 一致。
+                this.handleSpaceSelected(notice.spaceId);
+            },
+        });
     }
 
     handleSpaceSelected = (spaceId: string) => {

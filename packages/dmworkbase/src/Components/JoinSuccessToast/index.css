@@ -1,0 +1,47 @@
+/* YUJ-106 / dmwork-web#1065: 加入成功后跨 Space 提示 toast */
+.wk-join-success-toast {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 260px;
+    max-width: 360px;
+}
+
+.wk-join-success-toast__line {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--wk-color-text-strong, #1C1C23);
+}
+
+.wk-join-success-toast__line--muted {
+    color: var(--wk-color-text-weak, #5A5C70);
+}
+
+.wk-join-success-toast__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.wk-join-success-toast__switch {
+    appearance: none;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--wk-color-primary, #4466ee);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.wk-join-success-toast__switch:hover {
+    text-decoration: underline;
+}
+
+.wk-join-success-toast__switch:focus-visible {
+    outline: 2px solid var(--wk-color-primary, #4466ee);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
