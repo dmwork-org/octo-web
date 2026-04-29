@@ -765,14 +765,16 @@ export class Conversation
     }
     if (message.contentType === MessageContentType.text || message.streamOn) {
       return (
-        <MarkdownContent
-          content={this.getMessageTextContent(message)}
-          isSend={message.send}
-          isStreaming={message.isStreaming}
-          mentions={this.getMessageMentions(message)}
-          onMentionClick={(uid) => this.showUser(uid)}
-          emojis={this.getMessageEmojis(message)}
-        />
+        <div className="wk-msg-text-content">
+          <MarkdownContent
+            content={this.getMessageTextContent(message)}
+            isSend={message.send}
+            isStreaming={message.isStreaming}
+            mentions={this.getMessageMentions(message)}
+            onMentionClick={(uid) => this.showUser(uid)}
+            emojis={this.getMessageEmojis(message)}
+          />
+        </div>
       );
     }
     const digest = message.remoteExtra?.isEdit
@@ -810,7 +812,7 @@ export class Conversation
     // 文本消息（含 Markdown 表格、代码块、链接）
     if (message.contentType === MessageContentType.text || message.streamOn) {
       return (
-        <div className="wk-fold-msg-text">
+        <div className="wk-fold-msg-text wk-msg-text-content">
           <MarkdownContent
             content={this.getMessageTextContent(message)}
             isSend={message.send}
