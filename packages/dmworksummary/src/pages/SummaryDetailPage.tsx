@@ -71,11 +71,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private fallbackPollTimer: ReturnType<typeof setInterval> | null = null;
     private fallbackStartTimeout: ReturnType<typeof setTimeout> | null = null;
     private listPageActive = false;
-    private isReactingToEvent = false;
+    private lastEventTime = 0;
     private isPersonalPolling = false;
 
     componentDidMount() {
         window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
+        window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.loadDetail();
     }
 
@@ -91,6 +92,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     componentWillUnmount() {
         window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
+        window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.clearAllTimers();
     }
 
@@ -217,12 +219,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
-    private handleStatusChangeEvent = async () => {
+    private handleStatusChangeEvent = async (event: Event) => {
         if (this.taskId == null) return;
+
+        const detail_ = (event as CustomEvent).detail;
+        const taskIds: number[] | undefined = detail_?.taskIds;
+        if (taskIds && !taskIds.includes(this.taskId)) return;
+
         this.listPageActive = true;
+        this.lastEventTime = Date.now();
         this.stopFallbackPoll();
 
-        this.isReactingToEvent = true;
         try {
             const detail = await api.getSummaryDetail(this.taskId);
             const prevStatus = this.state.lastKnownStatus;
@@ -243,55 +250,76 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             }
         } catch {
             // ignore
-        } finally {
-            this.isReactingToEvent = false;
+        }
+    };
+
+    private handleListPageUnmount = () => {
+        this.listPageActive = false;
+        const status = this.state.lastKnownStatus;
+        if (
+            status === TaskStatus.PENDING ||
+            status === TaskStatus.WAITING_CONFIRM ||
+            status === TaskStatus.PROCESSING
+        ) {
+            this.startFallbackPoll();
         }
     };
 
     private startFallbackPoll() {
-        if (this.listPageActive || this.fallbackPollTimer || this.fallbackStartTimeout) return;
+        if (this.fallbackPollTimer || this.fallbackStartTimeout) return;
+
+        if (this.listPageActive && Date.now() - this.lastEventTime > 15000) {
+            this.listPageActive = false;
+        }
+        if (this.listPageActive) return;
 
         this.fallbackStartTimeout = setTimeout(() => {
             this.fallbackStartTimeout = null;
             if (this.listPageActive) return;
 
+            this.doFallbackPollOnce();
+
             this.fallbackPollTimer = setInterval(async () => {
-                if (this.taskId == null) return;
+                this.doFallbackPollOnce();
+            }, 15000);
+        }, 5000);
+    }
+
+    private async doFallbackPollOnce() {
+        if (this.taskId == null) return;
+        try {
+            const updates = await api.batchStatus([this.taskId]);
+            const update = updates.find(u => u.id === this.taskId);
+            if (!update) return;
+
+            const prevStatus = this.state.lastKnownStatus;
+            const newStatus = update.status;
+
+            if (prevStatus !== undefined && prevStatus !== newStatus) {
+                this.setState({ lastKnownStatus: newStatus });
                 try {
-                    const updates = await api.batchStatus([this.taskId]);
-                    const update = updates.find(u => u.id === this.taskId);
-                    if (!update) return;
-
-                    const prevStatus = this.state.lastKnownStatus;
-                    const newStatus = update.status;
-
-                    if (prevStatus !== undefined && prevStatus !== newStatus) {
-                        this.setState({ lastKnownStatus: newStatus });
-                        try {
-                            const detail = await api.getSummaryDetail(this.taskId);
-                            this.setState({ detail });
-                            if (
-                                newStatus === TaskStatus.COMPLETED ||
-                                newStatus === TaskStatus.FAILED ||
-                                newStatus === TaskStatus.CANCELLED
-                            ) {
-                                this.stopFallbackPoll();
-                                if (detail.summary_mode === SummaryMode.BY_PERSON) {
-                                    this.loadPersonalResult();
-                                    this.loadMembers();
-                                }
-                            }
-                        } catch {
-                            // Detail fetch failed, status already updated
+                    const detail = await api.getSummaryDetail(this.taskId);
+                    this.setState({ detail });
+                    if (
+                        newStatus === TaskStatus.COMPLETED ||
+                        newStatus === TaskStatus.FAILED ||
+                        newStatus === TaskStatus.CANCELLED
+                    ) {
+                        this.stopFallbackPoll();
+                        if (detail.summary_mode === SummaryMode.BY_PERSON) {
+                            this.loadPersonalResult();
+                            this.loadMembers();
                         }
-                    } else {
-                        this.setState({ lastKnownStatus: newStatus });
                     }
                 } catch {
-                    // ignore polling errors
+                    // Detail fetch failed, status already updated
                 }
-            }, 30000);
-        }, 10000);
+            } else {
+                this.setState({ lastKnownStatus: newStatus });
+            }
+        } catch {
+            // ignore polling errors
+        }
     }
 
     private stopFallbackPoll() {

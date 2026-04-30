@@ -70,6 +70,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     }
 
     componentWillUnmount() {
+        window.dispatchEvent(new CustomEvent("summary-list-unmount"));
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.stopBatchPoll();
         window.removeEventListener("summary-status-change", this.handleStatusChange_);
@@ -124,17 +125,19 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
             const updates = await api.batchStatus(taskIds);
             const updateMap = new Map(updates.map(u => [u.id, u]));
             let changed = false;
+            const changedIds: number[] = [];
             const newItems = this.state.items.map(item => {
                 const update = updateMap.get(item.task_id);
                 if (update && update.status !== item.status) {
                     changed = true;
+                    changedIds.push(item.task_id);
                     return { ...item, status: update.status };
                 }
                 return item;
             });
             if (changed) {
                 this.setState({ items: newItems }, () => this.maybeStartBatchPoll());
-                window.dispatchEvent(new CustomEvent("summary-status-change"));
+                window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
             }
         } catch {
             // ignore
