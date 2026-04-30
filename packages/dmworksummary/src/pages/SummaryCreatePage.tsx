@@ -145,7 +145,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             Toast.success("总结任务已创建");
-            window.dispatchEvent(new CustomEvent('summary-status-change'));
             WKApp.routeRight.popToRoot();
             WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
             this.props.onCreated?.();

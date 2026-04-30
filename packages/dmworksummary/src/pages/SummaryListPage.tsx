@@ -57,19 +57,20 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     };
 
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
+    private batchPollTimer: ReturnType<typeof setInterval> | null = null;
+    private isBatchPolling = false;
 
-    private handleStatusChange_ = () => this.loadData();
     private handleSpaceChanged_ = () => this.loadData();
 
     componentDidMount() {
         this.loadData();
-        window.addEventListener("summary-status-change", this.handleStatusChange_);
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
     }
 
     componentWillUnmount() {
+        window.dispatchEvent(new CustomEvent("summary-list-unmount"));
         if (this.searchTimer) clearTimeout(this.searchTimer);
-        window.removeEventListener("summary-status-change", this.handleStatusChange_);
+        this.stopBatchPoll();
         WKApp.mittBus.off("summary-space-changed", this.handleSpaceChanged_);
     }
 
@@ -84,7 +85,9 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                 keyword: keyword || undefined,
             };
             const resp = await api.listSummaries(params);
-            this.setState({ items: resp.items, total: resp.total, loading: false });
+            this.setState({ items: resp.items, total: resp.total, loading: false }, () => {
+                this.maybeStartBatchPoll();
+            });
         } catch (err: any) {
             this.setState({ error: err.message || "加载失败", loading: false });
         }
@@ -93,6 +96,73 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     handlePageChange = (page: number) => {
         this.setState({ page }, () => this.loadData());
     };
+
+    private maybeStartBatchPoll() {
+        const activeIds = this.state.items
+            .filter(item =>
+                item.status === TaskStatus.PENDING ||
+                item.status === TaskStatus.WAITING_CONFIRM ||
+                item.status === TaskStatus.PROCESSING
+            )
+            .map(item => item.task_id);
+
+        if (activeIds.length === 0) {
+            this.stopBatchPoll();
+            return;
+        }
+
+        this.stopBatchPoll();
+        this.batchPollTimer = setInterval(() => {
+            const currentActiveIds = this.state.items
+                .filter(item =>
+                    item.status === TaskStatus.PENDING ||
+                    item.status === TaskStatus.WAITING_CONFIRM ||
+                    item.status === TaskStatus.PROCESSING
+                )
+                .map(item => item.task_id);
+            if (currentActiveIds.length === 0) {
+                this.stopBatchPoll();
+                return;
+            }
+            this.doBatchPoll(currentActiveIds);
+        }, 2000);
+    }
+
+    private async doBatchPoll(taskIds: number[]) {
+        if (this.isBatchPolling) return;
+        this.isBatchPolling = true;
+        try {
+            const updates = await api.batchStatus(taskIds);
+            window.dispatchEvent(new CustomEvent("summary-batch-heartbeat", { detail: { taskIds } }));
+            const updateMap = new Map(updates.map(u => [u.id, u]));
+            let changed = false;
+            const changedIds: number[] = [];
+            const newItems = this.state.items.map(item => {
+                const update = updateMap.get(item.task_id);
+                if (update && update.status !== item.status) {
+                    changed = true;
+                    changedIds.push(item.task_id);
+                    return { ...item, status: update.status };
+                }
+                return item;
+            });
+            if (changed) {
+                this.setState({ items: newItems }, () => this.maybeStartBatchPoll());
+                window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
+            }
+        } catch {
+            // ignore
+        } finally {
+            this.isBatchPolling = false;
+        }
+    }
+
+    private stopBatchPoll() {
+        if (this.batchPollTimer) {
+            clearInterval(this.batchPollTimer);
+            this.batchPollTimer = null;
+        }
+    }
 
     handleStatusChange = (value: string | number) => {
         const statusFilter = value === "" ? undefined : (value as TaskStatusType);
@@ -122,6 +192,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     };
 
     handleCardClick = (taskId: number) => {
+        WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} />);
     };
 

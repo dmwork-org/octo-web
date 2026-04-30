@@ -70,11 +70,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
-    private statusPollTimer: ReturnType<typeof setInterval> | null = null;
-    private isStatusPolling = false;
+    private fallbackPollTimer: ReturnType<typeof setInterval> | null = null;
+    private fallbackStartTimeout: ReturnType<typeof setTimeout> | null = null;
+    private listPageActive = false;
+    private lastEventTime = 0;
     private isPersonalPolling = false;
 
     componentDidMount() {
+        window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
+        window.addEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
+        window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.loadDetail();
     }
 
@@ -82,12 +87,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const prevTaskId = prevProps.taskId;
         const currentTaskId = this.taskId;
         if (prevTaskId !== currentTaskId && currentTaskId != null) {
+            this.listPageActive = false;
             this.clearAllTimers();
             this.loadDetail();
         }
     }
 
     componentWillUnmount() {
+        window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
+        window.removeEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
+        window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.clearAllTimers();
     }
 
@@ -96,10 +105,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             clearInterval(this.personalPollTimer);
             this.personalPollTimer = null;
         }
-        if (this.statusPollTimer) {
-            clearInterval(this.statusPollTimer);
-            this.statusPollTimer = null;
-        }
+        this.stopFallbackPoll();
     }
 
     get taskId(): number | null {
@@ -118,15 +124,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 this.loadSchedule(detail.schedule_id);
             }
 
-            // Start polling if task is in progress
+            // Start fallback poll if task is in progress
             if (
                 detail.status === TaskStatus.PROCESSING ||
                 detail.status === TaskStatus.PENDING ||
                 detail.status === TaskStatus.WAITING_CONFIRM
             ) {
-                this.startStatusPolling();
+                this.startFallbackPoll();
             } else {
-                this.stopStatusPolling();
+                this.stopFallbackPoll();
             }
             // Load BY_PERSON data
             if (detail.summary_mode === SummaryMode.BY_PERSON) {
@@ -217,48 +223,127 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
-    /** Re-fetch task detail every 3s when task is in progress */
-    startStatusPolling() {
-        if (this.statusPollTimer) return;
-        this.statusPollTimer = setInterval(async () => {
-            if (this.taskId == null) return;
-            if (this.isStatusPolling) return;
-            this.isStatusPolling = true;
-            try {
-                const detail = await api.getSummaryDetail(this.taskId);
-                const prevStatus = this.state.lastKnownStatus;
-                const newStatus = detail.status;
+    private handleBatchHeartbeat = (event: Event) => {
+        if (this.taskId == null) return;
+        const taskIds: number[] | undefined = (event as CustomEvent).detail?.taskIds;
+        if (!taskIds || !taskIds.includes(this.taskId)) return;
 
-                if (prevStatus !== undefined && prevStatus !== newStatus) {
-                    window.dispatchEvent(new CustomEvent("summary-status-change"));
-                }
+        this.listPageActive = true;
+        this.lastEventTime = Date.now();
+        this.stopFallbackPoll();
+    };
 
+    private handleStatusChangeEvent = async (event: Event) => {
+        if (this.taskId == null) return;
+
+        const detail_ = (event as CustomEvent).detail;
+        const taskIds: number[] | undefined = detail_?.taskIds;
+        if (!taskIds || !taskIds.includes(this.taskId)) return;
+
+        this.listPageActive = true;
+        this.lastEventTime = Date.now();
+        this.stopFallbackPoll();
+
+        try {
+            const detail = await api.getSummaryDetail(this.taskId);
+            const prevStatus = this.state.lastKnownStatus;
+            const newStatus = detail.status;
+            this.setState({ detail, lastKnownStatus: newStatus });
+
+            if (prevStatus !== undefined && prevStatus !== newStatus) {
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||
                     newStatus === TaskStatus.CANCELLED
                 ) {
-                    this.stopStatusPolling();
-                    this.setState({ detail, lastKnownStatus: newStatus });
                     if (detail.summary_mode === SummaryMode.BY_PERSON) {
                         this.loadPersonalResult();
                         this.loadMembers();
                     }
-                } else {
-                    this.setState({ detail, lastKnownStatus: newStatus });
                 }
-            } catch {
-                // ignore polling errors
-            } finally {
-                this.isStatusPolling = false;
             }
-        }, 3000);
+        } catch {
+            // ignore
+        }
+    };
+
+    private handleListPageUnmount = () => {
+        this.listPageActive = false;
+        const status = this.state.lastKnownStatus;
+        if (
+            status === TaskStatus.PENDING ||
+            status === TaskStatus.WAITING_CONFIRM ||
+            status === TaskStatus.PROCESSING
+        ) {
+            this.startFallbackPoll();
+        }
+    };
+
+    private startFallbackPoll() {
+        if (this.fallbackPollTimer || this.fallbackStartTimeout) return;
+
+        if (this.listPageActive && Date.now() - this.lastEventTime > 15000) {
+            this.listPageActive = false;
+        }
+        if (this.listPageActive) return;
+
+        this.fallbackStartTimeout = setTimeout(() => {
+            this.fallbackStartTimeout = null;
+            if (this.listPageActive) return;
+
+            this.doFallbackPollOnce();
+
+            this.fallbackPollTimer = setInterval(async () => {
+                this.doFallbackPollOnce();
+            }, 15000);
+        }, 5000);
     }
 
-    stopStatusPolling() {
-        if (this.statusPollTimer) {
-            clearInterval(this.statusPollTimer);
-            this.statusPollTimer = null;
+    private async doFallbackPollOnce() {
+        if (this.taskId == null) return;
+        try {
+            const updates = await api.batchStatus([this.taskId]);
+            const update = updates.find(u => u.id === this.taskId);
+            if (!update) return;
+
+            const prevStatus = this.state.lastKnownStatus;
+            const newStatus = update.status;
+
+            if (prevStatus !== undefined && prevStatus !== newStatus) {
+                try {
+                    const detail = await api.getSummaryDetail(this.taskId);
+                    this.setState({ detail, lastKnownStatus: newStatus });
+                    if (
+                        newStatus === TaskStatus.COMPLETED ||
+                        newStatus === TaskStatus.FAILED ||
+                        newStatus === TaskStatus.CANCELLED
+                    ) {
+                        this.stopFallbackPoll();
+                        if (detail.summary_mode === SummaryMode.BY_PERSON) {
+                            this.loadPersonalResult();
+                            this.loadMembers();
+                        }
+                        if (detail.schedule_id && detail.schedule_id > 0) {
+                            this.loadSchedule(detail.schedule_id);
+                        }
+                    }
+                } catch {
+                    // Don't advance lastKnownStatus — retry on next tick
+                }
+            }
+        } catch {
+            // ignore polling errors
+        }
+    }
+
+    private stopFallbackPoll() {
+        if (this.fallbackStartTimeout) {
+            clearTimeout(this.fallbackStartTimeout);
+            this.fallbackStartTimeout = null;
+        }
+        if (this.fallbackPollTimer) {
+            clearInterval(this.fallbackPollTimer);
+            this.fallbackPollTimer = null;
         }
     }
 
