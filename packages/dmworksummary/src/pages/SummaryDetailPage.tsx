@@ -7,9 +7,9 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconMore, IconSend } from "@douyinfe/semi-icons";
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
 import WKApp from "@octo/base/src/App";
-import { SummaryCardContent } from "@octo/base/src/Messages/SummaryCard/SummaryCardContent";
+import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import type {
@@ -50,6 +50,8 @@ interface SummaryDetailPageState {
     lastKnownStatus?: number;
     expandedReports: Record<string, boolean>;
 }
+
+const INTER_MESSAGE_DELAY_MS = 200;
 
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
     state: SummaryDetailPageState = {
@@ -327,25 +329,48 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     handleForwardToChat = () => {
         const { detail } = this.state;
-        if (!detail) return;
-        WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
-            const card = new SummaryCardContent();
-            card.taskId = detail.task_id;
-            card.taskNo = detail.task_no;
-            card.title = detail.title;
-            card.sourceCount = detail.summary_mode === 2 
-                ? (detail.participants?.length || 0) 
-                : (detail.sources?.length || 0);
-            card.totalMsgCount = detail.result?.total_msg_count || 0;
-            card.timeRangeStart = detail.time_range_start;
-            card.timeRangeEnd = detail.time_range_end;
-            card.summaryMode = detail.summary_mode;
-            card.spaceId = WKApp.shared.currentSpaceId || "";
+        if (!detail?.result?.content?.trim()) return;
+        WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
+            const chunks = splitSummaryText(detail?.result?.content ?? '');
+            const errors: string[] = [];
+
             for (const ch of channels) {
-                WKSDK.shared().chatManager.send(card, ch);
+                try {
+                    for (let i = 0; i < chunks.length; i++) {
+                        const msg = new MessageText(chunks[i]);
+
+                        // Inject space_id for person channels (matching ConversationVM.sendMessage pattern)
+                        const spaceId = WKApp.shared.currentSpaceId;
+                        if (spaceId && ch.channelType === ChannelTypePerson) {
+                            const originalEncodeJSON = msg.encodeJSON.bind(msg);
+                            msg.encodeJSON = () => {
+                                const obj = originalEncodeJSON();
+                                obj.space_id = spaceId;
+                                return obj;
+                            };
+                            msg.contentObj = { ...(msg.contentObj || {}), space_id: spaceId };
+                        }
+
+                        await WKSDK.shared().chatManager.send(msg, ch);
+                        if (i < chunks.length - 1) {
+                            await new Promise((r) => setTimeout(r, INTER_MESSAGE_DELAY_MS));
+                        }
+                    }
+                } catch {
+                    errors.push(ch.channelID);
+                }
             }
-            Toast.success("已转发");
-        }, "转发到聊天");
+
+            if (errors.length > 0) {
+                if (errors.length === channels.length) {
+                    Toast.error('转发失败');
+                } else {
+                    Toast.error(`部分频道转发失败 (${errors.length}/${channels.length})`);
+                }
+            } else {
+                Toast.success('已转发');
+            }
+        }, '转发到聊天');
     };
 
     renderProcessing() {
