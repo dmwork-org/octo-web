@@ -28,6 +28,19 @@ export interface JoinSuccessNotice {
      * false 表示单 Space 或已在归属 Space，展示常规 toast。
      */
     crossSpace: boolean;
+    /**
+     * YUJ-170 / dmwork-web#1100 扩展：加入实体类型。
+     * - 'space'（默认/未设置）：加入 Space 本身，原 YUJ-106 行为
+     * - 'group'：加入某 Space 下的群组（由 dmworkim H5 join_group.html 在 scanjoin
+     *   成功且 crossSpace 时写入）。Toast 渲染「已加入「<groupName> 群聊」」+
+     *   「位于「<spaceName> 空间」」+「切换过去 →」。
+     * 消费方必须按 optional 处理，兼容 YUJ-106 存量 payload。
+     */
+    kind?: "space" | "group";
+    /** YUJ-170：群编号（仅 kind='group' 写入，供调试 / 埋点）*/
+    groupNo?: string;
+    /** YUJ-170：群名称（仅 kind='group' 写入，Toast 文案使用）*/
+    groupName?: string;
 }
 
 function getSessionStorage(): Storage | null {

@@ -3,7 +3,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import "./index.css";
 
 export interface JoinSuccessToastOptions {
-    /** 已加入实体的名称（目前是 Space 名称） */
+    /** 已加入实体的名称（Space 名或群名） */
     entityName: string;
     /** 归属 Space 名称 */
     spaceName: string;
@@ -16,6 +16,13 @@ export interface JoinSuccessToastOptions {
     onSwitch?: () => void;
     /** 自动消失时间（秒）；默认 5s —— 双行需要更长停留。undefined 等同默认值。 */
     duration?: number;
+    /**
+     * YUJ-170 / dmwork-web#1100：加入实体类型。
+     * - 'space' / undefined：原 YUJ-106 行为（纯加 Space / entityName===spaceName 走简化单行）
+     * - 'group'：entityName 一定是群名，走「已加入「<name> 群聊」/ 位于「<spaceName> 空间」」
+     *   显式分支避免和 YUJ-112 的 sameName 退化路径误判。
+     */
+    kind?: "space" | "group";
 }
 
 /**
@@ -39,14 +46,21 @@ export interface JoinSuccessToastOptions {
  * - 保留 auto-dismiss（duration 秒）
  */
 export function showJoinSuccessToast(opts: JoinSuccessToastOptions): void {
-    const { entityName, spaceName, crossSpace, onSwitch, duration } = opts;
-    // YUJ-112: entityName === spaceName 时二者冗余，toast 只显示一次 Space 名称。
-    const sameName = !!spaceName && entityName === spaceName;
+    const { entityName, spaceName, crossSpace, onSwitch, duration, kind } = opts;
+    // YUJ-170: kind='group' 时永远走「加入群聊 / 位于 Space」双行文案，
+    // 即使 entityName===spaceName 也不触发 YUJ-112 的 sameName 退化（语义不同）。
+    const isGroup = kind === "group";
+    // YUJ-112: 仅对非 group 场景启用 sameName 退化，避免和 spaceName 重复。
+    const sameName = !isGroup && !!spaceName && entityName === spaceName;
 
     if (!crossSpace) {
-        // 非跨 Space — 单行 toast；sameName 时带「空间」后缀突出 Space 加入语义。
+        // 非跨 Space — 单行 toast。
+        // - kind='group' 时不会被 sameName 短路，显式使用群聊文案。
+        // - 其他场景沿用 YUJ-106/112 语义。
         Toast.success({
-            content: sameName
+            content: isGroup
+                ? `✅ 已加入「${entityName}」群聊`
+                : sameName
                 ? `✅ 已加入「${spaceName}」空间`
                 : `✅ 已加入「${entityName}」`,
             duration: duration ?? 3,

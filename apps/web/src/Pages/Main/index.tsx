@@ -86,18 +86,28 @@ export class MainPage extends Component<{}, MainPageState> {
      * YUJ-106 / dmwork-web#1065 — 消费 InviteLanding 留下的 postJoinNotice
      * - 跨 Space：双行 toast + 「切换过去」按钮；onSwitch 里调 handleSpaceSelected
      * - 同 Space / 单 Space：常规单行 toast
+     * YUJ-170 / dmwork-web#1100 — notice.kind='group'（来自 dmworkim H5
+     * join_group.html scanjoin 成功分支）透传给 Toast，走「已加入「群聊」/
+     * 位于「Space」」双行分支，切换按钮复用 handleSpaceSelected。
      * 只执行一次（consumeJoinSuccessNotice 读取后即清）。
      */
     private showPostJoinToastIfPending() {
         const notice = consumeJoinSuccessNotice();
         if (!notice || !notice.spaceId) return;
         showJoinSuccessToast({
-            entityName: notice.entityName || notice.spaceName || "",
+            // group 场景下优先取 groupName，否则退回 entityName / spaceName。
+            entityName:
+                (notice.kind === "group" && notice.groupName) ||
+                notice.entityName ||
+                notice.spaceName ||
+                "",
             spaceName: notice.spaceName || "",
             crossSpace: !!notice.crossSpace,
+            kind: notice.kind,
             onSwitch: () => {
                 // 显式切换到归属 Space —— 走与 NavRail 点击相同的路径，
                 // 保证 mittBus('space-changed') + notifyListener 一致。
+                // group 场景复用同一路径：切 Space 后群自然出现在列表。
                 this.handleSpaceSelected(notice.spaceId);
             },
         });
