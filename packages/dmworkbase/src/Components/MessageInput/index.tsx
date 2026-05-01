@@ -191,7 +191,25 @@ interface MemberInfo {
   name: string;
 }
 
-// 解析语音输入中的 @提及，转换为 Tiptap content
+// Escape special regex characters in a string
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Build a dynamic regex that matches @name for all known members.
+// Names are sorted longest-first so "Cindy Che" matches before "Cindy".
+function buildMentionRegex(members: MemberInfo[]): RegExp {
+  const specialNames = ["所有人", "all", "everyone"];
+  const allNames = [...specialNames, ...members.map((m) => m.name)];
+  // Deduplicate and sort by length descending (longest match first)
+  const unique = [...new Set(allNames)];
+  unique.sort((a, b) => b.length - a.length);
+  const pattern = unique.map(escapeRegExp).join("|");
+  // Boundary: whitespace, CJK punctuation, or end of string
+  return new RegExp(`@(${pattern})(?=[\\s，。！？,!?]|$)`, "gi");
+}
+
+// Parse voice-transcribed text for @mentions, converting to Tiptap content
 function parseMentionMarkers(
   text: string,
   members: MemberInfo[]
@@ -205,7 +223,7 @@ function parseMentionMarkers(
     text?: string;
     attrs?: { id: string; label: string };
   }> = [];
-  const regex = /@(\S+?)(?=\s|$)/g;
+  const regex = buildMentionRegex(members);
   let lastIndex = 0;
   let match;
 
@@ -213,14 +231,16 @@ function parseMentionMarkers(
     const name = match[1];
     const matchStart = match.index;
 
-    // 添加 @ 之前的普通文本
     if (matchStart > lastIndex) {
       result.push({ type: "text", text: text.slice(lastIndex, matchStart) });
     }
 
-    const isAll = name === "所有人" || name.toLowerCase() === "all";
+    const isAll =
+      name === "所有人" ||
+      name.toLowerCase() === "all" ||
+      name.toLowerCase() === "everyone";
     const member = members.find(
-      (m) => m.name === name || m.name.toLowerCase() === name.toLowerCase()
+      (m) => m.name.toLowerCase() === name.toLowerCase()
     );
 
     if (isAll) {
@@ -236,14 +256,13 @@ function parseMentionMarkers(
       });
       result.push({ type: "text", text: " " });
     } else {
-      // 未识别的 @，保留原文
+      // Unrecognized @, keep as plain text
       result.push({ type: "text", text: match[0] });
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // 添加剩余文本
   if (lastIndex < text.length) {
     result.push({ type: "text", text: text.slice(lastIndex) });
   }
@@ -1073,16 +1092,32 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               ) => {
                 if (!editor) return;
 
-                const hasMention = /@\S+?(?=\s|$)/.test(text);
+                const memberInfos: MemberInfo[] = props.members
+                  ? props.members.map((s) => ({
+                      uid: s.uid,
+                      name: s.remark || s.name || s.uid,
+                    }))
+                  : [];
+                if (props.members) {
+                  for (const s of props.members) {
+                    if (s.name && s.remark && s.remark !== s.name) {
+                      memberInfos.push({ uid: s.uid, name: s.name });
+                    }
+                  }
+                }
 
-                // 根据保存的选中文本内容查找当前文档中的位置
-                // 使用 ProseMirror doc.descendants 遍历，正确处理 mention 等原子节点
+                // Use dynamic regex built from member names to detect mentions
+                const hasMention =
+                  memberInfos.length > 0 &&
+                  buildMentionRegex(memberInfos).test(text);
+
+                // Find text position in current doc (handles mention atom nodes)
                 const findSelectionRange = (
                   searchText: string
                 ): { from: number; to: number } | null => {
                   let found: { from: number; to: number } | null = null;
                   editor.state.doc.descendants((node, pos) => {
-                    if (found) return false; // 已找到，停止遍历
+                    if (found) return false;
                     if (node.isText && node.text) {
                       const idx = node.text.indexOf(searchText);
                       if (idx !== -1) {
@@ -1090,24 +1125,14 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                           from: pos + idx,
                           to: pos + idx + searchText.length,
                         };
-                        return false; // 停止遍历
+                        return false;
                       }
                     }
                   });
                   return found;
                 };
 
-                if (hasMention && props.members && props.members.length > 0) {
-                  const memberInfos: MemberInfo[] = props.members.map((s) => ({
-                    uid: s.uid,
-                    name: s.remark || s.name || s.uid,
-                  }));
-                  for (const s of props.members) {
-                    if (s.name && s.remark && s.remark !== s.name) {
-                      memberInfos.push({ uid: s.uid, name: s.name });
-                    }
-                  }
-
+                if (hasMention) {
                   const content = parseMentionMarkers(text, memberInfos);
 
                   if (replaceMode === "all") {
