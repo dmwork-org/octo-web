@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk"
+import { Channel, ChannelTypePerson, ChannelInfo, WKSDK } from "wukongimjssdk"
 import { WKApp, Conversation, SpaceService } from "@octo/base"
 import "./AppBotPage.css"
 
@@ -143,12 +143,22 @@ export default function AppBotPage() {
     setSelectedUid(bot.uid)
     const channel = new Channel(bot.uid, ChannelTypePerson)
 
+    // Write bot identity to channelManager FIRST — Conversation component
+    // reads this for message row avatars/names. Must be set before any
+    // component renders or triggers fetchChannelInfo.
+    const info = new ChannelInfo()
+    info.channel = channel
+    info.title = bot.display_name
+    info.logo = bot.avatar || ""
+    info.orgData = { displayName: bot.display_name, robot: 1, name: bot.display_name }
+    WKSDK.shared().channelManager.setChannleInfoForCache(info)
+
     // Ensure conversation exists in SDK
     if (!WKSDK.shared().conversationManager.findConversation(channel)) {
       WKSDK.shared().conversationManager.createEmptyConversation(channel)
     }
 
-    // Render bot chat: our header + Conversation (messages + input only, no native header)
+    // Render bot chat: our header + Conversation (messages + input only)
     WKApp.routeRight.replaceToRoot(
       <div key={channel.getChannelKey()} className="appbot-chat-wrap">
         <BotChatHeader bot={bot} />
