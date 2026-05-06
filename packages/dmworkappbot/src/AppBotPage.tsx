@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk"
+import { Channel, ChannelTypePerson, ChannelInfo, WKSDK } from "wukongimjssdk"
 import { WKApp, ChatContentPage, SpaceService } from "@octo/base"
 import "./AppBotPage.css"
 
@@ -123,7 +123,16 @@ export default function AppBotPage() {
     if (!WKSDK.shared().conversationManager.findConversation(channel)) {
       WKSDK.shared().conversationManager.createEmptyConversation(channel)
     }
-    // Push chat content to routeRight (same panel as ChatPage uses)
+    // Write bot info into channelManager — we already have it from /app_bot/available.
+    // fetchChannelInfo will 400 for bot UIDs (not in user table) so won't overwrite.
+    const info = new ChannelInfo()
+    info.channel = channel
+    info.title = bot.display_name
+    info.logo = bot.avatar || ""
+    info.orgData = { displayName: bot.display_name, robot: 1, name: bot.display_name }
+    WKSDK.shared().channelManager.setChannleInfoForCache(info)
+
+    // Push chat content to routeRight
     WKApp.routeRight.replaceToRoot(
       <ChatContentPage key={channel.getChannelKey()} channel={channel} />
     )
