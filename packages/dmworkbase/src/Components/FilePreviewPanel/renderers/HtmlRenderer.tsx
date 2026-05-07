@@ -7,7 +7,6 @@ import React, {
 } from "react";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { BaseRendererProps } from "../types";
-import { Info } from "lucide-react";
 import { isFileTooLarge, getRenderMode, formatFileSize } from "../config";
 import { useFileContent } from "../hooks/useFileContent";
 import { RendererState } from "./RendererState";
@@ -23,6 +22,37 @@ export interface HtmlRendererProps extends BaseRendererProps {
 }
 
 /**
+ * 向 HTML 内容的 <head> 最前面注入 CSP 监听脚本。
+ *
+ * 由于 sandbox 没有 allow-same-origin，iframe 内部的 CSP 违规事
+件
+ * 不会冒泡到父页面，必须在 iframe 内部监听后通过 postMessage 上报。
+ */
+function injectCspMonitor(html: string): string {
+  // 注入的脚本：监听 iframe 内部 CSP 违规，通过 postMessage 上报父页面
+  // 使用 <\/script> 防止注入内容被误解析为闭合标签
+  const script =
+    `<script data-wk="csp-monitor">(function(){` +
+    `document.addEventListener('securitypolicyviolation',function(e){` +
+    `if((e.violatedDirective||'').indexOf('script-src')!==-1){` +
+    `window.parent.postMessage({type:'html-csp-violation',directive:e.violatedDirective},'*');` +
+    `}` +
+    `});` +
+    `})();<\/script>`;
+
+  // 尽量注入到 <head> 最前面，确保早于其他脚本执行
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (m) => m + script);
+  }
+  // 没有 <head> 时注入到 <html> 之后
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(/<html[^>]*>/i, (m) => m + script);
+  }
+  // 兜底：直接插到最前面
+  return script + html;
+}
+
+/**
  * HTML 渲染器
  * 使用 iframe 渲染 HTML 文件，支持完整的 HTML 预览
  * 支持 html, htm 格式
@@ -31,7 +61,7 @@ export interface HtmlRendererProps extends BaseRendererProps {
  * 1. 预览模式：iframe 沙箱渲染
  * 2. 源码模式：语法高亮 + 行号
  * 3. 错误自动切源码：iframe 渲染出错时自动切换到源码并显示红色提示条
- * 4. CSP 降级策略：检测到 CSP 错误时自动禁用脚本重新渲染
+ * 4. CSP 降级策略：注入脚本检测 iframe 内部 CSP 错误，自动降级为无脚本模式
  */
 const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   file,
@@ -105,42 +135,15 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     setIframeLoading(false);
     const errorMsg = "HTML 渲染失败，已切换到源码视图";
     setRenderError(errorMsg);
-    // 自动切换到源码模式
     handleViewModeChange("source");
     onError?.(errorMsg);
   }, [handleViewModeChange, onError]);
 
-  // 监听 CSP 错误，自动降级到无脚本模式
-  useEffect(() => {
-    if (viewMode !== "preview" || !content || !scriptEnabled) return;
-
-    // 监听 securitypolicyviolation 事件（CSP 违规）
-    const handleCSPViolation = (event: SecurityPolicyViolationEvent) => {
-      // 检查是否是脚本相关的 CSP 违规
-      if (
-        event.violatedDirective.includes("script-src") ||
-        event.effectiveDirective.includes("script-src")
-      ) {
-        console.warn(
-          "[HtmlRenderer] CSP violation detected, falling back to script-disabled mode"
-        );
-        // 降级到无脚本模式
-        setScriptEnabled(false);
-        setCspFallback(true);
-        setIframeLoading(true);
-      }
-    };
-
-    document.addEventListener("securitypolicyviolation", handleCSPViolation);
-    return () => {
-      document.removeEventListener(
-        "securitypolicyviolation",
-        handleCSPViolation
-      );
-    };
-  }, [viewMode, content, scriptEnabled]);
-
-  // 监听 iframe 内部的 JS 错误（通过 postMessage）
+  // 监听来自 iframe 的 postMessage
+  // - html-csp-violation: iframe 内部 CSP 违规，降级为无脚本模式
+  // - html-render-error: iframe 内部 JS 运行时错误，切换到源码视图
+  //
+  // 多实例安全：event.source === iframe.contentWindow 保证只响应自己的 iframe
   useEffect(() => {
     if (viewMode !== "preview" || !content) return;
 
@@ -148,12 +151,20 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     if (!iframe) return;
 
     const handleMessage = (event: MessageEvent) => {
-      // 安全检查：验证消息确实来自我们的 iframe
-      if (event.source !== iframe.contentWindow) {
+      // 只处理来自本实例 iframe 的消息，天然隔离多实例
+      if (event.source !== iframe.contentWindow) return;
+
+      if (event.data?.type === "html-csp-violation") {
+        console.warn(
+          "[HtmlRenderer] CSP violation inside iframe, falling back to script-disabled mode.",
+          event.data.directive
+        );
+        setScriptEnabled(false);
+        setCspFallback(true);
+        setIframeLoading(true);
         return;
       }
 
-      // 检查消息类型
       if (event.data?.type === "html-render-error") {
         const errorMsg = `渲染错误: ${event.data.message || "未知错误"}`;
         setRenderError(errorMsg);
@@ -165,6 +176,13 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [viewMode, content, handleViewModeChange, onError]);
+
+  // 向 srcdoc 注入 CSP 监听脚本（仅允许脚本时注入，降级后无需）
+  const srcdocContent = useMemo(() => {
+    if (!content) return "";
+    if (!scriptEnabled) return content;
+    return injectCspMonitor(content);
+  }, [content, scriptEnabled]);
 
   // 计算内容大小（用于源码模式的分级渲染）
   const contentSize = useMemo(() => {
@@ -258,7 +276,6 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
               {content}
             </SyntaxHighlighter>
           ) : (
-            /* 大文件使用纯文本渲染，避免卡死 */
             <>
               <div className="wk-file-preview-html-renderer__plain-hint">
                 文件较大（{formatFileSize(contentSize)}
@@ -277,17 +294,16 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   // 预览模式：使用 srcdoc 渲染 HTML
   // 安全策略：
   // - 默认 allow-scripts（允许脚本）、nginx CSP 已允许 blob: URL
-  // - 检测到 CSP 错误后自动降级为禁用脚本模式（奈落保证）
+  // - srcdoc 注入了 CSP 监听脚本，检测到违规后通过 postMessage 通知父页面降级
   // - 不加 allow-same-origin 以防止 XSS
   return (
     <div className="wk-file-preview-html-renderer wk-file-preview-html-renderer--preview">
       {/* CSP 降级提示 */}
       {cspFallback && !iframeLoading && (
         <div className="wk-file-preview-html-renderer__csp-notice">
-          <Info
-            size={14}
-            className="wk-file-preview-html-renderer__csp-notice-icon"
-          />
+          <span className="wk-file-preview-html-renderer__csp-notice-icon">
+            ℹ
+          </span>
           <span className="wk-file-preview-html-renderer__csp-notice-text">
             由于安全策略限制，已禁用脚本执行，部分交互功能可能不可用
           </span>
@@ -303,7 +319,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
       )}
       <iframe
         ref={iframeRef}
-        srcDoc={content}
+        srcDoc={srcdocContent}
         className={`wk-file-preview-html-renderer__iframe ${
           iframeLoading ? "wk-file-preview-html-renderer__iframe--hidden" : ""
         }`}
