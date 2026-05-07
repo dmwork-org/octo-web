@@ -148,6 +148,26 @@
   line-height: 1.6;
 }
 
+/* 大文件纯文本源码样式 */
+.wk-file-preview-html-renderer__plain-source {
+  margin: 0;
+  padding: var(--wk-sp-4);
+  min-height: 100%;
+  box-sizing: border-box;
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+.wk-file-preview-html-renderer__plain-source code {
+  font-family: "Fira Code", "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.6;
+}
+
 /* ============================================
    加载/错误/空状态容器
    ============================================ */

@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { BaseRendererProps } from "../types";
-import { isFileTooLarge } from "../config";
+import { isFileTooLarge, FILE_SIZE_THRESHOLD } from "../config";
 import { useFileContent } from "../hooks/useFileContent";
 import { RendererState } from "./RendererState";
 import FileTooLarge from "./FileTooLarge";
@@ -173,6 +173,10 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
 
   // 源码模式
   if (viewMode === "source") {
+    // 根据内容大小决定是否使用语法高亮
+    const contentSize = new Blob([content]).size;
+    const useHighlight = contentSize <= FILE_SIZE_THRESHOLD.HIGHLIGHT;
+
     return (
       <div className="wk-file-preview-html-renderer wk-file-preview-html-renderer--source">
         {/* 错误提示条 */}
@@ -191,20 +195,27 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
           </div>
         )}
         <div className="wk-file-preview-html-renderer__source-container wk-code-highlight-container">
-          <SyntaxHighlighter
-            language="html"
-            useInlineStyles={false}
-            showLineNumbers
-            wrapLines
-            lineNumberStyle={{
-              minWidth: "3em",
-              paddingRight: "1em",
-              textAlign: "right",
-              userSelect: "none",
-            }}
-          >
-            {content}
-          </SyntaxHighlighter>
+          {useHighlight ? (
+            <SyntaxHighlighter
+              language="html"
+              useInlineStyles={false}
+              showLineNumbers
+              wrapLines
+              lineNumberStyle={{
+                minWidth: "3em",
+                paddingRight: "1em",
+                textAlign: "right",
+                userSelect: "none",
+              }}
+            >
+              {content}
+            </SyntaxHighlighter>
+          ) : (
+            /* 大文件使用纯文本渲染，避免卡死 */
+            <pre className="wk-file-preview-html-renderer__plain-source">
+              <code>{content}</code>
+            </pre>
+          )}
         </div>
       </div>
     );
