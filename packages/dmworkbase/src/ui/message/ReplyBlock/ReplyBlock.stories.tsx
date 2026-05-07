@@ -1,30 +1,31 @@
-import type { Meta, StoryObj } from '@storybook/react'
-import ReplyBlock from './index'
+import type { Meta, StoryObj } from "@storybook/react";
+import React from "react";
+import ReplyBlock from "./index";
 
 const meta: Meta<typeof ReplyBlock> = {
-  title: 'ui/message/ReplyBlock',
+  title: "ui/message/ReplyBlock",
   component: ReplyBlock,
-  tags: ['autodocs'],
-  parameters: { layout: 'centered' },
+  tags: ["autodocs"],
+  parameters: { layout: "centered" },
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 320, padding: 20, background: '#fff' }}>
+      <div style={{ maxWidth: 320, padding: 20, background: "#fff" }}>
         <Story />
       </div>
     ),
   ],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof ReplyBlock>
+export default meta;
+type Story = StoryObj<typeof ReplyBlock>;
 
 /** 本 Space 成员：仅昵称 + 摘要，无 `@SpaceName` 后缀 */
 export const Default: Story = {
   args: {
-    fromName: '嘉伟qq',
-    digest: 'hello',
+    fromName: "嘉伟qq",
+    digest: "hello",
   },
-}
+};
 
 /**
  * 外部 Space 成员：昵称后追加 `@SpaceName` 企微风格来源标记。
@@ -38,17 +39,19 @@ export const Default: Story = {
  */
 export const ExternalSender: Story = {
   args: {
-    fromName: '嘉伟qq',
-    digest: 'hello',
-    sourceSpaceName: '测试空间1',
+    fromName: "嘉伟qq",
+    digest: "hello",
+    sourceSpaceName: "测试空间1",
   },
-}
+};
 
 /** 长 SpaceName：单行截断 */
 export const LongSpaceName: Story = {
   args: {
-    fromName: 'Alice Longname',
-    digest: 'This is a very long quoted digest that should be truncated after one line',
-    sourceSpaceName: 'A very very long external workspace name for truncation demo',
+    fromName: "Alice Longname",
+    digest:
+      "This is a very long quoted digest that should be truncated after one line",
+    sourceSpaceName:
+      "A very very long external workspace name for truncation demo",
   },
-}
+};
