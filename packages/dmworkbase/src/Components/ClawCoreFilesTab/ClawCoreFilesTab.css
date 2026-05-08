@@ -1,0 +1,99 @@
+/**
+ * ClawCoreFilesTab 样式
+ * 复用 FileViewer 组件，只需添加 loading/error/empty 状态样式
+ */
+
+.claw-core-files-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* ── Loading State ── */
+.claw-core-files-tab .loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--wk-sp-4);
+}
+
+.claw-core-files-tab .loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--wk-border-divider);
+  border-top-color: var(--wk-brand-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.claw-core-files-tab .loading-text {
+  font-size: var(--wk-text-size-md);
+  color: var(--wk-text-tertiary);
+}
+
+/* ── Error State ── */
+.claw-core-files-tab .error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--wk-sp-3);
+}
+
+.claw-core-files-tab .error-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--wk-status-error);
+}
+
+.claw-core-files-tab .error-text {
+  font-size: var(--wk-text-size-md);
+  color: var(--wk-text-secondary);
+}
+
+.claw-core-files-tab .retry-button {
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-xs);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.claw-core-files-tab .retry-button:hover {
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-brand-primary);
+}
+
+/* ── Empty State ── */
+.claw-core-files-tab .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--wk-sp-3);
+}
+
+.claw-core-files-tab .empty-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--wk-text-quaternary);
+}
+
+.claw-core-files-tab .empty-text {
+  font-size: var(--wk-text-size-md);
+  color: var(--wk-text-tertiary);
+}
