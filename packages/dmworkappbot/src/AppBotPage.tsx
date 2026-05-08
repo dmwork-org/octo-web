@@ -71,6 +71,35 @@ function BotIconFallback() {
   )
 }
 
+/** Lightweight error toast — self-removing DOM element, no external dependency. */
+function showErrorToast(message: string) {
+  const el = document.createElement("div")
+  Object.assign(el.style, {
+    position: "fixed",
+    top: "16px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: "10000",
+    padding: "8px 16px",
+    borderRadius: "6px",
+    fontSize: "13px",
+    fontWeight: "500",
+    color: "#dc2626",
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    opacity: "0",
+    transition: "opacity 200ms ease",
+  })
+  el.textContent = message
+  document.body.appendChild(el)
+  requestAnimationFrame(() => { el.style.opacity = "1" })
+  setTimeout(() => {
+    el.style.opacity = "0"
+    setTimeout(() => el.remove(), 200)
+  }, 3000)
+}
+
 /** Bot chat header — renders directly from bot data, bypasses SDK channelInfo */
 function BotChatHeader({ bot }: { bot: AppBotInfo }) {
   const showImg = isSafeImageUrl(bot.avatar)
@@ -154,8 +183,20 @@ export default function AppBotPage() {
   const platformBots = useMemo(() => filtered.filter((b) => b.scope === "platform"), [filtered])
   const spaceBots = useMemo(() => filtered.filter((b) => b.scope === "space"), [filtered])
 
-  const handleSelect = (bot: AppBotInfo) => {
+  const handleSelect = async (bot: AppBotInfo) => {
     setSelectedUid(bot.uid)
+
+    // Ensure friend relationship with bot (opt-in consent).
+    // This is idempotent — already-friends returns OK immediately.
+    try {
+      await WKApp.apiClient.post("/robot/apply", { robot_uid: bot.uid })
+    } catch (err) {
+      console.error("[AppBotPage] robot/apply failed:", err)
+      showErrorToast("无法连接到该应用，请稍后重试")
+      setSelectedUid(null)
+      return
+    }
+
     const channel = new Channel(bot.uid, ChannelTypePerson)
 
     // Write bot identity to channelManager FIRST — Conversation component
