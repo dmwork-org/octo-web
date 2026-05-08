@@ -9,6 +9,8 @@ import "./ClawInfoModal.css";
 export interface ClawInfoModalProps {
   /** Bot ID（如 pipixia_bot） */
   botId: string;
+  /** Bot 名称（如"皮皮虾"） */
+  botName?: string;
   /** 是否显示弹窗 */
   visible: boolean;
   /** 关闭回调 */
@@ -81,7 +83,7 @@ export interface AgentCardData {
  * - 空态处理
  * - 按 running 状态排序（running 在前）
  */
-export default function ClawInfoModal({ botId, visible, onClose }: ClawInfoModalProps) {
+export default function ClawInfoModal({ botId, botName, visible, onClose }: ClawInfoModalProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AgentCardData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export default function ClawInfoModal({ botId, visible, onClose }: ClawInfoModal
       running: s.status === "running",
       channel: channelDisplay,
       party: s.peer_name,
-      botName: "未知 Bot", // 从 API 数据中提取（暂时用占位）
+      botName: botName || "未知 Bot", // 使用传入的 Bot 名称
       botId: botId,
       model: s.model,
       ctxUsed: s.context_used,
@@ -234,7 +236,7 @@ export default function ClawInfoModal({ botId, visible, onClose }: ClawInfoModal
         <div className="claw-info-header">
           <div className="claw-info-title-row">
             <div className="claw-info-title">
-              <h1>{data?.runtime_info?.gateway_name || "加载中..."}</h1>
+              <h1>{botName || data?.runtime_info?.gateway_name || "加载中..."}</h1>
               <div className="claw-info-meta">
                 <span>所属 Gateway: {data?.runtime_info?.gateway_name || "—"}</span>
                 <span className="claw-info-meta__sep">·</span>

@@ -544,6 +544,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             </WKModal>
             <ClawInfoModal
                 botId={uid}
+                botName={name}
                 visible={showClawInfo}
                 onClose={() => this.setState({ showClawInfo: false })}
             />
