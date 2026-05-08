@@ -95,6 +95,13 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
     }
   }, [visible, botId]);
 
+  // 弹窗关闭时重置 Tab 到默认（概览）
+  useEffect(() => {
+    if (!visible) {
+      setActiveTab("overview");
+    }
+  }, [visible]);
+
   const loadAgentCard = async () => {
     setLoading(true);
     setError(null);
