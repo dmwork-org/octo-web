@@ -97,26 +97,10 @@ export default function ClawInfoModal({ botId, visible, onClose }: ClawInfoModal
     setLoading(true);
     setError(null);
     try {
-      // TODO: 从环境变量或配置读取 CARD_BASE_URL
-      const baseUrl = process.env.REACT_APP_CARD_BASE_URL || "http://localhost:8080";
-      const token = localStorage.getItem("token") || "";
-
-      const response = await fetch(`${baseUrl}/api/v1/agent-cards/${botId}`, {
-        headers: {
-          Token: token,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result.code === 0) {
-        setData(result.data);
-      } else {
-        throw new Error(result.message || "获取数据失败");
-      }
+      // 使用 AgentCardService 统一走 axios + proxy
+      const AgentCardService = (await import('../../Service/AgentCardService')).default;
+      const result = await AgentCardService.getAgentCard(botId);
+      setData(result);
     } catch (err: any) {
       setError(err.message || "加载失败");
     } finally {
