@@ -136,7 +136,8 @@ export default function AppBotPage() {
         const params = spaceId ? { param: { space_id: spaceId } } : undefined
         const res = await WKApp.apiClient.get("/app_bot/available", params)
         if (stale || thisRequest !== requestId) return
-        setBots(Array.isArray(res) ? res : [])
+        const items = Array.isArray(res) ? res.filter((b: AppBotInfo) => b && b.uid && b.id) : []
+        setBots(items)
         setState("ready")
       } catch (err) {
         console.warn("[AppBotPage] Failed to load bots:", err)
@@ -161,6 +162,7 @@ export default function AppBotPage() {
     resolveSpaceName()
 
     const handler = () => {
+      isSelectingRef.current = false
       setSelectedUid(null)
       WKApp.routeRight.popToRoot()
       loadData()
