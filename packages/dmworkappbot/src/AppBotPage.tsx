@@ -184,18 +184,17 @@ export default function AppBotPage() {
   const spaceBots = useMemo(() => filtered.filter((b) => b.scope === "space"), [filtered])
 
   const handleSelect = async (bot: AppBotInfo) => {
-    setSelectedUid(bot.uid)
-
     // Ensure friend relationship with bot (opt-in consent).
     // This is idempotent — already-friends returns OK immediately.
     try {
       await WKApp.apiClient.post("/app_bot/apply", { robot_uid: bot.uid })
     } catch (err) {
-      console.error("[AppBotPage] robot/apply failed:", err)
+      console.error("[AppBotPage] app_bot/apply failed:", err)
       showErrorToast("无法连接到该应用，请稍后重试")
-      setSelectedUid(null)
       return
     }
+
+    setSelectedUid(bot.uid)
 
     const channel = new Channel(bot.uid, ChannelTypePerson)
 
