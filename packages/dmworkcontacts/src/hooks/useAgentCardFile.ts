@@ -4,7 +4,7 @@
  * 用于获取 Agent Card 文件内容
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { AgentCardService } from '@octo/base';
 import type { FileContentData } from '../api/types';
 
@@ -38,14 +38,8 @@ export function useAgentCardFile(botId: string | null): UseAgentCardFileResult {
   const [data, setData] = useState<FileContentData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cancelledRef = useRef(false);
-
-  // 组件卸载时标记为已取消
-  useEffect(() => {
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, []);
+  // 用递增 requestId 区分并发请求，布尔值无法处理多个并发的情况
+  const requestIdRef = useRef(0);
 
   const fetchFile = useCallback(
     async (fileName: string) => {
@@ -54,22 +48,22 @@ export function useAgentCardFile(botId: string | null): UseAgentCardFileResult {
         return;
       }
 
-      cancelledRef.current = false; // 重置取消标记
+      const currentId = ++requestIdRef.current;
       setLoading(true);
       setError(null);
 
       try {
         const result = await AgentCardService.getFileData(botId, fileName);
-        if (cancelledRef.current) return; // 如果已取消，忽略结果
+        if (currentId !== requestIdRef.current) return; // 已有更新的请求，忽略旧结果
         setData(result);
         setError(null);
       } catch (err) {
-        if (cancelledRef.current) return;
+        if (currentId !== requestIdRef.current) return;
         const message = err instanceof Error ? err.message : 'Failed to fetch file content';
         setError(message);
         setData(null);
       } finally {
-        if (!cancelledRef.current) {
+        if (currentId === requestIdRef.current) {
           setLoading(false);
         }
       }

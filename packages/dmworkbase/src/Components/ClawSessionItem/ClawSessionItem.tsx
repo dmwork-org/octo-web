@@ -58,7 +58,7 @@ export default function ClawSessionItem({ session }: ClawSessionItemProps) {
   } = session;
 
   // 计算上下文占用百分比
-  const ctxPercent = Math.round((ctxUsed / ctxMax) * 100);
+  const ctxPercent = ctxMax > 0 ? Math.round((ctxUsed / ctxMax) * 100) : 0;
   const isHighCtx = ctxPercent > 70;
 
   // 渠道 CSS 类（用于不同渠道的颜色标记）

@@ -129,9 +129,13 @@ export default function FileViewer({
       .replace(/^## (.+)$/gm, '<div class="md-h2">$1</div>')
       .replace(/^# (.+)$/gm, '<div class="md-h1">$1</div>')
       .replace(/`([^`]+)`/g, '<code>$1</code>');
+    // 信任边界：raw 已做实体转义，此处只允许展示用标签和 class 属性
+    // 明确禁止 data-* 属性和所有事件处理器，防止 DOM clobbering 和 handler 注入
     return DOMPurify.sanitize(raw, {
       ALLOWED_TAGS: ['div', 'code'],
       ALLOWED_ATTR: ['class'],
+      ALLOW_DATA_ATTR: false,
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
     });
   };
 

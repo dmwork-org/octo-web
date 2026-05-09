@@ -78,14 +78,18 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
     };
   }, [visible, botId]);
 
-  // 弹窗关闭时重置状态，避免下次打开时闪现旧数据
+  // 弹窗关闭时只重置 tab，保留 data 避免 visible 快速切换时出现 loading 闪烁
   useEffect(() => {
     if (!visible) {
       setActiveTab("overview");
-      setData(null);
-      setError(null);
     }
   }, [visible]);
+
+  // botId 变化时清空数据，防止显示上一个 bot 的旧内容
+  useEffect(() => {
+    setData(null);
+    setError(null);
+  }, [botId]);
 
   const mapToSessionData = (s: AgentCardData["sessions"][0]): SessionData => {
     // 渠道名称映射（中文）

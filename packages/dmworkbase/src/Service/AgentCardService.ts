@@ -118,6 +118,23 @@ class AgentCardService {
   }
 
   /**
+   * 获取 Agent 举报状态
+   * @param botId Bot ID
+   * @returns 是否已被举报
+   */
+  async getReportStatus(botId: string): Promise<boolean> {
+    const response = await APIClient.shared.get<{ code: number; message: string; data: { reported: boolean } }>(
+      `/agent-cards/${botId}/report-status`
+    );
+
+    if (response.code !== 0) {
+      throw new Error(response.message || 'Failed to fetch report status');
+    }
+
+    return response.data?.reported ?? false;
+  }
+
+  /**
    * 将 AgentCardData 转换为 FileViewer 所需的 FileGroup[]
    * @param agentCard AgentCardData
    * @returns FileGroup[]
