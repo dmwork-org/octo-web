@@ -429,55 +429,48 @@ function extractMentionsFromEditor(editor: any): string {
   return stripInvisibleChars(result);
 }
 
-// 解析草稿文本中的 @[uid:label] 格式为 Tiptap 节点数组
-function parseDraftMentions(
+// 解析草稿文本中的 @[uid:label] 格式为 Tiptap 文档结构
+// 返回完整的 doc 内容，支持多行（每行一个 paragraph）
+function parseDraftToContent(
   text: string
-): Array<{
-  type: string;
-  text?: string;
-  attrs?: { id: string; label: string };
-}> {
-  const result: Array<{
-    type: string;
-    text?: string;
-    attrs?: { id: string; label: string };
-  }> = [];
-  
-  // 匹配 @[uid:label] 格式，uid和label可以包含除]外的任意字符
-  const regex = /@\[([^\]:]+):([^\]]+)\]/g;
-  let lastIndex = 0;
-  let match;
+): { type: "doc"; content: Array<{ type: "paragraph"; content: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> }> } {
+  const lines = text.split("\n");
+  const paragraphs = lines.map((line) => {
+    const nodes: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> = [];
+    
+    // 匹配 @[uid:label] 格式，uid和label可以包含除]外的任意字符
+    const regex = /@\[([^\]:]+):([^\]]+)\]/g;
+    let lastIndex = 0;
+    let match;
 
-  while ((match = regex.exec(text)) !== null) {
-    const uid = match[1];
-    const label = match[2];
-    const matchStart = match.index;
+    while ((match = regex.exec(line)) !== null) {
+      const uid = match[1];
+      const label = match[2];
+      const matchStart = match.index;
 
-    // 添加匹配前的普通文本
-    if (matchStart > lastIndex) {
-      result.push({ type: "text", text: text.slice(lastIndex, matchStart) });
+      // 添加匹配前的普通文本
+      if (matchStart > lastIndex) {
+        nodes.push({ type: "text", text: line.slice(lastIndex, matchStart) });
+      }
+
+      // 添加 mention 节点
+      nodes.push({
+        type: "mention",
+        attrs: { id: uid, label: label },
+      });
+
+      lastIndex = match.index + match[0].length;
     }
 
-    // 添加 mention 节点
-    result.push({
-      type: "mention",
-      attrs: { id: uid, label: label },
-    });
+    // 添加剩余的普通文本
+    if (lastIndex < line.length) {
+      nodes.push({ type: "text", text: line.slice(lastIndex) });
+    }
 
-    lastIndex = match.index + match[0].length;
-  }
+    return { type: "paragraph" as const, content: nodes };
+  });
 
-  // 添加剩余的普通文本
-  if (lastIndex < text.length) {
-    result.push({ type: "text", text: text.slice(lastIndex) });
-  }
-
-  // 如果没有匹配到任何 mention，返回原始文本
-  if (result.length === 0) {
-    result.push({ type: "text", text: text });
-  }
-
-  return result;
+  return { type: "doc", content: paragraphs };
 }
 
 // 顶部附件区的附件项接口
@@ -953,9 +946,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const insertText = useCallback(
     (text: string) => {
       if (editor) {
-        // 解析草稿中的 @[uid:label] 格式为 Tiptap mention 节点
-        const nodes = parseDraftMentions(text);
-        editor.commands.insertContent(nodes);
+        // 解析草稿中的 @[uid:label] 格式为 Tiptap 文档结构
+        const content = parseDraftToContent(text);
+        // 使用 setContent 替代 insertContent，确保先清空编辑器再设置内容
+        // 避免重复插入导致 @梨花 变成 @梨花@梨花
+        editor.commands.setContent(content);
         editor.commands.focus();
       }
     },
