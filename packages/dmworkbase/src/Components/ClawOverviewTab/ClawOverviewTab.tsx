@@ -10,30 +10,8 @@ import {
   Globe,
   Users,
 } from 'lucide-react';
+import type { RuntimeInfo } from '../../Service/AgentCardService';
 import './ClawOverviewTab.css';
-
-export interface RuntimeInfo {
-  os_version: string;
-  arch: string;
-  disk_space_gb: number;
-  memory_gb: number;
-  app_data_dir: string;
-  claw_version: string;
-  admin_url: string;
-  team_name: string;
-  process_status: string;
-  gateway_status: string;
-  gateway_name: string;
-  claw_id: string;
-  gateway_total_agents: number;
-  gateway_alive_agents: number;
-  nodejs_version: string;
-  network_latency_ms: number;
-  last_heartbeat_at: string;
-  memory_retention_count: number;
-  memory_retention_note: string;
-}
-
 export interface ClawOverviewTabProps {
   /** 运行时信息数据 */
   runtimeInfo: RuntimeInfo;

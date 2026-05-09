@@ -296,27 +296,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
                 </div>
               ) : data?.runtime_info ? (
                 <ClawOverviewTab
-                  runtimeInfo={{
-                    os_version: data.runtime_info.os_version,
-                    arch: data.runtime_info.arch,
-                    disk_space_gb: data.runtime_info.disk_space_gb,
-                    memory_gb: data.runtime_info.memory_gb,
-                    app_data_dir: data.runtime_info.app_data_dir,
-                    claw_version: data.runtime_info.claw_version,
-                    admin_url: data.runtime_info.admin_url,
-                    team_name: data.runtime_info.team_name,
-                    process_status: data.runtime_info.process_status,
-                    gateway_status: data.runtime_info.gateway_status,
-                    gateway_name: data.runtime_info.gateway_name,
-                    claw_id: data.runtime_info.claw_id,
-                    gateway_total_agents: data.runtime_info.gateway_total_agents,
-                    gateway_alive_agents: data.runtime_info.gateway_alive_agents,
-                    nodejs_version: data.runtime_info.nodejs_version,
-                    network_latency_ms: data.runtime_info.network_latency_ms,
-                    last_heartbeat_at: data.runtime_info.last_heartbeat_at,
-                    memory_retention_count: data.runtime_info.memory_retention_count,
-                    memory_retention_note: data.runtime_info.memory_retention_note,
-                  }}
+                  runtimeInfo={data.runtime_info}
                   loading={false}
                 />
               ) : (

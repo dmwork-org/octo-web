@@ -208,11 +208,7 @@ export default function ClawSessionItem({ session }: ClawSessionItemProps) {
             </div>
           </div>
 
-          {/* 最近消息 - 暂时隐藏，后续可能恢复 */}
-          {/* <div className="wk-session-msg" data-testid="claw-session-msg">
-            <span className="wk-session-msg__label">最近用户消息</span>
-            <span className="wk-session-msg__content">{lastMsg}</span>
-          </div> */}
+
         </>
       )}
     </div>

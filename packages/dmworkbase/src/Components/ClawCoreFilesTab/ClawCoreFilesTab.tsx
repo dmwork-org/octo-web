@@ -57,12 +57,7 @@ export default function ClawCoreFilesTab({ botId, height = '100%' }: ClawCoreFil
   }, [loadFileGroups]);
 
   const handleFetchFile = async (path: string): Promise<FileContent> => {
-    try {
-      return await AgentCardService.getFileContent(botId, path);
-    } catch (err) {
-      console.error('Failed to fetch file:', err);
-      throw err;
-    }
+    return await AgentCardService.getFileContent(botId, path);
   };
 
   if (loading) {

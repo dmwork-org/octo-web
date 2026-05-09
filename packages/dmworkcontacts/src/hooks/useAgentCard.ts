@@ -4,7 +4,7 @@
  * 用于获取 Agent Card 数据
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAgentCard } from '../api/agentCardApi';
 import type { AgentCardData } from '../api/types';
 
@@ -41,10 +41,12 @@ export function useAgentCard(
   const [data, setData] = useState<AgentCardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   const enabled = options?.enabled ?? true;
 
-  const fetchData = useCallback(async () => {
+  // 统一的加载函数，带取消机制
+  const loadData = useCallback(async (signal: { cancelled: boolean }) => {
     if (!botId || !enabled) {
       return;
     }
@@ -54,57 +56,44 @@ export function useAgentCard(
 
     try {
       const result = await getAgentCard(botId);
+      if (signal.cancelled) return; // 如果已取消，忽略结果
       setData(result);
       setError(null);
     } catch (err) {
+      if (signal.cancelled) return;
       const message = err instanceof Error ? err.message : 'Failed to fetch agent card';
       setError(message);
       setData(null);
     } finally {
-      setLoading(false);
+      if (!signal.cancelled) {
+        setLoading(false);
+      }
     }
   }, [botId, enabled]);
 
-  // 初始加载
+  // 自动加载（依赖 botId 和 enabled 变化）
   useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      if (!botId || !enabled) {
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const result = await getAgentCard(botId);
-        if (cancelled) return; // 如果已取消，忽略结果
-        setData(result);
-        setError(null);
-      } catch (err) {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : 'Failed to fetch agent card';
-        setError(message);
-        setData(null);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void load();
+    const signal = { cancelled: false };
+    cancelRef.current = signal;
+    
+    void loadData(signal);
 
     return () => {
-      cancelled = true;
+      signal.cancelled = true;
     };
-  }, [botId, enabled]);
+  }, [loadData]);
+
+  // refetch 使用相同的 loadData，但创建新的 signal
+  const refetch = useCallback(async () => {
+    const signal = { cancelled: false };
+    cancelRef.current = signal;
+    await loadData(signal);
+  }, [loadData]);
 
   return {
     data,
     loading,
     error,
-    refetch: fetchData,
+    refetch,
   };
 }
