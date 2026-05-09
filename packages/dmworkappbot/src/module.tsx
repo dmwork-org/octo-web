@@ -33,7 +33,7 @@ export default class AppBotModule implements IModule {
     // Register route
     WKApp.route.register("/appbot", () => <AppBotPage />)
 
-    // Register NavRail menu item (sort=3000, between chat=1000 and contacts=4000)
+    // Register NavRail menu item (sort=6000, at the bottom)
     WKApp.menus.register(
       "appbot",
       () => {
@@ -46,7 +46,7 @@ export default class AppBotModule implements IModule {
         )
         return m
       },
-      3000,
+      6000,
     )
   }
 }
