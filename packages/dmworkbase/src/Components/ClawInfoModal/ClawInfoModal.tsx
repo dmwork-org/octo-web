@@ -20,10 +20,10 @@ export interface ClawInfoModalProps {
 
 export interface SessionData {
   key: string;
-  status: "active" | "idle" | "closed";
-  running: boolean;
+  status: "running" | "done" | "failed" | "killed" | "timeout";
   channel: string;
-  party: string;
+  peerDisplayName?: string;
+  peerName?: string;
   botName: string;
   botId: string;
   model: string;
@@ -110,20 +110,23 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
       ? `${channelDisplay}（${peerTypeText}）`
       : channelDisplay;
 
-    // 状态映射
-    const statusMap: Record<string, "active" | "idle" | "closed"> = {
-      running: "active",
-      idle: "idle",
-      stopped: "closed",
+    // 状态映射（直接使用 API 返回的状态值）
+    const statusMap: Record<string, "running" | "done" | "failed" | "killed" | "timeout"> = {
+      running: "running",
+      done: "done",
+      failed: "failed",
+      killed: "killed",
+      timeout: "timeout",
+      stopped: "done", // stopped 映射为 done
     };
-    const mappedStatus = statusMap[s.status] || "idle";
+    const mappedStatus = statusMap[s.status] || "done";
 
     return {
       key: s.session_key,
       status: mappedStatus,
-      running: s.status === "running",
       channel: channelWithType,
-      party: s.peer_name,
+      peerDisplayName: s.peer_display_name,
+      peerName: s.peer_name,
       botName: botName || "未知 Bot", // 使用传入的 Bot 名称
       botId: botId,
       model: s.model,
