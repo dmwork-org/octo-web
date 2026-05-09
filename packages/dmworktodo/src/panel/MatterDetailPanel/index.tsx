@@ -12,14 +12,12 @@ export interface MatterDetailPanelProps {
   onClose: () => void;
 }
 
-type TabKey = 'channels' | 'outputs' | 'changelog';
-
 export default function MatterDetailPanel({ channelId, channelType, matterId, onClose }: MatterDetailPanelProps) {
   const [matter, setMatter] = useState<MatterDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabKey>('channels');
-  const [briefOpen, setBriefOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<'channels' | 'outputs' | 'changelog'>('channels');
+  const [timelineOpen, setTimelineOpen] = useState(false);
 
   useEffect(() => {
     if (!matterId) { setMatter(null); return; }
@@ -44,144 +42,170 @@ export default function MatterDetailPanel({ channelId, channelType, matterId, on
     }
   }, [matter]);
 
-  // 空态 / 加载态 / 错误态
   if (!matterId || loading || error || !matter) {
     return (
-      <div className="wk-mp">
-        <div className="wk-mp-head">
-          <div className="wk-mp-head__row1">
-            <span className="wk-mp-head__id">{loading ? '加载中...' : '事项'}</span>
-            <div className="wk-mp-head__actions">
-              <button type="button" className="wk-mp-head__close" onClick={onClose}>✕</button>
-            </div>
-          </div>
+      <main className="wk-mp-main">
+        <div className="wk-mp-main__empty">
+          {loading ? '加载中...' : error || '选择一个事项查看详情'}
         </div>
-        <div className="wk-mp__scroll">
-          <div className="wk-mp-empty">{error || (!matterId ? '选择一个事项查看详情' : '事项不存在')}</div>
-        </div>
-      </div>
+      </main>
     );
   }
 
   const channels = matter.channels || [];
   const assignees = matter.assignees || [];
-  const statusCss = matter.status === 'open' ? 'active' : matter.status;
+  const statusMap: Record<string, { label: string; cls: string }> = {
+    open: { label: '进行中', cls: 'wk-mp-pill--active' },
+    done: { label: '已完成', cls: 'wk-mp-pill--done' },
+    archived: { label: '已归档', cls: 'wk-mp-pill--archived' },
+  };
+  const st = statusMap[matter.status] || statusMap.open;
 
-  const tabs: { id: TabKey; label: string; count: number }[] = [
-    { id: 'channels', label: '关联群聊', count: channels.length },
-    { id: 'outputs', label: '产出文件', count: 0 },
-    { id: 'changelog', label: '变更记录', count: 0 },
-  ];
+  const formatDeadline = (d: string) => {
+    const date = new Date(d);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
 
   return (
-    <div className="wk-mp">
-      {/* ── Head (对齐原型 m-head) ── */}
-      <div className="wk-mp-head">
-        <div className="wk-mp-head__row1">
-          <span className="wk-mp-head__id">{matter.id.slice(0, 8)}</span>
-          <StatusPicker status={matter.status} onChange={handleStatusChange} />
-          {matter.deadline && (
-            <span className="wk-mp-head__ddl">DDL {new Date(matter.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</span>
-          )}
-          <div className="wk-mp-head__actions">
-            <button type="button" className="wk-mp-head__btn">转发</button>
-            <button type="button" className="wk-mp-head__close" onClick={onClose}>✕</button>
-          </div>
-        </div>
-        <div className="wk-mp-head__title">{matter.title}</div>
-        <div className="wk-mp-head__meta-row">
-          {/* 发起 */}
-          <span className="wk-mp-head__meta">
-            <span className="wk-mp-head__meta-label">发起</span>
-            <UserName uid={matter.creator_id} className="wk-mp-head__meta-name" />
-          </span>
-          {/* 负责 */}
-          {assignees.length > 0 && (
-            <span className="wk-mp-head__meta">
-              <span className="wk-mp-head__meta-label">负责</span>
-              {assignees.map((a, i) => (
-                <span key={a.user_id}>
-                  {i > 0 && '、'}
-                  <UserName uid={a.user_id} className="wk-mp-head__meta-name" />
-                </span>
-              ))}
-            </span>
-          )}
-          {/* 关联 */}
-          {channels.length > 0 && (
-            <span className="wk-mp-head__meta">
-              <span className="wk-mp-head__meta-label">关联</span>
-              <span className="wk-mp-head__channels">
-                {channels.slice(0, 2).map((ch) => (
-                  <span key={ch.id} className="wk-mp-head__channel-tag">#{ch.channel_name || ch.channel_id.slice(0, 6)}</span>
-                ))}
-                {channels.length > 2 && <span className="wk-mp-head__channel-more">+{channels.length - 2} 更多</span>}
+    <main className="wk-mp-main">
+      <div className="wk-mp-main__inner">
+        {/* ── Header ── */}
+        <header className="wk-mp-header">
+          {/* Row1: ID + Status + DDL + actions */}
+          <div className="wk-mp-header__row1">
+            <span className="wk-mp-header__id">{matter.id.slice(0, 8)}</span>
+            <StatusPicker status={matter.status} onChange={handleStatusChange} />
+            {matter.deadline && (
+              <span className="wk-mp-header__ddl">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <span className="wk-mp-header__ddl-label">截止</span>
+                <span className="wk-mp-header__ddl-value">{formatDeadline(matter.deadline)}</span>
               </span>
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* ── BRIEF (对齐原型 m-brief) ── */}
-      {matter.description && (
-        <div className="wk-mp-brief">
-          <div className="wk-mp-brief__head" onClick={() => setBriefOpen(!briefOpen)}>
-            <span className="wk-mp-brief__title">主要目标</span>
-            <span className="wk-mp-brief__toggle">{briefOpen ? '收起' : '展开'}</span>
+            )}
+            <button type="button" className="wk-mp-header__action" title="转发">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
+              转发
+            </button>
+            <button type="button" className="wk-mp-header__close" onClick={onClose}>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+            </button>
           </div>
-          {briefOpen && (
-            <div className="wk-mp-brief__text">{matter.description}</div>
+
+          {/* Title */}
+          <h1 className="wk-mp-header__title">{matter.title}</h1>
+        </header>
+
+        {/* ── 主要目标 ── */}
+        {matter.description && (
+          <div className="wk-mp-goal">
+            <div className="wk-mp-goal__label">主要目标</div>
+            <div className="wk-mp-goal__text">{matter.description}</div>
+            {matter.source_name && (
+              <div className="wk-mp-goal__source">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                来自 #{matter.source_name}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 创建人 / 负责人 ── */}
+        <div className="wk-mp-people">
+          <div className="wk-mp-people__item">
+            <span className="wk-mp-people__avatar">
+              <UserName uid={matter.creator_id} className="wk-mp-people__name" />
+            </span>
+            <span className="wk-mp-people__role">创建人</span>
+          </div>
+          {assignees.length > 0 && (
+            <div className="wk-mp-people__item">
+              <span className="wk-mp-people__avatar">
+                {assignees.map((a, i) => (
+                  <span key={a.user_id}>
+                    {i > 0 && '、'}
+                    <UserName uid={a.user_id} className="wk-mp-people__name" />
+                  </span>
+                ))}
+              </span>
+              <span className="wk-mp-people__role">负责人</span>
+            </div>
           )}
         </div>
-      )}
 
-      {/* ── Tabs ── */}
-      <div className="wk-mp-tabs" role="tablist">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={`wk-mp-tab${tab === t.id ? ' is-active' : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-            {t.count > 0 && <span className="wk-mp-tab__count">{t.count}</span>}
-          </button>
-        ))}
-      </div>
+        {/* ── Tabs ── */}
+        <div className="wk-mp-tabs">
+          {([
+            { id: 'channels' as const, label: '关联群聊', count: channels.length },
+            { id: 'outputs' as const, label: '产出文件', count: 0 },
+            { id: 'changelog' as const, label: '变更记录', count: 0 },
+          ]).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`wk-mp-tabs__btn${activeTab === t.id ? ' is-active' : ''}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              <span className="wk-mp-tabs__label">{t.label}</span>
+              <span className={`wk-mp-tabs__count${activeTab === t.id ? ' is-active' : ''}`}>{t.count}</span>
+            </button>
+          ))}
+        </div>
 
-      {/* ── Tab Content ── */}
-      <div className="wk-mp__scroll">
-        {tab === 'channels' && (
-          <div className="wk-mp-tab-content">
+        {/* ── Tab: 关联群聊 ── */}
+        {activeTab === 'channels' && (
+          <div className="wk-mp-channels">
+            <div className="wk-mp-channels__toolbar">
+              <button type="button" className="wk-mp-channels__add">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                关联新群
+              </button>
+            </div>
             {channels.length === 0 ? (
-              <div className="wk-mp-empty">暂无关联群聊</div>
+              <div className="wk-mp-channels__empty">暂无关联群聊 — 多选关联或一键总结</div>
             ) : (
               channels.map((ch) => (
-                <div key={ch.id} className="wk-mp-channel-item">
-                  <span className="wk-mp-channel-item__name">#{ch.channel_name || ch.channel_id}</span>
-                  <span className="wk-mp-channel-item__type">
-                    {ch.channel_type === 2 ? '群组' : ch.channel_type === 1 ? '私聊' : '子区'}
-                  </span>
+                <div key={ch.id} className="wk-mp-channels__card">
+                  <div className="wk-mp-channels__card-head">
+                    <span className="wk-mp-channels__card-name">#{ch.channel_name || ch.channel_id.slice(0, 8)}</span>
+                    <span className="wk-mp-channels__card-time">
+                      {new Date(ch.created_at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 关联
+                    </span>
+                  </div>
+                  {/* 最新进展占位（后端暂无 segment summary） */}
+                  <div className="wk-mp-channels__card-progress">
+                    <div className="wk-mp-channels__card-progress-label">最新进展</div>
+                    <div className="wk-mp-channels__card-progress-text">暂无进展摘要（等待一键总结）</div>
+                  </div>
+                  <div className="wk-mp-channels__card-actions">
+                    <button type="button" className="wk-mp-channels__timeline-btn" onClick={() => setTimelineOpen(!timelineOpen)}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                      展开时间线
+                    </button>
+                  </div>
                 </div>
               ))
             )}
           </div>
         )}
-        {tab === 'outputs' && (
-          <div className="wk-mp-tab-content">
-            <div className="wk-mp-empty">产出文件功能即将上线</div>
-          </div>
+
+        {/* ── Tab: 产出文件 ── */}
+        {activeTab === 'outputs' && (
+          <div className="wk-mp-empty-tab">产出文件功能即将上线</div>
         )}
-        {tab === 'changelog' && (
-          <div className="wk-mp-tab-content">
-            <div className="wk-mp-empty">变更记录功能即将上线</div>
-          </div>
+
+        {/* ── Tab: 变更记录 ── */}
+        {activeTab === 'changelog' && (
+          <div className="wk-mp-empty-tab">变更记录功能即将上线</div>
         )}
+
+        {/* ── Footer ── */}
+        <div className="wk-mp-footer">
+          ✦ Matter 是 IM 工作的 hierarchy 任务卡 · AI 从群聊持续蒸馏 · 用户只确认, 不维护
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -189,10 +213,10 @@ export { MatterDetailPanel };
 
 // ─── StatusPicker ─────────────────────────────────────────
 
-const STATUS_OPTIONS: { value: MatterStatus; label: string; cssKey: string }[] = [
-  { value: 'open', label: '进行中', cssKey: 'active' },
-  { value: 'done', label: '已完成', cssKey: 'done' },
-  { value: 'archived', label: '已归档', cssKey: 'archived' },
+const STATUS_OPTIONS: { value: MatterStatus; label: string; cls: string }[] = [
+  { value: 'open', label: '进行中', cls: 'wk-mp-pill--active' },
+  { value: 'done', label: '已完成', cls: 'wk-mp-pill--done' },
+  { value: 'archived', label: '已归档', cls: 'wk-mp-pill--archived' },
 ];
 
 function StatusPicker({ status, onChange }: { status: MatterStatus; onChange: (s: MatterStatus) => void }) {
@@ -211,30 +235,26 @@ function StatusPicker({ status, onChange }: { status: MatterStatus; onChange: (s
   const current = STATUS_OPTIONS.find((o) => o.value === status) || STATUS_OPTIONS[0];
 
   return (
-    <div className="wk-mp-status-picker" ref={ref}>
-      <button
-        type="button"
-        className={`wk-mp-head__status wk-mp-head__status--${current.cssKey}`}
-        onClick={() => setOpen(!open)}
-      >
-        <span className="wk-mp-head__status-dot" />
+    <span className="wk-mp-status-wrap" ref={ref}>
+      <button type="button" className={`wk-mp-pill ${current.cls}`} onClick={() => setOpen(!open)} title="点击修改状态">
+        <span className="wk-mp-pill__dot" />
         {current.label}
       </button>
       {open && (
-        <div className="wk-mp-status-picker__dropdown">
+        <div className="wk-mp-status-dropdown">
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               type="button"
-              className={`wk-mp-status-picker__option${opt.value === status ? ' is-active' : ''}`}
+              className={`wk-mp-status-dropdown__item${opt.value === status ? ' is-active' : ''}`}
               onClick={() => { onChange(opt.value); setOpen(false); }}
             >
-              <span className="wk-mp-head__status-dot" />
+              <span className={`wk-mp-pill__dot ${opt.cls}`} />
               {opt.label}
             </button>
           ))}
         </div>
       )}
-    </div>
+    </span>
   );
 }
