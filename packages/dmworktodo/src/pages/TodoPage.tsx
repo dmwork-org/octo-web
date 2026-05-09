@@ -30,7 +30,7 @@ function groupByTime(matters: Matter[]): GroupedTodos {
   const result: GroupedTodos = { overdue: [], today: [], week: [], later: [], noDeadline: [], done: [] };
 
   for (const matter of matters) {
-    if (matter.status === 'done' ||matter.status === 'archived') {
+    if (matter.status === 'done'  || matter.status === 'archived') {
       result.done.push(matter);
       continue;
     }
@@ -126,7 +126,7 @@ function TodoListView({ navView }: TodoListViewProps) {
           <MatterCard
             key={matter.id}
             matter={matter}
-            selected={selectedMatterId ===matter.id}
+            selected={selectedMatterId  === matter.id}
             assigneeUids={[]}
             channelName={matter.source_name}
             onClick={(id) => setSelectedMatterId(id)}
@@ -179,7 +179,7 @@ function TodoListView({ navView }: TodoListViewProps) {
                 <MatterCard
                   key={matter.id}
                   matter={matter}
-                  selected={selectedMatterId ===matter.id}
+                  selected={selectedMatterId  === matter.id}
                   assigneeUids={[]}
                   channelName={matter.source_name}
                   onClick={(id) => setSelectedMatterId(id)}

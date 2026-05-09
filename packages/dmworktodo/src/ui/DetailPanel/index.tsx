@@ -90,7 +90,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
   const handleToggleStatus = useCallback(async () => {
     if (!matter) return;
     if (matter.status === 'archived') return;
-    const oldStatus =matter.status;
+    const oldStatus = matter.status;
     const newStatus = oldStatus === 'open' ? 'done' : 'open';
     // 乐观更新
     setMatter((prev) => prev ? { ...prev, status: newStatus } : prev);
@@ -116,7 +116,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
   const handleSaveTitle = useCallback(async () => {
     if (!matter || updatingTitle) return;
     const newTitle = editTitleValue.trim();
-    if (!newTitle || newTitle ===matter.title) {
+    if (!newTitle || newTitle  === matter.title) {
       setIsEditingTitle(false);
       return;
     }
@@ -231,10 +231,10 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
       let remindAt: string | null = null;
       if (mode === 'none') {
         remindAt = null;
-      } else if (mode === '1h' &&matter.deadline) {
+      } else if (mode === '1h'  && matter.deadline) {
         const deadlineTime = new Date(matter.deadline).getTime();
         remindAt = new Date(deadlineTime - 3600000).toISOString();
-      } else if (mode === '1d' &&matter.deadline) {
+      } else if (mode === '1d'  && matter.deadline) {
         const deadlineTime = new Date(matter.deadline).getTime();
         remindAt = new Date(deadlineTime - 86400000).toISOString();
       } else if (mode === 'custom') {
@@ -464,14 +464,14 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
                       onClick={handleJumpToChannel}
                       style={{ fontSize: '12px', color: 'var(--wk-brand-primary, #7C5CFC)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                     >
-                      #{matter.source_name ||matter.source_channel_id} →
+                      #{matter.source_name  || matter.source_channel_id} →
                     </button>
                   </div>
                 </div>
               )}
 
               {/* Linked Channels */}
-              {matter.channels &&matter.channels.length > 0 && (
+              {matter.channels  && matter.channels.length > 0 && (
                 <div>
                   <strong style={{ fontSize: '12px', color: 'var(--wk-text-secondary, #666)' }}>关联频道</strong>
                   <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -485,7 +485,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
               )}
 
               {/* Participants */}
-              {matter.participants &&matter.participants.length > 0 && (
+              {matter.participants  && matter.participants.length > 0 && (
                 <div>
                   <strong style={{ fontSize: '12px', color: 'var(--wk-text-secondary, #666)' }}>参与者</strong>
                   <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>

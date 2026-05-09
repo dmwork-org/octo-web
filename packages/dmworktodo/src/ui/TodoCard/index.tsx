@@ -60,8 +60,8 @@ export default function MatterCard({
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onStatusChange &&matter.status !== 'archived') {
-      const newStatus: MatterStatus =matter.status === 'open' ? 'done' : 'open';
+    if (onStatusChange  && matter.status !== 'archived') {
+      const newStatus: MatterStatus = matter.status === 'open' ? 'done' : 'open';
       onStatusChange(matter.id, newStatus);
     }
   };
@@ -70,14 +70,14 @@ export default function MatterCard({
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
-      if (onStatusChange &&matter.status !== 'archived') {
-        const newStatus: MatterStatus =matter.status === 'open' ? 'done' : 'open';
+      if (onStatusChange  && matter.status !== 'archived') {
+        const newStatus: MatterStatus = matter.status === 'open' ? 'done' : 'open';
         onStatusChange(matter.id, newStatus);
       }
     }
   };
 
-  const deadlineInfo =matter.deadline ? formatDeadline(matter.deadline) : null;
+  const deadlineInfo = matter.deadline ? formatDeadline(matter.deadline) : null;
   const isDone = matter.status === 'done';
   const isArchived = matter.status === 'archived';
   const isClosed = isDone || isArchived;
