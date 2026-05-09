@@ -7,6 +7,7 @@ import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
+import AgentCardService from "../../Service/AgentCardService";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -92,9 +93,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
         this.setState({ reported: null, reportStatusLoading: true });
         try {
-            const result = await WKApp.apiClient.get(`agent-cards/${requestedUid}/report-status`);
+            const result = await AgentCardService.getReportStatus(requestedUid);
             if (isStale()) return; // 如果已切换到其他 bot，忽略旧请求
-            this.setState({ reported: result.data?.reported ?? false });
+            this.setState({ reported: result });
         } catch (error) {
             if (isStale()) return;
             console.error("[BotDetailModal] loadReportStatus failed:", error);

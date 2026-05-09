@@ -41,9 +41,6 @@ export interface FileContent {
 /** Session 别名（兼容旧代码） */
 export type Session = SessionInfo;
 
-/** 导出共享类型 */
-export type { AgentCardData, RuntimeInfo, SessionInfo, CoreFile, MemoryFile };
-
 /** 文件内容响应 */
 export interface FileContentResponse {
   bot_id: string;
@@ -115,6 +112,23 @@ class AgentCardService {
     }
 
     return response.data;
+  }
+
+  /**
+   * 获取 Agent 举报状态
+   * @param botId Bot ID
+   * @returns 是否已被举报
+   */
+  async getReportStatus(botId: string): Promise<boolean> {
+    const response = await APIClient.shared.get<{ code: number; message: string; data: { reported: boolean } }>(
+      `/agent-cards/${botId}/report-status`
+    );
+
+    if (response.code !== 0) {
+      throw new Error(response.message || 'Failed to fetch report status');
+    }
+
+    return response.data?.reported ?? false;
   }
 
   /**
