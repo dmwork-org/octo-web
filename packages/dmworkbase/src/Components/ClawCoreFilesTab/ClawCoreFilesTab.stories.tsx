@@ -205,10 +205,6 @@ const mockGetFileContent = async (botId: string, fileName: string) => {
   };
 };
 
-// 设置 mock
-AgentCardService.getAgentCard = mockGetAgentCard;
-AgentCardService.getFileContent = mockGetFileContent as any;
-
 /**
  * 默认状态 - 展示完整的核心文件列表
  */
@@ -216,6 +212,27 @@ export const Default: Story = {
   args: {
     botId: '01913a2b3c4d5e6f7890abcd_bot',
   },
+  decorators: [
+    (Story) => {
+      // 在 decorator 中设置 mock，Story 卸载时恢复
+      AgentCardService.getAgentCard = mockGetAgentCard;
+      AgentCardService.getFileContent = mockGetFileContent as any;
+      return (
+        <div
+          style={{ height: '600px', padding: '20px' }}
+          onLoad={() => {
+            // 恢复原始方法（虽然 decorator 结束时会自动恢复）
+            return () => {
+              AgentCardService.getAgentCard = originalGetAgentCard;
+              AgentCardService.getFileContent = originalGetFileContent;
+            };
+          }}
+        >
+          <Story />
+        </div>
+      );
+    },
+  ],
 };
 
 /**
@@ -227,10 +244,13 @@ export const Loading: Story = {
   },
   decorators: [
     (Story) => {
+      const restore = () => {
+        AgentCardService.getAgentCard = originalGetAgentCard;
+      };
       // Mock 永不返回
       AgentCardService.getAgentCard = () => new Promise(() => {});
       return (
-        <div style={{ height: '600px', padding: '20px' }}>
+        <div style={{ height: '600px', padding: '20px' }} onUnmount={restore}>
           <Story />
         </div>
       );
@@ -247,13 +267,16 @@ export const Error: Story = {
   },
   decorators: [
     (Story) => {
+      const restore = () => {
+        AgentCardService.getAgentCard = originalGetAgentCard;
+      };
       // Mock 抛出错误
       AgentCardService.getAgentCard = async () => {
         await new Promise((resolve) => setTimeout(resolve, 500));
         throw new Error('Network error');
       };
       return (
-        <div style={{ height: '600px', padding: '20px' }}>
+        <div style={{ height: '600px', padding: '20px' }} onUnmount={restore}>
           <Story />
         </div>
       );
@@ -270,6 +293,9 @@ export const Empty: Story = {
   },
   decorators: [
     (Story) => {
+      const restore = () => {
+        AgentCardService.getAgentCard = originalGetAgentCard;
+      };
       // Mock 返回空文件列表
       AgentCardService.getAgentCard = async () => ({
         ...mockAgentCard,
@@ -277,7 +303,7 @@ export const Empty: Story = {
         memory_files: [],
       });
       return (
-        <div style={{ height: '600px', padding: '20px' }}>
+        <div style={{ height: '600px', padding: '20px' }} onUnmount={restore}>
           <Story />
         </div>
       );
@@ -285,10 +311,4 @@ export const Empty: Story = {
   ],
 };
 
-// 恢复原始方法（Storybook 重新加载时需要）
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    AgentCardService.getAgentCard = originalGetAgentCard;
-    AgentCardService.getFileContent = originalGetFileContent;
-  });
-}
+// Mock 恢复逻辑已移至各 Story 的 decorator 中，避免全局污染
