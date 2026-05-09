@@ -1,8 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import type { Matter } from '../../bridge/types';
 import { useMatterList } from '../../hooks/useTodoList';
 import DetailPanel from '../../ui/DetailPanel';
-import QuickAddBar from '../../ui/QuickAddBar';
 import './index.css';
 
 export interface ChatMatterPanelProps {
@@ -36,7 +35,7 @@ export default function ChatMatterPanel({
   const [activeTab, setActiveTab] = useState<Tab>('all');
   const [selectedMatterId, setSelectedMatterId] = useState<string | null>(null);
 
-  const { matters, loading, reload, addOptimistic, removeOptimistic } = useMatterList({
+  const { matters, loading, reload } = useMatterList({
     initialFilters: {
       source_channel_id: channelId,
       source_channel_type: channelType,
@@ -46,20 +45,6 @@ export default function ChatMatterPanel({
 
   // TODO(backend): creator_id 过滤需要知道当前用户 UID
   const displayMatters = activeTab === 'all' ? matters : matters;
-
-  const handleQuickCreated = useCallback((matter: Matter) => {
-    if (matter.id.startsWith('__rollback__')) {
-      removeOptimistic(matter.id.replace('__rollback__', '__optimistic__'));
-      reload();
-      return;
-    }
-    if (matter.id.startsWith('__optimistic__')) {
-      addOptimistic(matter);
-      return;
-    }
-    removeOptimistic('__optimistic__');
-    reload();
-  }, [reload, addOptimistic, removeOptimistic]);
 
   const channel = { channelId, channelType, name: channelName };
 
@@ -124,16 +109,6 @@ export default function ChatMatterPanel({
           </>
         )}
       </div>
-
-      {/* Quick add footer */}
-      {!selectedMatterId && (
-        <QuickAddBar
-          channelId={channelId}
-          channelType={channelType}
-          channelName={channelName}
-          onCreated={handleQuickCreated}
-        />
-      )}
     </div>
   );
 }
