@@ -1,510 +1,238 @@
-/* ─── TodoPage sidebar ─────────────────────────────────── */
+/* ============================================================
+ * MatterPage — 事项页面 sidebar（NavRail 入口）
+ *
+ * 渲染在 WKLayout contentLeft 区域（宽度由 WKLayout 拖拽控制）。
+ * 规范对齐 DEVELOPMENT.md §2 — 全部用 --wk-* token。
+ * ============================================================ */
 
-.wk-matter-sidebar {
+.wk-mp-page-sidebar {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--wk-bg-base);
-  border-right: 1px solid var(--wk-border-subtle);
 }
 
-/* Section label — matches .wk-conv-section */
-.wk-matter-sidebar__section {
-  font-size: 11px;
+/* ─── Header ─────────────────────────────────────────── */
+
+.wk-mp-page-sidebar__header {
+  padding: var(--wk-sp-4) var(--wk-sp-4) var(--wk-sp-2);
+}
+
+.wk-mp-page-sidebar__title {
+  font-size: var(--wk-text-size-md);
   font-weight: 600;
-  color: var(--semi-color-text-2, var(--wk-text-tertiary));
-  padding: var(--wk-sp-2) var(--wk-sp-3) var(--wk-sp-1);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  color: var(--wk-text-primary);
+  margin: 0;
 }
 
-/* List container — matches .wk-conversationlist */
-.wk-matter-sidebar__list {
+/* ─── Tabs ─────────────────────────────────────────────── */
+
+.wk-mp-page-sidebar__tabs {
+  display: flex;
+  gap: var(--wk-sp-1);
+  padding: 0 var(--wk-sp-3) var(--wk-sp-2);
+}
+
+.wk-mp-page-sidebar__tab {
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  border: none;
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--wk-r-sm);
+  transition: color var(--wk-dur-fast), background var(--wk-dur-fast);
+}
+
+.wk-mp-page-sidebar__tab:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mp-page-sidebar__tab.is-active {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  font-weight: 600;
+}
+
+/* ─── List ─────────────────────────────────────────────── */
+
+.wk-mp-page-sidebar__list {
   flex: 1;
   overflow-y: auto;
-  padding: 0;
+  padding: var(--wk-sp-1) var(--wk-sp-2);
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   transition: scrollbar-color 0.3s;
 }
 
-.wk-matter-sidebar__list:hover {
+.wk-mp-page-sidebar__list:hover {
   scrollbar-color: color-mix(in srgb, var(--wk-text-primary) 15%, transparent) transparent;
 }
 
-.wk-matter-sidebar__list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.wk-matter-sidebar__list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.wk-matter-sidebar__list::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: var(--wk-r-full);
-  transition: background 0.3s;
-}
-
-.wk-matter-sidebar__list:hover::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--wk-text-primary) 15%, transparent);
-}
-
-/* Sidebar item — matches .wk-conv-compact-item */
-.wk-matter-sidebar__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 16px;
-  border-radius: 0;
-  cursor: pointer;
-  height: 36px;
-  box-sizing: border-box;
-  position: relative;
-  transition: background 200ms;
-}
-
-.wk-matter-sidebar__item:hover:not(.wk-matter-sidebar__item--selected) {
-  background: var(--wk-bg-item-hover, var(--wk-brand-tint-03, rgba(0,0,0,0.03)));
-}
-
-.wk-matter-sidebar__item--selected {
-  background: var(--wk-brand-tint-06, rgba(0,0,0,0.06));
-  box-shadow: inset 4px 0 0 var(--wk-brand-primary);
-}
-
-.wk-matter-sidebar__item-icon {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+.wk-mp-page-sidebar__empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--wk-text-tertiary);
-}
-
-.wk-matter-sidebar__item-label {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--wk-text-primary);
-  line-height: 20px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wk-matter-sidebar__item--selected .wk-matter-sidebar__item-label {
-  color: var(--wk-brand-primary);
-}
-
-.wk-matter-sidebar__item-count {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--wk-text-tertiary);
-}
-
-/* Section header with action button */
-.wk-matter-sidebar__section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--wk-sp-2) var(--wk-sp-3) var(--wk-sp-1);
-}
-
-.wk-matter-sidebar__section-header .wk-matter-sidebar__section {
-  padding: 0;
-}
-
-.wk-matter-sidebar__add-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--wk-text-tertiary);
-  cursor: pointer;
-  border-radius: var(--wk-r-xs, 4px);
-  transition: background 150ms, color 150ms;
-}
-
-.wk-matter-sidebar__add-btn:hover {
-  background: var(--wk-bg-item-hover, var(--wk-brand-tint-03));
-  color: var(--wk-brand-primary);
-}
-
-/* ─── Right panel: Todo list ───────────────────────────── */
-
-.wk-matter-list {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--wk-bg-surface);
-}
-
-.wk-matter-list__body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--wk-sp-2) var(--wk-sp-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--wk-sp-2);
-}
-
-.wk-matter-list__empty {
-  text-align: center;
   padding: var(--wk-sp-8) 0;
-  color: var(--wk-text-disabled);
-  font-size: 13px;
-}
-
-.wk-matter-list__loading {
-  text-align: center;
-  padding: var(--wk-sp-4) 0;
   color: var(--wk-text-tertiary);
-  font-size: 13px;
+  font-size: var(--wk-text-size-sm);
 }
 
-/* ─── Right panel: Detail ──────────────────────────────── */
-
-.wk-matter-detail {
-  padding: var(--wk-sp-4);
-  overflow-y: auto;
-  height: 100%;
-  background: var(--wk-bg-surface);
-}
-
-.wk-matter-detail__back {
-  border: none;
-  background: none;
-  color: var(--wk-text-accent, var(--wk-brand-primary));
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0;
-  margin-bottom: var(--wk-sp-3);
+.wk-mp-page-sidebar__archived-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
-}
-
-.wk-matter-detail__back:hover {
-  opacity: 0.8;
-}
-
-.wk-matter-detail__title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--wk-text-primary);
-  margin: 0 0 var(--wk-sp-2);
-  line-height: 1.4;
-}
-
-.wk-matter-detail__status {
-  margin-bottom: var(--wk-sp-3);
-}
-
-.wk-matter-detail__actions {
-  display: flex;
-  gap: var(--wk-sp-2);
-  margin-bottom: var(--wk-sp-4);
-  flex-wrap: wrap;
-}
-
-.wk-matter-detail__action-btn {
-  padding: 6px 16px;
-  border: 1px solid var(--wk-border-default);
-  border-radius: var(--wk-r-sm);
-  background: var(--wk-bg-surface);
-  color: var(--wk-brand-primary);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: background 150ms, border-color 150ms;
-}
-
-.wk-matter-detail__action-btn:hover {
-  background: var(--wk-brand-tint-03, rgba(124, 92, 252, 0.03));
-  border-color: var(--wk-brand-primary);
-}
-
-.wk-matter-detail__desc {
-  color: var(--wk-text-secondary);
-  font-size: 14px;
-  line-height: 1.6;
-  margin-bottom: var(--wk-sp-4);
-}
-
-.wk-matter-detail__meta {
-  border-top: 1px solid var(--wk-border-subtle);
-  padding-top: var(--wk-sp-3);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 14px;
-  color: var(--wk-text-secondary);
-}
-
-.wk-matter-detail__meta strong {
-  color: var(--wk-text-primary);
-  font-weight: 500;
-}
-
-.wk-matter-detail__timestamps {
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-  margin-top: var(--wk-sp-2);
-}
-
-.wk-matter-sidebar__empty {
-  padding: var(--wk-sp-4) var(--wk-sp-3);
-  color: var(--wk-text-disabled);
-  font-size: 12px;
-  text-align: center;
-}
-/* ─── Detail Side Panel (overlay on right of todo list) ──── */
-
-/* TodoPage 内的 detail panel 固定宽度（ChatTodoPanel 里不生效） */
-.wk-matter-list-view .wk-matter-side-panel {
-  width: 480px;
-  min-width: 420px;
-  flex-shrink: 0;
-  border-left: 1px solid var(--wk-border-subtle);
-  background: var(--wk-bg-surface);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  animation: wk-matter-slide-in 150ms ease-out;
-}
-
-@keyframes wk-matter-slide-in {
-  from { transform: translateX(20px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-.wk-matter-side-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--wk-sp-3) var(--wk-sp-4);
-  border-bottom: 1px solid var(--wk-border-subtle);
-  flex-shrink: 0;
-}
-
-.wk-matter-side-panel__header-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--wk-text-primary);
-}
-
-.wk-matter-side-panel__close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--wk-text-tertiary);
-  cursor: pointer;
-  border-radius: var(--wk-r-xs, 4px);
-  font-size: 14px;
-  transition: background 150ms;
-}
-
-.wk-matter-side-panel__close:hover {
-  background: var(--wk-bg-item-hover, rgba(0, 0, 0, 0.05));
-}
-
-.wk-matter-side-panel__body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--wk-sp-4);
-}
-
-/* ─── Todo List View ──────────────────────────────────── */
-
-.wk-matter-list-view__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--wk-border-subtle, #f0f0f0);
-  background: var(--wk-bg-surface, #fff);
-  flex-shrink: 0;
-}
-
-.wk-matter-list-view__title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--wk-text-primary, #1a1a1a);
-  letter-spacing: -0.2px;
-}
-
-.wk-matter-list-view__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  margin: 2px 0;
-  border-radius: var(--wk-r-sm, 6px);
-  cursor: pointer;
-  transition: background 150ms ease, box-shadow 150ms ease;
-  position: relative;
-}
-
-.wk-matter-list-view__item:hover {
-  background: var(--wk-bg-base, #f7f8fa);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-/* ─── Todo list item checkbox ────────────────────────── */
-
-.wk-matter-checkbox {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: 1.5px solid var(--wk-border-default, #d9d9d9);
-  background: transparent;
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 150ms ease;
-  color: transparent;
-  font-size: 11px;
-  padding: 0;
-}
-
-.wk-matter-checkbox:hover {
-  border-color: var(--wk-brand-primary, #7C5CFC);
-}
-
-/* ─── Todo list item title ───────────────────────────── */
-
-.wk-matter-item-title {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 450;
-  color: var(--wk-text-primary, #1a1a1a);
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-
-/* ─── Todo list item meta (right side) ───────────────── */
-
-.wk-matter-item-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.wk-matter-item-deadline {
-  font-size: 12px;
-  color: var(--wk-text-tertiary, #999);
-  white-space: nowrap;
-}
-
-
-/* ─── 时间分组 ──────────────────────────────────────────── */
-.wk-matter-group {
-  margin-bottom: 16px;
-}
-
-.wk-matter-group__header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  margin-bottom: 4px;
-}
-
-.wk-matter-group__icon {
-  font-size: 13px;
-  width: 18px;
-  text-align: center;
-}
-
-.wk-matter-group__label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--wk-text-tertiary, #999);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  flex: 1;
-}
-
-.wk-matter-group__count {
-  font-size: 11px;
-  color: var(--wk-text-disabled, #bbb);
-}
-
-.wk-matter-load-more {
-  display: block;
-  margin: 12px auto;
-  padding: 8px 20px;
-  border: none;
-  border-radius: 6px;
-  background: var(--wk-brand-tint-06, rgba(124, 92, 252, 0.06));
-  color: var(--wk-brand-primary, #7C5CFC);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-/* ─── Sidebar 新建事项 ──────────────────────────────────── */
-.wk-matter-sidebar__create {
-  padding: 12px 12px 8px;
-}
-
-.wk-matter-sidebar__create-btn {
+  gap: var(--wk-sp-1);
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  margin-top: var(--wk-sp-2);
   border: none;
-  border-radius: 8px;
-  background: var(--wk-brand-primary, #7C5CFC);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  cursor: pointer;
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-mp-page-sidebar__archived-toggle:hover {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-mp-page-sidebar__archived-chev {
+  display: inline-block;
+  transition: transform var(--wk-dur-fast);
+}
+
+.wk-mp-page-sidebar__archived-chev.is-open {
+  transform: rotate(90deg);
+}
+
+.wk-mp-page-sidebar__loadmore {
+  display: block;
+  width: 100%;
+  padding: var(--wk-sp-2) 0;
+  margin-top: var(--wk-sp-2);
+  border: none;
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
   cursor: pointer;
   text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: opacity 150ms;
-  box-shadow: 0 1px 3px rgba(124, 92, 252, 0.3);
 }
 
-.wk-matter-sidebar__create-btn:hover {
-  opacity: 0.9;
+.wk-mp-page-sidebar__loadmore:hover {
+  color: var(--wk-text-primary);
 }
 
-/* ─── 分组 section header（群聊风格） ──────────────────── */
-.wk-matter-group__section-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  margin: 4px -12px;
-  background: rgba(0, 0, 0, 0.03);
-  color: #888;
-  font-size: 11px;
-  font-weight: 500;
+/* ─── Sidebar Card ─────────────────────────────────────── */
+
+.wk-mp-sidebar-card {
+  width: 100%;
+  text-align: left;
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  margin-bottom: var(--wk-sp-1);
+  border: 1px solid transparent;
+  background: transparent;
   cursor: pointer;
-  user-select: none;
-  letter-spacing: 0.2px;
-  transition: background 150ms;
+  transition: background var(--wk-dur-fast), border-color var(--wk-dur-fast), box-shadow var(--wk-dur-fast);
 }
 
-.wk-matter-group__section-header:hover {
-  background: rgba(0, 0, 0, 0.06);
+.wk-mp-sidebar-card:hover {
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-default);
+}
+
+.wk-mp-sidebar-card.is-selected {
+  background: var(--wk-bg-selected);
+  border-color: var(--wk-border-strong);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+.wk-mp-sidebar-card__row1 {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin-bottom: var(--wk-sp-1);
+}
+
+.wk-mp-sidebar-card__id {
+  font-family: var(--wk-font-mono);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-mp-sidebar-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-0-5);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: 500;
+  padding: 1px var(--wk-sp-1-5);
+  border-radius: var(--wk-r-full);
+}
+
+.wk-mp-sidebar-card__status--active {
+  background: var(--wk-color-info-bg);
+  color: var(--wk-color-info);
+}
+
+.wk-mp-sidebar-card__status--done {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+
+.wk-mp-sidebar-card__status--archived {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mp-sidebar-card__status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--wk-r-circle);
+  background: currentColor;
+}
+
+.wk-mp-sidebar-card__ddl {
+  margin-left: auto;
+  font-size: var(--wk-text-size-tiny);
+  color: var(--wk-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-mp-sidebar-card__title {
+  font-size: var(--wk-text-size-sm);
+  font-weight: 500;
+  color: var(--wk-text-primary);
+  line-height: 1.4;
+  margin-bottom: var(--wk-sp-1-5);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wk-mp-sidebar-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mp-sidebar-card__creator {
+  color: var(--wk-text-secondary);
+}
+
+.wk-mp-sidebar-card__sep {
+  color: var(--wk-border-default);
+}
+
+.wk-mp-sidebar-card__channel {
+  color: var(--wk-text-tertiary);
 }
