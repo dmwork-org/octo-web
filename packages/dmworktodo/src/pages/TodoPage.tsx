@@ -162,17 +162,15 @@ export default function MatterPage() {
       </div>
 
       {/* SmartCreateModal */}
-      {showCreateModal && (
-        <SmartCreateModal
-          blank
-          onClose={() => setShowCreateModal(false)}
-          onCreate={(data) => {
-            // TODO(backend): 调用 createMatter API
-            console.log('[Matter] create:', data);
-            setShowCreateModal(false);
-          }}
-        />
-      )}
+      <SmartCreateModal
+        visible={showCreateModal}
+        blank
+        onClose={() => setShowCreateModal(false)}
+        onConfirm={async (req) => {
+          // TODO(backend): 调用 createMatter API
+          console.log('[Matter] create:', req);
+        }}
+      />
     </div>
   );
 }
