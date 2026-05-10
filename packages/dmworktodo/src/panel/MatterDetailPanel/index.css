@@ -970,3 +970,58 @@ textarea.wk-mp-goal__text--editing {
 .wk-mp-timeline-tab {
   padding: 0;
 }
+
+/* ─── Activity (变更记录) ─────────────────────────────── */
+.wk-mp-activity__row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--wk-border-soft, #f4f4f5);
+}
+
+.wk-mp-activity__row:last-child {
+  border-bottom: none;
+}
+
+.wk-mp-activity__time {
+  font-size: 11px;
+  color: var(--wk-text-tertiary, #a1a1aa);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  width: 68px;
+}
+
+.wk-mp-activity__label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--wk-text-tertiary, #71717a);
+  flex-shrink: 0;
+  width: 72px;
+}
+
+.wk-mp-activity__content {
+  flex: 1;
+  min-width: 0;
+  color: var(--wk-text-primary, #18181b);
+  line-height: 1.5;
+}
+
+.wk-mp-activity__old {
+  text-decoration: line-through;
+  color: var(--wk-text-tertiary, #a1a1aa);
+}
+
+.wk-mp-activity__new {
+  font-weight: 500;
+  color: var(--wk-text-primary, #18181b);
+}
+
+.wk-mp-activity__actor {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--wk-text-secondary, #52525b);
+}

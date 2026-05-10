@@ -6,6 +6,7 @@ import type {
   MatterChannel as MatterChannelType,
   TimelineEntry,
   TimelineReq,
+  MatterActivity,
 } from "../../bridge/types";
 import {
   getMatter,
@@ -19,6 +20,7 @@ import {
   deleteTimelineEntry,
   addAssignee,
   removeAssignee,
+  listActivities,
 } from "../../api/todoApi";
 import { Toast } from "../../utils/toast";
 import UserName from "../../ui/UserName";
@@ -424,7 +426,7 @@ export default function MatterDetailPanel({
   }[] = [
     { id: "channels", label: "关联群聊", count: channels.length },
     { id: "outputs", label: "产出文件", count: 0 },
-    { id: "changelog", label: "变更记录", count: timeline.length },
+    { id: "changelog", label: "变更记录", count: 0 },
   ];
 
   return (
@@ -741,49 +743,9 @@ export default function MatterDetailPanel({
           <div className="wk-mp-empty-tab">产出文件功能即将上线</div>
         )}
 
-        {/* ── Tab: 变更记录 (timeline) ── */}
+        {/* ── Tab: 变更记录 (activities) ── */}
         {activeTab === "changelog" && (
-          <div className="wk-mp-timeline-tab">
-            <TimelineInput onSubmit={handleAddTimeline} />
-            {timeline.length === 0 ? (
-              <div className="wk-mp-empty-tab">暂无时间线记录</div>
-            ) : (
-              <TimelinePanel
-                entries={timeline}
-                canShowAnchor={(entry) => {
-                  // 变更记录 tab 跨多个 channel, 逐条判断当前用户
-                  // 是否在 entry 所属群里。/group/my 拉取失败时
-                  // myGroupsFailed=true, 全部按未加入处理 (保守遮)。
-                  if (myGroupsFailed) return false;
-                  const groupNo = entry.source_channel_id;
-                  if (!groupNo) return false;
-                  return myGroupNos.has(groupNo);
-                }}
-                onShowAnchor={(entry, ev) => {
-                  // 变更记录 tab 下每条 entry 可能属于不同 channel。
-                  // IM 接口要的是真实群号 (32 hex), 在 timeline 的
-                  // source_channel_id 字段; entry.channel_id 是
-                  // matter_channels 表 id (UUID), 不能传给 IM。
-                  // channel_type 是 entry.channel_type (跟 source 一致)。
-                  const groupNo = entry.source_channel_id;
-                  const chType = entry.channel_type;
-                  if (!groupNo || chType === undefined) return;
-                  const ch = channels.find(
-                    (c) => c.channel_id === groupNo,
-                  );
-                  const rect = ev.currentTarget.getBoundingClientRect();
-                  setAnchor({
-                    channelId: groupNo,
-                    channelType: chType,
-                    channelName:
-                      ch?.channel_name || groupNo.slice(0, 8),
-                    messageIds: entry.source_msgs || [],
-                    ...computeAnchorPosition(rect),
-                  });
-                }}
-              />
-            )}
-          </div>
+          <ActivityPanel matterId={matter.id} />
         )}
 
         {/* ── Footer ── */}
@@ -1337,6 +1299,182 @@ function NotMemberBadge() {
       </svg>
       不在群
     </span>
+  );
+}
+
+// ─── ActivityPanel (变更记录 — 对接 GET /matters/:id/activities) ──
+
+const ACTION_LABELS: Record<string, string> = {
+  created: "创建",
+  title_changed: "标题变更",
+  description_changed: "目标变更",
+  deadline_changed: "截止日期变更",
+  status_changed: "状态变更",
+  assignee_added: "添加负责人",
+  assignee_removed: "移除负责人",
+  channel_linked: "关联群聊",
+  channel_unlinked: "取消关联",
+};
+
+function formatActivityTime(iso: string): string {
+  const d = new Date(iso);
+  const mm = `${d.getMonth() + 1}/${d.getDate()}`;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${mm} ${hh}:${mi}`;
+}
+
+function ActivityContent({ activity }: { activity: MatterActivity }) {
+  const detail = activity.detail || {};
+  switch (activity.action) {
+    case "created":
+      return <span>创建了事项</span>;
+    case "title_changed":
+      return (
+        <span>
+          <span className="wk-mp-activity__old">
+            {(detail.from as string) || ""}
+          </span>
+          {" → "}
+          <span className="wk-mp-activity__new">
+            {(detail.to as string) || ""}
+          </span>
+        </span>
+      );
+    case "description_changed":
+      return (
+        <span>{(detail.summary as string) || "更新了描述"}</span>
+      );
+    case "deadline_changed": {
+      const from = detail.from
+        ? new Date((detail.from as number) * 1000).toLocaleDateString("zh-CN")
+        : "无";
+      const to = detail.to
+        ? new Date((detail.to as number) * 1000).toLocaleDateString("zh-CN")
+        : "无";
+      return (
+        <span>
+          <span className="wk-mp-activity__old">{from}</span>
+          {" → "}
+          <span className="wk-mp-activity__new">{to}</span>
+        </span>
+      );
+    }
+    case "status_changed":
+      return (
+        <span>
+          <span className="wk-mp-activity__old">
+            {(detail.from as string) || ""}
+          </span>
+          {" → "}
+          <span className="wk-mp-activity__new">
+            {(detail.to as string) || ""}
+          </span>
+        </span>
+      );
+    case "assignee_added":
+      return (
+        <span>
+          添加 <UserName uid={(detail.user_id as string) || ""} />
+        </span>
+      );
+    case "assignee_removed":
+      return (
+        <span>
+          移除 <UserName uid={(detail.user_id as string) || ""} />
+        </span>
+      );
+    case "channel_linked":
+      return (
+        <span>
+          关联 #{(detail.channel_name as string) || (detail.channel_id as string) || ""}
+        </span>
+      );
+    case "channel_unlinked":
+      return (
+        <span>
+          取消关联 #{(detail.channel_id as string) || ""}
+        </span>
+      );
+    default:
+      return <span>{activity.action}</span>;
+  }
+}
+
+function ActivityPanel({ matterId }: { matterId: string }) {
+  const [activities, setActivities] = useState<MatterActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sortNewest, setSortNewest] = useState(true);
+
+  useEffect(() => {
+    let aborted = false;
+    setLoading(true);
+    listActivities(matterId, { limit: 100 })
+      .then((res) => {
+        if (aborted) return;
+        setActivities(res.data || []);
+      })
+      .catch(() => {
+        if (aborted) return;
+        setActivities([]);
+      })
+      .finally(() => {
+        if (!aborted) setLoading(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [matterId]);
+
+  const sorted = [...activities].sort((a, b) => {
+    const ta = new Date(a.created_at).getTime();
+    const tb = new Date(b.created_at).getTime();
+    return sortNewest ? tb - ta : ta - tb;
+  });
+
+  return (
+    <div className="wk-mp-tl">
+      <div className="wk-mp-tl__header">
+        <span className="wk-mp-tl__title">变更记录</span>
+        <div className="wk-mp-tl__sort-group">
+          <button
+            type="button"
+            className={`wk-mp-tl__sort-btn${sortNewest ? " is-active" : ""}`}
+            onClick={() => setSortNewest(true)}
+          >
+            最新在上
+          </button>
+          <button
+            type="button"
+            className={`wk-mp-tl__sort-btn${!sortNewest ? " is-active" : ""}`}
+            onClick={() => setSortNewest(false)}
+          >
+            最旧在上
+          </button>
+        </div>
+      </div>
+      {loading && <div className="wk-mp-empty-tab">加载中...</div>}
+      {!loading && sorted.length === 0 && (
+        <div className="wk-mp-empty-tab">暂无变更记录</div>
+      )}
+      {!loading &&
+        sorted.map((a) => (
+          <div key={a.id} className="wk-mp-activity__row">
+            <span className="wk-mp-activity__time">
+              {formatActivityTime(a.created_at)}
+            </span>
+            <span className="wk-mp-activity__label">
+              {ACTION_LABELS[a.action] || a.action}
+            </span>
+            <span className="wk-mp-activity__content">
+              <ActivityContent activity={a} />
+            </span>
+            <span className="wk-mp-activity__actor">
+              <UserName uid={a.actor_id} />
+            </span>
+          </div>
+        ))}
+    </div>
   );
 }
 

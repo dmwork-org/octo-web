@@ -219,6 +219,38 @@ export interface ListCommentsParams {
   cursor?: string;
 }
 
+// ─── Activities (变更记录) ───────────────────────────────
+
+/**
+ * MatterActivity — 事项变更审计日志条目。
+ *
+ * 后端 model.MatterActivity (todos PR #39)。
+ * Detail 是 JSON 对象, shape 取决于 action:
+ *
+ *   created:             {}
+ *   title_changed:       { from: string, to: string }
+ *   description_changed: { summary: string }
+ *   deadline_changed:    { from: number|null, to: number|null }  (unix seconds)
+ *   status_changed:      { from: string, to: string }
+ *   assignee_added:      { user_id: string }
+ *   assignee_removed:    { user_id: string }
+ *   channel_linked:      { channel_id: string, channel_name?: string }
+ *   channel_unlinked:    { channel_id: string }
+ */
+export interface MatterActivity {
+  id: string;
+  matter_id: string;
+  actor_id: string;
+  action: string;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ListActivitiesParams {
+  limit?: number;
+  cursor?: string;
+}
+
 // ─── API error ──────────────────────────────────────────
 
 export interface ApiError {
