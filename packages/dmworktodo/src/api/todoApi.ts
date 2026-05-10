@@ -15,6 +15,8 @@ import type {
   ExtractResult,
   TimelineReq,
   ListCommentsParams,
+  MatterActivity,
+  ListActivitiesParams,
 } from "../bridge/types";
 
 /**
@@ -274,3 +276,15 @@ export async function addComment(
 }
 /** @deprecated 使用 deleteTimelineEntry 替代 */
 export const deleteComment = deleteTimelineEntry;
+
+// ─── Activities (变更记录) ───────────────────────────────
+
+export async function listActivities(
+  matterId: string,
+  params?: ListActivitiesParams,
+): Promise<PaginatedList<MatterActivity>> {
+  return get<PaginatedList<MatterActivity>>(
+    `/matters/${matterId}/activities`,
+    params as unknown as Record<string, unknown>,
+  );
+}

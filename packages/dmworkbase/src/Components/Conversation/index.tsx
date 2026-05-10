@@ -1837,6 +1837,7 @@ export class Conversation
                           messageSeq: m.messageSeq,
                           messageID: m.messageID,
                           fromUID: m.fromUID,
+                          fromUName: m.fromUName || m.from?.name,
                           content:
                             m.content?.conversationDigest ||
                             m.content?.text ||
