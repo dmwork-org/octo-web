@@ -4,6 +4,7 @@ import { getMatter, transitionMatter, deleteMatter, linkChannel, unlinkChannel, 
 import { Toast } from '../../utils/toast';
 import { useUserName } from '../../hooks/useUserName';
 import UserName from '../../ui/UserName';
+import LinkChannelsModal from '../../ui/LinkChannelsModal';
 import WKAvatar from '@octo/base/src/Components/WKAvatar';
 import { Channel, ChannelTypePerson } from 'wukongimjssdk';
 import './index.css';
@@ -24,6 +25,7 @@ export default function MatterDetailPanel({ channelId, channelType: _channelType
   // Timeline
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
 
   // Fetch matter
   useEffect(() => {
@@ -71,19 +73,14 @@ export default function MatterDetailPanel({ channelId, channelType: _channelType
     }
   }, [matter, onClose]);
 
-  const handleLinkChannel = useCallback(async () => {
+  const handleLinkChannel = useCallback(() => {
+    setLinkModalOpen(true);
+  }, []);
+
+  const handleLinked = useCallback(async () => {
     if (!matter) return;
-    const channelIdInput = window.prompt('输入要关联的频道 ID:');
-    if (!channelIdInput) return;
-    try {
-      await linkChannel(matter.id, { channel_id: channelIdInput, channel_type: 2 });
-      // 刷新详情
-      const updated = await getMatter(matter.id);
-      setMatter(updated);
-      Toast.success('频道已关联');
-    } catch (err: any) {
-      Toast.error(err?.message || '关联失败');
-    }
+    const updated = await getMatter(matter.id);
+    setMatter(updated);
   }, [matter]);
 
   const handleUnlinkChannel = useCallback(async (chId: string) => {
@@ -290,6 +287,16 @@ export default function MatterDetailPanel({ channelId, channelType: _channelType
           ✦ Matter 是 IM 工作的 hierarchy 任务卡 · AI 从群聊持续蒸馏 · 用户只确认, 不维护
         </div>
       </div>
+
+      {/* 关联群聊弹窗 */}
+      <LinkChannelsModal
+        visible={linkModalOpen}
+        matterId={matter.id}
+        matterTitle={matter.title}
+        linkedChannels={channels}
+        onClose={() => setLinkModalOpen(false)}
+        onLinked={handleLinked}
+      />
     </main>
   );
 }
