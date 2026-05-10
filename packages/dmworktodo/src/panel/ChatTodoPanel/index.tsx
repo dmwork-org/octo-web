@@ -111,13 +111,22 @@ export default function ChatMatterPanel({
 
   if (selectedMatterId) {
     return (
-      <MatterDetailPanel
-        key={selectedMatterId}
-        matterId={selectedMatterId}
-        channelId={channelId}
-        channelType={channelType}
-        onClose={() => setSelectedMatterId(null)}
-      />
+      <div ref={panelRef}>
+        <div
+          className={`wk-thread-panel-splitter${isDragging ? " wk-thread-panel-splitter-active" : ""}`}
+          onMouseDown={onDragStart}
+        >
+          <div className="wk-thread-panel-splitter-line" />
+        </div>
+        <MatterDetailPanel
+          key={selectedMatterId}
+          matterId={selectedMatterId}
+          channelId={channelId}
+          channelType={channelType}
+          onClose={() => setSelectedMatterId(null)}
+        />
+        {isDragging && <div className="wk-thread-panel-drag-overlay" />}
+      </div>
     );
   }
 
