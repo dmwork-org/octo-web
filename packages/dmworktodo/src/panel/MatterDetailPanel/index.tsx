@@ -507,7 +507,12 @@ export default function MatterDetailPanel({
                 <div key={ch.id} className="wk-mp-channels__card">
                   <div className="wk-mp-channels__card-head">
                     <span className="wk-mp-channels__card-name">
-                      #{ch.channel_name || ch.channel_id.slice(0, 8)}
+                      #
+                      <ChannelNameLabel
+                        channelId={ch.channel_id}
+                        channelType={ch.channel_type}
+                        fallback={ch.channel_name}
+                      />
                     </span>
                     <span className="wk-mp-channels__card-time">
                       {new Date(ch.created_at).toLocaleDateString("zh-CN", {
@@ -1122,6 +1127,27 @@ function TimelinePanel({
       )}
     </div>
   );
+}
+
+// ─── ChannelNameLabel (实时反查群名, 避免显示空或 ID 前缀) ──
+//
+// 跟顶层 liveSourceName 同构, 但这里要在 channels.map 里每项独立 hook,
+// 必须拆成子组件 (Rules of Hooks: hook 不能放循环里)。
+//
+// 优先级: WKSDK 反查最新群名 > 后端保存的 channel_name 快照 > id 前缀兜底
+// 群改名后 WKSDK cache 会推新值, 组件自动重渲染。
+
+function ChannelNameLabel({
+  channelId,
+  channelType,
+  fallback,
+}: {
+  channelId: string;
+  channelType: number;
+  fallback?: string;
+}) {
+  const live = useChannelName(channelId, channelType);
+  return <>{live || fallback || channelId.slice(0, 8)}</>;
 }
 
 // ─── TimelineInput (添加进展) ─────────────────────────────

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, ChannelTypePerson } from 'wukongimjssdk';
 import WKAvatar from '@octo/base/src/Components/WKAvatar';
 import UserName from '../UserName';
+import { useChannelName } from '../../hooks/useChannelName';
 import {
     getMessageByChannel,
     IMMessageResp,
@@ -71,6 +72,12 @@ export default function AnchorPopover({
     const [results, setResults] = useState<FetchResult[]>([]);
     const [loading, setLoading] = useState(true);
     const bodyRef = useRef<HTMLDivElement>(null);
+
+    // 优先用 WKSDK 反查的最新群名, 未命中时用调用方传的 channelName 兜底,
+    // 最后兜底到 channel id 前缀。跟 MatterDetailPanel 里 liveSourceName 同逻辑。
+    const liveChannelName = useChannelName(channelId, channelType);
+    const displayChannelName =
+        liveChannelName || channelName || channelId.slice(0, 8);
 
     // ESC 关闭
     useEffect(() => {
@@ -154,7 +161,7 @@ export default function AnchorPopover({
             >
                 <div className="wk-anchor-pop__head">
                     <span className="wk-anchor-pop__channel">
-                        #{channelName} · 上下文
+                        #{displayChannelName} · 上下文
                     </span>
                     <button
                         type="button"
