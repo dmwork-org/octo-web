@@ -1,18 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom/client';
-import { WKApp, Menus, ChannelTypeCommunityTopic } from '@octo/base';
-import type { IModule, ConversationContext } from '@octo/base';
-import { ChannelTypeGroup } from 'wukongimjssdk';
-import WKSDK from 'wukongimjssdk';
-import MatterPage from './pages/TodoPage';
-import ChatMatterPanel from './panel/ChatTodoPanel';
-import MatterDetailPanel from './panel/MatterDetailPanel';
-import MatterLinkMenu from './ui/MatterLinkMenu';
-import SmartCreateModal from './ui/SmartCreateModal';
-import { createMatter, extractMatter, listMatters } from './api/todoApi';
-import { Toast } from './utils/toast';
-import CreateTaskModal from './ui/CreateTaskModal';
-import './ui/tokens.css';
+import React, { useState, useEffect } from "react";
+import ReactDOM from "react-dom/client";
+import { WKApp, Menus, ChannelTypeCommunityTopic } from "@octo/base";
+import type { IModule, ConversationContext } from "@octo/base";
+import { ChannelTypeGroup } from "wukongimjssdk";
+import WKSDK from "wukongimjssdk";
+import MatterPage from "./pages/TodoPage";
+import ChatMatterPanel from "./panel/ChatTodoPanel";
+import MatterDetailPanel from "./panel/MatterDetailPanel";
+import MatterLinkMenu from "./ui/MatterLinkMenu";
+import SmartCreateModal from "./ui/SmartCreateModal";
+import {
+  createMatter,
+  extractMatter,
+  listMatters,
+  addTimelineEntry,
+} from "./api/todoApi";
+import { Toast } from "./utils/toast";
+import CreateTaskModal from "./ui/CreateTaskModal";
+import "./ui/tokens.css";
 
 export type OpenCreateTaskPayload = {
   channelId: string;
@@ -28,13 +33,11 @@ export type OpenCreateTaskPayload = {
 function parseMentionText(raw: string): { title: string; uids: string[] } {
   const uids: string[] = [];
   const title = raw.replace(/@\[([^:]+):([^\]]+)\]/g, (_match, uid, name) => {
-    if (uid !== '-1') uids.push(uid);
-    return uid === '-1' ? '@所有人' : `@${name}`;
+    if (uid !== "-1") uids.push(uid);
+    return uid === "-1" ? "@所有人" : `@${name}`;
   });
   return { title: title.trim(), uids: [...new Set(uids)] };
 }
-
-
 
 /** Guard against double-init (HMR in dev or future module lifecycle changes). */
 let _initialized = false;
@@ -46,7 +49,7 @@ if (import.meta.hot) {
     // Properly unmount React root before removing DOM node
     _globalTodoModalRoot?.unmount();
     _globalTodoModalRoot = null;
-    const el = document.getElementById('matter-global-modal-root');
+    const el = document.getElementById("matter-global-modal-root");
     if (el) el.remove();
     _globalTodoModalMounted = false;
   });
@@ -56,9 +59,18 @@ if (import.meta.hot) {
  * Placeholder Matter icon for the NavRail.
  */
 function MatterIcon({ active }: { active?: boolean }) {
-  const color = active ? 'var(--wk-brand-primary, #7C5CFC)' : 'currentColor';
+  const color = active ? "var(--wk-brand-primary, #7C5CFC)" : "currentColor";
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M9 11l3 3L22 4" />
       <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
     </svg>
@@ -70,7 +82,16 @@ function MatterIcon({ active }: { active?: boolean }) {
  */
 function CheckSquareIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="9 11 12 14 22 4" />
       <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
     </svg>
@@ -82,7 +103,16 @@ function CheckSquareIcon() {
  */
 function ChecklistIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <line x1="8" y1="6" x2="21" y2="6" />
       <line x1="8" y1="12" x2="21" y2="12" />
       <line x1="8" y1="18" x2="21" y2="18" />
@@ -98,7 +128,7 @@ function ChecklistIcon() {
  */
 export default class MatterModule implements IModule {
   id(): string {
-    return 'MatterModule';
+    return "MatterModule";
   }
 
   init(): void {
@@ -107,16 +137,16 @@ export default class MatterModule implements IModule {
     _initialized = true;
 
     // Register route
-    WKApp.route.register('/matter', () => <MatterPage />);
+    WKApp.route.register("/matter", () => <MatterPage />);
 
     // Register NavRail menu item (sort=4001, after contacts=4000)
     WKApp.menus.register(
-      'matter',
+      "matter",
       () => {
         const m = new Menus(
-          'matter',
-          '/matter',
-          '事项',
+          "matter",
+          "/matter",
+          "事项",
           <MatterIcon />,
           <MatterIcon active />,
         );
@@ -147,26 +177,34 @@ export default class MatterModule implements IModule {
    */
   private registerChatContextMenu(): void {
     WKApp.endpoints.registerMessageContextMenus(
-      'contextmenus.createMatter',
+      "contextmenus.createMatter",
       (message) => {
         const ct = message.channel.channelType;
         if (ct !== ChannelTypeGroup && ct !== ChannelTypeCommunityTopic) {
           return null;
         }
         return {
-          title: '创建事项',
+          title: "创建事项",
           onClick: () => {
             // 优先用编辑后的内容（remoteExtra.contentEdit），fallback 到原始 conversationDigest
-            const remoteExtra = message.remoteExtra as { isEdit?: boolean; contentEdit?: { conversationDigest?: string } } | undefined;
-            const effectiveContent = (remoteExtra?.isEdit && remoteExtra?.contentEdit)
-              ? remoteExtra.contentEdit as { conversationDigest?: string }
-              : message.content as { conversationDigest?: string };
+            const remoteExtra = message.remoteExtra as
+              | {
+                  isEdit?: boolean;
+                  contentEdit?: { conversationDigest?: string };
+                }
+              | undefined;
+            const effectiveContent =
+              remoteExtra?.isEdit && remoteExtra?.contentEdit
+                ? (remoteExtra.contentEdit as { conversationDigest?: string })
+                : (message.content as { conversationDigest?: string });
             // 先解析再截断，避免 200 字符截断位置落在 @[uid:name] 占位符中间
-            const raw = effectiveContent.conversationDigest ?? '';
+            const raw = effectiveContent.conversationDigest ?? "";
             const { title: parsedTitle } = parseMentionText(raw);
             const prefillTitle = parsedTitle.slice(0, 200);
-            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(message.channel);
-            WKApp.mittBus.emit('wk:open-create-matter-modal', {
+            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+              message.channel,
+            );
+            WKApp.mittBus.emit("wk:open-create-matter-modal", {
               channelId: message.channel.channelID,
               channelType: ct,
               channelName: channelInfo?.title,
@@ -185,17 +223,17 @@ export default class MatterModule implements IModule {
    * Clicking opens CreateTaskModal with prefilled title (from input box) and channel info.
    */
   private registerChatToolbar(): void {
-    WKApp.endpoints.registerChatToolbar(
-      'chattoolbar.matter',
-      (ctx) => {
-        const channel = ctx.channel();
-        // Only show in group and topic channels
-        if (channel.channelType !== ChannelTypeGroup && channel.channelType !== ChannelTypeCommunityTopic) {
-          return undefined;
-        }
-        return <ChatToolbarTodoButton ctx={ctx} />;
-      },
-    );
+    WKApp.endpoints.registerChatToolbar("chattoolbar.matter", (ctx) => {
+      const channel = ctx.channel();
+      // Only show in group and topic channels
+      if (
+        channel.channelType !== ChannelTypeGroup &&
+        channel.channelType !== ChannelTypeCommunityTopic
+      ) {
+        return undefined;
+      }
+      return <ChatToolbarTodoButton ctx={ctx} />;
+    });
   }
 
   /**
@@ -203,9 +241,12 @@ export default class MatterModule implements IModule {
    */
   private registerChatMatterPanel(): void {
     WKApp.endpoints.registerChatMatterPanel(
-      'chatmatterpanel',
+      "chatmatterpanel",
       ({ channel, onClose }) => {
-        if (channel.channelType !== ChannelTypeGroup && channel.channelType !== ChannelTypeCommunityTopic) {
+        if (
+          channel.channelType !== ChannelTypeGroup &&
+          channel.channelType !== ChannelTypeCommunityTopic
+        ) {
           return undefined;
         }
         return (
@@ -215,7 +256,7 @@ export default class MatterModule implements IModule {
             onClose={onClose}
           />
         );
-      }
+      },
     );
   }
 
@@ -225,10 +266,13 @@ export default class MatterModule implements IModule {
    */
   private registerChatHeaderIcon(): void {
     WKApp.endpoints.registerChannelHeaderRightItem(
-      'channelheader.matter',
+      "channelheader.matter",
       ({ channel }) => {
         // Only show in group and topic channels
-        if (channel.channelType !== ChannelTypeGroup && channel.channelType !== ChannelTypeCommunityTopic) {
+        if (
+          channel.channelType !== ChannelTypeGroup &&
+          channel.channelType !== ChannelTypeCommunityTopic
+        ) {
           return undefined;
         }
         return (
@@ -236,12 +280,12 @@ export default class MatterModule implements IModule {
             key="matter-icon"
             onClick={(e) => {
               e.stopPropagation();
-              WKApp.mittBus.emit('wk:toggle-matter-panel', {
+              WKApp.mittBus.emit("wk:toggle-matter-panel", {
                 channelId: channel.channelID,
                 channelType: channel.channelType,
               });
             }}
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
             title="事项"
           >
             <ChecklistIcon />
@@ -251,7 +295,6 @@ export default class MatterModule implements IModule {
       5000, // sort order
     );
   }
-
 }
 
 /**
@@ -264,8 +307,9 @@ function ChatToolbarTodoButton({ ctx }: { ctx: ConversationContext }) {
 
   const handleOpen = () => {
     const inputCtx = ctx.messageInputContext();
-    const rawText = (inputCtx?.text() ?? '').trim().slice(0, 500);
-    const { title: prefillTitle, uids: prefillAssigneeUids } = parseMentionText(rawText);
+    const rawText = (inputCtx?.text() ?? "").trim().slice(0, 500);
+    const { title: prefillTitle, uids: prefillAssigneeUids } =
+      parseMentionText(rawText);
     const payload: OpenCreateTaskPayload = {
       channelId: channel.channelID,
       channelType: channel.channelType,
@@ -274,13 +318,13 @@ function ChatToolbarTodoButton({ ctx }: { ctx: ConversationContext }) {
       prefillAssigneeUids,
       clearOnConfirm: true,
     };
-    WKApp.mittBus.emit('wk:open-create-matter-modal', payload);
+    WKApp.mittBus.emit("wk:open-create-matter-modal", payload);
   };
 
   return (
     <div
       title="创建事项"
-      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+      style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
       onClick={handleOpen}
     >
       <CheckSquareIcon />
@@ -298,8 +342,8 @@ let _globalTodoModalRoot: ReturnType<typeof ReactDOM.createRoot> | null = null;
 function mountGlobalMatterModal() {
   if (_globalTodoModalMounted) return;
   _globalTodoModalMounted = true;
-  const container = document.createElement('div');
-  container.id = 'matter-global-modal-root';
+  const container = document.createElement("div");
+  container.id = "matter-global-modal-root";
   document.body.appendChild(container);
   _globalTodoModalRoot = ReactDOM.createRoot(container);
   _globalTodoModalRoot.render(<GlobalMatterModal />);
@@ -312,18 +356,22 @@ function GlobalMatterModal() {
   useEffect(() => {
     const handler = (data: OpenCreateTaskPayload) => {
       // Parse mention placeholders in prefillTitle if not already parsed
-      if (data.prefillTitle && data.prefillTitle.includes('@[')) {
+      if (data.prefillTitle && data.prefillTitle.includes("@[")) {
         const { title, uids } = parseMentionText(data.prefillTitle);
-        data = { ...data, prefillTitle: title.slice(0, 200), prefillAssigneeUids: uids };
+        data = {
+          ...data,
+          prefillTitle: title.slice(0, 200),
+          prefillAssigneeUids: uids,
+        };
       } else if (data.prefillTitle) {
         data = { ...data, prefillTitle: data.prefillTitle.slice(0, 200) };
       }
       setPayload(data);
       setOpen(true);
     };
-    WKApp.mittBus.on('wk:open-create-matter-modal', handler);
+    WKApp.mittBus.on("wk:open-create-matter-modal", handler);
     return () => {
-      WKApp.mittBus.off('wk:open-create-matter-modal', handler);
+      WKApp.mittBus.off("wk:open-create-matter-modal", handler);
     };
   }, []);
 
@@ -331,25 +379,25 @@ function GlobalMatterModal() {
 
   const handleClose = () => setOpen(false);
   const handleDirtyClose = () => {
-    if (window.confirm('有未保存的修改，确定放弃？')) setOpen(false);
+    if (window.confirm("有未保存的修改，确定放弃？")) setOpen(false);
   };
 
   const handleConfirm = async (req: Parameters<typeof createMatter>[0]) => {
     try {
       await createMatter(req);
     } catch (e) {
-      Toast.error('创建事项失败');
+      Toast.error("创建事项失败");
       throw e; // re-throw 让 CreateTaskModal 保持打开
     }
     // Send input content (with mention) + clear when triggered from toolbar / Alt+Enter
     // 只在有预填文本时才发送（prefillTitle 非空 = 用户从输入框触发），纯附件场景不发消息
     if (payload?.clearOnConfirm && payload.channelId && payload.prefillTitle) {
-      WKApp.mittBus.emit('wk:matter-created-from-input', {
+      WKApp.mittBus.emit("wk:matter-created-from-input", {
         channelId: payload.channelId,
         channelType: payload.channelType,
       });
     }
-    Toast.success('事项已创建');
+    Toast.success("事项已创建");
     setOpen(false);
   };
 
@@ -362,11 +410,15 @@ function GlobalMatterModal() {
       prefillTitle={payload.prefillTitle}
       prefillAssigneeUids={payload.prefillAssigneeUids}
       sendOnConfirm={!!payload.clearOnConfirm && !!payload.prefillTitle}
-      channel={payload.channelId ? {
-        channelId: payload.channelId,
-        channelType: payload.channelType,
-        name: payload.channelName,
-      } : undefined}
+      channel={
+        payload.channelId
+          ? {
+              channelId: payload.channelId,
+              channelType: payload.channelType,
+              name: payload.channelName,
+            }
+          : undefined
+      }
     />
   );
 }
@@ -383,13 +435,14 @@ function GlobalMatterModal() {
  *   - 通过全局 portal 挂在 body 下，定位稳定、模块解耦
  */
 let _globalMatterLinkMenuMounted = false;
-let _globalMatterLinkMenuRoot: ReturnType<typeof ReactDOM.createRoot> | null = null;
+let _globalMatterLinkMenuRoot: ReturnType<typeof ReactDOM.createRoot> | null =
+  null;
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     _globalMatterLinkMenuRoot?.unmount();
     _globalMatterLinkMenuRoot = null;
-    const el = document.getElementById('matter-link-menu-root');
+    const el = document.getElementById("matter-link-menu-root");
     if (el) el.remove();
     _globalMatterLinkMenuMounted = false;
   });
@@ -398,8 +451,8 @@ if (import.meta.hot) {
 function mountGlobalMatterLinkMenu() {
   if (_globalMatterLinkMenuMounted) return;
   _globalMatterLinkMenuMounted = true;
-  const container = document.createElement('div');
-  container.id = 'matter-link-menu-root';
+  const container = document.createElement("div");
+  container.id = "matter-link-menu-root";
   document.body.appendChild(container);
   _globalMatterLinkMenuRoot = ReactDOM.createRoot(container);
   _globalMatterLinkMenuRoot.render(<GlobalMatterLinkMenu />);
@@ -407,8 +460,9 @@ function mountGlobalMatterLinkMenu() {
 
 function GlobalMatterLinkMenu() {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const [channelId, setChannelId] = useState<string>('');
+  const [channelId, setChannelId] = useState<string>("");
   const [channelType, setChannelType] = useState<number>(0);
+  const [messages, setMessages] = useState<any[]>([]);
   const [matters, setMatters] = useState<{ id: string; title: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -419,7 +473,12 @@ function GlobalMatterLinkMenu() {
   }, [anchor]);
 
   useEffect(() => {
-    const handler = (data: { anchor: HTMLElement; channelId: string; channelType: number }) => {
+    const handler = (data: {
+      anchor: HTMLElement;
+      channelId: string;
+      channelType: number;
+      messages?: any[];
+    }) => {
       if (anchor === data.anchor) {
         // 同一按钮再次点击 → 关闭
         setAnchor(null);
@@ -428,9 +487,14 @@ function GlobalMatterLinkMenu() {
       setAnchor(data.anchor);
       setChannelId(data.channelId);
       setChannelType(data.channelType);
+      setMessages(data.messages || []);
       // 按 channel 查询关联的 Matter 列表
       setLoading(true);
-      listMatters({ source_channel_id: data.channelId, source_channel_type: data.channelType, limit: 20 })
+      listMatters({
+        source_channel_id: data.channelId,
+        source_channel_type: data.channelType,
+        limit: 20,
+      })
         .then((res) => {
           setMatters(res.data.map((m) => ({ id: m.id, title: m.title })));
         })
@@ -439,9 +503,9 @@ function GlobalMatterLinkMenu() {
         })
         .finally(() => setLoading(false));
     };
-    WKApp.mittBus.on('wk:open-matter-link-menu', handler);
+    WKApp.mittBus.on("wk:open-matter-link-menu", handler);
     return () => {
-      WKApp.mittBus.off('wk:open-matter-link-menu', handler);
+      WKApp.mittBus.off("wk:open-matter-link-menu", handler);
     };
   }, [anchor]);
 
@@ -459,6 +523,33 @@ function GlobalMatterLinkMenu() {
             setShowCreate(true);
           }}
           disabled={loading}
+          onPick={async (matter) => {
+            if (!messages || messages.length === 0) {
+              Toast.error("没有可同步的消息");
+              return;
+            }
+            setLoading(true);
+            try {
+              await addTimelineEntry(matter.id, {
+                channel_id: channelId,
+                channel_type: channelType,
+                participant_uid: WKApp.loginInfo.uid || "",
+                msgs: messages.map((m: any) => ({
+                  message_id: m.messageID || m.messageSeq?.toString() || "",
+                  from_uid: m.fromUID || "",
+                  from_uname: m.fromUName || "",
+                  timestamp: m.timestamp || 0,
+                  content: m.content || "",
+                })),
+              });
+              Toast.success("已同步进展");
+              setAnchor(null);
+            } catch (e) {
+              Toast.error("同步进展失败");
+            } finally {
+              setLoading(false);
+            }
+          }}
         />
       )}
       <SmartCreateModal
@@ -467,7 +558,7 @@ function GlobalMatterLinkMenu() {
         onClose={() => setShowCreate(false)}
         onConfirm={async (req) => {
           await createMatter(req);
-          Toast.success('事项已创建');
+          Toast.success("事项已创建");
         }}
         channel={channelId ? { channelId, channelType } : undefined}
       />
@@ -480,13 +571,14 @@ function GlobalMatterLinkMenu() {
  * 由 MultiplePanel "创建新事项" 按钮触发
  * ============================================================ */
 let _globalSmartCreateMounted = false;
-let _globalSmartCreateRoot: ReturnType<typeof ReactDOM.createRoot> | null = null;
+let _globalSmartCreateRoot: ReturnType<typeof ReactDOM.createRoot> | null =
+  null;
 
 function mountGlobalSmartCreateModal() {
   if (_globalSmartCreateMounted) return;
   _globalSmartCreateMounted = true;
-  const container = document.createElement('div');
-  container.id = 'smart-create-modal-root';
+  const container = document.createElement("div");
+  container.id = "smart-create-modal-root";
   document.body.appendChild(container);
   _globalSmartCreateRoot = ReactDOM.createRoot(container);
   _globalSmartCreateRoot.render(<GlobalSmartCreateModal />);
@@ -494,20 +586,69 @@ function mountGlobalSmartCreateModal() {
 
 function GlobalSmartCreateModal() {
   const [open, setOpen] = useState(false);
-  const [channel, setChannel] = useState<{ channelId: string; channelType: number } | undefined>();
+  const [channel, setChannel] = useState<
+    { channelId: string; channelType: number } | undefined
+  >();
   const [messages, setMessages] = useState<any[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<
+    { title?: string; description?: string; deadline?: string } | undefined
+  >();
 
   useEffect(() => {
-    const handler = (data?: { channelId?: string; channelType?: number; messages?: any[] }) => {
-      if (data?.channelId) {
-        setChannel({ channelId: data.channelId, channelType: data.channelType || 0 });
-      }
-      setMessages(data?.messages || []);
+    const handler = async (data?: {
+      channelId?: string;
+      channelType?: number;
+      messages?: any[];
+    }) => {
+      const currentChannel = data?.channelId
+        ? { channelId: data.channelId, channelType: data.channelType || 0 }
+        : undefined;
+      const currentMessages = data?.messages || [];
+
+      setChannel(currentChannel);
+      setMessages(currentMessages);
+      setAiResult(undefined);
       setOpen(true);
+
+      if (currentMessages.length > 0 && currentChannel) {
+        setAiLoading(true);
+        try {
+          const res = await extractMatter({
+            channel_type: currentChannel.channelType,
+            channel_id: currentChannel.channelId,
+            creator_uid: WKApp.loginInfo.uid || "",
+            msgs: currentMessages.map((m) => ({
+              message_id: m.messageID || m.messageSeq?.toString() || "",
+              from_uid: m.fromUID || "",
+              from_uname: m.fromUName || "",
+              timestamp: m.timestamp || 0,
+              content: m.content || "",
+            })),
+          });
+          setAiResult({
+            title: res.title,
+            description: res.description,
+            deadline: res.deadline
+              ? new Date(
+                  String(res.deadline).length === 10
+                    ? (res.deadline as number) * 1000
+                    : res.deadline,
+                )
+                  .toISOString()
+                  .split("T")[0]
+              : undefined,
+          });
+        } catch (e) {
+          Toast.error("AI 提取失败，请手动填写");
+        } finally {
+          setAiLoading(false);
+        }
+      }
     };
-    WKApp.mittBus.on('wk:open-smart-create-modal', handler);
+    WKApp.mittBus.on("wk:open-smart-create-modal", handler);
     return () => {
-      WKApp.mittBus.off('wk:open-smart-create-modal', handler);
+      WKApp.mittBus.off("wk:open-smart-create-modal", handler);
     };
   }, []);
 
@@ -516,27 +657,12 @@ function GlobalSmartCreateModal() {
       visible={open}
       blank={messages.length === 0}
       count={messages.length}
+      loading={aiLoading}
+      initialValues={aiResult}
       onClose={() => setOpen(false)}
       onConfirm={async (req) => {
-        if (messages.length > 0 && channel) {
-          // 有选中消息 → 调 AI 智能创建接口
-          await extractMatter({
-            channel_type: channel.channelType,
-            channel_id: channel.channelId,
-            creator_uid: WKApp.loginInfo.uid || '',
-            msgs: messages.map((m) => ({
-              message_id: m.messageID || m.messageSeq?.toString() || '',
-              from_uid: m.fromUID || '',
-              from_uname: m.fromUName || '',
-              timestamp: m.timestamp || 0,
-              content: m.content || '',
-            })),
-          });
-        } else {
-          // 无消息 → 普通创建
-          await createMatter(req);
-        }
-        Toast.success('事项已创建');
+        await createMatter(req);
+        Toast.success("事项已创建");
       }}
       channel={channel}
     />

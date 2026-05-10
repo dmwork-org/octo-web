@@ -1,8 +1,25 @@
 /* LinkChannelsModal — 关联群聊弹窗（对齐原型 v19） */
 
-.wk-link-channels-modal .semi-modal-content { padding: 0; }
-.wk-link-channels-modal .semi-modal-header { margin: 0; }
-.wk-link-channels-modal .semi-modal-body-wrapper { margin: 0; }
+.wk-link-channels-modal .semi-modal-content {
+  padding: 0;
+}
+.wk-link-channels-modal .semi-modal-header {
+  margin: 0;
+  display: none;
+}
+.wk-link-channels-modal .semi-modal-body-wrapper {
+  margin: 0;
+}
+.wk-link-channels-modal .semi-modal-body {
+  padding: 0;
+}
+
+.wk-lcm {
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  overflow: hidden;
+}
 
 .wk-lcm__header {
   padding: 16px 20px;
@@ -101,9 +118,16 @@
   transition: background 0.1s;
 }
 
-.wk-lcm__item:hover { background: var(--wk-bg-hover, #fafafa); }
-.wk-lcm__item.is-selected { background: rgba(139, 92, 246, 0.05); }
-.wk-lcm__item.is-linked { opacity: 0.5; cursor: not-allowed; }
+.wk-lcm__item:hover {
+  background: var(--wk-bg-hover, #fafafa);
+}
+.wk-lcm__item.is-selected {
+  background: rgba(139, 92, 246, 0.05);
+}
+.wk-lcm__item.is-linked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .wk-lcm__check {
   width: 16px;
@@ -138,12 +162,25 @@
   color: var(--wk-text-primary, #18181b);
 }
 
+.wk-lcm__item-desc {
+  font-size: 11px;
+  color: var(--wk-text-tertiary, #71717a);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wk-lcm__item-meta {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 11px;
+}
+
+.wk-lcm__item-members {
+  color: var(--wk-text-tertiary, #a1a1aa);
 }
 
 .wk-lcm__item-badge {

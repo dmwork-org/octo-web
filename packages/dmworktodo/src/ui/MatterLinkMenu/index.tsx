@@ -1,6 +1,6 @@
-import React, { Component } from 'react';
-import ReactDOM from 'react-dom';
-import './index.css';
+import React, { Component } from "react";
+import ReactDOM from "react-dom";
+import "./index.css";
 
 /**
  * MatterLinkMenu — 多选消息后"添加到事项"弹出菜单
@@ -37,20 +37,20 @@ export interface MatterLinkMenuProps {
 
 // TODO(backend): 替换为真实 API 调用
 const DEFAULT_MOCK_MATTERS: MatterLinkMenuItem[] = [
-  { id: 'M-2451', title: 'Octo 产品策略 PPT 打磨' },
-  { id: 'M-2438', title: 'AI 杠杆率纳入绩效体系' },
-  { id: 'M-2402', title: 'Kano 模型推广到所有产研群' },
+  { id: "M-2451", title: "Octo 产品策略 PPT 打磨" },
+  { id: "M-2438", title: "AI 杠杆率纳入绩效体系" },
+  { id: "M-2402", title: "Kano 模型推广到所有产研群" },
 ];
 
 class MatterLinkMenu extends Component<MatterLinkMenuProps> {
   private menuRef = React.createRef<HTMLDivElement>();
 
   componentDidMount() {
-    document.addEventListener('mousedown', this.handleClickOutside);
+    document.addEventListener("mousedown", this.handleClickOutside);
   }
 
   componentWillUnmount() {
-    document.removeEventListener('mousedown', this.handleClickOutside);
+    document.removeEventListener("mousedown", this.handleClickOutside);
   }
 
   private handleClickOutside = (e: MouseEvent) => {
@@ -73,7 +73,7 @@ class MatterLinkMenu extends Component<MatterLinkMenuProps> {
 
     // 定位在 anchor 元素上方（viewport 坐标）
     const style: React.CSSProperties = {
-      position: 'fixed',
+      position: "fixed",
       left: rect.left,
       bottom: window.innerHeight - rect.top + 8,
     };
@@ -119,8 +119,11 @@ class MatterLinkMenu extends Component<MatterLinkMenuProps> {
             className="wk-matter-link-menu__item"
             disabled={disabled || !onPick}
             onClick={() => {
-              if (onPick) onPick(m);
-              onClose();
+              if (onPick) {
+                onPick(m);
+              } else {
+                onClose();
+              }
             }}
           >
             <span className="wk-matter-link-menu__no">{m.id}</span>
