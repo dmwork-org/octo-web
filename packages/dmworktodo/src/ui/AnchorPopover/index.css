@@ -34,6 +34,15 @@
   animation: wk-anchor-pop-in 0.12s ease-out both;
 }
 
+/*
+ * is-anchored: 由调用方传了 x/y, 内联 style 已覆盖 top/left/transform 到
+ * 按钮坐标。此时关闭居中入场动画 (居中基线下的 translateY 会让浮层多跳一下),
+ * 换成轻量的 fade+shift。
+ */
+.wk-anchor-pop.is-anchored {
+  animation: wk-anchor-pop-fade-in 0.12s ease-out both;
+}
+
 @keyframes wk-anchor-pop-in {
   from {
     opacity: 0;
@@ -42,6 +51,15 @@
   to {
     opacity: 1;
     transform: translate(-50%, -50%);
+  }
+}
+
+@keyframes wk-anchor-pop-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

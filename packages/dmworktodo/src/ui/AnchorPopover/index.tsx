@@ -38,6 +38,12 @@ export interface AnchorPopoverProps {
     messageIds: string[];
     /** 展示在头部的 channel 名称 */
     channelName: string;
+    /**
+     * popover 锚定 viewport 坐标 (px)。由调用方根据触发按钮
+     * boundingClientRect 计算, 已做边界收缩。未传时居中。
+     */
+    x?: number;
+    y?: number;
     onClose: () => void;
 }
 
@@ -58,6 +64,8 @@ export default function AnchorPopover({
     channelType,
     messageIds,
     channelName,
+    x,
+    y,
     onClose,
 }: AnchorPopoverProps) {
     const [results, setResults] = useState<FetchResult[]>([]);
@@ -128,13 +136,20 @@ export default function AnchorPopover({
 
     const stop = (e: React.MouseEvent) => e.stopPropagation();
 
+    // 有 x/y 时锚定到指定 viewport 坐标 (按钮下方), 无则走 CSS 居中
+    const anchored = typeof x === 'number' && typeof y === 'number';
+    const popStyle: React.CSSProperties | undefined = anchored
+        ? { top: y, left: x, right: 'auto', bottom: 'auto', transform: 'none' }
+        : undefined;
+
     return (
         <>
             <div className="wk-anchor-pop__mask" onClick={onMaskClick} />
             <div
-                className="wk-anchor-pop"
+                className={`wk-anchor-pop${anchored ? ' is-anchored' : ''}`}
                 role="dialog"
                 aria-modal="true"
+                style={popStyle}
                 onClick={stop}
             >
                 <div className="wk-anchor-pop__head">

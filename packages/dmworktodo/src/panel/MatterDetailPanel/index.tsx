@@ -57,12 +57,15 @@ export default function MatterDetailPanel({
   const [expandedTimelines, setExpandedTimelines] = useState<Set<string>>(
     new Set(),
   );
-  // "查看原消息上下文" 弹框状态: 记录要查的消息 id 列表 + 所在 channel
+  // "查看原消息上下文" 弹框状态: 记录要查的消息 id 列表 + 所在 channel +
+  // 触发按钮的屏幕坐标 (x/y), 用于 popover 锚定到按钮下方而不是居中。
   const [anchor, setAnchor] = useState<{
     channelId: string;
     channelType: number;
     channelName: string;
     messageIds: string[];
+    x: number;
+    y: number;
   } | null>(null);
   // 拉取 timeline (matter 加载时 + 每次展开时都调, 保证数据新鲜)。
   // 后端 GET /matters/:id/timeline 不支持按 channel 过滤, 返回整个 Matter
@@ -578,7 +581,9 @@ export default function MatterDetailPanel({
                       return (
                         <TimelinePanel
                           entries={chEntries}
-                          onShowAnchor={(entry) =>
+                          onShowAnchor={(entry, ev) => {
+                            const rect =
+                              ev.currentTarget.getBoundingClientRect();
                             setAnchor({
                               channelId: ch.channel_id,
                               channelType: ch.channel_type,
@@ -586,8 +591,9 @@ export default function MatterDetailPanel({
                                 ch.channel_name ||
                                 ch.channel_id.slice(0, 8),
                               messageIds: entry.source_msgs || [],
-                            })
-                          }
+                              ...computeAnchorPosition(rect),
+                            });
+                          }}
                         />
                       );
                     })()}
@@ -611,7 +617,7 @@ export default function MatterDetailPanel({
             ) : (
               <TimelinePanel
                 entries={timeline}
-                onShowAnchor={(entry) => {
+                onShowAnchor={(entry, ev) => {
                   // 改变记录 tab 下每条 entry 可能属于不同 channel,
                   // 用 matter.channels 按 entry.channel_id 反查 channel_name
                   if (!entry.channel_id || entry.channel_type === undefined) {
@@ -620,12 +626,14 @@ export default function MatterDetailPanel({
                   const ch = channels.find(
                     (c) => c.channel_id === entry.channel_id,
                   );
+                  const rect = ev.currentTarget.getBoundingClientRect();
                   setAnchor({
                     channelId: entry.channel_id,
                     channelType: entry.channel_type,
                     channelName:
                       ch?.channel_name || entry.channel_id.slice(0, 8),
                     messageIds: entry.source_msgs || [],
+                    ...computeAnchorPosition(rect),
                   });
                 }}
               />
@@ -657,6 +665,8 @@ export default function MatterDetailPanel({
           channelType={anchor.channelType}
           channelName={anchor.channelName}
           messageIds={anchor.messageIds}
+          x={anchor.x}
+          y={anchor.y}
           onClose={() => setAnchor(null)}
         />
       )}
@@ -889,6 +899,28 @@ function ChannelMoreMenu({ onUnlink }: { onUnlink: () => void }) {
 
 // ─── TimelinePanel (群内事件时间线 — 对齐原型 v19 真实 UI) ──
 
+/**
+ * 根据触发按钮的 rect 算 AnchorPopover 锚定位置 (对齐原型 v19 onShowAnchor):
+ *   - 水平: 右对齐按钮 (popover 宽 380, 右边留 10px 安全边距)
+ *   - 垂直: 按钮下方 22px, 防底部溢出时向上收缩
+ *
+ * 返回 viewport 坐标 (fixed 定位用)。调用方把 x/y 传进 AnchorPopover。
+ */
+function computeAnchorPosition(rect: DOMRect): { x: number; y: number } {
+  const POP_WIDTH = 380;
+  const POP_HEIGHT = 400;
+  const SAFE = 10;
+  const x = Math.max(
+    SAFE,
+    Math.min(rect.right - POP_WIDTH, window.innerWidth - POP_WIDTH - SAFE),
+  );
+  const y = Math.max(
+    SAFE,
+    Math.min(rect.top + 22, window.innerHeight - POP_HEIGHT - SAFE),
+  );
+  return { x, y };
+}
+
 /** 按日期分组 timeline entries */
 function groupByDate(entries: TimelineEntry[]): Map<string, TimelineEntry[]> {
   const map = new Map<string, TimelineEntry[]>();
@@ -932,8 +964,9 @@ function TimelinePanel({
   /**
    * 点击 "查看原消息上下文" 时调用, 由父组件负责弹 AnchorPopover。
    * 不传: 按钮 disabled (无法查看, 通常是条目没有 source_msgs 字段)。
+   * event 用来拿按钮 boundingClientRect, 把 popover 锚定到按钮附近。
    */
-  onShowAnchor?: (entry: TimelineEntry) => void;
+  onShowAnchor?: (entry: TimelineEntry, event: React.MouseEvent) => void;
 }) {
   const [sortNewest, setSortNewest] = useState(true);
 
@@ -1050,8 +1083,8 @@ function TimelinePanel({
                             ? { opacity: 0.4, cursor: "not-allowed" }
                             : undefined
                         }
-                        onClick={() => {
-                          if (hasSource && onShowAnchor) onShowAnchor(e);
+                        onClick={(ev) => {
+                          if (hasSource && onShowAnchor) onShowAnchor(e, ev);
                         }}
                       >
                         <svg
