@@ -82,7 +82,7 @@ function getEffectiveContent(message: Message): MessageContent {
 
 const foldSessionAvatarIcon = new URL(
   "./fold-session-avatar.svg",
-  import.meta.url
+  import.meta.url,
 ).href;
 
 const FoldImage: React.FC<{ src: string }> = ({ src }) => {
@@ -157,15 +157,18 @@ export class Conversation
   private _dragFileCallback?: (file: File) => void;
   private _cachedSelectedText: string | null = null;
   private _beforeUnloadHandler: () => void;
-  private _matterSendMessageHandler?: (data: { channelId: string; channelType: number }) => void;
+  private _matterSendMessageHandler?: (data: {
+    channelId: string;
+    channelType: number;
+  }) => void;
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
   private _addAttachmentFn?: (
     files: File[],
-    source?: "paste" | "upload"
+    source?: "paste" | "upload",
   ) => void;
   private onOpenThreadPanel?: (
     threadChannelId: string,
-    threadName: string
+    threadName: string,
   ) => void;
 
   constructor(props: any) {
@@ -200,7 +203,7 @@ export class Conversation
 
   async sendMessage(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
   ): Promise<Message> {
     // const { channel } = this.props
     let c = channel;
@@ -264,7 +267,7 @@ export class Conversation
     // 添加 @提及（如果不是自己发的消息）
     if (info.fromUID !== WKApp.loginInfo.uid) {
       const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-        new Channel(info.fromUID, ChannelTypePerson)
+        new Channel(info.fromUID, ChannelTypePerson),
       );
       let name = "";
       if (channelInfo) {
@@ -283,7 +286,7 @@ export class Conversation
     await this.vm.deleteMessagesFromLocal([message]);
     const newMessage = await this.vm.sendMessage(
       message.content,
-      message.channel
+      message.channel,
     );
     return newMessage;
   }
@@ -295,7 +298,7 @@ export class Conversation
    */
   private async sendMediaAndWait(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
   ): Promise<void> {
     // 非媒体消息（或无文件需上传）无需等待上传，直接发送并等 ack
     if (
@@ -312,7 +315,9 @@ export class Conversation
 
     const { promise, resolve } = (() => {
       let res: () => void;
-      const p = new Promise<void>((r) => { res = r; });
+      const p = new Promise<void>((r) => {
+        res = r;
+      });
       return { promise: p, resolve: res! };
     })();
 
@@ -376,13 +381,17 @@ export class Conversation
     // sendMessage 返回后主动检查
     if (!settled) {
       // 检查暂存的 ack（ack 在 clientSeq 赋值前到达的情况）
-      const found = pendingAcks.some(p => p.clientSeq === clientSeq);
+      const found = pendingAcks.some((p) => p.clientSeq === clientSeq);
       pendingAcks = []; // 立即释放无关 ack 引用
       if (found) {
         done();
       }
       // 最终 fallback：检查 message.status（VM 可能已经处理了 ack）
-      if (!settled && (message.status === MessageStatus.Normal || message.status === MessageStatus.Fail)) {
+      if (
+        !settled &&
+        (message.status === MessageStatus.Normal ||
+          message.status === MessageStatus.Fail)
+      ) {
         done();
       }
     }
@@ -398,7 +407,7 @@ export class Conversation
    */
   private async sendTextAndWaitAck(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
   ): Promise<void> {
     const TIMEOUT = 10_000;
     let settled = false;
@@ -406,7 +415,9 @@ export class Conversation
 
     const { promise, resolve } = (() => {
       let res: () => void;
-      const p = new Promise<void>((r) => { res = r; });
+      const p = new Promise<void>((r) => {
+        res = r;
+      });
       return { promise: p, resolve: res! };
     })();
 
@@ -448,12 +459,16 @@ export class Conversation
 
     // fallback：检查暂存的 ack 或已处理的 status
     if (!settled) {
-      const found = pendingAcks.some(p => p.clientSeq === clientSeq);
+      const found = pendingAcks.some((p) => p.clientSeq === clientSeq);
       pendingAcks = []; // 立即释放无关 ack 引用
       if (found) {
         done();
       }
-      if (!settled && (message.status === MessageStatus.Normal || message.status === MessageStatus.Fail)) {
+      if (
+        !settled &&
+        (message.status === MessageStatus.Normal ||
+          message.status === MessageStatus.Fail)
+      ) {
         done();
       }
     }
@@ -502,14 +517,14 @@ export class Conversation
     messageSeq: number,
     channelID: String,
     channelType: number,
-    content: String
+    content: String,
   ): Promise<void> {
     return this.vm.editMessage(
       messageID,
       messageSeq,
       channelID,
       channelType,
-      content
+      content,
     );
   }
   onTapAvatar(uid: string, event: React.MouseEvent<Element, MouseEvent>): void {
@@ -525,7 +540,7 @@ export class Conversation
       if (foldSession) {
         const isSummaryMessage = isFoldSessionSummaryMessage(
           foldSession,
-          messageSeq
+          messageSeq,
         );
         if (isSummaryMessage) {
           this.vm.highlightFoldSessionSummary(foldSession.sessionId, () => {
@@ -541,7 +556,7 @@ export class Conversation
             messageWrap.locateRemind = true;
             this.vm.scrollToMessage(messageWrap);
             this.vm.notifyListener();
-          }
+          },
         );
         return;
       }
@@ -575,7 +590,7 @@ export class Conversation
   reply(message: Message, handlerType: number): void {
     if (message.fromUID !== WKApp.loginInfo.uid) {
       const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-        new Channel(message.fromUID, ChannelTypePerson)
+        new Channel(message.fromUID, ChannelTypePerson),
       );
       let name = "";
       if (channelInfo) {
@@ -608,7 +623,7 @@ export class Conversation
 
   addPendingAttachments(
     files: File[],
-    source: "paste" | "upload" = "upload"
+    source: "paste" | "upload" = "upload",
   ): string | null {
     const BLOCKED_EXTENSIONS = [
       "exe",
@@ -713,7 +728,8 @@ export class Conversation
         : undefined;
     if (foldSession?.isExpanded) {
       return foldSession.expandedMessages.some(
-        (expandedMessage) => expandedMessage.clientMsgNo === message.clientMsgNo
+        (expandedMessage) =>
+          expandedMessage.clientMsgNo === message.clientMsgNo,
       );
     }
     for (const item of this.vm.renderItems) {
@@ -723,7 +739,7 @@ export class Conversation
       if (
         item.session.expandedMessages.some(
           (expandedMessage) =>
-            expandedMessage.clientMsgNo === message.clientMsgNo
+            expandedMessage.clientMsgNo === message.clientMsgNo,
         )
       ) {
         return true;
@@ -757,13 +773,29 @@ export class Conversation
     }
 
     // Listen for matter-send-and-create: send current editor content (with mention), then clear
-    this._matterSendMessageHandler = (data: { channelId: string; channelType: number }) => {
+    this._matterSendMessageHandler = (data: {
+      channelId: string;
+      channelType: number;
+    }) => {
       const { channel } = this.props;
-      if (data.channelId === channel.channelID && data.channelType === channel.channelType) {
+      if (
+        data.channelId === channel.channelID &&
+        data.channelType === channel.channelType
+      ) {
         this._messageInputContext?.send();
       }
     };
-    WKApp.mittBus.on('wk:matter-created-from-input', this._matterSendMessageHandler);
+    WKApp.mittBus.on(
+      "wk:matter-created-from-input",
+      this._matterSendMessageHandler,
+    );
+
+    this._exitMultipleModeHandler = () => {
+      this.vm.editOn = false;
+      this.vm.unCheckAllMessages();
+      this.forceUpdate();
+    };
+    WKApp.mittBus.on("wk:exit-multiple-mode", this._exitMultipleModeHandler);
 
     window.addEventListener("beforeunload", this._beforeUnloadHandler);
 
@@ -778,8 +810,15 @@ export class Conversation
 
   componentWillUnmount() {
     if (this._matterSendMessageHandler) {
-      WKApp.mittBus.off('wk:matter-created-from-input', this._matterSendMessageHandler);
+      WKApp.mittBus.off(
+        "wk:matter-created-from-input",
+        this._matterSendMessageHandler,
+      );
       this._matterSendMessageHandler = undefined;
+    }
+    if (this._exitMultipleModeHandler) {
+      WKApp.mittBus.off("wk:exit-multiple-mode", this._exitMultipleModeHandler);
+      this._exitMultipleModeHandler = undefined;
     }
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     // 注销附件守卫：只清除自己注册的，防止新实例 guard 被旧实例 unmount 覆盖
@@ -869,7 +908,7 @@ export class Conversation
     return (
       message.parts
         ?.filter(
-          (part: Part) => part.type === PartType.mention && part.data?.uid
+          (part: Part) => part.type === PartType.mention && part.data?.uid,
         )
         .map((part: Part) => ({ name: part.text, uid: part.data.uid })) ?? []
     );
@@ -1064,7 +1103,7 @@ export class Conversation
             style={{ width: "100%", height: "100%" }}
           />
         ),
-      })
+      }),
     );
     const { showSummary, summaryId, summaryMessage } =
       getFoldSessionSummaryState(session);
@@ -1131,7 +1170,7 @@ export class Conversation
         className={classNames(
           "wk-message-item",
           "wk-message-item-fold-session",
-          last ? "wk-message-item-last" : undefined
+          last ? "wk-message-item-last" : undefined,
         )}
       >
         <div className="wk-message-item-fold-session-shell">
@@ -1206,11 +1245,11 @@ export class Conversation
               summaryId={summaryId}
               summarySender={summarySender}
               summaryTime={moment(summaryMessage.timestamp * 1000).format(
-                "HH:mm"
+                "HH:mm",
               )}
               summaryContent={this.renderFoldSessionSummary(summaryMessage)}
               expandedContent={this.renderFoldSessionExpandedList(
-                session.expandedMessages
+                session.expandedMessages,
               )}
               onToggle={() => {
                 this.vm.toggleFoldSession(session.sessionId);
@@ -1290,7 +1329,7 @@ export class Conversation
           extraClassName,
           last ? "wk-message-item-last" : undefined,
           message.locateRemind ? "wk-message-item-reminder" : undefined,
-          isSystemMessage ? "wk-message-item-system" : undefined
+          isSystemMessage ? "wk-message-item-system" : undefined,
         )}
       >
         {MessageCell ? (
@@ -1333,7 +1372,7 @@ export class Conversation
     }
     if (this.vm.lastMessage) {
       this.vm.lastLocalMessageElement = this.getMessageElement(
-        this.vm.lastMessage
+        this.vm.lastMessage,
       ); // 最新消息
       if (this.vm.lastLocalMessageElement) {
         // 如果有最新消息的dom则判断是否在可见范围内
@@ -1363,7 +1402,7 @@ export class Conversation
       shouldPulldownOnWheel(
         e.deltaY,
         viewport.scrollTop,
-        this.isFullScreen(viewport)
+        this.isFullScreen(viewport),
       )
     ) {
       this.vm.pulldownMessages();
@@ -1399,7 +1438,7 @@ export class Conversation
       }
       WKSDK.shared().receiptManager.addReceiptMessages(
         this.channel(),
-        unreadMessages
+        unreadMessages,
       );
     }
   }
@@ -1620,7 +1659,7 @@ export class Conversation
                   vm.fileDragEnter ? "wk-conversation-dragover" : undefined,
                   vm.currentReplyMessage
                     ? "wk-conversation-hasreply"
-                    : undefined
+                    : undefined,
                 )}
                 style={{
                   background: chatBg
@@ -1671,7 +1710,7 @@ export class Conversation
                       showScrollToBottom={vm.showScrollToBottomBtn || false}
                       unreadCount={vm.unreadCount}
                       reminders={vm.currentConversation?.reminders?.filter(
-                        (r) => !r.done
+                        (r) => !r.done,
                       )}
                     ></ConversationPositionView>
 
@@ -1706,7 +1745,9 @@ export class Conversation
                 <div
                   className={classNames(
                     "wk-conversation-multiplepanel",
-                    vm.editOn ? "wk-conversation-multiplepanel-show" : undefined
+                    vm.editOn
+                      ? "wk-conversation-multiplepanel-show"
+                      : undefined,
                   )}
                 >
                   <MultiplePanel
@@ -1724,7 +1765,7 @@ export class Conversation
                         (channels: Channel[]) => {
                           for (const message of messages) {
                             const cloneContent = getEffectiveContent(
-                              message.message
+                              message.message,
                             );
                             for (const channel of channels) {
                               this.sendMessage(cloneContent, channel);
@@ -1732,7 +1773,7 @@ export class Conversation
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
-                        }
+                        },
                       );
                     }}
                     onMergeForward={() => {
@@ -1746,7 +1787,7 @@ export class Conversation
                           vm.sendMergeforward(channels);
                           vm.editOn = false;
                           vm.unCheckAllMessages();
-                        }
+                        },
                       );
                     }}
                     onDelete={() => {
@@ -1769,6 +1810,17 @@ export class Conversation
                         anchor,
                         channelId: ch.channelID,
                         channelType: ch.channelType,
+                        messages: checkedMsgs.map((m: any) => ({
+                          messageSeq: m.messageSeq,
+                          messageID: m.messageID,
+                          fromUID: m.fromUID,
+                          fromUName: m.fromUName || m.from?.name,
+                          content:
+                            m.content?.conversationDigest ||
+                            m.content?.text ||
+                            "",
+                          timestamp: m.message?.timestamp || m.timestamp,
+                        })),
                       });
                     }}
                     onCreateMatter={() => {
@@ -1785,7 +1837,10 @@ export class Conversation
                           messageSeq: m.messageSeq,
                           messageID: m.messageID,
                           fromUID: m.fromUID,
-                          content: m.content?.conversationDigest || m.content?.text || '',
+                          content:
+                            m.content?.conversationDigest ||
+                            m.content?.text ||
+                            "",
                           timestamp: m.message?.timestamp,
                         })),
                       });
@@ -1938,13 +1993,13 @@ export class Conversation
                     vm.editOn
                       ? { display: "none" }
                       : this.state.inputExpanded
-                      ? {
-                          flex: 1,
-                          minHeight: 0,
-                          overflow: "hidden",
-                          paddingTop: "var(--wk-sp-2)",
-                        }
-                      : undefined
+                        ? {
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: "hidden",
+                            paddingTop: "var(--wk-sp-2)",
+                          }
+                        : undefined
                   }
                 >
                   <div
@@ -1966,9 +2021,8 @@ export class Conversation
                         // 存储 addAttachment 方法，供外部调用
                         this._addAttachmentFn = addFn;
                       }}
-
                       members={this.vm.subscribers.filter(
-                        (s) => s.uid !== WKApp.loginInfo.uid
+                        (s) => s.uid !== WKApp.loginInfo.uid,
                       )}
                       topView={
                         vm.currentReplyMessage ? (
@@ -1984,12 +2038,19 @@ export class Conversation
                       onAltEnter={() => {
                         const { channel } = this.props;
                         // Alt+Enter creates task only in group and topic channels
-                        if (channel.channelType !== ChannelTypeGroup && channel.channelType !== ChannelTypeCommunityTopic) return;
-                        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+                        if (
+                          channel.channelType !== ChannelTypeGroup &&
+                          channel.channelType !== ChannelTypeCommunityTopic
+                        )
+                          return;
+                        const channelInfo =
+                          WKSDK.shared().channelManager.getChannelInfo(channel);
                         // 传原始文本（含 @[uid:name] 占位符），由 GlobalMatterModal 先 parse 再截断
                         // 避免 slice 截断位置落在占位符中间导致 mention 残留乱码
-                        const rawText = (this._messageInputContext?.text() ?? '').trim();
-                        WKApp.mittBus.emit('wk:open-create-matter-modal', {
+                        const rawText = (
+                          this._messageInputContext?.text() ?? ""
+                        ).trim();
+                        WKApp.mittBus.emit("wk:open-create-matter-modal", {
                           channelId: channel.channelID,
                           channelType: channel.channelType,
                           channelName: channelInfo?.title,
@@ -2021,7 +2082,7 @@ export class Conversation
                           channelInfo:
                             channel.channelType === ChannelTypePerson
                               ? (WKSDK.shared().channelManager.getChannelInfo(
-                                  channel
+                                  channel,
                                 ) as ChatContextChannelInfo | null)
                               : undefined,
                         });
@@ -2031,7 +2092,7 @@ export class Conversation
                         mention?: MentionModel,
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
-                        editorBlocks?: EditorContentBlock[]
+                        editorBlocks?: EditorContentBlock[],
                       ) => {
                         // ── 回复/编辑处理 ──────────────
                         let reply: Reply | undefined;
@@ -2046,7 +2107,7 @@ export class Conversation
                               vm.currentReplyMessage.messageSeq,
                               vm.currentReplyMessage.channel.channelID,
                               vm.currentReplyMessage.channel.channelType,
-                              JSON.stringify(json)
+                              JSON.stringify(json),
                             );
                             vm.currentReplyMessage = undefined;
                             return;
@@ -2059,8 +2120,8 @@ export class Conversation
                             WKSDK.shared().channelManager.getChannelInfo(
                               new Channel(
                                 vm.currentReplyMessage.fromUID,
-                                ChannelTypePerson
-                              )
+                                ChannelTypePerson,
+                              ),
                             );
                           if (channelInfo) {
                             reply.fromName = channelInfo.title;
@@ -2078,7 +2139,7 @@ export class Conversation
                                 resolve(reader.result as string);
                               reader.onerror = () => resolve("");
                               reader.readAsDataURL(file);
-                            }
+                            },
                           );
                           if (!previewUrl) {
                             Toast.error(`图片「${file.name}」读取失败`);
@@ -2099,7 +2160,7 @@ export class Conversation
                             img.src = previewUrl;
                           });
                           await this.sendMediaAndWait(
-                            new ImageContent(file, previewUrl, width, height)
+                            new ImageContent(file, previewUrl, width, height),
                           );
                         };
 
@@ -2110,14 +2171,14 @@ export class Conversation
                           const ext =
                             dotIndex > 0 ? name.substring(dotIndex + 1) : "";
                           await this.sendMediaAndWait(
-                            new FileContent(file, name, ext, file.size)
+                            new FileContent(file, name, ext, file.size),
                           );
                         };
 
                         // ── 辅助：构建带 mention 的文本 MessageContent ──────────────
                         const buildTextContent = (
                           blockText: string,
-                          blockMention?: MentionModel
+                          blockMention?: MentionModel,
                         ) => {
                           const msgContent = new MessageText(blockText);
                           if (blockMention) {
@@ -2145,12 +2206,12 @@ export class Conversation
                                   if (!obj.mention) obj.mention = {};
                                   obj.mention.entities = entities;
                                   return new TextEncoder().encode(
-                                    JSON.stringify(obj)
+                                    JSON.stringify(obj),
                                   );
                                 } catch (e) {
                                   console.warn(
                                     "[Mention] encode override failed",
-                                    e
+                                    e,
                                   );
                                   return originalEncode();
                                 }
@@ -2164,10 +2225,7 @@ export class Conversation
                         const topFilesToSend = topFiles || [];
                         for (const { file } of topFilesToSend) {
                           try {
-                            if (
-                              file.type &&
-                              file.type.startsWith("image/")
-                            ) {
+                            if (file.type && file.type.startsWith("image/")) {
                               await sendImageFile(file);
                             } else {
                               await sendFileAttachment(file);
@@ -2185,7 +2243,7 @@ export class Conversation
                               if (block.type === "text") {
                                 const msgContent = buildTextContent(
                                   block.text,
-                                  block.mention
+                                  block.mention,
                                 );
                                 // 第一个文本块携带 reply 信息
                                 if (reply && isFirstTextBlock) {
@@ -2200,7 +2258,10 @@ export class Conversation
                                 await sendFileAttachment(block.file);
                               }
                             } catch (err) {
-                              console.error('[Conversation] editorBlock send failed:', err);
+                              console.error(
+                                "[Conversation] editorBlock send failed:",
+                                err,
+                              );
                               Toast.error("消息发送失败");
                             }
                           }
@@ -2224,7 +2285,6 @@ export class Conversation
                             await this.sendTextAndWaitAck(emptyContent);
                           }
                         }
-
                       }}
                     ></MessageInput>
                   </div>
@@ -2267,14 +2327,14 @@ export class Conversation
                       }
                       const channel = new Channel(
                         this.vm.selectUID,
-                        ChannelTypePerson
+                        ChannelTypePerson,
                       );
                       const channelInfo =
                         WKSDK.shared().channelManager.getChannelInfo(channel);
 
                       this.messageInputContext()?.addMention(
                         this.vm.selectUID,
-                        channelInfo?.title || ""
+                        channelInfo?.title || "",
                       );
                     },
                   },
@@ -2289,7 +2349,7 @@ export class Conversation
                       if (this.vm.channel.channelType === ChannelTypeGroup) {
                         fromChannel = this.vm.channel;
                         const subscriber = this.vm.subscriberWithUID(
-                          this.vm.selectUID
+                          this.vm.selectUID,
                         );
                         if (subscriber?.orgData?.vercode) {
                           vercode = subscriber?.orgData?.vercode;
@@ -2298,7 +2358,7 @@ export class Conversation
                       WKApp.shared.baseContext.showUserInfo(
                         this.vm.selectUID,
                         fromChannel,
-                        vercode
+                        vercode,
                       );
                     },
                   },
@@ -2391,7 +2451,7 @@ class ConversationPositionView extends Component<
                   <div
                     className={classNames(
                       "wk-conversationpositionview-item",
-                      "wk-reveale"
+                      "wk-reveale",
                     )}
                     onClick={async () => {
                       if (onReminder) {
@@ -2431,7 +2491,7 @@ class ConversationPositionView extends Component<
             <div
               className={classNames(
                 "wk-conversationpositionview-item",
-                showScrollToBottom ? "wk-reveale" : undefined
+                showScrollToBottom ? "wk-reveale" : undefined,
               )}
               onClick={async () => {
                 if (onScrollToBottom) {
@@ -2474,7 +2534,7 @@ class ReplyView extends Component<ReplyViewProps> {
   render(): React.ReactNode {
     const { message, onClose, vm } = this.props;
     const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
-      new Channel(message.fromUID, ChannelTypePerson)
+      new Channel(message.fromUID, ChannelTypePerson),
     );
     const isEdit = vm.currentHandlerType === 2;
     const label = isEdit ? "编辑" : "回复";
@@ -2528,7 +2588,14 @@ class MultiplePanel extends Component<MultiplePanelProps> {
   private matterBtnRef = React.createRef<HTMLButtonElement>();
 
   render(): React.ReactNode {
-    const { onClose, onForward, onMergeForward, onDelete, onAddToMatter, onCreateMatter } = this.props;
+    const {
+      onClose,
+      onForward,
+      onMergeForward,
+      onDelete,
+      onAddToMatter,
+      onCreateMatter,
+    } = this.props;
     return (
       <div className="wk-multiplepanel">
         <button className="wk-multiplepanel-btn" onClick={onForward}>

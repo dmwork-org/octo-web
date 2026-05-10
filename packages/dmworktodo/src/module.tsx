@@ -544,6 +544,7 @@ function GlobalMatterLinkMenu() {
               });
               Toast.success("已同步进展");
               setAnchor(null);
+              WKApp.mittBus.emit("wk:exit-multiple-mode");
             } catch (e) {
               Toast.error("同步进展失败");
             } finally {
@@ -559,6 +560,7 @@ function GlobalMatterLinkMenu() {
         onConfirm={async (req) => {
           await createMatter(req);
           Toast.success("事项已创建");
+          WKApp.mittBus.emit("wk:exit-multiple-mode");
         }}
         channel={channelId ? { channelId, channelType } : undefined}
       />
