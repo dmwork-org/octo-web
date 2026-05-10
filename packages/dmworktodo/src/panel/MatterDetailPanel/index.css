@@ -76,6 +76,33 @@
   color: var(--wk-text-primary, #18181b);
 }
 
+.wk-mp-header__ddl--editable {
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.wk-mp-header__ddl--editable:hover {
+  background: var(--wk-fill-hover, rgba(0, 0, 0, 0.06));
+}
+
+.wk-mp-header__ddl-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.wk-mp-header__date-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .wk-mp-header__action {
   margin-left: auto;
   display: inline-flex;
@@ -122,6 +149,35 @@
   line-height: 1.25;
   letter-spacing: -0.02em;
   margin: 0;
+}
+
+.wk-mp-header__title--clickable {
+  cursor: text;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background 0.15s;
+}
+
+.wk-mp-header__title--clickable:hover {
+  background: var(--wk-fill-hover, rgba(0, 0, 0, 0.04));
+}
+
+input.wk-mp-header__title--editing {
+  display: block;
+  width: 100%;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--wk-text-primary, #18181b);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--wk-primary, #6366f1);
+  border-radius: 4px;
+  outline: none;
+  background: var(--wk-bg-primary, #fff);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
 }
 
 /* ─── Status Pill ────────────────────────────────────── */
@@ -232,6 +288,42 @@
   font-weight: 500;
   color: var(--wk-text-primary, #18181b);
   line-height: 1.5;
+}
+
+.wk-mp-goal__text--clickable {
+  cursor: text;
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  transition: background 0.15s;
+  white-space: pre-wrap;
+}
+
+.wk-mp-goal__text--clickable:hover {
+  background: var(--wk-fill-hover, rgba(0, 0, 0, 0.04));
+}
+
+.wk-mp-goal__placeholder {
+  color: var(--wk-text-tertiary, #a1a1aa);
+  font-weight: 400;
+}
+
+textarea.wk-mp-goal__text--editing {
+  display: block;
+  width: 100%;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--wk-text-primary, #18181b);
+  line-height: 1.5;
+  padding: 4px 6px;
+  border: 1px solid var(--wk-primary, #6366f1);
+  border-radius: 4px;
+  outline: none;
+  background: var(--wk-bg-primary, #fff);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
 }
 
 .wk-mp-goal__source {

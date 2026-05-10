@@ -1,4 +1,5 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from "react";
+import { DatePicker } from "@douyinfe/semi-ui";
 import type {
   MatterDetail,
   MatterStatus,
@@ -8,6 +9,7 @@ import type {
 } from "../../bridge/types";
 import {
   getMatter,
+  updateMatter,
   transitionMatter,
   deleteMatter,
   linkChannel,
@@ -294,27 +296,15 @@ export default function MatterDetailPanel({
               onChange={handleStatusChange}
               isCreator={matter.creator_id === WKApp.loginInfo.uid}
             />
-            {matter.deadline && (
-              <span className="wk-mp-header__ddl">
-                <svg
-                  width="11"
-                  height="11"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                <span className="wk-mp-header__ddl-label">截止</span>
-                <span className="wk-mp-header__ddl-value">
-                  {formatDeadline(matter.deadline)}
-                </span>
-              </span>
-            )}
+            <EditableDeadline
+              value={matter.deadline || null}
+              onSave={async (newVal) => {
+                const updated = await updateMatter(matter.id, {
+                  deadline: newVal || "",
+                });
+                setMatter(updated);
+              }}
+            />
             <button
               type="button"
               className="wk-mp-header__action"
@@ -350,35 +340,47 @@ export default function MatterDetailPanel({
               </svg>
             </button>
           </div>
-          <h1 className="wk-mp-header__title">{matter.title}</h1>
+          <EditableTitle
+            value={matter.title}
+            onSave={async (newTitle) => {
+              const updated = await updateMatter(matter.id, { title: newTitle });
+              setMatter(updated);
+            }}
+          />
         </header>
 
         {/* ── 主要目标 ── */}
-        {matter.description && (
-          <div className="wk-mp-goal">
-            <div className="wk-mp-goal__label">主要目标</div>
-            <div className="wk-mp-goal__text">{matter.description}</div>
-            {matter.source_channel_id && (
-              <div className="wk-mp-goal__source">
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <span>来自 #{displaySourceName}</span>
-                <span className="wk-mp-goal__source-sep">·</span>
-                <UserName uid={matter.creator_id} />
-                <span className="wk-mp-goal__source-sep">·</span>
-                <span>{formatSourceTime(matter.created_at)}</span>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="wk-mp-goal">
+          <div className="wk-mp-goal__label">主要目标</div>
+          <EditableDescription
+            value={matter.description || ""}
+            onSave={async (newDesc) => {
+              const updated = await updateMatter(matter.id, {
+                description: newDesc || null,
+              });
+              setMatter(updated);
+            }}
+          />
+          {matter.source_channel_id && (
+            <div className="wk-mp-goal__source">
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>来自 #{displaySourceName}</span>
+              <span className="wk-mp-goal__source-sep">·</span>
+              <UserName uid={matter.creator_id} />
+              <span className="wk-mp-goal__source-sep">·</span>
+              <span>{formatSourceTime(matter.created_at)}</span>
+            </div>
+          )}
+        </div>
 
         {/* ── 创建人 / 负责人 ── */}
         <div className="wk-mp-people">
@@ -973,5 +975,253 @@ function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
         发送
       </button>
     </div>
+  );
+}
+
+// ─── EditableTitle (点击编辑标题) ─────────────────────────
+
+function EditableTitle({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (v: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const commit = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === value) {
+      setDraft(value);
+      setEditing(false);
+      return;
+    }
+    try {
+      await onSave(trimmed);
+    } catch {
+      Toast.error("标题修改失败");
+      setDraft(value);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="wk-mp-header__title wk-mp-header__title--editing"
+        value={draft}
+        maxLength={500}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <h1
+      className="wk-mp-header__title wk-mp-header__title--clickable"
+      onClick={() => setEditing(true)}
+      title="点击编辑标题"
+    >
+      {value}
+    </h1>
+  );
+}
+
+// ─── EditableDescription (点击编辑描述) ───────────────────
+
+function EditableDescription({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (v: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (editing && textareaRef.current) {
+      textareaRef.current.focus();
+      // 自动调整高度
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
+    }
+  }, [editing]);
+
+  const commit = async () => {
+    const trimmed = draft.trim();
+    if (trimmed === (value || "").trim()) {
+      setDraft(value);
+      setEditing(false);
+      return;
+    }
+    try {
+      await onSave(trimmed);
+    } catch {
+      Toast.error("描述修改失败");
+      setDraft(value);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <textarea
+        ref={textareaRef}
+        className="wk-mp-goal__text wk-mp-goal__text--editing"
+        value={draft}
+        maxLength={10000}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          // 动态调整高度
+          e.target.style.height = "auto";
+          e.target.style.height = e.target.scrollHeight + "px";
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="wk-mp-goal__text wk-mp-goal__text--clickable"
+      onClick={() => setEditing(true)}
+      title="点击编辑描述"
+    >
+      {value || <span className="wk-mp-goal__placeholder">点击添加描述...</span>}
+    </div>
+  );
+}
+
+// ─── EditableDeadline (截止日期，使用 Semi DatePicker) ───────────
+
+function getLocalTZOffset(): string {
+  const off = new Date().getTimezoneOffset();
+  const sign = off <= 0 ? "+" : "-";
+  const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const m = String(Math.abs(off) % 60).padStart(2, "0");
+  return `${sign}${h}:${m}`;
+}
+
+function fromLocalDateString(s: string): Date {
+  const [yyyy, mm, dd] = s.split("-").map(Number);
+  return new Date(yyyy, mm - 1, dd);
+}
+
+function EditableDeadline({
+  value,
+  onSave,
+}: {
+  value: string | null;
+  onSave: (v: string) => Promise<void>;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [localDate, setLocalDate] = useState<string>(() => {
+    if (!value) return "";
+    const d = new Date(value);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  });
+
+  // 外部 value 变化时同步
+  useEffect(() => {
+    if (!value) { setLocalDate(""); return; }
+    const d = new Date(value);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    setLocalDate(`${yyyy}-${mm}-${dd}`);
+  }, [value]);
+
+  const formatDisplay = (iso: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  const handleChange = async (date: Date | Date[] | string | string[] | undefined) => {
+    if (!date) {
+      setLocalDate("");
+      try { await onSave(""); } catch { Toast.error("截止日期修改失败"); }
+      return;
+    }
+    const d = date instanceof Date ? date : new Date(String(date));
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    setLocalDate(dateStr);
+    try {
+      await onSave(`${dateStr}T23:59:59${getLocalTZOffset()}`);
+    } catch {
+      Toast.error("截止日期修改失败");
+    }
+  };
+
+  const display = formatDisplay(value);
+
+  return (
+    <span className="wk-mp-header__ddl wk-mp-header__ddl--editable" ref={ref}>
+      <DatePicker
+        value={localDate ? fromLocalDateString(localDate) : undefined}
+        onChange={handleChange as any}
+        disabledDate={(date) => !!date && date < new Date(new Date().setHours(0, 0, 0, 0))}
+        density="compact"
+        position="bottomLeft"
+        triggerRender={() => (
+          <span className="wk-mp-header__ddl-trigger">
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span className="wk-mp-header__ddl-label">截止</span>
+            <span className="wk-mp-header__ddl-value">
+              {display || "未设置"}
+            </span>
+          </span>
+        )}
+      />
+    </span>
   );
 }
