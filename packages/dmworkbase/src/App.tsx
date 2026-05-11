@@ -233,9 +233,25 @@ export class LoginInfo {
 
   /**
    * OCTO 实名认证状态缓存（YUJ-359 / GH #1121）。
-   * 数据源：profile API `/v1/user/me` 或 `/v1/users/:uid`。
-   * 作为跨页面展示「✓ 已实名」和「去认证」CTA 的快速判定，
-   * 完整数据仍以最新 channelInfo.orgData 为准（MeInfo 会主动 fetch 刷新）。
+   *
+   * YUJ-412：数据源从「MeInfo 页主动 fetch self channelInfo」升级为
+   * 「登录 API response 直接下发」（对应 YUJ-413 后端改动）。`loginSuccess()`
+   * 会把 `/v1/user/login`、`/v1/user/current` 响应的 `realname_verified` /
+   * `real_name` / `realname_verified_at` 映射到这三个字段，MeInfo 仍然保留
+   * 作为刷新入口。
+   *
+   * **Tri-state 语义（血泪教训，见 YUJ-404 Coda 复盘）**：
+   *   - `true`   → 已实名
+   *   - `false`  → 明确未实名（后端返回 false）
+   *   - `undefined` → **尚未知道**（老后端未下发字段 / 字段缺失 / 加载中）
+   *
+   * `undefined` 和 `false` **必须区分**：
+   *   - `=== true` 严格判断才能展示徽章 / 覆盖 displayName，防止在「未知」
+   *     状态下错误地把人显示成未实名或把 real_name 覆盖成 undefined。
+   *   - `save()` 在 `undefined` 时**不得**落盘成 `"0"`（= false），否则
+   *     load() 回来就变成了 "明确未实名"，fresh-login 之后的刷新链路里
+   *     无法区分 "字段缺失" 和 "明确 false"。YUJ-404 R9 的 listener 兜底
+   *     就是因为 save() 把 undefined 序列化成 "0" 才永远触发不了。
    */
   realnameVerified?: boolean;
   realName?: string;
@@ -254,9 +270,26 @@ export class LoginInfo {
     this.setStorageItemForSID("is_work", this.isWork ? "1" : "0");
     this.setStorageItemForSID("sex", this.sex === 1 ? "1" : "0");
     this.setStorageItemForSID("login_provider", this.loginProvider ?? "");
-    // YUJ-359: 实名认证状态 — 仅持久化 bool + string，避免把大对象写入 storage。
-    this.setStorageItemForSID("realname_verified", this.realnameVerified ? "1" : "0");
-    this.setStorageItemForSID("real_name", this.realName ?? "");
+    // YUJ-412: 实名认证状态 — 严格 tri-state 持久化。
+    //   undefined → 删除 key（区别于「明确未实名」）
+    //   true      → "1"
+    //   false     → "0"
+    // 禁止把 undefined 塌陷成 "0"（YUJ-404 R9 的死循环根因）。
+    if (this.realnameVerified === undefined) {
+      this.removeStorageItemForSID("realname_verified");
+    } else {
+      this.setStorageItemForSID("realname_verified", this.realnameVerified ? "1" : "0");
+    }
+    if (this.realName === undefined || this.realName === "") {
+      this.removeStorageItemForSID("real_name");
+    } else {
+      this.setStorageItemForSID("real_name", this.realName);
+    }
+    if (this.realnameVerifiedAt === undefined) {
+      this.removeStorageItemForSID("realname_verified_at");
+    } else {
+      this.setStorageItemForSID("realname_verified_at", String(this.realnameVerifiedAt));
+    }
   }
 
   // 获取查询参数
@@ -328,10 +361,30 @@ export class LoginInfo {
     }
     const provider = this.getStorageItemForSID("login_provider");
     this.loginProvider = provider ? provider : undefined;
-    // YUJ-359: 恢复实名认证状态缓存。字段缺失时降级到「未认证」。
-    this.realnameVerified = this.getStorageItemForSID("realname_verified") === "1";
+    // YUJ-412: 恢复实名认证状态缓存 — 严格 tri-state。
+    //   key 缺失（getStorageItemForSID 返回 null） → undefined（未知，保持空白）
+    //   "1" → true
+    //   "0" → false（明确未实名）
+    // 不要用 `=== "1"` 把 null 塌陷成 false —— 那样和 save() 塌陷 undefined
+    // 一样会丢失「未知」语义，后续 loginSuccess() 即使下发正确值也会被
+    // load 出来的假值淹没（YUJ-404 R9 死循环根因）。
+    const rvStr = this.getStorageItemForSID("realname_verified");
+    if (rvStr === "1") {
+      this.realnameVerified = true;
+    } else if (rvStr === "0") {
+      this.realnameVerified = false;
+    } else {
+      this.realnameVerified = undefined;
+    }
     const storedRealName = this.getStorageItemForSID("real_name");
     this.realName = storedRealName ? storedRealName : undefined;
+    const verifiedAtStr = this.getStorageItemForSID("realname_verified_at");
+    if (verifiedAtStr) {
+      const n = Number(verifiedAtStr);
+      this.realnameVerifiedAt = Number.isFinite(n) && n > 0 ? n : undefined;
+    } else {
+      this.realnameVerifiedAt = undefined;
+    }
   }
   // 是否登录
   isLogined() {
@@ -355,12 +408,42 @@ export class LoginInfo {
     this.removeStorageItemForSID("name");
     this.removeStorageItemForSID("sex");
     this.removeStorageItemForSID("login_provider");
-    // YUJ-359: 清除实名认证缓存
+    // YUJ-359 / YUJ-412: 清除实名认证缓存
     this.realnameVerified = undefined;
     this.realName = undefined;
     this.realnameVerifiedAt = undefined;
     this.removeStorageItemForSID("realname_verified");
     this.removeStorageItemForSID("real_name");
+    this.removeStorageItemForSID("realname_verified_at");
+  }
+
+  /**
+   * YUJ-412: 自己 displayName 的统一出口。
+   *
+   * 展示规则：已实名 (`realnameVerified === true`) + `realName` 非空
+   *   → 返回 `realName`；否则返回 `name`（或空串）。
+   *
+   * 适用位置：自己气泡名字 / 头像卡 / MeInfo / 任何
+   * `message.fromUID === WKApp.loginInfo.uid` 的 sender name 渲染。
+   *
+   * 与 `Utils/displayName.displayName()` 的差异：
+   *   - 后者接收 `DisplayNameUser`（他人 / 群成员 orgData）；
+   *   - self 的权威字段 在 `WKApp.loginInfo` 上（后端登录 payload 直发，
+   *     不走 channelInfo 路径），因此需要独立 helper。
+   *
+   * `=== true` 严格判断：realnameVerified 是 tri-state，undefined（数据未到）
+   * 不能降级成「未实名」把 realName 漏掉；反过来 false（明确未实名）也不
+   * 应走 realName 分支。
+   */
+  public selfDisplayName(): string {
+    if (
+      this.realnameVerified === true &&
+      typeof this.realName === "string" &&
+      this.realName.length > 0
+    ) {
+      return this.realName;
+    }
+    return this.name || "";
   }
 }
 

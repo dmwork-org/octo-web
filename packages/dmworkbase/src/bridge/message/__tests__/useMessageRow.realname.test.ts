@@ -24,6 +24,9 @@ const mockState = vi.hoisted(() => ({
     // YUJ-404: self-viewer fallback 需要访问 WKApp.loginInfo.{uid,realnameVerified}
     loginInfoUid: "",
     loginInfoRealnameVerified: undefined as boolean | undefined,
+    // YUJ-412: self displayName 走 loginInfo.selfDisplayName() / .realName / .name
+    loginInfoName: "",
+    loginInfoRealName: undefined as string | undefined,
 }))
 
 vi.mock("../../../App", () => ({
@@ -40,6 +43,23 @@ vi.mock("../../../App", () => ({
             },
             get realnameVerified() {
                 return mockState.loginInfoRealnameVerified
+            },
+            get name() {
+                return mockState.loginInfoName
+            },
+            get realName() {
+                return mockState.loginInfoRealName
+            },
+            // YUJ-412: mirror LoginInfo.selfDisplayName() runtime shape.
+            selfDisplayName() {
+                if (
+                    mockState.loginInfoRealnameVerified === true &&
+                    typeof mockState.loginInfoRealName === "string" &&
+                    mockState.loginInfoRealName.length > 0
+                ) {
+                    return mockState.loginInfoRealName
+                }
+                return mockState.loginInfoName || ""
             },
         },
     },
@@ -125,6 +145,9 @@ describe("getMessageRow — realname badge branch logic (YUJ-387 P1-1 / YUJ-379)
         mockState.currentSpaceId = ""
         mockState.loginInfoUid = ""
         mockState.loginInfoRealnameVerified = undefined
+        // YUJ-412: reset self displayName mock state between tests.
+        mockState.loginInfoName = ""
+        mockState.loginInfoRealName = undefined
     })
 
     it("branch 1: 群成员 orgData.realname_verified=true → isRealnameVerified=true (primary path)", () => {

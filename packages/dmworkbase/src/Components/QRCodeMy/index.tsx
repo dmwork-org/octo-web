@@ -53,7 +53,8 @@ export default class QRCodeMy extends Component<QRCodeMyProps, QRCodeMyState> {
                                 <img src={WKApp.shared.avatarUser(WKApp.loginInfo.uid || "")}></img>
                             </div>
                             <div className="wk-qrcodemy-content-userinfo-name">
-                                {WKApp.loginInfo.name}
+                                {/* YUJ-412: 自己的头像卡名字 —— 已实名优先展示 real_name */}
+                                {WKApp.loginInfo.selfDisplayName()}
                             </div>
                         </div>
                         <div className="wk-qrcodemy-content-qrcode">

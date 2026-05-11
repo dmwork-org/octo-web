@@ -294,17 +294,18 @@ export class MeInfoVM extends ProviderListener {
     }
 
     /**
-     * YUJ-359：「名字」行的 subTitle — 已认证时展示 「昵称 ✓ 已实名」，
+     * YUJ-359：「名字」行的 subTitle — 已认证时展示 「real_name ✓ 已实名」，
      * 未认证时退化为普通昵称字符串。
+     * YUJ-412：已实名时的 displayName 走 `loginInfo.selfDisplayName()`，和
+     * 气泡 / QRCode / 好友申请文案同一处结算，规则改动全局一致。
      */
     private nameRowSubTitle(): React.ReactNode {
-        const name = WKApp.loginInfo.name || ""
-        if (!WKApp.loginInfo.realnameVerified) {
-            return name
+        if (WKApp.loginInfo.realnameVerified !== true) {
+            return WKApp.loginInfo.name || ""
         }
         return (
             <span style={{ display: "inline-flex", alignItems: "center" }}>
-                {WKApp.loginInfo.realName || name}
+                {WKApp.loginInfo.selfDisplayName()}
                 <RealnameVerifiedBadge />
             </span>
         )

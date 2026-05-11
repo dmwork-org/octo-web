@@ -343,11 +343,27 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     }
     // channelInfo 未命中时不要把 fromUID（32 位 hex）当兜底名字显示给用户，
     // 留空等待 fetchChannelInfo 回包后由 channelInfoListener 触发重渲染。
-    const displayName =
-      groupMemberName ||
-      channelInfo?.orgData?.displayName ||
-      channelInfo?.title ||
-      "";
+    //
+    // YUJ-412 (legacy dir 例外，同 YUJ-404 Round 4 的豁免理由：本文件在
+    // `AGENTS.config.json:legacy_dirs` 但仍在生产渲染 Voice / Gif / Location /
+    // File / Video 等类型的气泡，需要和 bridge 路径保持同一视觉)：
+    //   自己发送的消息，groupMember 通常不含 self、channelInfo.orgData 也
+    //   不带 real_name（self Person channelInfo 不下发这个字段），导致 self
+    //   气泡永远显示 username 而非 "余嘉伟"。接入 YUJ-413 登录 payload 后，
+    //   权威 real_name 在 `WKApp.loginInfo` 上，self 分支走 selfDisplayName()
+    //   即可拿到。规则改动请同步 bridge/message/useMessageRow.ts。
+    const isOwnMessageName =
+      message.fromUID && message.fromUID === WKApp.loginInfo.uid;
+    const displayName = isOwnMessageName
+      ? WKApp.loginInfo.selfDisplayName() ||
+        groupMemberName ||
+        channelInfo?.orgData?.displayName ||
+        channelInfo?.title ||
+        ""
+      : groupMemberName ||
+        channelInfo?.orgData?.displayName ||
+        channelInfo?.title ||
+        "";
     if (!channelInfo && message.fromUID && message.fromUID !== "") {
       WKSDK.shared().channelManager.fetchChannelInfo(
         new Channel(message.fromUID, ChannelTypePerson)

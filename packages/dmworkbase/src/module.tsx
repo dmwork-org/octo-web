@@ -467,32 +467,23 @@ export default class BaseModule implements IModule {
           WKApp.loginInfo.name = channelInfo.title;
           WKApp.loginInfo.shortNo = channelInfo.orgData.short_no;
           WKApp.loginInfo.sex = channelInfo.orgData.sex;
-          // YUJ-404 Round 7 (Jerry R6 Critical)：把 self Person channelInfo 的
-          // realname_verified 归一化同步回 loginInfo。登录 API 响应 不 包含
-          // realname_verified、loginSuccess 也没赋值，导致 loginInfo.save() 把
-          // 未定义字段落盘成 "0"，YUJ-404 的 self-fallback
-          // (loginInfo.realnameVerified === true) 永远不过关。self channelInfo
-          // 到达是 app 内唯一一个能读到权威实名状态的时机，必须回写。
-          const rv = channelInfo.orgData?.realname_verified;
-          WKApp.loginInfo.realnameVerified =
-            rv === true || rv === 1 || rv === "1" || rv === "true";
+          // YUJ-412: 此前（YUJ-404 R9）在这里把 self Person channelInfo 的
+          // realname_verified 回写到 loginInfo，并配合下方 addOnLogin 主动
+          // fetch self channel 触发 listener。im-test 实测发现 **self 不在
+          // friend/sync & conversation/sync 的 payload 里**，fetchChannelInfo
+          // 单独请求也不会补 realname_verified 字段到 self channelInfo，这
+          // 条 listener 实际上永不命中。实名状态现由 YUJ-413 后端在登录
+          // payload 直发 + loginSuccess() 映射，listener 死代码已移除，
+          // 避免「字段声明存在 ≠ 有人赋值」的认知陷阱再次复发。
           WKApp.loginInfo.save();
         }
       }
     });
 
-    // YUJ-404 Round 7 (Jerry R6 Critical)：登录成功后主动 fetch self Person
-    // channelInfo。WKSDK 不会自动拉 self 的 channelInfo，而上面的 listener
-    // 需要这条 channelInfo 到达才能把 realname_verified 回写到 loginInfo。
-    // 不主动 fetch 的话， self bubble 首屏会永远读不到实名状态。
-    WKApp.endpoints.addOnLogin(() => {
-      const uid = WKApp.loginInfo.uid;
-      if (!uid) return;
-      const selfChannel = new Channel(uid, ChannelTypePerson);
-      if (!WKSDK.shared().channelManager.getChannelInfo(selfChannel)) {
-        WKSDK.shared().channelManager.fetchChannelInfo(selfChannel);
-      }
-    });
+    // YUJ-412: 移除 YUJ-404 R9 引入的 `addOnLogin` self channelInfo fetch。
+    // 该 fetch 的唯一用途是触发上面 listener 把 realname_verified 回写到
+    // loginInfo，但 self channelInfo 实际不下发 realname_verified（见上方
+    // 注释），fetch 纯粹是死代码 + 每次登录多一次无用的网络请求。
 
     // 全局订阅 taskManager：上传失败时把 sendQueue 里对应消息标为 Fail 并触发 UI 刷新
     // 放在 module.init() 里保证只注册一次，避免多 ConversationVM 实例重复处理

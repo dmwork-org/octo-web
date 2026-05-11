@@ -199,7 +199,15 @@ export function getMessageRow(
     showCheckbox: selection?.showCheckbox ?? false,
     showAvatar: !isContinue,
     avatarUrl: WKApp.shared.avatarUser(message.fromUID),
-    senderName: groupMemberName || getSenderName(channelInfo, message.fromUID),
+    // YUJ-412: self 气泡名字走 loginInfo.selfDisplayName() —— 已实名时
+    // 返回 real_name，否则返回 name。self 不在 friend/sync 的 payload 里，
+    // groupMember 和 Person channelInfo 都拿不到 real_name，只有登录
+    // payload 下发的 loginInfo 是可靠源。规则改动同步 Messages/Base/index.tsx。
+    senderName: isOwnMessage
+      ? WKApp.loginInfo.selfDisplayName() ||
+        groupMemberName ||
+        getSenderName(channelInfo, message.fromUID)
+      : groupMemberName || getSenderName(channelInfo, message.fromUID),
     isBot: channelInfo?.orgData?.robot === 1,
     timestamp,
     timeOnly,

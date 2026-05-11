@@ -106,11 +106,14 @@ export default class UserInfo extends Component<UserInfoProps> {
                 return undefined
             }
             content = <Button onClick={() => {
+                // YUJ-412: 好友申请默认文案里的自我介绍走 selfDisplayName()，
+                // 已实名用户用 "我是..." + real_name，对端更容易识别。
+                const myDisplayName = WKApp.loginInfo.selfDisplayName()
                 let msg = "我是"
                 if (vm.fromChannelInfo) {
-                    msg += `群聊"${vm.fromChannelInfo.title}"的${WKApp.loginInfo.name}`
+                    msg += `群聊"${vm.fromChannelInfo.title}"的${myDisplayName}`
                 } else {
-                    msg += `${WKApp.loginInfo.name}`
+                    msg += `${myDisplayName}`
                 }
                 var finishButtonContext: FinishButtonContext
                 context.push(<FriendApplyUI placeholder={msg} onMessage={(m) => {
