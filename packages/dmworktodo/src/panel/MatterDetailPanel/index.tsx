@@ -402,7 +402,7 @@ export default function MatterDetailPanel({
   // 拉取当前用户加入的所有群, 用于判断 Matter 关联群聊里哪些是我没加入的:
   //   - 没加入的群: 群名模糊展示, 时间线条目不展示 "↗ 原消息" (权限不允许)
   //   - 拉取失败时 failed=true, 保守处理成 "全部未加入" (宁可多遮)
-  const { groupNos: myGroupNos, failed: myGroupsFailed } = useMyGroups();
+  const { groupNos: myGroupNos, loading: myGroupsLoading, failed: myGroupsFailed } = useMyGroups();
 
   // ── UI/数据分离: 为 ui/ 组件提供 renderAvatar / renderUserName ──
   const renderAvatar = useCallback(
@@ -556,6 +556,7 @@ export default function MatterDetailPanel({
   // 来源群成员判断: 跟关联群卡片同逻辑, 用 toParentGroupNo + myGroupNos 判断
   const isSourceMember = (() => {
     if (!matter.source_channel_id) return true; // 无来源群, 不限制
+    if (myGroupsLoading) return true; // loading 期间不模糊, 避免闪烁
     if (myGroupsFailed) return false; // 拉取失败保守处理
     const parentNo = toParentGroupNo(
       matter.source_channel_id,
@@ -695,7 +696,7 @@ export default function MatterDetailPanel({
               {isSourceMember ? (
                 <span>来自 #{displaySourceName}</span>
               ) : (
-                <span style={{ filter: "blur(4px)", userSelect: "none" }}>来自 #████</span>
+                <span style={{ filter: "blur(2.5px)", opacity: 0.35, userSelect: "none" }}>来自 #████</span>
               )}
               {isSourceMember && matter.source_msgs && matter.source_msgs.length > 0 && (
                 <span className="wk-mp-goal__source-anchor">↗</span>
@@ -797,7 +798,7 @@ export default function MatterDetailPanel({
                   ch.channel_type,
                 );
                 const isMember =
-                  !myGroupsFailed && myGroupNos.has(parentGroupNo);
+                  myGroupsLoading || (!myGroupsFailed && myGroupNos.has(parentGroupNo));
                 return (
                 <div key={ch.id} className="wk-mp-channels__card">
                   <div className="wk-mp-channels__card-head">

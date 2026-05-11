@@ -522,12 +522,12 @@ textarea.wk-mp-goal__text--editing {
   color: var(--wk-text-primary, #18181b);
 }
 
-/* 未加入群时的群名占位: 4 个 U+2588 块字符 + CSS blur, 双保险
-   防止内容可读 + 名字长度泄漏。配合右侧 "不在群" 徽章一起展示, 
-   让用户明确 "我没权限" 又不会对 "是哪个群" 产生误判 */
+/* 未加入群时的群名占位: 模糊 + 半透明, 让用户明确 "我没权限"
+   又不会对 "是哪个群" 产生误判 */
 .wk-mp-channels__card-name--blur {
   display: inline-block;
-  filter: blur(3px);
+  filter: blur(2.5px);
+  opacity: 0.35;
   user-select: none;
   cursor: help;
   letter-spacing: 0.05em;
