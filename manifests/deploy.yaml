@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: octo-web-{{BRANCH}}
+  name: dmwork-web-{{BRANCH}}
   labels:
-    app: octo-web
+    app: dmwork-web
     branch: "{{BRANCH}}"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: octo-web
+      app: dmwork-web
       branch: "{{BRANCH}}"
   template:
     metadata:
       labels:
-        app: octo-web
+        app: dmwork-web
         branch: "{{BRANCH}}"
     spec:
       containers:
-        - name: octo-web
+        - name: dmwork-web
           image: "{{REPO_URL}}:{{IMAGE_TAG}}"
           ports:
             - name: http
@@ -56,9 +56,9 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: octo-web-{{BRANCH}}
+  name: dmwork-web-{{BRANCH}}
   labels:
-    app: octo-web
+    app: dmwork-web
     branch: "{{BRANCH}}"
 spec:
   type: ClusterIP
@@ -67,5 +67,5 @@ spec:
       port: 80
       targetPort: 80
   selector:
-    app: octo-web
+    app: dmwork-web
     branch: "{{BRANCH}}"
