@@ -572,7 +572,7 @@ export class ChatContentPage extends Component<
                           </div>
                         );
                       })}
-                    {/* 子区按钮 - 直接打开子区列表 */}
+                    {/* 子区按钮 - 切换子区列表 */}
                     {!isThreadChannel &&
                       channel.channelType === ChannelTypeGroup &&
                       WKApp.remoteConfig.threadOn && (
@@ -580,14 +580,14 @@ export class ChatContentPage extends Component<
                           className="wk-chat-conversation-header-right-item"
                           onClick={(e) => {
                             e.stopPropagation();
-                            this.setState({
-                              showThreadPanel: true,
+                            this.setState((prevState) => ({
+                              showThreadPanel: !prevState.showThreadPanel,
                               showMatterPanel: false, // 与事项列表面板互斥
                               showMatterDetailPanel: false, // 与事项详情面板互斥
                               activeThread: null,
                               previewFile: null, // 关闭文件预览（互斥）
                               activePreviewMessageId: null,
-                            });
+                            }));
                           }}
                           title="子区"
                         >
