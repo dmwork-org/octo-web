@@ -7,10 +7,11 @@
  * - CreateCategoryModal 在此层管理，不依赖子组件挂载
  */
 import React, { useState, useMemo } from "react"
-import { Channel, ChannelTypeGroup } from "wukongimjssdk"
+import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
+import FollowService from "../../Service/FollowService"
 import { ConversationWrap } from "../../Service/Model"
 import { ConvFilter } from "../ConversationList"
 import ConversationList from "../ConversationList"
@@ -91,29 +92,115 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         })
     }, [conversations, hideInactiveGroups])
 
-    // 构建「移到分组」子菜单（含 ✓ 标识 + 新建分组入口）
-    // 用于非 group filter 下的 ConversationList
-    const buildMoveToGroupMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
-        if (!conv || conv.channel.channelType !== ChannelTypeGroup) return []
-        if (categories.length === 0) return []
+    // 构建额外的右键菜单项
+    // - 「移到分组」子菜单（仅关注 Tab 的群聊）
+    // - 「添加到关注 / 取消关注」（最近 Tab）
+    const buildExtraMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
+        if (!conv) return []
 
-        const groupNo = conv.channel.channelID
-        const currentCategoryId = categories.find(
-            cat => (cat.groups || []).some(g => g.group_no === groupNo)
-        )?.category_id
+        const menus: ContextMenusData[] = []
+        const channelInfo = conv.channelInfo
+        const isFollowed = channelInfo?.orgData?.is_followed === true
 
-        // 过滤默认分组（is_default），不在「移到分组」子菜单里显示
-        const items: ContextMenusData[] = categories
-            .filter(cat => !cat.is_default && isValidCategoryItem(cat))
-            .map(cat => ({
-                title: cat.name,
-                checked: currentCategoryId === cat.category_id,
-                onClick: () => moveGroupToCategory(groupNo, cat.category_id),
-            }))
-        items.push({ separator: true } as ContextMenusData)
-        items.push({ title: "+ 新建分组", onClick: () => setCreateModalVisible(true) })
+        // 最近 Tab（filter !== 'group'）显示「添加到关注 / 取消关注」
+        if (filter !== 'group') {
+            if (isFollowed) {
+                // 已关注 → 显示「取消关注」
+                menus.push({
+                    title: '取消关注',
+                    onClick: async () => {
+                        const channel = conv.channel
+                        try {
+                            if (channel.channelType === ChannelTypeGroup) {
+                                await FollowService.shared.unfollowChannel(channel.channelID)
+                            } else if (channel.channelType === ChannelTypePerson) {
+                                await FollowService.shared.unfollowDM(channel.channelID)
+                            } else if (channel.channelType === ChannelTypeCommunityTopic) {
+                                await FollowService.shared.unfollowThread(channel.channelID)
+                            }
+                            // 刷新分组列表
+                            reload()
+                        } catch (err) {
+                            console.error('取消关注失败', err)
+                        }
+                    }
+                })
+            } else {
+                // 未关注 → 显示「添加到关注」子菜单选择分组
+                const channel = conv.channel
 
-        return items
+                // 子区不需要选分组，直接关注
+                if (channel.channelType === ChannelTypeCommunityTopic) {
+                    menus.push({
+                        title: '添加到关注',
+                        onClick: async () => {
+                            try {
+                                await FollowService.shared.followThread(channel.channelID)
+                                reload()
+                            } catch (err) {
+                                console.error('关注子区失败', err)
+                            }
+                        }
+                    })
+                } else {
+                    // 群聊和私聊需要选分组
+                    const categoryItems: ContextMenusData[] = categories
+                        .filter(cat => !cat.is_default && isValidCategoryItem(cat))
+                        .map(cat => ({
+                            title: cat.name,
+                            onClick: async () => {
+                                try {
+                                    if (channel.channelType === ChannelTypeGroup) {
+                                        await FollowService.shared.refollowChannel(channel.channelID)
+                                        // 移到指定分组
+                                        await moveGroupToCategory(channel.channelID, cat.category_id)
+                                    } else if (channel.channelType === ChannelTypePerson) {
+                                        await FollowService.shared.followDM(channel.channelID, cat.category_id)
+                                    }
+                                    reload()
+                                } catch (err) {
+                                    console.error('添加到关注失败', err)
+                                }
+                            }
+                        }))
+                    categoryItems.push({ separator: true } as ContextMenusData)
+                    categoryItems.push({
+                        title: '+ 新建分组',
+                        onClick: () => setCreateModalVisible(true)
+                    })
+
+                    menus.push({
+                        title: '添加到关注',
+                        children: categoryItems
+                    })
+                }
+            }
+        }
+
+        // 关注 Tab 的群聊显示「移到分组」（保留原有逻辑）
+        if (filter === 'group' && conv.channel.channelType === ChannelTypeGroup && categories.length > 0) {
+            const groupNo = conv.channel.channelID
+            const currentCategoryId = categories.find(
+                cat => (cat.groups || []).some(g => g.group_no === groupNo)
+            )?.category_id
+
+            const moveItems: ContextMenusData[] = categories
+                .filter(cat => !cat.is_default && isValidCategoryItem(cat))
+                .map(cat => ({
+                    title: cat.name,
+                    checked: currentCategoryId === cat.category_id,
+                    onClick: () => moveGroupToCategory(groupNo, cat.category_id),
+                }))
+            moveItems.push({ separator: true } as ContextMenusData)
+            moveItems.push({ title: '+ 新建分组', onClick: () => setCreateModalVisible(true) })
+
+            menus.push({
+                title: '移到分组',
+                children: moveItems
+            })
+        }
+
+        return menus
     }
 
     return (
@@ -160,7 +247,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     onClick={onConversationClick}
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
-                    extraContextMenus={buildMoveToGroupMenus}
+                    extraContextMenus={buildExtraMenus}
                 />
             )}
 
