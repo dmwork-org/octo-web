@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from "react"
 import { Modal } from "@douyinfe/semi-ui"
 import { flushSync } from "react-dom"
-import WKSDK, { ChannelTypeGroup, Channel } from "wukongimjssdk"
+import WKSDK, { ChannelTypeGroup, ChannelTypePerson, Channel } from "wukongimjssdk"
+import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import { parseThreadChannelId } from "../../Service/Thread"
+import FollowService from "../../Service/FollowService"
 import { ConversationWrap } from "../../Service/Model"
 import ConversationList from "../ConversationList"
 import ConversationListWithCategory from "../ConversationListWithCategory"
@@ -58,6 +60,8 @@ export interface ConversationListGroupedProps {
     onOpenCreateCategory: () => void
     onStartGroup?: () => void
     onCreateGroupInCategory?: (categoryId: string) => void
+    /** 取消关注后的回调（用于刷新列表） */
+    onUnfollow?: () => void
 }
 
 
@@ -79,6 +83,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     onOpenCreateCategory,
     onStartGroup,
     onCreateGroupInCategory,
+    onUnfollow,
 }) => {
     // ── DnD 状态 ──────────────────────────────────────────────────────────────
     const sensors = useSensors(useSensor(PointerSensor, {
@@ -179,59 +184,84 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         }
     }
 
-    // 构建右键菜单：移出分组（有分组时，一级直接点击）+ 移到分组（一级，展开二级子菜单）
+    // 构建右键菜单：取消关注 + 移出分组（有分组时，一级直接点击）+ 移到分组（一级，展开二级子菜单）
     const buildExtraContextMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
-        if (!conv || conv.channel.channelType !== ChannelTypeGroup) return []
-        // 注意：这里刻意使用原始 categories 而非 effectiveCategories，
-        // 虚拟「未分组」分组不参与右键「移到分组/移出分组」逻辑。
-        if (categories.length === 0) return []
-
-        const groupNo = conv.channel.channelID
-        const currentCategoryId = categories.find(
-            cat => (cat.groups || []).some(g => g.group_no === groupNo)
-        )?.category_id
-
-        // 「移到分组」二级子菜单（排除当前分组）
-        const moveToChildren: ContextMenusData[] = categories
-            .filter(c => c.category_id !== currentCategoryId)
-            .map(cat => ({
-                title: cat.name,
-                checked: false,
-                onClick: () => onMoveGroupToCategory(groupNo, cat.category_id),
-            }))
-        moveToChildren.push({ separator: true } as ContextMenusData)
-        moveToChildren.push({ title: '+ 新建分组', onClick: onOpenCreateCategory })
-
-        const moveToItem: ContextMenusData = {
-            title: '移到分组',
-            icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 15l3 3 3-3 M12 12v6",
-            children: moveToChildren,
-        }
-
-        if (currentCategoryId) {
-            const catName = categories.find(c => c.category_id === currentCategoryId)?.name ?? '当前分组'
-            const moveOutItem: ContextMenusData = {
-                title: '移出分组',
-                icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 18l3-3 3 3 M12 21v-6",
-                onClick: () => {
-                    const defaultCategory = categories.find(c => c.is_default)
-                    if (!defaultCategory) {
-                        console.warn('[ConversationListGrouped] 找不到默认分组，无法移出分组')
-                        return
+        if (!conv) return []
+        
+        const menus: ContextMenusData[] = []
+        const channel = conv.channel
+        
+        // 1. 取消关注（所有类型都支持）
+        const unfollowItem: ContextMenusData = {
+            title: '取消关注',
+            icon: "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z M2.172 15.172a4 4 0 0 0 5.656 0L10 13l2.172 2.172a4 4 0 1 0 5.656-5.656L10 1.686 2.172 9.514a4 4 0 0 0 0 5.658Z",
+            onClick: async () => {
+                try {
+                    if (channel.channelType === ChannelTypeGroup) {
+                        await FollowService.shared.unfollowChannel(channel.channelID)
+                    } else if (channel.channelType === ChannelTypePerson) {
+                        await FollowService.shared.unfollowDM(channel.channelID)
+                    } else if (channel.channelType === ChannelTypeCommunityTopic) {
+                        await FollowService.shared.unfollowThread(channel.channelID)
                     }
-                    Modal.confirm({
-                        title: '移出分组',
-                        content: `确定将此群聊从「${catName}」移出到未分组吗？`,
-                        okText: '移出',
-                        cancelText: '取消',
-                        onOk: () => onMoveGroupToCategory(groupNo, defaultCategory.category_id),
-                    })
-                },
+                    onUnfollow?.()
+                } catch (err) {
+                    console.error('取消关注失败', err)
+                }
             }
-            return [moveToItem, moveOutItem]
         }
+        menus.push(unfollowItem)
+        
+        // 2. 移到分组 / 移出分组（仅群聊）
+        if (channel.channelType === ChannelTypeGroup && categories.length > 0) {
+            const groupNo = channel.channelID
+            const currentCategoryId = categories.find(
+                cat => (cat.groups || []).some(g => g.group_no === groupNo)
+            )?.category_id
 
-        return [moveToItem]
+            // 「移到分组」二级子菜单（排除当前分组）
+            const moveToChildren: ContextMenusData[] = categories
+                .filter(c => c.category_id !== currentCategoryId)
+                .map(cat => ({
+                    title: cat.name,
+                    checked: false,
+                    onClick: () => onMoveGroupToCategory(groupNo, cat.category_id),
+                }))
+            moveToChildren.push({ separator: true } as ContextMenusData)
+            moveToChildren.push({ title: '+ 新建分组', onClick: onOpenCreateCategory })
+
+            const moveToItem: ContextMenusData = {
+                title: '移到分组',
+                icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 15l3 3 3-3 M12 12v6",
+                children: moveToChildren,
+            }
+            menus.push(moveToItem)
+
+            if (currentCategoryId) {
+                const catName = categories.find(c => c.category_id === currentCategoryId)?.name ?? '当前分组'
+                const moveOutItem: ContextMenusData = {
+                    title: '移出分组',
+                    icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 18l3-3 3 3 M12 21v-6",
+                    onClick: () => {
+                        const defaultCategory = categories.find(c => c.is_default)
+                        if (!defaultCategory) {
+                            console.warn('[ConversationListGrouped] 找不到默认分组，无法移出分组')
+                            return
+                        }
+                        Modal.confirm({
+                            title: '移出分组',
+                            content: `确定将此群聊从「${catName}」移出到未分组吗？`,
+                            okText: '移出',
+                            cancelText: '取消',
+                            onOk: () => onMoveGroupToCategory(groupNo, defaultCategory.category_id),
+                        })
+                    },
+                }
+                menus.push(moveOutItem)
+            }
+        }
+        
+        return menus
     }
 
     const ConvListWithMenu = (convs: ConversationWrap[]) => (

@@ -238,6 +238,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                             }
                         })
                     }}
+                    onUnfollow={reload}
                 />
             ) : (
                 <ConversationList
