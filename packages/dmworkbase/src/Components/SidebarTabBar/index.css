@@ -1,45 +1,41 @@
-/* SidebarTabBar — 关注/最近 Tab 切换栏（Figma pill 形） */
+/* SidebarTabBar — 关注/最近 Tab 切换栏（设计稿 v3.1） */
 .wk-sidebar-tabbar {
     display: flex;
     justify-content: center;
-    padding: 10px 8px;                 /* Figma: 左右 8px */
+    padding: 0 12px 8px;
     flex-shrink: 0;
 }
 
-/* pill 形容器 — 撑满宽度，左右 8px 间距 */
+/* pill 形容器 */
 .wk-sidebar-tabbar__container {
     display: flex;
     align-items: center;
-    background: var(--wk-bg-tab);
-    border-radius: 100px;
-    padding: 4px;
+    background: var(--wk-bg-tab, rgba(52, 59, 58, 0.05));
+    border-radius: 6px;
+    padding: 3px;
     width: 100%;
-    height: 28px;
     box-sizing: border-box;
     gap: 0;
 }
 
-/* 每个 Tab 按钮固定 104px 宽 */
-
-/* Tab 按钮 — Figma: 104x20 */
+/* Tab 按钮 */
 .wk-sidebar-tabbar__btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: 1;
-    gap: 4px;
-    padding: 2px 8px;
-    height: 20px;
+    gap: 6px;
+    padding: 5px 10px;
     border: none;
     outline: none;
     background: transparent;
-    border-radius: 3px;
-    color: var(--wk-icon-muted);       /* Figma: 未选中 40% 透明 */
-    font-size: 12px;
-    font-weight: 600;
+    border-radius: 4px;
+    color: var(--wk-icon-default, rgba(28, 28, 35, 0.6));
+    font-size: 13px;
+    font-weight: 500;
     font-family: var(--wk-font-sans);
     cursor: pointer;
-    transition: background 150ms, border-radius 150ms, color 150ms;
+    transition: all 120ms;
     position: relative;
     line-height: 1;
     white-space: nowrap;
@@ -49,7 +45,7 @@
 }
 
 .wk-sidebar-tabbar__btn:hover {
-    color: var(--wk-icon-default);
+    color: var(--wk-text-strong, rgba(28, 28, 35, 0.9));
 }
 
 .wk-sidebar-tabbar__btn:focus {
@@ -61,15 +57,15 @@
     outline-offset: 1px;
 }
 
-/* 选中态 — 白色 pill */
+/* 选中态 — 白色背景 + 浅阴影 */
 .wk-sidebar-tabbar__btn--active {
-    background: var(--wk-color-white);
-    border-radius: 100px;
-    color: var(--wk-brand-primary);      /* Figma: 选中态黑色 */
+    background: var(--wk-color-white, #ffffff);
+    color: var(--wk-text-strong, rgba(28, 28, 35, 0.9));
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .wk-sidebar-tabbar__btn--active:hover {
-    color: var(--wk-brand-primary);
+    color: var(--wk-text-strong, rgba(28, 28, 35, 0.9));
 }
 
 /* Tab 文字 */
@@ -77,20 +73,20 @@
     flex-shrink: 0;
 }
 
-/* 未读 Badge — Figma: 纯红底白字，12px 高 */
+/* 未读 Badge — 设计稿: 淡红底红字 */
 .wk-sidebar-tabbar__badge {
-    min-width: 12px;
-    height: 12px;
-    background: var(--wk-color-danger);
-    color: var(--wk-color-white);
-    font-size: 10px;
-    font-weight: 600;
-    font-family: var(--wk-font-sans);
-    border-radius: 100px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    background: var(--wk-badge-danger-bg, rgba(245, 74, 69, 0.15));
+    color: var(--wk-badge-danger-text, #F54A45);
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--wk-font-sans);
+    border-radius: 8px;
     flex-shrink: 0;
     line-height: 1;
 }
