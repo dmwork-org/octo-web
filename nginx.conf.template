@@ -13,12 +13,6 @@ server {
         listen       80;
         server_name  localhost;
 
-        # Propagate env-provided values down into nginx variables so they
-        # can be referenced from inside location blocks. envsubst substitutes
-        # these at container start; leaving an env blank yields an empty
-        # string that the corresponding location block tests for.
-        set $summary_api_url "${SUMMARY_API_URL}";
-
         # Security headers
         # Prevent clickjacking attacks
         add_header X-Frame-Options "SAMEORIGIN" always;
@@ -37,40 +31,18 @@ server {
         # HSTS - uncomment when full HTTPS chain is confirmed
         # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-        # Smart Summary backend — optional.
-        # Set SUMMARY_API_URL (e.g. http://summary-api:8080) at container
-        # start to enable the in-app summariser. Leaving it blank routes
-        # /summary/api/v1/* to a static 503 so missing the smart-summary
-        # service does not fail nginx startup.
-        location /summary/api/v1/ {
-            # nginx's `return` defaults to text/html; this location is an
-            # API proxy so JSON clients expect application/json.
-            default_type application/json;
-            if ($summary_api_url = "") {
-                return 503 '{"status":503,"msg":"smart-summary is not configured"}';
-            }
-            # nginx resolves proxy_pass variables at request time, not at
-            # startup, so an unresolvable hostname no longer hard-fails the
-            # whole container.
-            resolver 127.0.0.11 ipv6=off valid=30s;
-            # When proxy_pass contains a variable, nginx does NOT do the
-            # usual location-prefix→URI swap — the URI after the host
-            # would be sent verbatim. Use a rewrite to produce the final
-            # upstream URI, then proxy_pass *without* a URI so nginx
-            # forwards the rewritten request as-is.
-            rewrite ^/summary/api/v1/(.*)$ /api/v1/$1 break;
-            proxy_pass  $summary_api_url;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            client_max_body_size 100m;
-        }
+        resolver kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off;
+        resolver_timeout 5s;
 
         location /api/ {
             proxy_pass  ${API_URL}/;
             client_max_body_size 1000m;
             client_body_buffer_size 500m;
+        }
+
+        location = /version.json {
+            root   /usr/share/nginx/html;
+            add_header Cache-Control "no-store";
         }
 
         # OIDC SSO endpoints (authcode/authstatus/authorize/callback).

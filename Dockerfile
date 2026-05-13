@@ -1,15 +1,29 @@
-FROM node:22.16.0-bookworm AS builder
+FROM tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/node:v22.13.0-pnpm as builder
 WORKDIR /app
-RUN npm install -g pnpm@10
-COPY . .
-RUN git config --global url."https://github.com/".insteadOf "git+ssh://git@github.com/" && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
-RUN pnpm install --frozen-lockfile && pnpm turbo run build --filter=@octo/web
 
-FROM nginx:alpine
-COPY --from=builder /app/docker-entrypoint.sh /docker-entrypoint2.sh 
+# 安装 pnpm
+RUN npm config set registry https://registry.npmmirror.com && npm install -g pnpm@10 --force
+
+# 复制全量源码并安装依赖
+COPY . .
+RUN git config --global url."https://github.com/".insteadOf "git+ssh://git@github.com/" && \
+    git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+RUN pnpm install --frozen-lockfile --ignore-scripts --registry=https://registry.npmmirror.com
+
+# 构建
+ARG APP_VERSION=unknown
+ENV VITE_APP_VERSION=${APP_VERSION}
+ARG ENABLE_ENTERPRISE_SSO=false
+ENV VITE_ENABLE_ENTERPRISE_SSO=${ENABLE_ENTERPRISE_SSO}
+RUN pnpm build
+
+# 生成 version.json
+RUN echo "{\"version\":\"${APP_VERSION}\"}" > /app/apps/web/build/version.json
+
+FROM tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/nginx:alpine
+COPY --from=builder /app/docker-entrypoint.sh /docker-entrypoint2.sh
 RUN sed -i 's/\r$//' /docker-entrypoint2.sh
 COPY --from=builder /app/nginx.conf.template /
 COPY --from=builder /app/apps/web/build /usr/share/nginx/html
-RUN chmod -R a+r /usr/share/nginx/html
 ENTRYPOINT ["sh", "/docker-entrypoint2.sh"]
 CMD ["nginx","-g","daemon off;"]

@@ -1,0 +1,249 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "test"'
+    - if: '$CI_COMMIT_TAG'
+
+stages:
+  - package
+  - sync
+  - notify
+
+variables:
+  APP_NAME: octo-web
+  REPOSITORY: tbj7-xtiao-tcr1.tencentcloudcr.com
+  CONTAINER_IMAGE: tbj7-xtiao-tcr1.tencentcloudcr.com/dmwork/octo-web
+  FF_USE_FASTZIP: "true"
+  ROBOT_PUSH_MESSAGE: "enable"
+  DEV_ENV: dev
+  TEST_ENV: test
+  PROD_ENV: prod
+
+# ============================================================
+# sync_code: 同步部署配置到 deploy-files 仓库（所有分支）
+# ============================================================
+sync_code:
+  stage: sync
+  tags:
+    - tke-deepmining-runner
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/alpine/git:v2.30.2
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 1
+    COMMIT_SHA: '$CI_COMMIT_SHORT_SHA'
+    CONTAINER_IMAGE: tbj7-xtiao-tcr1.tencentcloudcr.com/dmwork/octo-web
+  script:
+    - echo "sync code..."
+    - git config --global user.email "guobin.a@mininglamp.com"
+    - git config --global user.name "ci"
+    - |
+      set -e
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        TARGET_BRANCH="$APP_NAME-prod"
+      elif [[ "$CI_COMMIT_REF_NAME" == "develop" ]]; then
+        TARGET_BRANCH="$APP_NAME-dev"
+      elif [[ "$CI_COMMIT_REF_NAME" == "test" ]]; then
+        TARGET_BRANCH="$APP_NAME-develop"
+      else
+        TARGET_BRANCH="$APP_NAME-$CI_COMMIT_REF_NAME"
+      fi
+      echo "Target branch: $TARGET_BRANCH"
+
+      DEPLOY_DIR="deploy-repo"
+
+      if git clone -b $TARGET_BRANCH --depth 1 --single-branch https://__token__:$CODE_TOKEN@code.mlamp.cn/dm-fa/infra/deploy-files.git $DEPLOY_DIR; then
+        echo "Branch $TARGET_BRANCH exists, cloned successfully"
+      else
+        echo "Branch $TARGET_BRANCH does not exist, cloning default branch and creating new branch..."
+        git clone --depth 1 https://__token__:$CODE_TOKEN@code.mlamp.cn/dm-fa/infra/deploy-files.git $DEPLOY_DIR
+        cd $DEPLOY_DIR
+        git checkout -b $TARGET_BRANCH
+        cd ..
+      fi
+
+      if [ ! -f manifests/deploy.yaml ]; then
+        echo "Error: manifests/deploy.yaml not found in current repository"
+        exit 1
+      fi
+
+      mkdir -p $DEPLOY_DIR/manifests
+      cp manifests/deploy.yaml $DEPLOY_DIR/manifests/deploy.yaml
+
+      cd $DEPLOY_DIR
+
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        sed -i "s|{{BRANCH}}|prod|g" manifests/deploy.yaml
+      elif [[ "$CI_COMMIT_REF_NAME" == "develop" ]]; then
+        sed -i "s|{{BRANCH}}|dev|g" manifests/deploy.yaml
+      elif [[ "$CI_COMMIT_REF_NAME" == "test" ]]; then
+        sed -i "s|{{BRANCH}}|develop|g" manifests/deploy.yaml
+      else
+        sed -i "s|{{BRANCH}}|${CI_COMMIT_REF_NAME}|g" manifests/deploy.yaml
+      fi
+      sed -i "s|{{REPO_URL}}|${CONTAINER_IMAGE}|g" manifests/deploy.yaml
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        sed -i "s/{{IMAGE_TAG}}/${CI_COMMIT_TAG}/g" manifests/deploy.yaml
+        sed -i "s|{{API_URL}}|${API_URL_PROD}|g" manifests/deploy.yaml
+      elif [[ "$CI_COMMIT_REF_NAME" == "develop" ]]; then
+        sed -i "s/{{IMAGE_TAG}}/dev-${CI_PIPELINE_ID}/g" manifests/deploy.yaml
+        sed -i "s|{{API_URL}}|${API_URL_DEV}|g" manifests/deploy.yaml
+      elif [[ "$CI_COMMIT_REF_NAME" == "test" ]]; then
+        sed -i "s/{{IMAGE_TAG}}/test-${CI_PIPELINE_ID}/g" manifests/deploy.yaml
+        sed -i "s|{{API_URL}}|${API_URL_TEST}|g" manifests/deploy.yaml
+      fi
+
+      git add manifests/deploy.yaml
+
+      if git diff --cached --quiet; then
+        echo "No changes to commit, skipping..."
+        exit 0
+      fi
+
+      git commit -m "Update image to ${CI_PIPELINE_ID} for ${CI_COMMIT_REF_NAME}"
+      git push --force https://__token__:$CODE_TOKEN@code.mlamp.cn/dm-fa/infra/deploy-files.git HEAD:$TARGET_BRANCH
+
+# ============================================================
+# 打包模板（YAML 锚点，被 package_tag / package_develop / package_test 复用）
+# ============================================================
+.package: &package
+  stage: package
+  tags:
+    - tke-deepmining-runner
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/docker:20.10.17
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - i=0; while [ "$i" -lt 12 ]; do docker info && break; sleep 5; i=$(( i + 1 )) ; done
+    - echo "$HARBOR_PWD" | docker login $REPOSITORY -u 100028731872 --password-stdin
+  script:
+    - BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    - docker build --build-arg APP_VERSION=$CI_COMMIT_SHORT_SHA --build-arg ENABLE_ENTERPRISE_SSO=${ENABLE_ENTERPRISE_SSO:-false} -t ${PUSH_IMAGE_PATH} -t ${PUSH_IMAGE_LATEST} -f ./Dockerfile .
+    - docker push ${PUSH_IMAGE_PATH}
+    - docker push ${PUSH_IMAGE_LATEST}
+
+# ============================================================
+# git tag 打包（生产环境，image tag 用 git tag）
+# ============================================================
+package_tag:
+  <<: *package
+  only:
+    - tags
+  variables:
+    PUSH_IMAGE_PATH: $CONTAINER_IMAGE:$CI_COMMIT_TAG
+    PUSH_IMAGE_LATEST: "$CONTAINER_IMAGE:latest"
+    DEPLOY_ENV: "prod"
+
+# ============================================================
+# develop 分支打包（Staging 环境）
+# ============================================================
+package_develop:
+  <<: *package
+  only:
+    - develop
+  variables:
+    PUSH_IMAGE_PATH: $CONTAINER_IMAGE:dev-$CI_PIPELINE_ID
+    PUSH_IMAGE_LATEST: "$CONTAINER_IMAGE:dev-latest"
+    DEPLOY_ENV: "dev"
+
+# ============================================================
+# test 分支打包（Test 环境）
+# ============================================================
+package_test:
+  <<: *package
+  only:
+    - test
+  variables:
+    PUSH_IMAGE_PATH: $CONTAINER_IMAGE:test-$CI_PIPELINE_ID
+    PUSH_IMAGE_LATEST: "$CONTAINER_IMAGE:test-latest"
+    DEPLOY_ENV: "test"
+
+# ============================================================
+# 构建成功通知（develop + test + tags）
+# ============================================================
+notify-job-when-success:
+  stage: notify
+  tags:
+    - tke-deepmining-runner
+  only:
+    - develop
+    - test
+    - tags
+  when: on_success
+  allow_failure: true
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/alpine/curl:8.11.1
+  variables:
+    GIT_STRATEGY: none
+  script: |
+    if [[ "$ROBOT_PUSH_MESSAGE" == "disable" ]]; then exit 0; fi
+    BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    if [[ -n "$CI_COMMIT_TAG" ]]; then
+      ENV_LABEL="Production"
+      IMAGE_TAG="$CONTAINER_IMAGE:$CI_COMMIT_TAG"
+    elif [[ "$CI_COMMIT_REF_NAME" == "test" ]]; then
+      ENV_LABEL="Test"
+      IMAGE_TAG="$CONTAINER_IMAGE:test-$CI_PIPELINE_ID"
+    else
+      ENV_LABEL="Dev"
+      IMAGE_TAG="$CONTAINER_IMAGE:dev-$CI_PIPELINE_ID"
+    fi
+    if [[ -n "$CI_COMMIT_TAG" ]]; then
+      MESSAGE="🎉 版本发布成功 | 🚀 DMWorkWeb [$ENV_LABEL]\n📌 版本: $CI_COMMIT_TAG\n⏱️ 发布时间: $BUILD_DATE\n📝 提交: $CI_COMMIT_SHORT_SHA\n🐳 镜像: $CONTAINER_IMAGE:$CI_COMMIT_TAG"
+    else
+      MESSAGE="✅ 构建成功 | 🚀 DMWorkWeb [$ENV_LABEL]\n⏱️ 开始时间: $BUILD_DATE\n📦 分支: $CI_COMMIT_REF_NAME\n📝 提交: $CI_COMMIT_SHORT_SHA\n🐳 镜像: $IMAGE_TAG"
+    fi
+    CHANGE_LOG=$(echo "$CI_COMMIT_MESSAGE" | head -1)
+    MESSAGE="$MESSAGE\n📋 更新: $CHANGE_LOG"
+    if [[ -n "$DISCORD_WEBHOOK" ]]; then
+      curl -X POST "$DISCORD_WEBHOOK" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $DISCORD_AUTH_TOKEN" \
+        -d "{\"content\":\"$MESSAGE\"}"
+    fi
+    if [[ -n "$WECOM_WEBHOOK" ]]; then
+      curl -s -X POST "$WECOM_WEBHOOK" \
+        -H "Content-Type: application/json" \
+        -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"$(echo -e $MESSAGE)\"}}"
+    fi
+
+# ============================================================
+# 构建失败通知（develop + test + tags）
+# ============================================================
+notify-job-when-fail:
+  stage: notify
+  tags:
+    - tke-deepmining-runner
+  only:
+    - develop
+    - test
+    - tags
+  when: on_failure
+  allow_failure: true
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/alpine/curl:8.11.1
+  variables:
+    GIT_STRATEGY: none
+  script: |
+    if [[ "$ROBOT_PUSH_MESSAGE" == "disable" ]]; then exit 0; fi
+    BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    if [[ -n "$CI_COMMIT_TAG" ]]; then
+      ENV_LABEL="Production"
+    elif [[ "$CI_COMMIT_REF_NAME" == "test" ]]; then
+      ENV_LABEL="Test"
+    else
+      ENV_LABEL="Dev"
+    fi
+    if [[ -n "$CI_COMMIT_TAG" ]]; then
+      MESSAGE="❌ 版本发布失败 | 🚀 DMWorkWeb [$ENV_LABEL]\n📌 版本: $CI_COMMIT_TAG\n⏱️ 开始时间: $BUILD_DATE\n📝 提交: $CI_COMMIT_SHORT_SHA\n🔗 Pipeline: $CI_PIPELINE_URL"
+    else
+      MESSAGE="❌ 构建失败 | 🚀 DMWorkWeb [$ENV_LABEL]\n⏱️ 开始时间: $BUILD_DATE\n📦 分支: $CI_COMMIT_REF_NAME\n📝 提交: $CI_COMMIT_SHORT_SHA"
+    fi
+    if [[ -n "$DISCORD_WEBHOOK" ]]; then
+      curl -X POST "$DISCORD_WEBHOOK" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $DISCORD_AUTH_TOKEN" \
+        -d "{\"content\":\"$MESSAGE\"}"
+    fi
+    if [[ -n "$WECOM_WEBHOOK" ]]; then
+      curl -s -X POST "$WECOM_WEBHOOK" \
+        -H "Content-Type: application/json" \
+        -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"$(echo -e $MESSAGE)\"}}"
+    fi
