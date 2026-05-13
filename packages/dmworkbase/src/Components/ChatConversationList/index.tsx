@@ -6,8 +6,9 @@
  * - 其他 filter：渲染 ConversationList，右键群聊有「移到分组」子菜单
  * - CreateCategoryModal 在此层管理，不依赖子组件挂载
  */
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import { Channel, ChannelTypeGroup } from "wukongimjssdk"
+import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
 import { ConversationWrap } from "../../Service/Model"
@@ -20,6 +21,8 @@ import { ContextMenusData } from "../ContextMenus"
 export interface ChatConversationListProps {
     conversations: ConversationWrap[]
     filter: ConvFilter
+    /** 是否隐藏 3 天不活跃的群聊（最近 Tab 使用） */
+    hideInactiveGroups?: boolean
     select?: Channel
     onConversationClick: (conv: ConversationWrap) => void
     onClearMessages: (channel: Channel) => void
@@ -33,6 +36,7 @@ export interface ChatConversationListProps {
 const ChatConversationList: React.FC<ChatConversationListProps> = ({
     conversations,
     filter,
+    hideInactiveGroups = false,
     select,
     onConversationClick,
     onClearMessages,
@@ -68,6 +72,25 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
     const existingCategoryNames = categories.map(c => c.name)
 
+    // 最近 Tab 3 天不活跃群聊隐藏逻辑
+    // - 群聊（channelType=2）超过 3 天没有消息 → 隐藏
+    // - 私聊（channelType=1）、子区（channelType=5）不受影响
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
+    const filteredConversations = useMemo(() => {
+        if (!hideInactiveGroups) return conversations
+        const now = Date.now()
+        return conversations.filter(conv => {
+            // 只过滤群聊
+            if (conv.channel.channelType !== ChannelTypeGroup) return true
+            // 子区不过滤（虽然子区走的是 ChannelTypeCommunityTopic，不是 ChannelTypeGroup）
+            if (conv.channel.channelType === ChannelTypeCommunityTopic) return true
+            // timestamp 是秒还是毫秒？SDK 用秒
+            const lastMsgTime = conv.timestamp * 1000
+            // 3 天内有活动则保留
+            return (now - lastMsgTime) < THREE_DAYS_MS
+        })
+    }, [conversations, hideInactiveGroups])
+
     // 构建「移到分组」子菜单（含 ✓ 标识 + 新建分组入口）
     // 用于非 group filter 下的 ConversationList
     const buildMoveToGroupMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
@@ -97,7 +120,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         <>
             {filter === 'group' ? (
                 <ConversationListGrouped
-                    conversations={conversations}
+                    conversations={filteredConversations}
                     select={select}
                     onConversationClick={onConversationClick}
                     onClearMessages={onClearMessages}
@@ -131,7 +154,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                 />
             ) : (
                 <ConversationList
-                    conversations={conversations}
+                    conversations={filteredConversations}
                     select={select}
                     filter={filter}
                     onClick={onConversationClick}

@@ -927,7 +927,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
             0,
           );
           // filter 用于 ConversationList
-          const filter: ConvFilter = activeTab === "follow" ? "group" : "dm";
+          // follow Tab 用 group（分组视图），recent Tab 用 all（所有会话混合）
+          const filter: ConvFilter = activeTab === "follow" ? "group" : "all";
           return (
             <div className="wk-chat">
               <div
@@ -1090,6 +1091,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         <ChatConversationList
                           conversations={vm.filteredConversations}
                           filter={filter}
+                          hideInactiveGroups={activeTab === "recent"}
                           select={WKApp.shared.openChannel}
                           onOpenCreateCategoryRef={this.openCreateCategoryRef}
                           onGroupCreated={() =>
