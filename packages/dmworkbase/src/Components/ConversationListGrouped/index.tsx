@@ -198,11 +198,11 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             onClick: async () => {
                 try {
                     if (channel.channelType === ChannelTypeGroup) {
-                        await FollowService.shared.unfollowChannel(channel.channelID)
+                        await FollowService.unfollowChannel({ group_no: channel.channelID })
                     } else if (channel.channelType === ChannelTypePerson) {
-                        await FollowService.shared.unfollowDM(channel.channelID)
+                        await FollowService.unfollowDM(channel.channelID)
                     } else if (channel.channelType === ChannelTypeCommunityTopic) {
-                        await FollowService.shared.unfollowThread(channel.channelID)
+                        await FollowService.unfollowThread(channel.channelID)
                     }
                     onUnfollow?.()
                 } catch (err) {

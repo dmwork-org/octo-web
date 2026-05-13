@@ -112,11 +112,11 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                         const channel = conv.channel
                         try {
                             if (channel.channelType === ChannelTypeGroup) {
-                                await FollowService.shared.unfollowChannel(channel.channelID)
+                                await FollowService.unfollowChannel({ group_no: channel.channelID })
                             } else if (channel.channelType === ChannelTypePerson) {
-                                await FollowService.shared.unfollowDM(channel.channelID)
+                                await FollowService.unfollowDM(channel.channelID)
                             } else if (channel.channelType === ChannelTypeCommunityTopic) {
-                                await FollowService.shared.unfollowThread(channel.channelID)
+                                await FollowService.unfollowThread(channel.channelID)
                             }
                             // 刷新分组列表
                             reload()
@@ -135,7 +135,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                         title: '添加到关注',
                         onClick: async () => {
                             try {
-                                await FollowService.shared.followThread(channel.channelID)
+                                await FollowService.followThread({ thread_channel_id: channel.channelID })
                                 reload()
                             } catch (err) {
                                 console.error('关注子区失败', err)
@@ -151,11 +151,11 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                             onClick: async () => {
                                 try {
                                     if (channel.channelType === ChannelTypeGroup) {
-                                        await FollowService.shared.refollowChannel(channel.channelID)
+                                        await FollowService.refollowChannel({ group_no: channel.channelID })
                                         // 移到指定分组
                                         await moveGroupToCategory(channel.channelID, cat.category_id)
                                     } else if (channel.channelType === ChannelTypePerson) {
-                                        await FollowService.shared.followDM(channel.channelID, cat.category_id)
+                                        await FollowService.followDM({ peer_uid: channel.channelID, category_id: parseInt(cat.category_id, 10) || undefined })
                                     }
                                     reload()
                                 } catch (err) {
