@@ -19,8 +19,8 @@ export interface SmartCreateModalProps {
   sourceMsgs?: ExtractMessage[];
   /** 用户主动关闭/取消弹窗（可能需要清理孤儿事项） */
   onClose: () => void;
-  /** 确认成功后关闭弹窗（不触发孤儿清理） */
-  onConfirmSuccess: () => void;
+  /** 确认成功后关闭弹窗（不触发孤儿清理）。未传时等同于 onClose */
+  onConfirmSuccess?: () => void;
   /** 创建/编辑事项 */
   onConfirm: (req: CreateMatterReq) => Promise<void>;
   /** 当前频道（用于 MemberPicker 获取成员列表） */
@@ -121,7 +121,7 @@ export default function SmartCreateModal({
         source_channel_type: channel?.channelType,
         source_msgs: sourceMsgs,
       });
-      onConfirmSuccess();
+      (onConfirmSuccess ?? onClose)();
     } catch {
       // 创建失败不关闭，让用户重试
     } finally {
@@ -138,6 +138,7 @@ export default function SmartCreateModal({
     sourceMsgs,
     onConfirm,
     onConfirmSuccess,
+    onClose,
   ]);
 
   // Enter 键确认

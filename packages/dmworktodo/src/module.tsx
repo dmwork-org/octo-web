@@ -656,6 +656,8 @@ function GlobalSmartCreateModal() {
   const extractedMatterIdRef = React.useRef<string | null>(null);
   // 标记弹窗是否已关闭，防止 extractMatter 异步返回后产生孤儿
   const closedRef = React.useRef(false);
+  // 每次打开递增的 session token，防止 overlapping requests 竞态
+  const sessionRef = React.useRef(0);
 
   useEffect(() => {
     const handler = async (data?: {
@@ -673,6 +675,8 @@ function GlobalSmartCreateModal() {
       setAiResult(undefined);
       extractedMatterIdRef.current = null;
       closedRef.current = false;
+      sessionRef.current += 1;
+      const currentSession = sessionRef.current;
       setOpen(true);
 
       if (currentMessages.length > 0 && currentChannel) {
@@ -691,8 +695,8 @@ function GlobalSmartCreateModal() {
               attachments: m.attachments || [],
             })),
           });
-          // 用户在 extractMatter 期间关闭了弹窗 → 立即清理孤儿
-          if (closedRef.current) {
+          // 用户在 extractMatter 期间关闭了弹窗，或已开启新 session → 立即清理孤儿
+          if (closedRef.current || sessionRef.current !== currentSession) {
             try { await deleteMatter(res.id); } catch {}
             return;
           }
