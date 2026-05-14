@@ -7,12 +7,29 @@
   --semi-modal-body-wrapper-margin: 0;
 }
 
+/* 强制覆盖 Semi Modal 内部间距 */
+.wk-smart-create-modal .semi-modal-content {
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.wk-smart-create-modal .semi-modal-body {
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.wk-smart-create-modal .semi-modal-body-wrapper {
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
 .wk-smart-create-modal__content {
-  padding: 24px;
+  padding: 20px;
 }
 
 .wk-smart-create-modal__head {
-  margin-bottom: var(--wk-sp-4, 16px);
+  margin-bottom: 14px;
 }
 
 .wk-smart-create-modal__title {
@@ -38,7 +55,7 @@
 }
 
 .wk-smart-create-modal__field {
-  margin-bottom: var(--wk-sp-3, 12px);
+  margin-bottom: 10px;
 }
 
 .wk-smart-create-modal__label {
@@ -124,7 +141,7 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--wk-sp-2, 8px);
-  margin-top: var(--wk-sp-4, 16px);
+  margin-top: 12px;
 }
 
 .wk-smart-create-modal__btn {
@@ -166,5 +183,5 @@
 
 .wk-smart-create-modal__footer-sep {
   border-top: 1px solid var(--wk-border-default, #e4e4e7);
-  margin-top: var(--wk-sp-4, 16px);
+  margin-top: 12px;
 }

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Modal, DatePicker, Spin } from "@douyinfe/semi-ui";
+import { WKApp } from "@octo/base";
 import type { CreateMatterReq, ExtractMessage } from "../../bridge/types";
 import MemberPicker from "../MemberPicker";
 import "./index.css";
@@ -73,6 +74,11 @@ export default function SmartCreateModal({
   // 打开时聚焦标题输入框，以及更新初始值
   useEffect(() => {
     if (visible) {
+      // 设置当前用户为默认负责人
+      const currentUid = WKApp.loginInfo.uid;
+      if (currentUid && assigneeUids.length === 0) {
+        setAssigneeUids([currentUid]);
+      }
       setTimeout(() => {
         if (!loading) {
           titleInputRef.current?.focus();
@@ -152,7 +158,7 @@ export default function SmartCreateModal({
       footer={null}
       width={520}
       closable={false}
-      maskClosable={!loading}
+      maskClosable={false}
       centered
       className="wk-smart-create-modal"
     >
@@ -177,11 +183,6 @@ export default function SmartCreateModal({
             )}
             {blank ? "新建事项" : "智能创建事项"}
           </h3>
-          <p className="wk-smart-create-modal__sub">
-            {blank
-              ? "手动填写 4 个必填字段"
-              : `从 ${count} 条选中消息蒸馏 · 4 字段 AI 已预填, 全部必填`}
-          </p>
         </div>
 
         {loading ? (
@@ -276,18 +277,11 @@ export default function SmartCreateModal({
             <div className="wk-smart-create-modal__actions">
               <button
                 type="button"
-                className="wk-smart-create-modal__btn wk-smart-create-modal__btn--cancel"
-                onClick={onClose}
-              >
-                取消
-              </button>
-              <button
-                type="button"
                 className="wk-smart-create-modal__btn wk-smart-create-modal__btn--confirm"
                 onClick={handleConfirm}
                 disabled={!canCreate || submitting}
               >
-                {submitting ? "创建中..." : "创建事项"}
+                {submitting ? "创建中..." : "确认事项"}
               </button>
             </div>
           </>

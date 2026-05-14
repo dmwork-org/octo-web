@@ -12,6 +12,8 @@ import SmartCreateModal from "./ui/SmartCreateModal";
 import {
   createMatter,
   extractMatter,
+  updateMatter,
+  addAssignee,
   listMatters,
   addTimelineEntry,
 } from "./api/todoApi";
@@ -647,6 +649,8 @@ function GlobalSmartCreateModal() {
   const [aiResult, setAiResult] = useState<
     { title?: string; description?: string; deadline?: string } | undefined
   >();
+  // extractMatter 已在后端创建事项，保存其 ID 用于后续编辑
+  const [extractedMatterId, setExtractedMatterId] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = async (data?: {
@@ -662,6 +666,7 @@ function GlobalSmartCreateModal() {
       setChannel(currentChannel);
       setMessages(currentMessages);
       setAiResult(undefined);
+      setExtractedMatterId(null);
       setOpen(true);
 
       if (currentMessages.length > 0 && currentChannel) {
@@ -680,6 +685,7 @@ function GlobalSmartCreateModal() {
               attachments: m.attachments || [],
             })),
           });
+          setExtractedMatterId(res.id);
           setAiResult({
             title: res.title,
             description: res.description,
@@ -723,7 +729,23 @@ function GlobalSmartCreateModal() {
       })) : undefined}
       onClose={() => setOpen(false)}
       onConfirm={async (req) => {
-        await createMatter(req);
+        if (extractedMatterId) {
+          // 后端在 extractMatter 时已创建事项，这里执行编辑
+          await updateMatter(extractedMatterId, {
+            title: req.title,
+            description: req.description,
+            deadline: req.deadline,
+          });
+          // 添加负责人
+          if (req.assignee_ids && req.assignee_ids.length > 0) {
+            await Promise.all(
+              req.assignee_ids.map((uid) => addAssignee(extractedMatterId, uid))
+            );
+          }
+        } else {
+          // 空白新建模式（无 AI 提取），走正常创建流程
+          await createMatter(req);
+        }
         Toast.success("事项已创建");
         WKApp.mittBus.emit("wk:exit-multiple-mode");
       }}
