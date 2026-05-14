@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Modal, DatePicker, Spin } from "@douyinfe/semi-ui";
+import { WKApp } from "@octo/base";
 import type { CreateMatterReq, ExtractMessage } from "../../bridge/types";
 import MemberPicker from "../MemberPicker";
 import "./index.css";
@@ -16,9 +17,11 @@ export interface SmartCreateModalProps {
   initialValues?: { title?: string; description?: string; deadline?: string };
   /** 智能总结所用的消息列表 */
   sourceMsgs?: ExtractMessage[];
-  /** 关闭弹窗 */
+  /** 用户主动关闭/取消弹窗 */
   onClose: () => void;
-  /** 创建事项 */
+  /** 确认成功后关闭弹窗（不触发孤儿清理）。未传时等同于 onClose */
+  onConfirmSuccess?: () => void;
+  /** 创建/编辑事项 */
   onConfirm: (req: CreateMatterReq) => Promise<void>;
   /** 当前频道（用于 MemberPicker 获取成员列表） */
   channel?: { channelId: string; channelType: number; name?: string };
@@ -59,6 +62,7 @@ export default function SmartCreateModal({
   initialValues,
   sourceMsgs,
   onClose,
+  onConfirmSuccess,
   onConfirm,
   channel,
 }: SmartCreateModalProps) {
@@ -70,9 +74,14 @@ export default function SmartCreateModal({
 
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // 打开时聚焦标题输入框，以及更新初始值
+  // 打开时聚焦标题输入框，设置默认负责人
   useEffect(() => {
     if (visible) {
+      // 设置当前用户为默认负责人
+      const currentUid = WKApp.loginInfo.uid;
+      if (currentUid && assigneeUids.length === 0) {
+        setAssigneeUids([currentUid]);
+      }
       setTimeout(() => {
         if (!loading) {
           titleInputRef.current?.focus();
@@ -112,7 +121,7 @@ export default function SmartCreateModal({
         source_channel_type: channel?.channelType,
         source_msgs: sourceMsgs,
       });
-      onClose();
+      (onConfirmSuccess ?? onClose)();
     } catch {
       // 创建失败不关闭，让用户重试
     } finally {
@@ -128,6 +137,7 @@ export default function SmartCreateModal({
     channel,
     sourceMsgs,
     onConfirm,
+    onConfirmSuccess,
     onClose,
   ]);
 
@@ -177,11 +187,6 @@ export default function SmartCreateModal({
             )}
             {blank ? "新建事项" : "智能创建事项"}
           </h3>
-          <p className="wk-smart-create-modal__sub">
-            {blank
-              ? "手动填写 4 个必填字段"
-              : `从 ${count} 条选中消息蒸馏 · 4 字段 AI 已预填, 全部必填`}
-          </p>
         </div>
 
         {loading ? (
@@ -276,18 +281,11 @@ export default function SmartCreateModal({
             <div className="wk-smart-create-modal__actions">
               <button
                 type="button"
-                className="wk-smart-create-modal__btn wk-smart-create-modal__btn--cancel"
-                onClick={onClose}
-              >
-                取消
-              </button>
-              <button
-                type="button"
                 className="wk-smart-create-modal__btn wk-smart-create-modal__btn--confirm"
                 onClick={handleConfirm}
                 disabled={!canCreate || submitting}
               >
-                {submitting ? "创建中..." : "创建事项"}
+                {submitting ? "提交中..." : "确认事项"}
               </button>
             </div>
           </>
