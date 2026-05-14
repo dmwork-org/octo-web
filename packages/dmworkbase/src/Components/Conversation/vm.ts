@@ -1840,9 +1840,11 @@ export default class ConversationVM extends ProviderListener {
             // 仅覆盖 encodeJSON 和 contentObj 以注入 space_id。
             // 安全前提：SDK 通过 encode()/encodeJSON() 序列化，不依赖 own-property 枚举。
             sendContent = Object.create(content) as MessageContent
-            const originalEncodeJSON = content.encodeJSON.bind(content)
-            sendContent.encodeJSON = () => {
-                const obj = originalEncodeJSON()
+            // 保存原始 encodeJSON 的引用（不 bind），通过 .call(this) 传递 receiver，
+            // 确保 media 上传后写入代理的 url/remoteUrl 能被正确读取。
+            const originalEncodeJSON = content.encodeJSON
+            sendContent.encodeJSON = function (this: any) {
+                const obj = originalEncodeJSON.call(this)
                 obj.space_id = spaceId
                 return obj
             }
