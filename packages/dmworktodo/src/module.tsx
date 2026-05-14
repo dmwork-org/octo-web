@@ -715,9 +715,13 @@ function GlobalSmartCreateModal() {
               : undefined,
           });
         } catch (e) {
-          Toast.error("AI 提取失败，请手动填写");
+          if (sessionRef.current === currentSession) {
+            Toast.error("AI 提取失败，请手动填写");
+          }
         } finally {
-          setAiLoading(false);
+          if (sessionRef.current === currentSession) {
+            setAiLoading(false);
+          }
         }
       }
     };
