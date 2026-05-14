@@ -260,15 +260,18 @@ export default class MergeforwardMessageList extends Component<
     if (msg.contentType === MessageContentTypeConst.mergeForward) {
       const nestedContent = msg.content as MergeforwardContent;
       const title = this.getTitle(nestedContent);
+      // 从 nestedContent.users 构建 uid→name 映射，避免显示 raw UID
+      const userNameMap = new Map<string, string>();
+      (nestedContent.users || []).forEach((u) => {
+        if (u && u.uid && u.name) userNameMap.set(u.uid, u.name);
+      });
       const previewMsgs = (nestedContent.msgs || []).slice(0, 4).map((m) => {
-        const ch = new Channel(m.fromUID, ChannelTypePerson);
-        const info = WKSDK.shared().channelManager.getChannelInfo(ch);
-        if (!info) {
-          WKSDK.shared().channelManager.fetchChannelInfo(ch);
-        }
+        const name = userNameMap.get(m.fromUID)
+          || WKSDK.shared().channelManager.getChannelInfo(new Channel(m.fromUID, ChannelTypePerson))?.title
+          || m.content?.conversationDigest || "";
         return {
           fromUID: m.fromUID,
-          digest: `${info?.title || m.fromUID}: ${m.content?.conversationDigest || ""}`,
+          digest: name ? `${name}: ${m.content?.conversationDigest || ""}` : (m.content?.conversationDigest || ""),
         };
       });
       return (
