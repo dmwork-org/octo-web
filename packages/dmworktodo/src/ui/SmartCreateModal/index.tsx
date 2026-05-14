@@ -157,8 +157,8 @@ export default function SmartCreateModal({
       onCancel={onClose}
       footer={null}
       width={520}
-      closable={false}
-      maskClosable={false}
+      closable={loading}
+      maskClosable={loading}
       centered
       className="wk-smart-create-modal"
     >

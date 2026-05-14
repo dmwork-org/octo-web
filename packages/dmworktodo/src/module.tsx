@@ -14,6 +14,9 @@ import {
   extractMatter,
   updateMatter,
   addAssignee,
+  removeAssignee,
+  getMatter,
+  deleteMatter,
   listMatters,
   addTimelineEntry,
 } from "./api/todoApi";
@@ -727,7 +730,14 @@ function GlobalSmartCreateModal() {
         content: m.content || "",
         attachments: m.attachments || [],
       })) : undefined}
-      onClose={() => setOpen(false)}
+      onClose={async () => {
+        setOpen(false);
+        // P0: 用户关闭弹窗不确认时，清理 extractMatter 已创建的孤儿事项
+        if (extractedMatterId) {
+          try { await deleteMatter(extractedMatterId); } catch {}
+          setExtractedMatterId(null);
+        }
+      }}
       onConfirm={async (req) => {
         if (extractedMatterId) {
           // 后端在 extractMatter 时已创建事项，这里执行编辑
@@ -736,17 +746,21 @@ function GlobalSmartCreateModal() {
             description: req.description,
             deadline: req.deadline,
           });
-          // 添加负责人
-          if (req.assignee_ids && req.assignee_ids.length > 0) {
-            await Promise.all(
-              req.assignee_ids.map((uid) => addAssignee(extractedMatterId, uid))
-            );
-          }
+          // 负责人 reconcile：对比当前 assignees，计算 add/remove
+          const detail = await getMatter(extractedMatterId);
+          const currentUids = new Set((detail.assignees || []).map(a => a.user_id));
+          const desiredUids = new Set(req.assignee_ids || []);
+          const toAdd = [...desiredUids].filter(uid => !currentUids.has(uid));
+          const toRemove = [...currentUids].filter(uid => !desiredUids.has(uid));
+          await Promise.allSettled([
+            ...toAdd.map(uid => addAssignee(extractedMatterId, uid)),
+            ...toRemove.map(uid => removeAssignee(extractedMatterId, uid)),
+          ]);
         } else {
           // 空白新建模式（无 AI 提取），走正常创建流程
           await createMatter(req);
         }
-        Toast.success("事项已创建");
+        Toast.success("事项已确认");
         WKApp.mittBus.emit("wk:exit-multiple-mode");
       }}
       channel={channel}
