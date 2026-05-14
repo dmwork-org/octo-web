@@ -1837,14 +1837,31 @@ export default class ConversationVM extends ProviderListener {
         const spaceId = WKApp.shared.currentSpaceId
         if (spaceId && channel.channelType === ChannelTypePerson) {
             // 创建一个轻量代理对象，继承原 content 的所有属性和方法，
-            // 仅覆盖 encodeJSON 和 contentObj 以注入 space_id。
+            // 仅覆盖 encode/encodeJSON 和 contentObj 以注入 space_id。
             // 安全前提：SDK 通过 encode()/encodeJSON() 序列化，不依赖 own-property 枚举。
+            // 注意：必须同时覆盖 encode()，因为某些 content 实例有自定义 encode 覆盖
+            // （如带 mention entities 的 MessageText），其 bind 了原始 content，
+            // 会绕过代理上的 encodeJSON 覆盖。
             sendContent = Object.create(content) as MessageContent
             const originalEncodeJSON = content.encodeJSON.bind(content)
             sendContent.encodeJSON = () => {
                 const obj = originalEncodeJSON()
                 obj.space_id = spaceId
                 return obj
+            }
+            // 覆盖 encode()：无论原始 content 是否有实例级 encode 覆盖，
+            // 都确保最终 payload 包含 space_id
+            const originalEncode = content.encode.bind(content)
+            sendContent.encode = () => {
+                const bytes = originalEncode()
+                try {
+                    const str = new TextDecoder().decode(bytes)
+                    const obj = JSON.parse(str)
+                    obj.space_id = spaceId
+                    return new TextEncoder().encode(JSON.stringify(obj))
+                } catch {
+                    return bytes // 解析失败时不破坏原始 payload
+                }
             }
             // 同步 contentObj，让本地回显也通过 filterPersonMessagesBySpace (#784)
             sendContent.contentObj = { ...(content.contentObj || {}), space_id: spaceId }
