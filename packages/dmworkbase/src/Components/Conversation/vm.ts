@@ -1156,7 +1156,7 @@ export default class ConversationVM extends ProviderListener {
         }
         for (let i = this.messages.length - 1; i >= 0; i--) {
             const message = this.messages[i]
-            if(message.content.reply === undefined){
+            if (message.content.reply === undefined) {
                 continue
             }
             if (message.content.reply.messageID && message.content.reply.messageID === extra.messageID) {
@@ -1830,23 +1830,30 @@ export default class ConversationVM extends ProviderListener {
     // 发送消息
     async sendMessage(content: MessageContent, channel: Channel): Promise<Message> {
         // DM 消息注入 space_id，让 BotFather 等 Bot 知道用户当前 Space
+        // 注意：不能直接修改传入的 content 对象，因为转发场景下同一个 content
+        // 可能被多次使用（多目标转发）或是原始消息的引用（单条转发）。
+        // 直接 monkey-patch 会污染原始消息的 content，导致后续操作异常。
+        let sendContent = content
         const spaceId = WKApp.shared.currentSpaceId
         if (spaceId && channel.channelType === ChannelTypePerson) {
+            // 创建一个轻量代理对象，继承原 content 的所有属性和方法，
+            // 仅覆盖 encodeJSON 和 contentObj 以注入 space_id。
+            sendContent = Object.create(content) as MessageContent
             const originalEncodeJSON = content.encodeJSON.bind(content)
-            content.encodeJSON = () => {
+            sendContent.encodeJSON = () => {
                 const obj = originalEncodeJSON()
                 obj.space_id = spaceId
                 return obj
             }
             // 同步 contentObj，让本地回显也通过 filterPersonMessagesBySpace (#784)
-            content.contentObj = { ...(content.contentObj || {}), space_id: spaceId }
+            sendContent.contentObj = { ...(content.contentObj || {}), space_id: spaceId }
         }
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
         let setting = new Setting()
         if (channelInfo?.orgData.receipt === 1) {
             setting.receiptEnabled = true
         }
-        const message = await WKSDK.shared().chatManager.send(content, channel, setting)
+        const message = await WKSDK.shared().chatManager.send(sendContent, channel, setting)
         // dmwork-web#1069 R5：SDK 内部 `Message.fromSendPacket` 产物的 Message，
         // wire 不携带 from_home_space_* 等字段；在业务层收尾统一补一次，避免自发送
         // bubble 丢外部来源标识。已有值不覆盖、失败静默。

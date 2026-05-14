@@ -1,6 +1,6 @@
 import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
-import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
+import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup, ConversationExtra, Reminder, MessageExtra, Reply } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
 
 
@@ -217,16 +217,16 @@ export class Convert {
         if (conversationMap["space_last_message"]) {
             conversation.extra.spaceLastMessage = this.toMessage(conversationMap["space_last_message"])
         }
-        if(conversationMap["extra"]) {
-            conversation.remoteExtra = this.toConversationExtra(conversation.channel,conversationMap["extra"])
+        if (conversationMap["extra"]) {
+            conversation.remoteExtra = this.toConversationExtra(conversation.channel, conversationMap["extra"])
         }
 
         return conversation
     }
 
-    static toReminder(reminderMap:any) :Reminder {
+    static toReminder(reminderMap: any): Reminder {
         const reminder = new Reminder()
-        reminder.channel =  new Channel(reminderMap['channel_id'], reminderMap['channel_type'])
+        reminder.channel = new Channel(reminderMap['channel_id'], reminderMap['channel_type'])
         reminder.messageID = reminderMap["message_id"]
         reminder.messageSeq = reminderMap["message_seq"]
         reminder.reminderID = reminderMap["id"]
@@ -239,14 +239,14 @@ export class Convert {
         return reminder
     }
 
-    static toConversationExtra(channel:Channel,conversationExtraMap:any) :ConversationExtra {
+    static toConversationExtra(channel: Channel, conversationExtraMap: any): ConversationExtra {
         const conversationExtra = new ConversationExtra()
         conversationExtra.channel = channel
         conversationExtra.browseTo = conversationExtraMap["browse_to"]
         conversationExtra.keepMessageSeq = conversationExtraMap["keep_message_seq"]
         conversationExtra.keepOffsetY = conversationExtraMap["keep_offset_y"]
-        conversationExtra.draft = conversationExtraMap["draft"]||""
-        conversationExtra.version = conversationExtraMap["version"] 
+        conversationExtra.draft = conversationExtraMap["draft"] || ""
+        conversationExtra.version = conversationExtraMap["version"]
         return conversationExtra
     }
 
@@ -266,11 +266,11 @@ export class Convert {
         if (msgMap["revoke"]) {
             message.remoteExtra.revoke = msgMap["revoke"] === 1 ? true : false
         }
-        if(msgMap["message_extra"]) {
+        if (msgMap["message_extra"]) {
             const messageExtra = msgMap["message_extra"]
-           message.remoteExtra = this.toMessageExtra(messageExtra)
+            message.remoteExtra = this.toMessageExtra(messageExtra)
         }
-        
+
         message.clientSeq = msgMap["client_seq"]
         message.channel = new Channel(msgMap['channel_id'], msgMap['channel_type']);
         message.messageSeq = msgMap["message_seq"]
@@ -302,7 +302,7 @@ export class Convert {
         return message
     }
 
-    static toMessageExtra(msgExtraMap: any) :MessageExtra {
+    static toMessageExtra(msgExtraMap: any): MessageExtra {
         const messageExtra = new MessageExtra()
         if (msgExtraMap['message_id_str']) {
             messageExtra.messageID = msgExtraMap['message_id_str'];
@@ -311,11 +311,11 @@ export class Convert {
         }
         messageExtra.messageSeq = msgExtraMap["message_seq"]
         messageExtra.readed = msgExtraMap["readed"] === 1
-        if(msgExtraMap["readed_at"] && msgExtraMap["readed_at"]>0) {
-            messageExtra.readedAt = new Date(msgExtraMap["readed_at"] )
+        if (msgExtraMap["readed_at"] && msgExtraMap["readed_at"] > 0) {
+            messageExtra.readedAt = new Date(msgExtraMap["readed_at"])
         }
         messageExtra.revoke = msgExtraMap["revoke"] === 1
-        if(msgExtraMap["revoker"]) {
+        if (msgExtraMap["revoker"]) {
             messageExtra.revoker = msgExtraMap["revoker"]
         }
         messageExtra.readedCount = msgExtraMap["readed_count"] || 0
@@ -324,7 +324,7 @@ export class Convert {
         messageExtra.editedAt = msgExtraMap["edited_at"] || 0
 
         const contentEditObj = msgExtraMap["content_edit"]
-        if(contentEditObj) {
+        if (contentEditObj) {
             const contentEditContentType = contentEditObj.type
             const contentEditContent = WKSDK.shared().getMessageContent(contentEditContentType)
             const contentEditPayloadData = this.stringToUint8Array(JSON.stringify(contentEditObj))
@@ -337,7 +337,7 @@ export class Convert {
 
         return messageExtra
     }
-   
+
 
     static userToChannelInfo(data: any): ChannelInfo {
         let channelInfo = new ChannelInfo()
