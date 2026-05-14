@@ -673,6 +673,7 @@ function GlobalSmartCreateModal() {
       setChannel(currentChannel);
       setMessages(currentMessages);
       setAiResult(undefined);
+      setAiLoading(false);
       extractedMatterIdRef.current = null;
       closedRef.current = false;
       sessionRef.current += 1;
@@ -697,7 +698,7 @@ function GlobalSmartCreateModal() {
           });
           // 用户在 extractMatter 期间关闭了弹窗，或已开启新 session → 立即清理孤儿
           if (closedRef.current || sessionRef.current !== currentSession) {
-            try { await deleteMatter(res.id); } catch {}
+            try { await deleteMatter(res.id); } catch (e) { console.warn('[SmartCreate] orphan cleanup failed:', res.id, e); }
             return;
           }
           extractedMatterIdRef.current = res.id;
@@ -753,7 +754,7 @@ function GlobalSmartCreateModal() {
         const idToDelete = extractedMatterIdRef.current;
         extractedMatterIdRef.current = null;
         if (idToDelete) {
-          try { await deleteMatter(idToDelete); } catch {}
+          try { await deleteMatter(idToDelete); } catch (e) { console.warn('[SmartCreate] cancel cleanup failed:', idToDelete, e); }
         }
       }}
       onConfirmSuccess={() => {
