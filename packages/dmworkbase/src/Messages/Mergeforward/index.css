@@ -130,7 +130,7 @@
 .wk-mergeforward-modal-title-with-back {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--wk-sp-2, 8px);
 }
 
 .wk-mergeforward-modal-back-btn {
@@ -141,13 +141,13 @@
     height: 28px;
     border: none;
     background: none;
-    border-radius: 6px;
+    border-radius: var(--wk-r-sm, 6px);
     cursor: pointer;
-    color: var(--wk-text-secondary, rgba(28, 28, 35, 0.6));
+    color: var(--wk-text-secondary);
     transition: background 0.15s, color 0.15s;
 }
 
 .wk-mergeforward-modal-back-btn:hover {
-    background: rgba(28, 28, 35, 0.06);
-    color: var(--wk-text-primary, #1c1c23);
+    background: var(--wk-bg-hover, rgba(28, 28, 35, 0.06));
+    color: var(--wk-text-primary);
 }

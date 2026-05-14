@@ -30,6 +30,8 @@ import "./index.css";
 export interface MergeforwardMessageListProps {
   mergeforwardContent: MergeforwardContent;
   onClose?: () => void;
+  /** 弹窗是否可见；从 true→false 时重置导航栈 */
+  visible?: boolean;
   /** 导航状态变化回调：通知父组件当前标题和是否可返回 */
   onNavigateChange?: (info: { title: string; canGoBack: boolean }) => void;
   /** 外部触发返回（由父组件的返回按钮调用） */
@@ -68,6 +70,10 @@ export default class MergeforwardMessageList extends Component<
     }
     // props 变化时重置导航栈（用户打开了另一条合并转发消息）
     if (_prevProps.mergeforwardContent !== this.props.mergeforwardContent) {
+      this.setState({ contentStack: [] });
+    }
+    // 弹窗关闭时重置导航栈
+    if (_prevProps.visible && !this.props.visible) {
       this.setState({ contentStack: [] });
     }
   }

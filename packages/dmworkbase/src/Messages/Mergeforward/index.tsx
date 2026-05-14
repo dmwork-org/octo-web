@@ -261,6 +261,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                 <span className="wk-mergeforward-modal-title-with-back">
                   <button
                     className="wk-mergeforward-modal-back-btn"
+                    aria-label="返回"
                     onClick={() => this.goBackRef.current?.()}
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -277,6 +278,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
           >
             <MergeforwardMessageList
               mergeforwardContent={content}
+              visible={showList}
               onClose={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
               goBackRef={this.goBackRef}
               onNavigateChange={({ title, canGoBack }) =>
@@ -323,6 +325,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               <span className="wk-mergeforward-modal-title-with-back">
                 <button
                   className="wk-mergeforward-modal-back-btn"
+                  aria-label="返回"
                   onClick={() => this.goBackRef.current?.()}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -340,6 +343,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
         >
           <MergeforwardMessageList
             mergeforwardContent={content}
+            visible={showList}
             onClose={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
             goBackRef={this.goBackRef}
             onNavigateChange={({ title, canGoBack }) =>
