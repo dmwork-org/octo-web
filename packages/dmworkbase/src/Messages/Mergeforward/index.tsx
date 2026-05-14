@@ -134,8 +134,7 @@ export default class MergeforwardContent extends MessageContent {
     // Use contentObj if available, otherwise fall back to encodeJSON()
     let payload = message.content.contentObj;
     if (!payload) {
-      payload = message.content.encodeJSON();
-      payload.type = message.content.contentType;
+      payload = { ...message.content.encodeJSON(), type: message.content.contentType };
     } else if (payload.type === undefined) {
       // 防护性检查：确保 contentObj 包含 type 字段
       // 正常情况下 contentObj 来自服务器 payload，应包含 type

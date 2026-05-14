@@ -1838,6 +1838,7 @@ export default class ConversationVM extends ProviderListener {
         if (spaceId && channel.channelType === ChannelTypePerson) {
             // 创建一个轻量代理对象，继承原 content 的所有属性和方法，
             // 仅覆盖 encodeJSON 和 contentObj 以注入 space_id。
+            // 安全前提：SDK 通过 encode()/encodeJSON() 序列化，不依赖 own-property 枚举。
             sendContent = Object.create(content) as MessageContent
             const originalEncodeJSON = content.encodeJSON.bind(content)
             sendContent.encodeJSON = () => {

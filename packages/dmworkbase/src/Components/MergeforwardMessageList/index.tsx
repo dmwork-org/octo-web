@@ -263,6 +263,9 @@ export default class MergeforwardMessageList extends Component<
       const previewMsgs = (nestedContent.msgs || []).slice(0, 4).map((m) => {
         const ch = new Channel(m.fromUID, ChannelTypePerson);
         const info = WKSDK.shared().channelManager.getChannelInfo(ch);
+        if (!info) {
+          WKSDK.shared().channelManager.fetchChannelInfo(ch);
+        }
         return {
           fromUID: m.fromUID,
           digest: `${info?.title || m.fromUID}: ${m.content?.conversationDigest || ""}`,
@@ -272,9 +275,10 @@ export default class MergeforwardMessageList extends Component<
         <MergeforwardCard
           title={title}
           previewMsgs={previewMsgs}
-          onClick={() => this.setState((prev) => ({
-            contentStack: [...prev.contentStack, nestedContent],
-          }))}
+          onClick={() => this.setState((prev) => {
+            if (prev.contentStack.length >= 10) return null; // 最多 10 层嵌套
+            return { contentStack: [...prev.contentStack, nestedContent] };
+          })}
         />
       );
     }
@@ -363,7 +367,7 @@ export default class MergeforwardMessageList extends Component<
               return (
                 <div
                   className="wk-mergeforwardmessagelist-content-msg"
-                  key={m.messageID || `msg-${i}`}
+                  key={m.messageID || `${m.fromUID}-${m.timestamp}-${i}`}
                 >
                   {/* 头像 32x32 圆形，连续消息占位 */}
                   <div
