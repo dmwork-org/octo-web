@@ -3,6 +3,7 @@ import { Modal, DatePicker, Spin } from "@douyinfe/semi-ui";
 import { WKApp } from "@octo/base";
 import type { CreateMatterReq, ExtractMessage } from "../../bridge/types";
 import MemberPicker from "../MemberPicker";
+import { Toast } from "../../utils/toast";
 import "./index.css";
 
 export interface SmartCreateModalProps {
@@ -122,8 +123,12 @@ export default function SmartCreateModal({
         source_msgs: sourceMsgs,
       });
       (onConfirmSuccess ?? onClose)();
-    } catch {
-      // 创建失败不关闭，让用户重试
+    } catch (e: any) {
+      // 失败不关闭，让用户重试
+      const msg = e?.message === "assignee reconciliation failed"
+        ? undefined  // assignee 失败已在 onConfirm 内 toast
+        : "操作失败，请重试";
+      if (msg) Toast.error(msg);
     } finally {
       setSubmitting(false);
     }
