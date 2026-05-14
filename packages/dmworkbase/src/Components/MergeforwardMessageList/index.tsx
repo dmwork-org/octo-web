@@ -63,17 +63,17 @@ export default class MergeforwardMessageList extends Component<
     this.notifyNavigateChange();
   }
 
-  componentDidUpdate(_prevProps: MergeforwardMessageListProps, prevState: MergeforwardMessageListState) {
+  componentDidUpdate(prevProps: MergeforwardMessageListProps, prevState: MergeforwardMessageListState) {
     if (prevState.contentStack !== this.state.contentStack) {
       this.syncGoBackRef();
       this.notifyNavigateChange();
     }
     // props 变化时重置导航栈（用户打开了另一条合并转发消息）
-    if (_prevProps.mergeforwardContent !== this.props.mergeforwardContent) {
+    if (prevProps.mergeforwardContent !== this.props.mergeforwardContent && this.state.contentStack.length > 0) {
       this.setState({ contentStack: [] });
     }
     // 弹窗关闭时重置导航栈
-    if (_prevProps.visible && !this.props.visible) {
+    if (prevProps.visible && !this.props.visible && this.state.contentStack.length > 0) {
       this.setState({ contentStack: [] });
     }
   }
@@ -279,7 +279,10 @@ export default class MergeforwardMessageList extends Component<
           title={title}
           previewMsgs={previewMsgs}
           onClick={() => this.setState((prev) => {
-            if (prev.contentStack.length >= 10) return null;
+            if (prev.contentStack.length >= 10) {
+              console.warn('[MergeforwardMessageList] 嵌套层级已达上限(10)，无法继续展开');
+              return null;
+            }
             return { contentStack: [...prev.contentStack, nestedContent] };
           })}
         />
