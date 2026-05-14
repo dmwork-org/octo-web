@@ -279,7 +279,7 @@ export default class MergeforwardMessageList extends Component<
           title={title}
           previewMsgs={previewMsgs}
           onClick={() => this.setState((prev) => {
-            if (prev.contentStack.length >= 10) return null; // 最多 10 层嵌套
+            if (prev.contentStack.length >= 10) return null;
             return { contentStack: [...prev.contentStack, nestedContent] };
           })}
         />
@@ -350,8 +350,8 @@ export default class MergeforwardMessageList extends Component<
     return (
       <>
         <div className="wk-mergeforwardmessagelist">
-          {/* Content：消息列表 */}
-          <div className="wk-mergeforwardmessagelist-content">
+          {/* Content：消息列表，key 随栈深度变化强制重建 DOM 避免跨层复用 */}
+          <div className="wk-mergeforwardmessagelist-content" key={`stack-${contentStack.length}`}>
             {currentContent.msgs.map((m, i) => {
               const fromChannel = new Channel(m.fromUID, ChannelTypePerson);
               let fromChannelInfo =
