@@ -260,6 +260,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                 <span className="wk-mergeforward-modal-title-with-back">
                   <button
                     className="wk-mergeforward-modal-back-btn"
+                    type="button"
                     aria-label="返回"
                     onClick={() => this.goBackRef.current?.()}
                   >
@@ -324,6 +325,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               <span className="wk-mergeforward-modal-title-with-back">
                 <button
                   className="wk-mergeforward-modal-back-btn"
+                  type="button"
                   aria-label="返回"
                   onClick={() => this.goBackRef.current?.()}
                 >
