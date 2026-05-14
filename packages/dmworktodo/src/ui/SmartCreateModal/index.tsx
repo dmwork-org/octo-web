@@ -165,6 +165,8 @@ export default function SmartCreateModal({
       maskClosable={false}
       centered
       className="wk-smart-create-modal"
+      bodyStyle={{ overflow: "visible", padding: 0 }}
+      style={{ overflow: "visible" }}
     >
       <div className="wk-smart-create-modal__content" onKeyDown={handleKeyDown}>
         {/* Header */}
