@@ -1094,7 +1094,9 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         <Spin style={{ marginTop: "20px" }} />
                       </div>
                     ) : activeTab === "recent" &&
-                      vm.filteredConversations.length === 0 ? (
+                      vm.filteredConversations.every(
+                        (c: ConversationWrap) => !isVisibleInRecentTab(c),
+                      ) ? (
                       <div className="wk-chat-empty-guide">
                         <div style={{ fontSize: 28, marginBottom: 12 }}>💬</div>
                         <div

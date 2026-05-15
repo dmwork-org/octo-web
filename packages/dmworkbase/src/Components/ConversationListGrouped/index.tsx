@@ -148,12 +148,15 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         const overType = over.data.current?.type
 
         if (activeType === 'category') {
-            // 分组整体排序
-            const oldIndex = categories.findIndex(c => `cat::${c.category_id}` === String(active.id))
-            const newIndex = categories.findIndex(c => `cat::${c.category_id}` === overId)
+            // 分组整体排序——只动可见分组（effectiveCategories）。索引基于隐藏后的
+            // 列表才不会拖到不可见 slot，hidden default 通过 hiddenRealCategoryIds 追加
+            // 在末尾保住后端 contract。
+            const oldIndex = effectiveCategories.findIndex(c => `cat::${c.category_id}` === String(active.id))
+            const newIndex = effectiveCategories.findIndex(c => `cat::${c.category_id}` === overId)
             if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-                const newOrder = arrayMove(categories, oldIndex, newIndex).map(c => c.category_id)
-                onSortCategories(newOrder)
+                const newOrder = arrayMove(effectiveCategories, oldIndex, newIndex)
+                    .map(c => c.category_id as string)
+                onSortCategories([...newOrder, ...hiddenRealCategoryIds])
             }
             return
         }
@@ -453,11 +456,19 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         }
     }
 
-    // 兜底：后端 categories 为空（GH dmwork-web#1044 旧账号场景）时，渲染一个
+    // 兜底：后端 categories 为空（GH dmwork-org/dmwork-web#1044 旧账号场景）时，渲染一个
     // 虚拟「默认」分组，避免 groupConversations 整列消失。真实 categories 走原逻辑。
     // 关注 tab 按 PM #337 spec 不展示默认分组（含真实 is_default 与虚拟兜底分组）。
     const effectiveCategories = computeEffectiveCategories(categories)
         .filter(cat => !cat.is_default && !isVirtualCategory(cat.category_id))
+
+    // 用户视角的可见分组排序只动 effectiveCategories；提交 /categories/sort 时仍要把
+    // 真实存在但被隐藏的默认分组带上，否则后端会误删 / useCategoryList 的本地重建会
+    // 因为 ID 不在新顺序里把它丢掉。虚拟分组没有真 UUID 永远不发。
+    const hiddenRealCategoryIds = categories
+        .filter(c => !effectiveCategories.some(v => v.category_id === c.category_id))
+        .filter(c => !isVirtualCategory(c.category_id))
+        .map(c => c.category_id as string)
 
     const categoriesForView = effectiveCategories.map(cat => {
         let catConvs: ConversationWrap[]
@@ -572,8 +583,9 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     const buildCategoryContextMenus = (categoryId: string): ContextMenusData[] => {
         // 虚拟默认分组没有真实 UUID，无法 rename / delete / sort / create-group，直接屏蔽菜单
         if (isVirtualCategory(categoryId)) return []
-        const idx = categories.findIndex(c => c.category_id === categoryId)
-        const cat = categories[idx]
+        // 用 effectiveCategories（=可见分组）做 idx，否则上/下移会跳到不可见 slot
+        const idx = effectiveCategories.findIndex(c => c.category_id === categoryId)
+        const cat = effectiveCategories[idx]
         if (!cat) return []
 
         const upDownMenus: ContextMenusData[] = [
@@ -582,19 +594,19 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 icon: "M18 15 12 9 6 15",
                 onClick: () => {
                     if (idx <= 0) return
-                    const newIds = categories.map(c => c.category_id)
+                    const newIds = effectiveCategories.map(c => c.category_id as string)
                     ;[newIds[idx - 1], newIds[idx]] = [newIds[idx], newIds[idx - 1]]
-                    onSortCategories(newIds)
+                    onSortCategories([...newIds, ...hiddenRealCategoryIds])
                 },
             },
             {
                 title: "下移",
                 icon: "M6 9l6 6 6-6",
                 onClick: () => {
-                    if (idx >= categories.length - 1) return
-                    const newIds = categories.map(c => c.category_id)
+                    if (idx >= effectiveCategories.length - 1) return
+                    const newIds = effectiveCategories.map(c => c.category_id as string)
                     ;[newIds[idx], newIds[idx + 1]] = [newIds[idx + 1], newIds[idx]]
-                    onSortCategories(newIds)
+                    onSortCategories([...newIds, ...hiddenRealCategoryIds])
                 },
             },
         ]
@@ -641,7 +653,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         ]
     }
 
-    const categoryIds = categories.map(c => `cat::${c.category_id}`)
+    const categoryIds = effectiveCategories.map(c => `cat::${c.category_id}`)
 
     // 找到正在拖拽的 conv item（用于 DragOverlay）
     const activeDragConv = activeDragData?.type === 'item'
