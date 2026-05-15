@@ -13,6 +13,7 @@ import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
 import { useFollowSidebar } from "../../Hooks/useFollowSidebar"
 import FollowService from "../../Service/FollowService"
+import { parseThreadChannelId } from "../../Service/Thread"
 import { ConversationWrap } from "../../Service/Model"
 import { ConvFilter } from "../ConversationList"
 import ConversationList from "../ConversationList"
@@ -187,10 +188,11 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
         const menus: ContextMenusData[] = []
         const channel = conv.channel
-        // sidebar 是 follow 状态的唯一权威源。channelInfo.orgData.is_followed 在 IM sync
-        // 路径上不一定填齐（特别是子区），优先用 sidebar 集合判定，回退到旧字段。
-        const sidebarFollowed = followedKeys.has(`${channel.channelType}::${channel.channelID}`)
-        const isFollowed = sidebarFollowed || conv.channelInfo?.orgData?.is_followed === true
+        // sidebar 是 follow 状态的唯一权威源。channelInfo.orgData.is_followed 是 IM 同步
+        // 缓存，删分组级联取关 / 取消关注后不会立即清空，回退到它会让取关后的项继续显示
+        // 「取消关注」（GH #337 review 指出的 bug）。sidebar reload 在所有 follow 写操作后
+        // 都会触发，初始未加载时退化为「都视为未关注」即可。
+        const isFollowed = followedKeys.has(`${channel.channelType}::${channel.channelID}`)
 
         // 最近 Tab（filter !== 'group'）显示「添加到关注 / 取消关注」
         if (filter !== 'group') {
@@ -219,21 +221,57 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                 // 未关注 → 显示「添加到关注」
                 const channel = conv.channel
 
-                // 子区：直接关注，后端 FollowThread 会级联关注父频道（PM #337 spec
-                // "关注子区时子区和频道一同关注"）。子区"不支持单独关注"指的是不能仅关注
-                // 子区不连带父频道，不是没有入口。
+                // 子区：父频道未关注时弹分组子菜单（含「+ 新建分组」），先把父频道
+                // 关注到目标分组再 followThread；父频道已关注时直接 followThread
+                // 跟随父频道分组（子区不能脱离父频道单独换分组）。
                 if (channel.channelType === ChannelTypeCommunityTopic) {
-                    menus.push({
-                        title: '添加到关注',
-                        onClick: async () => {
-                            try {
-                                await FollowService.followThread({ thread_channel_id: channel.channelID })
-                                reloadAll()
-                            } catch (err) {
-                                console.error('关注子区失败', err)
+                    const parentGroupNo = conv.channelInfo?.orgData?.parentGroupNo
+                        || parseThreadChannelId(channel.channelID)?.groupNo
+                    const parentFollowed = !!parentGroupNo && followedGroupNos.has(parentGroupNo)
+
+                    if (parentFollowed) {
+                        menus.push({
+                            title: '添加到关注',
+                            onClick: async () => {
+                                try {
+                                    await FollowService.followThread({ thread_channel_id: channel.channelID })
+                                    reloadAll()
+                                } catch (err) {
+                                    console.error('关注子区失败', err)
+                                }
                             }
-                        }
-                    })
+                        })
+                    } else {
+                        const categoryItems: ContextMenusData[] = categories
+                            .filter(cat => !cat.is_default && isValidCategoryItem(cat))
+                            .map(cat => ({
+                                title: cat.name,
+                                onClick: async () => {
+                                    if (!parentGroupNo) {
+                                        console.error('关注子区失败: 无法解析父频道 groupNo', channel.channelID)
+                                        return
+                                    }
+                                    try {
+                                        await FollowService.refollowChannel({ group_no: parentGroupNo })
+                                        await moveGroupToCategory(parentGroupNo, cat.category_id)
+                                        await FollowService.followThread({ thread_channel_id: channel.channelID })
+                                        reloadAll()
+                                    } catch (err) {
+                                        console.error('关注子区失败', err)
+                                    }
+                                }
+                            }))
+                        categoryItems.push({ separator: true } as ContextMenusData)
+                        categoryItems.push({
+                            title: '+ 新建分组',
+                            onClick: () => setCreateModalVisible(true)
+                        })
+
+                        menus.push({
+                            title: '添加到关注',
+                            children: categoryItems
+                        })
+                    }
                 } else {
                     // 群聊和私聊需要选分组
                     const categoryItems: ContextMenusData[] = categories
