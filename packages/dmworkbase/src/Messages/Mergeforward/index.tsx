@@ -28,6 +28,17 @@ export default class MergeforwardContent extends MessageContent {
     channelType!: number
     users!: Array<MergeforwardUser>
     msgs!: Array<Message>
+    /**
+     * Maximum nesting depth for merge-forward messages. Depths 0-7 are decoded normally,
+     * depth 8+ are truncated (msgs cleared, original payload preserved in contentObj for re-forward).
+     * Real-world nesting is ≤ 3-4 levels; 8 provides headroom against pathological inputs.
+     *
+     * WARNING: depth limit is per-merge-forward branch, not global. Reply chains that each
+     * carry a nested merge-forward will reset depth to 0 per link (via Reply.decode() →
+     * SDK MessageContent.decode() virtual dispatch). Shallow reply chains are typical in
+     * practice, but deep reply chains + deep merge-forwards can still cause stack overflow.
+     * See hydrateMessageBaseFields for details.
+     */
     public static readonly MAX_MERGE_FORWARD_DEPTH = 8
     private static depthWarningLogged = false
     private _truncated = false
@@ -72,7 +83,6 @@ export default class MergeforwardContent extends MessageContent {
     decodeJSONWithDepth(content: any, depth: number) {
         if (depth === 0) {
             MergeforwardContent.depthWarningLogged = false
-            this._truncated = false
         }
         // Truncate at depth 8: depths 0-7 are decoded, depth 8+ are truncated.
         // Real-world nesting is ≤ 3-4 levels; depth 8 provides headroom against pathological inputs
@@ -149,7 +159,7 @@ export default class MergeforwardContent extends MessageContent {
             // For nested merge-forward, do NOT call SDK decode() as it would reset depth to 0
             // via virtual dispatch to decodeJSON(). Instead, manually hydrate base fields,
             // then call decodeJSONWithDepth() directly to preserve depth tracking.
-            hydrateMessageBaseFields(messageContent, payloadObj)
+            hydrateMessageBaseFields(messageContent, payloadObj, depth)
             // Set contentObj for re-forward preservation, then use depth-limited decode
             const mf = messageContent as any
             mf.contentObj = payloadObj

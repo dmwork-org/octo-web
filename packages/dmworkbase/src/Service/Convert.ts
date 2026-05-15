@@ -43,14 +43,20 @@ export function applyMsgLevelExternalFields(target: any, msgMap: any): void {
 }
 
 /**
- * SDK decode() 通常会设置基础字段（mention, reply, visibles, invisibles）
- * 但当绕过 decode() 直接调用 decodeJSONWithDepth 时，需要手动补充这些字段。
- * 不调用 SDK decode() 以避免虚拟调度导致的深度重置，但需构建正确的 SDK 实例。
+ * Hydrate base message fields (mention, reply, visibles, invisibles) without calling SDK decode().
+ * We bypass SDK decode() to avoid virtual dispatch that would reset depth to 0.
  *
- * Mirrors wukongimjssdk@1.3.5 MessageContent.prototype.decode base-field logic.
+ * Mirrors wukongimjssdk@1.2.11 MessageContent.prototype.decode base-field logic.
  * If SDK updates its field handling, this must be kept in sync.
+ *
+ * WARNING: depth limit is per-merge-forward branch. Reply.decode() may recursively decode
+ * reply.payload which could be a mergeForward, starting a fresh depth=0 budget per reply link
+ * (via SDK MessageContent.decode() virtual dispatch). To prevent unbounded recursion, we skip
+ * reply.decode() at and beyond depth 8 (MAX_MERGE_FORWARD_DEPTH), treating deep replies as
+ * raw JSON. This prevents reply field mapping (fromName, messageSeq) at truncation boundaries,
+ * but is necessary to avoid stack overflow on reply chains containing nested mergeForwards.
  */
-export function hydrateMessageBaseFields(messageContent: any, contentObj: any): void {
+export function hydrateMessageBaseFields(messageContent: any, contentObj: any, depth: number = 0): void {
     if (!contentObj) return
 
     const mentionObj = contentObj["mention"]
@@ -64,15 +70,17 @@ export function hydrateMessageBaseFields(messageContent: any, contentObj: any): 
     const replyObj = contentObj["reply"]
     if (replyObj) {
         const reply = new Reply()
-        // Note: Reply.decode() may recursively decode reply.payload which could be a mergeForward.
-        // That would start a fresh depth=0 budget per reply link (not globally bounded).
-        // This is safe in practice (reply chains are typically shallow), but depth is per-link not global.
-        reply.decode(replyObj)
+        // Only decode reply if depth < 8. Beyond depth 8, skip reply.decode() to avoid
+        // recursing through mergeForward payloads in reply.payload and hitting stack overflow.
+        if (depth < 8) {
+            reply.decode(replyObj)
+        }
         messageContent.reply = reply
     }
 
-    if (contentObj["visibles"] !== undefined) messageContent.visibles = contentObj["visibles"]
-    if (contentObj["invisibles"] !== undefined) messageContent.invisibles = contentObj["invisibles"]
+    // Match SDK behavior: assign unconditionally, including undefined
+    messageContent.visibles = contentObj["visibles"]
+    messageContent.invisibles = contentObj["invisibles"]
 }
 
 /**
@@ -319,14 +327,14 @@ export class Convert {
         }
         const messageContent = WKSDK.shared().getMessageContent(contentType)
         if (contentObj) {
-            // contentType=mergeForward 的合并转发消息用专用的 decodeJSONWithDepth 处理
-            // 这样既能调用正确的字段映射（channel_type→channelType），
-            // 又能通过深度限制防止深层嵌套导致的栈溢出。
+            // Route merge-forward through depth-aware decoding to prevent stack overflow on nesting.
+            // This enables correct field mapping (channel_type → channelType) while applying
+            // the MAX_MERGE_FORWARD_DEPTH limit to prevent unbounded recursion.
             if (contentType === MessageContentTypeConst.mergeForward && (messageContent as any).decodeJSONWithDepth) {
                 // Do NOT call SDK decode() as it would trigger virtual dispatch to decodeJSON(),
                 // resetting depth to 0 and causing unbounded recursion on deeply nested payloads.
                 // Instead, manually hydrate base fields and use depth-limited decode.
-                hydrateMessageBaseFields(messageContent, contentObj)
+                hydrateMessageBaseFields(messageContent, contentObj, 0)
                 const mf = messageContent as any
                 mf.contentObj = contentObj
                 mf.decodeJSONWithDepth(contentObj, 0)
