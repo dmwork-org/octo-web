@@ -1164,7 +1164,9 @@ export default class ConversationList extends Component<
             // 8. 清空聊天记录 / 关闭并清空
             // 子区：直接展开到顶层
             // 群组：保留在「更多」子菜单里
-            const clearItems = [
+            // hideCloseChat（关注 tab）下只保留「仅清空记录」的项，否则即便上面隐藏了
+            // 显式「关闭聊天窗口」项，「更多 → 关闭窗口并清空」仍能让用户关掉关注的会话。
+            const clearItems: ContextMenusData[] = [
               {
                 title: "清空聊天记录",
                 danger: true,
@@ -1181,7 +1183,9 @@ export default class ConversationList extends Component<
                   });
                 },
               },
-              {
+            ];
+            if (!this.props.hideCloseChat) {
+              clearItems.push({
                 title: "关闭窗口并清空记录",
                 danger: true,
                 onClick: () => {
@@ -1198,8 +1202,8 @@ export default class ConversationList extends Component<
                     },
                   });
                 },
-              },
-            ];
+              });
+            }
 
             if (channel?.channelType === ChannelTypeCommunityTopic) {
               menus.push(...clearItems);
