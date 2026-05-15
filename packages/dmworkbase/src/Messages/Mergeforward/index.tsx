@@ -28,7 +28,7 @@ export default class MergeforwardContent extends MessageContent {
     channelType!: number
     users!: Array<MergeforwardUser>
     msgs!: Array<Message>
-    private static readonly MAX_MERGE_FORWARD_DEPTH = 8
+    public static readonly MAX_MERGE_FORWARD_DEPTH = 8
     private static depthWarningLogged = false
     private _truncated = false
 
@@ -72,6 +72,7 @@ export default class MergeforwardContent extends MessageContent {
     decodeJSONWithDepth(content: any, depth: number) {
         if (depth === 0) {
             MergeforwardContent.depthWarningLogged = false
+            this._truncated = false
         }
         // Truncate at depth 8: depths 0-7 are decoded, depth 8+ are truncated.
         // Real-world nesting is ≤ 3-4 levels; depth 8 provides headroom against pathological inputs

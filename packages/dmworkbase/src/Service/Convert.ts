@@ -46,6 +46,9 @@ export function applyMsgLevelExternalFields(target: any, msgMap: any): void {
  * SDK decode() 通常会设置基础字段（mention, reply, visibles, invisibles）
  * 但当绕过 decode() 直接调用 decodeJSONWithDepth 时，需要手动补充这些字段。
  * 不调用 SDK decode() 以避免虚拟调度导致的深度重置，但需构建正确的 SDK 实例。
+ *
+ * Mirrors wukongimjssdk@1.3.5 MessageContent.prototype.decode base-field logic.
+ * If SDK updates its field handling, this must be kept in sync.
  */
 export function hydrateMessageBaseFields(messageContent: any, contentObj: any): void {
     if (!contentObj) return
@@ -61,8 +64,9 @@ export function hydrateMessageBaseFields(messageContent: any, contentObj: any): 
     const replyObj = contentObj["reply"]
     if (replyObj) {
         const reply = new Reply()
-        // Safe: nested mergeForward inside reply.payload would start a fresh depth=0 budget
-        // but cannot exceed 8 levels before being truncated, so still bounded.
+        // Note: Reply.decode() may recursively decode reply.payload which could be a mergeForward.
+        // That would start a fresh depth=0 budget per reply link (not globally bounded).
+        // This is safe in practice (reply chains are typically shallow), but depth is per-link not global.
         reply.decode(replyObj)
         messageContent.reply = reply
     }
