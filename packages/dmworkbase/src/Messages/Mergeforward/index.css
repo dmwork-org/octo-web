@@ -8,27 +8,27 @@
 }
 
 .wk-mergeforwards-content {
-  background: #FFFFFF;
-  border-radius: 12px;
-  border: 1px solid rgba(46, 50, 56, 0.09);
-  padding: 16px;
+  background: var(--wk-bg-surface);
+  border-radius: var(--wk-r-md);
+  border: 1px solid var(--wk-border-default);
+  padding: var(--wk-sp-4);
   cursor: pointer;
   /* 宽度自适应（由最长内容决定），不设固定宽度 */
   min-width: 200px;
   max-width: 400px;
-  transition: background 0.15s;
+  transition: background var(--wk-dur-fast);
 }
 
 .wk-mergeforwards-content:hover {
-  background: rgba(28, 28, 35, 0.02);
+  background: var(--wk-brand-tint-03);
 }
 
 /* 标题行 */
 .wk-mergeforwards-content-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #1C1C23;
-  margin-bottom: 8px;
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-primary);
+  margin-bottom: var(--wk-sp-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -38,13 +38,13 @@
 .wk-mergeforwards-content-items {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 10px;
+  gap: var(--wk-sp-1);
+  margin-bottom: var(--wk-sp-2-5, 10px);
 }
 
 .wk-mergeforwards-content-item {
-  font-size: 13px;
-  color: rgba(28, 28, 35, 0.4);
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-icon-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -53,8 +53,8 @@
 /* 分割线 */
 .wk-mergeforwards-content-line {
   height: 1px;
-  background: rgba(46, 50, 56, 0.09);
-  margin-bottom: 10px;
+  background: var(--wk-border-default);
+  margin-bottom: var(--wk-sp-2-5, 10px);
 }
 
 /* 底部标签区 */
@@ -62,8 +62,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
-  color: rgba(28, 28, 35, 0.35);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-brand-tint-35);
 }
 
 .wk-mergeforwards-content-tip p {
@@ -87,9 +87,9 @@
     display: flex !important;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
-    color: rgba(28, 28, 35, 0.6);
+    width: var(--wk-sp-6);
+    height: var(--wk-sp-6);
+    color: var(--wk-icon-default);
 }
 
 /* Semi Modal header 对齐 Figma */
@@ -97,15 +97,15 @@
     height: 56px;
     display: flex;
     align-items: center;
-    padding: 0 16px !important;
-    border-bottom: 1px solid rgba(46, 50, 56, 0.09);
+    padding: 0 var(--wk-sp-4) !important;
+    border-bottom: 1px solid var(--wk-border-default);
     margin: 0 !important;
 }
 
 .wk-mergeforward-modal .semi-modal-title {
-    font-size: 16px !important;
-    font-weight: 500 !important;
-    color: #1c1c23 !important;
+    font-size: var(--wk-text-size-xl) !important;
+    font-weight: var(--wk-font-medium) !important;
+    color: var(--wk-text-primary) !important;
 }
 
 /* Semi Modal body 内容区 */
@@ -144,7 +144,7 @@
     border-radius: var(--wk-r-sm, 6px);
     cursor: pointer;
     color: var(--wk-text-secondary);
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--wk-dur-fast), color var(--wk-dur-fast);
 }
 
 .wk-mergeforward-modal-back-btn:hover {
