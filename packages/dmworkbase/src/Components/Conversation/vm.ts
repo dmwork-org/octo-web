@@ -1848,18 +1848,30 @@ export default class ConversationVM extends ProviderListener {
                 obj.space_id = spaceId
                 return obj
             }
-            // 覆盖 encode()：临时将 content.encodeJSON 替换为代理版本，
-            // 然后调用原始 content.encode()（可能是 SDK 默认或实例级覆盖，
-            // 如 mention entities 的自定义 encode）。这样保留了原始 encode
-            // 写入的所有字段（entities、reply 等），同时注入 space_id。
-            // JS 单线程模型下 swap-call-restore 是安全的。
+            // encode() 覆盖：解决两个矛盾需求：
+            // 1. mention 实例级 encode 覆盖 bind 了 content，需要 encodeJSON 在 content 上
+            // 2. media 上传后 SDK 把 remoteUrl/url 写到 sendContent（代理）上
+            // 方案：先同步代理上的 media 属性回 content，再 swap encodeJSON 并调用原始 encode
             sendContent.encode = function () {
+                // 同步 media 上传后写入代理的属性回原始 content
+                const ownKeys = Object.getOwnPropertyNames(sendContent)
+                const saved: Record<string, any> = {}
+                for (const key of ownKeys) {
+                    if (key === 'encodeJSON' || key === 'encode' || key === 'contentObj') continue
+                    saved[key] = (content as any)[key]
+                        ; (content as any)[key] = (sendContent as any)[key]
+                }
+                // swap encodeJSON 让 space_id 注入生效
                 const savedEncodeJSON = content.encodeJSON
                 content.encodeJSON = sendContent.encodeJSON
                 try {
                     return content.encode.call(content)
                 } finally {
                     content.encodeJSON = savedEncodeJSON
+                    // 恢复 content 上被同步的属性
+                    for (const key of Object.keys(saved)) {
+                        ; (content as any)[key] = saved[key]
+                    }
                 }
             }
             // 同步 contentObj，让本地回显也通过 filterPersonMessagesBySpace (#784)

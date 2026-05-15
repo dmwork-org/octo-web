@@ -78,14 +78,45 @@
  * 不直接覆盖 .semi-modal-* 内部类。
  */
 
-/* Header 样式（通过 headerClassName 传入） */
+/* Header 样式（通过 header prop 自定义渲染） */
 .wk-mergeforward-modal-header {
     height: 56px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 0 var(--wk-sp-4);
     border-bottom: 1px solid var(--wk-border-default);
     margin: 0;
+}
+
+.wk-mergeforward-modal-header-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--wk-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-mergeforward-modal-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--wk-size-icon-btn, 28px);
+    height: var(--wk-size-icon-btn, 28px);
+    border: none;
+    background: none;
+    border-radius: var(--wk-r-sm, 6px);
+    cursor: pointer;
+    color: var(--wk-text-tertiary);
+    font-size: 14px;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+
+.wk-mergeforward-modal-close-btn:hover {
+    background: var(--wk-bg-hover);
+    color: var(--wk-text-primary);
 }
 
 /* ── 返回按钮（嵌套合并转发导航） ── */
