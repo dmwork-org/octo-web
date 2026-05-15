@@ -7,6 +7,7 @@ import {
   Message,
   MessageContent,
 } from "wukongimjssdk";
+import { IconArrowLeft } from "@douyinfe/semi-icons";
 import React from "react";
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList";
 import { MessageContentTypeConst } from "../../Service/Const";
@@ -264,9 +265,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                     aria-label="返回"
                     onClick={() => this.goBackRef.current?.()}
                   >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <IconArrowLeft size="inherit" />
                   </button>
                   <span>{this.state.navTitle}</span>
                 </span>
@@ -329,9 +328,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                   aria-label="返回"
                   onClick={() => this.goBackRef.current?.()}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <IconArrowLeft size="inherit" />
                 </button>
                 <span>{this.state.navTitle}</span>
               </span>

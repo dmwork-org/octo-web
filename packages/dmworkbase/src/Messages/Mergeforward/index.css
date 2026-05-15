@@ -39,7 +39,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1);
-  margin-bottom: var(--wk-sp-2-5, 10px);
+  margin-bottom: var(--wk-sp-3);
 }
 
 .wk-mergeforwards-content-item {
@@ -54,7 +54,7 @@
 .wk-mergeforwards-content-line {
   height: 1px;
   background: var(--wk-border-default);
-  margin-bottom: var(--wk-sp-2-5, 10px);
+  margin-bottom: var(--wk-sp-3);
 }
 
 /* 底部标签区 */
@@ -130,18 +130,18 @@
 .wk-mergeforward-modal-title-with-back {
     display: inline-flex;
     align-items: center;
-    gap: var(--wk-sp-2, 8px);
+    gap: var(--wk-sp-2);
 }
 
 .wk-mergeforward-modal-back-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--wk-size-icon-btn, 28px);
-    height: var(--wk-size-icon-btn, 28px);
+    width: var(--wk-sp-6);
+    height: var(--wk-sp-6);
     border: none;
     background: none;
-    border-radius: var(--wk-r-sm, 6px);
+    border-radius: var(--wk-r-sm);
     cursor: pointer;
     color: var(--wk-text-secondary);
     transition: background var(--wk-dur-fast), color var(--wk-dur-fast);
