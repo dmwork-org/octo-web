@@ -288,13 +288,15 @@ export default class MergeforwardMessageList extends Component<
         <MergeforwardCard
           title={title}
           previewMsgs={previewMsgs}
-          onClick={() => this.setState((prev) => {
-            if (prev.contentStack.length >= MAX_NESTED_DEPTH) {
+          onClick={() => {
+            if (this.state.contentStack.length >= MAX_NESTED_DEPTH) {
               Toast.info("已达最大展开层级");
-              return null;
+              return;
             }
-            return { contentStack: [...prev.contentStack, nestedContent] };
-          })}
+            this.setState((prev) => ({
+              contentStack: [...prev.contentStack, nestedContent],
+            }));
+          }}
         />
       );
     }
@@ -383,7 +385,7 @@ export default class MergeforwardMessageList extends Component<
               return (
                 <div
                   className="wk-mergeforwardmessagelist-content-msg"
-                  key={m.messageID && m.messageID !== "undefined" ? m.messageID : `${m.fromUID}-${m.timestamp}-${i}`}
+                  key={m.messageID || `${m.fromUID}-${m.timestamp}-${i}`}
                 >
                   {/* 头像 32x32 圆形，连续消息占位 */}
                   <div

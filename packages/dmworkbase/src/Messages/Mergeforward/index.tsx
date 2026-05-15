@@ -105,7 +105,7 @@ export default class MergeforwardContent extends MessageContent {
 
   mapToMessage(messageMap: any): Message {
     let message = new Message();
-    message.messageID = `${messageMap["message_id"]}`;
+    message.messageID = messageMap["message_id"] != null ? `${messageMap["message_id"]}` : "";
     message.timestamp = messageMap["timestamp"];
     message.fromUID = messageMap["from_uid"];
 
