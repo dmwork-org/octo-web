@@ -1886,7 +1886,10 @@ export default class ConversationVM extends ProviderListener {
                 }
             }
             // 同步 contentObj，让本地回显也通过 filterPersonMessagesBySpace (#784)
-            sendContent.contentObj = { ...(content.contentObj || {}), space_id: spaceId }
+            // 当原始 contentObj 为空时（新创建的消息未经 decode），用 encodeJSON() 构建完整 payload，
+            // 避免本地回显的 contentObj 只有 { space_id } 导致 messageToMap 丢失实际内容。
+            const baseObj = content.contentObj || { ...content.encodeJSON(), type: content.contentType }
+            sendContent.contentObj = { ...baseObj, space_id: spaceId }
         }
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
         let setting = new Setting()
