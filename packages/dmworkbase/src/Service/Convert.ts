@@ -43,6 +43,18 @@ export function applyMsgLevelExternalFields(target: any, msgMap: any): void {
 }
 
 /**
+ * SDK decode() 通常会设置基础字段（mention, reply, visibles, invisibles）
+ * 但当绕过 decode() 直接调用 decodeJSONWithDepth 时，需要手动补充这些字段。
+ */
+export function hydrateMessageBaseFields(messageContent: any, msgMap: any): void {
+    if (!msgMap) return
+    if (msgMap.mention !== undefined) messageContent.mention = msgMap.mention
+    if (msgMap.reply !== undefined) messageContent.reply = msgMap.reply
+    if (msgMap.visibles !== undefined) messageContent.visibles = msgMap.visibles
+    if (msgMap.invisibles !== undefined) messageContent.invisibles = msgMap.invisibles
+}
+
+/**
  * 内部工具：判定 home_space_id / name 是否需要兜底（空/未设置算需要）。
  */
 function needsHomeSpaceFields(target: any): { needId: boolean; needName: boolean } {
@@ -288,13 +300,17 @@ export class Convert {
         if (contentObj) {
             // contentType=mergeForward 的合并转发消息用专用的 decodeJSONWithDepth 处理
             // 这样既能调用正确的字段映射（channel_type→channelType），
-            // 又能通过深度限制防止深层嵌套导致的栈溢出
-            // Note: Uses duck typing to avoid circular dependency with Messages/Mergeforward
+            // 又能通过深度限制防止深层嵌套导致的栈溢出。
+            // Note: Uses duck typing to avoid circular dependency with Messages/Mergeforward.
+            // ASI: cannot write consecutive lines starting with '('; use typed alias instead.
             if (contentType === MessageContentTypeConst.mergeForward && (messageContent as any).decodeJSONWithDepth) {
                 // 保持 SDK decode() 的语义：设置 contentObj 后再调用 decodeJSONWithDepth
-                // 这样 re-forward 时能从 contentObj 读取原始 payload
-                (messageContent as any).contentObj = contentObj
-                (messageContent as any).decodeJSONWithDepth(contentObj, 0)
+                // 这样 re-forward 时能从 contentObj 读取原始 payload；
+                // 同时补充 SDK 基础字段（mention, reply, visibles, invisibles）
+                const mf = messageContent as any
+                mf.contentObj = contentObj
+                hydrateMessageBaseFields(mf, contentObj)
+                mf.decodeJSONWithDepth(contentObj, 0)
             } else {
                 messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
             }

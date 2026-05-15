@@ -3,7 +3,7 @@ import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageCo
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
 import { MessageContentTypeConst } from "../../Service/Const"
-import { applyMsgLevelExternalFields } from "../../Service/Convert"
+import { applyMsgLevelExternalFields, hydrateMessageBaseFields } from "../../Service/Convert"
 import MessageBase from "../Base"
 import MessageTrail from "../Base/tail"
 import { MessageCell } from "../MessageCell"
@@ -39,8 +39,6 @@ export default class MergeforwardContent extends MessageContent {
     }
 
     decodeJSON(content: any) {
-        // Reset warning flag for each top-level message so truncation is logged per message
-        MergeforwardContent.depthWarningLogged = false
         this.decodeJSONWithDepth(content, 0)
     }
 
@@ -66,13 +64,18 @@ export default class MergeforwardContent extends MessageContent {
     }
 
     /**
-     * Internal decoding with depth limit to prevent stack overflow on deeply nested forwards.
+     * Decode helper with explicit depth tracking to prevent stack overflow.
      * Public to allow access from mapToMessage during recursive processing.
+     * Resets per-message warning flag at depth 0.
      */
     decodeJSONWithDepth(content: any, depth: number) {
+        if (depth === 0) {
+            MergeforwardContent.depthWarningLogged = false
+        }
         // Truncate at depth 8: depths 0-7 are decoded, depth 8+ are truncated.
-        // This prevents deeply nested forwards from causing stack overflow while
-        // preserving the full original payload on contentObj for re-forward.
+        // Real-world nesting is ≤ 3-4 levels; depth 8 provides headroom against pathological inputs
+        // while preventing stack overflow (typical limit is ~10k). At depth 8+, msgs is set to []
+        // and contentObj preserves the original payload for re-forwarding.
         if (depth >= MergeforwardContent.MAX_MERGE_FORWARD_DEPTH) {
             this.channelType = content["channel_type"] || 0
             this.users = MergeforwardContent.normalizeUsers(content["users"] || [])
@@ -98,6 +101,11 @@ export default class MergeforwardContent extends MessageContent {
         this.msgs = messages
     }
     encodeJSON() {
+        // If truncated at depth 8+, contentObj holds the full original payload.
+        // Prefer it over the truncated msgs array to ensure re-forward never loses data.
+        if (this.contentObj) {
+            return this.contentObj
+        }
         let messageMaps = new Array()
         if (this.msgs && this.msgs.length > 0) {
             for (const msg of this.msgs) {
@@ -114,7 +122,7 @@ export default class MergeforwardContent extends MessageContent {
         return "[合并转发]"
     }
 
-    mapToMessage(messageMap: any, depth: number = 0): Message {
+    mapToMessage(messageMap: any, depth: number): Message {
         let message = new Message()
         message.messageID = `${messageMap['message_id']}`
         message.timestamp = messageMap["timestamp"]
@@ -135,9 +143,13 @@ export default class MergeforwardContent extends MessageContent {
         if (contentType === MessageContentTypeConst.mergeForward
             && (messageContent as any).decodeJSONWithDepth) {
             // Set contentObj before decoding to preserve the original payload,
-            // mirroring SDK decode() semantics so re-forward works correctly
-            (messageContent as any).contentObj = payloadObj
-            (messageContent as any).decodeJSONWithDepth(payloadObj, depth)
+            // mirroring SDK decode() semantics so re-forward works correctly.
+            // Use defensive leading semicolon: ASI does not insert semicolon before '('
+            // Also hydrate SDK base fields (mention, reply, visibles, invisibles).
+            const mf = messageContent as any
+            mf.contentObj = payloadObj
+            hydrateMessageBaseFields(mf, payloadObj)
+            mf.decodeJSONWithDepth(payloadObj, depth)
         } else {
             const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj))
             messageContent.decode(payloadData)
