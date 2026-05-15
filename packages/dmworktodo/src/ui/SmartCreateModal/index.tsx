@@ -164,7 +164,7 @@ export default function SmartCreateModal({
       footer={null}
       width={520}
       closable={!submitting}
-      maskClosable={!loading}
+      maskClosable={false}
       centered
       className="wk-smart-create-modal"
       bodyStyle={{ overflow: "visible", padding: 0 }}
@@ -283,14 +283,6 @@ export default function SmartCreateModal({
 
             <div className="wk-smart-create-modal__footer-sep" />
             <div className="wk-smart-create-modal__actions">
-              <button
-                type="button"
-                className="wk-smart-create-modal__btn wk-smart-create-modal__btn--cancel"
-                onClick={onClose}
-                disabled={submitting}
-              >
-                取消
-              </button>
               <button
                 type="button"
                 className="wk-smart-create-modal__btn wk-smart-create-modal__btn--confirm"
