@@ -174,9 +174,13 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
       return "群的聊天记录";
     }
 
-    const names = content.users.map((v) => {
-      return v.name;
-    });
+    const names = content.users
+      .map((v) => v.name)
+      .filter(Boolean);
+
+    if (names.length === 0) {
+      return "聊天记录";
+    }
 
     return `${names.join("、")}的聊天记录`;
   }
@@ -256,6 +260,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
           </MessageRow>
           <WKModal
             className="wk-base-modal wk-mergeforward-modal"
+            width={480}
             title={
               this.state.canGoBack ? (
                 <span className="wk-mergeforward-modal-title-with-back">
@@ -274,6 +279,9 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             visible={showList}
             onCancel={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
             footer={null}
+            bodyStyle={{ padding: 0, maxHeight: 'calc(100vh - 160px - 56px)', overflowY: 'auto' }}
+            style={{ maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}
+            headerClassName="wk-mergeforward-modal-header"
           >
             <MergeforwardMessageList
               mergeforwardContent={content}
@@ -319,6 +327,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
         </div>
         <WKModal
           className="wk-base-modal wk-mergeforward-modal"
+          width={480}
           title={
             this.state.canGoBack ? (
               <span className="wk-mergeforward-modal-title-with-back">
@@ -338,6 +347,9 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
           onCancel={() => {
             this.setState({ showList: false, canGoBack: false, navTitle: "" });
           }}
+          bodyStyle={{ padding: 0, maxHeight: 'calc(100vh - 160px - 56px)', overflowY: 'auto' }}
+          style={{ maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}
+          headerClassName="wk-mergeforward-modal-header"
         >
           <MergeforwardMessageList
             mergeforwardContent={content}

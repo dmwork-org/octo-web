@@ -110,9 +110,13 @@ export default class MergeforwardMessageList extends Component<
       return "群的聊天记录";
     }
 
-    const names = content.users.map((v) => {
-      return v.name;
-    });
+    const names = content.users
+      .map((v) => v.name)
+      .filter(Boolean);
+
+    if (names.length === 0) {
+      return "聊天记录";
+    }
 
     return `${names.join("、")}的聊天记录`;
   }

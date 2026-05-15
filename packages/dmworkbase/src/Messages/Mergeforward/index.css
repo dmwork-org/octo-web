@@ -70,21 +70,17 @@
   margin: 0;
 }
 
-/* 聊天记录详情弹窗：Figma 480px 宽，最大高度 100vh-160px */
-.wk-mergeforward-modal .semi-modal-content {
-    width: 480px !important;
-    max-height: calc(100vh - 160px) !important;
-    overflow: hidden !important;
-}
-
-/* ── 聊天记录详情弹窗 Semi Modal 样式覆盖 ──
+/* ── 聊天记录详情弹窗 ──
  * Figma 421:64397: 480px 宽，max-height=100vh-160px
  * Header: 56px，pad L/R 16，标题左+关闭右
+ *
+ * 样式通过 WKModal props (width/bodyStyle/style/headerClassName) 传入，
+ * 不再直接覆盖 .semi-modal-* 内部类。
  */
 
 /* 恢复 Semi 关闭按钮（wk-base-modal 默认隐藏） */
 .wk-mergeforward-modal .semi-modal-close {
-    display: flex !important;
+    display: flex;
     align-items: center;
     justify-content: center;
     width: var(--wk-sp-6);
@@ -92,39 +88,21 @@
     color: var(--wk-icon-default);
 }
 
-/* Semi Modal header 对齐 Figma */
-.wk-mergeforward-modal .semi-modal-header {
+/* Header 样式（通过 headerClassName 传入） */
+.wk-mergeforward-modal-header {
     height: 56px;
     display: flex;
     align-items: center;
-    padding: 0 var(--wk-sp-4) !important;
+    padding: 0 var(--wk-sp-4);
     border-bottom: 1px solid var(--wk-border-default);
-    margin: 0 !important;
+    margin: 0;
 }
 
-.wk-mergeforward-modal .semi-modal-title {
-    font-size: var(--wk-text-size-xl) !important;
-    font-weight: var(--wk-font-medium) !important;
-    color: var(--wk-text-primary) !important;
-}
-
-/* Semi Modal body 内容区 */
-.wk-mergeforward-modal .semi-modal-body {
-    padding: 0 !important;
-    max-height: calc(100vh - 160px - 56px) !important;
-    overflow-y: auto;
-}
-
+/* body-wrapper margin 清零（配合 bodyStyle 使用） */
 .wk-mergeforward-modal .semi-modal-body-wrapper {
-    margin: 0 !important;
-    padding: 0 !important;
+    margin: 0;
+    padding: 0;
 }
-
-.wk-mergeforward-modal .semi-modal-content > * + * {
-    margin-top: 0 !important;
-}
-
-
 
 /* ── 返回按钮（嵌套合并转发导航） ── */
 .wk-mergeforward-modal-title-with-back {
