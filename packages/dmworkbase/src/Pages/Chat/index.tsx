@@ -120,9 +120,23 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     return isEffectivelyMuted({ isThread, channelInfo: c.channelInfo, parentChannelInfo });
   };
 
+  // sidebar items 是 /sidebar/sync 的快照，IM 缓存里 conv 才是 reactive 的。
+  // IM 缓存有这条会话就用 live unread；没有（sidebar-only 关注，从未聊过）才
+  // fallback sidebar 的 unread 快照——这样新消息一来 badge 即刻同步，sidebar-
+  // only 关注又不会被漏算。
   const followUnread = items.reduce((sum, it) => {
     if (isItemMuted(it)) return sum;
-    return sum + (it.unread || 0);
+    let channelType: number | null = null;
+    if (it.target_type === SidebarTargetType.DM) channelType = ChannelTypePerson;
+    else if (it.target_type === SidebarTargetType.CHANNEL) channelType = ChannelTypeGroup;
+    else if (it.target_type === SidebarTargetType.THREAD) channelType = ChannelTypeCommunityTopic;
+    const liveConv = channelType != null
+      ? conversations.find(c =>
+          c.channel.channelType === channelType && c.channel.channelID === it.target_id,
+        )
+      : undefined;
+    const unread = liveConv ? (liveConv.unread || 0) : (it.unread || 0);
+    return sum + unread;
   }, 0);
 
   const recentUnread = conversations.reduce(
@@ -1174,8 +1188,11 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                   undefined,
                                 );
                                 vm.selectedConversation = conversation;
+                                // 在 sidebar 列表里点击：保持当前 tab，
+                                // 不要被 EndpointCommon 强切到 recent。
                                 WKApp.endpoints.showConversation(
                                   conversation.channel,
+                                  { fromSidebarList: true },
                                 );
                                 vm.notifyListener();
                                 return;
@@ -1188,6 +1205,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                               vm.selectedConversation = conversation;
                               WKApp.endpoints.showConversation(
                                 conversation.channel,
+                                { fromSidebarList: true },
                               );
                               vm.notifyListener();
                             };
@@ -1221,6 +1239,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                               }
                               WKApp.endpoints.showConversation(
                                 new Channel(groupNo, ChannelTypeGroup),
+                                { fromSidebarList: true },
                               );
                             }
                           }}

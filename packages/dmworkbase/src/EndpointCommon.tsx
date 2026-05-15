@@ -14,6 +14,13 @@ export class MessageContextMenus {
 export class ShowConversationOptions {
   // 聊天消息定位的messageSeq
   initLocateMessageSeq?: number;
+  /**
+   * sidebar 列表内点击会话时传 true，避免被强制切到 recent。外部入口
+   * （联系人/全局搜索/通知/bot store 等）不传，让 EndpointCommon 默认
+   * 把 sidebar 切到 recent —— recent 是 filter='all'，能展示并高亮目标
+   * 会话；不切的话用户在 follow tab 上打开未关注会话会"消失"。
+   */
+  fromSidebarList?: boolean;
 }
 
 /**
@@ -121,12 +128,15 @@ export class EndpointCommon {
           opts = param.opts
         }
 
-        // 任何外部入口（联系人/全局搜索/通知/bot store）打开会话时，把 sidebar
-        // 切到 recent。recent tab filter='all'，不论目标是否关注都能展示并高亮；
-        // 留在 follow tab 时未关注的会话不会出现在列表里也无法激活。
-        // 不在这里检查 followedKeys —— EndpointCommon 在 React 树外，无法同步读
-        // FollowSidebarProvider 的 state，强切到 recent 是最稳妥的兜底。
-        WKApp.mittBus.emit("wk:switch-sidebar-tab", "recent");
+        // 外部入口（联系人/全局搜索/通知/bot store）打开会话时把 sidebar 切到
+        // recent —— recent tab filter='all'，不论目标是否关注都能展示并高亮；留在
+        // follow tab 时未关注的会话不会出现在列表里也无法激活。sidebar 列表内
+        // 点击则带 fromSidebarList=true，保持当前 tab，避免点 follow 列表里的
+        // 会话被强切到 recent。followedKeys 检查放在 sidebar 列表点击侧（已在
+        // follow tab 里的项必然 followed），这里不做 React-tree-外的同步读。
+        if (!opts.fromSidebarList) {
+          WKApp.mittBus.emit("wk:switch-sidebar-tab", "recent");
+        }
         let initLocateMessageSeq = 0;
         if (opts && opts.initLocateMessageSeq && opts.initLocateMessageSeq > 0) {
           initLocateMessageSeq = opts.initLocateMessageSeq;
