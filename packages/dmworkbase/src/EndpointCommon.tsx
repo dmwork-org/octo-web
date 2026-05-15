@@ -121,6 +121,12 @@ export class EndpointCommon {
           opts = param.opts
         }
 
+        // 任何外部入口（联系人/全局搜索/通知/bot store）打开会话时，把 sidebar
+        // 切到 recent。recent tab filter='all'，不论目标是否关注都能展示并高亮；
+        // 留在 follow tab 时未关注的会话不会出现在列表里也无法激活。
+        // 不在这里检查 followedKeys —— EndpointCommon 在 React 树外，无法同步读
+        // FollowSidebarProvider 的 state，强切到 recent 是最稳妥的兜底。
+        WKApp.mittBus.emit("wk:switch-sidebar-tab", "recent");
         let initLocateMessageSeq = 0;
         if (opts && opts.initLocateMessageSeq && opts.initLocateMessageSeq > 0) {
           initLocateMessageSeq = opts.initLocateMessageSeq;

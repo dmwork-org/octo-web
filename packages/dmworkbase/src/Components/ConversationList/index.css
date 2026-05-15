@@ -55,15 +55,15 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 /* ── 列表项（design v3.1 最近 tab .wk-conv-im 对标） ── */
 .wk-conversationlist {
-  padding: 0 8px 8px;
+  padding: 0 var(--wk-sp-2) var(--wk-sp-2);
 }
 
 .wk-conversationlist-item {
   width: 100%;
   cursor: pointer;
-  padding: 7px 8px;
+  padding: 7px var(--wk-sp-2);
   box-sizing: border-box;
-  border-radius: 6px;
+  border-radius: var(--wk-r-sm);
   margin-bottom: 1px;
   position: relative;
   transition: background var(--wk-dur) var(--wk-ease);
@@ -97,7 +97,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
+  gap: var(--wk-sp-0-5);
   padding: 0;
   box-sizing: border-box;
   overflow: hidden;
@@ -113,17 +113,17 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conversationlist-item-avatar-box .wk-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--wk-r-sm);
 }
 .wk-conversationlist-item-dm .wk-conversationlist-item-avatar-box .wk-avatar {
-  border-radius: 50%;
+  border-radius: var(--wk-r-circle);
 }
 
 .wk-conversationlist-item-right-first-line {
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  gap: 6px;
+  gap: var(--wk-sp-1-5);
   overflow: hidden;
 }
 
@@ -138,11 +138,11 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   flex: 1;
   min-width: 0;
   align-items: center;
-  gap: 6px;
+  gap: var(--wk-sp-1-5);
 }
 
 .wk-conversationlist-item-name h3 {
-  font-size: 13px;
+  font-size: var(--wk-text-size-base);
   font-weight: 500;
   line-height: 1.4;
   margin: 0;
@@ -163,7 +163,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conversationlist-item-time {
   color: var(--wk-icon-default);
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs);
   font-family: var(--wk-font-sans);
   font-weight: 400;
   line-height: 1;
@@ -180,7 +180,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   white-space: nowrap;
   color: var(--wk-icon-default);
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--wk-text-size-sm);
   font-weight: 400;
   font-family: var(--wk-font-sans);
 }
@@ -205,12 +205,12 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   right: -6px;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
+  padding: 0 var(--wk-sp-1);
   background: var(--wk-color-danger);
   color: var(--wk-color-white);
   border: 2px solid var(--wk-bg-base);
   border-radius: 9px;
-  font-size: 10px;
+  font-size: var(--wk-text-size-tiny);
   font-weight: 600;
   line-height: 1;
   display: inline-flex;
@@ -226,7 +226,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   right: -2px;
   width: 9px;
   height: 9px;
-  border-radius: 50%;
+  border-radius: var(--wk-r-circle);
   background: var(--wk-color-danger);
   border: 2px solid var(--wk-bg-base);
   box-sizing: border-box;
@@ -244,7 +244,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-count-hint {
   color: var(--wk-color-danger);
   font-weight: 500;
-  margin-right: 4px;
+  margin-right: var(--wk-sp-1);
   flex-shrink: 0;
 }
 
@@ -252,7 +252,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-ai-collab-preview {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--wk-sp-1);
   min-width: 0;
 }
 
@@ -264,9 +264,9 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 .wk-ai-collab-tag {
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--wk-r-xs);
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--wk-brand-primary) 12%, transparent),
@@ -278,13 +278,13 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  margin-right: 4px;
+  margin-right: var(--wk-sp-1);
 }
 
 .wk-ai-collab-pulse {
   width: 5px;
   height: 5px;
-  border-radius: 50%;
+  border-radius: var(--wk-r-circle);
   background: var(--wk-color-success);
   animation: wk-collab-pulse 2s ease-in-out infinite;
 }
@@ -303,19 +303,19 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 /* @我 mention badge：红底白字小色块，紧跟预览右侧 */
 .wk-mention {
-  font-size: 10px;
+  font-size: var(--wk-text-size-tiny);
   font-weight: 600;
   color: var(--wk-color-error);
   background: color-mix(in srgb, var(--wk-color-error) 10%, transparent);
   padding: 0 var(--wk-sp-1);
-  border-radius: 3px;
+  border-radius: var(--wk-r-xs);
   flex-shrink: 0;
   margin-right: var(--wk-sp-1);
 }
 
 /* 草稿、提醒 */
 .wk-reminder {
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs);
   font-weight: 500;
   color: var(--wk-color-error);
   flex-shrink: 0;
@@ -329,7 +329,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   bottom: -1px;
   width: 9px;
   height: 9px;
-  border-radius: 50%;
+  border-radius: var(--wk-r-circle);
   background: var(--wk-color-success);
   border: 2px solid var(--wk-bg-base);
   box-sizing: border-box;
@@ -348,13 +348,13 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 /* Thread prefix */
 .wk-thread-prefix {
   color: var(--wk-text-accent);
-  margin-right: 2px;
+  margin-right: var(--wk-sp-0-5);
   font-weight: 600;
 }
 
 /* 最近 tab 扁平子区行：父频道名作为面包屑出现在子区名上方 */
 .wk-conv-breadcrumb {
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs);
   color: var(--wk-icon-default);
   line-height: 1;
   margin-bottom: 3px;
@@ -417,7 +417,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   bottom: -3px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--wk-r-circle);
   background: var(--wk-bg-elevated);
   border: 1.5px solid var(--wk-bg-base);
   display: flex;
@@ -430,9 +430,9 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-compact-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: 4px;
+  gap: var(--wk-sp-2);
+  padding: 5px var(--wk-sp-2);
+  border-radius: var(--wk-r-xs);
   cursor: pointer;
   min-height: 30px;
   height: auto;
@@ -447,7 +447,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 .wk-conv-compact-item--selected {
   background: var(--wk-brand-tint-06);
-  border-radius: 4px;
+  border-radius: var(--wk-r-xs);
   box-shadow: none;
 }
 
@@ -471,7 +471,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   border-radius: 5px;
 }
 .wk-conv-compact-icon .wk-avatar:not(.wk-avatar-group) {
-  border-radius: 50%;
+  border-radius: var(--wk-r-circle);
 }
 
 /* Figma: emoji/icon 左上角 6x6 红色小圆点（有未读消息时显示） */
@@ -482,14 +482,14 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   left: -1px;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--wk-r-circle);
   background: var(--wk-color-danger);
-  border: 1px solid white;
+  border: 1px solid var(--wk-color-white);
 }
 
 .wk-conv-compact-name {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--wk-text-size-base);
   font-weight: 500;
   color: var(--wk-text-strong);
   line-height: 1.4;
@@ -503,12 +503,12 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   display: inline-block;
   width: 80px;
   height: 12px;
-  border-radius: 4px;
+  border-radius: var(--wk-r-xs);
   background: linear-gradient(
     90deg,
-    var(--wk-bg-elevated, #f0f0f0) 25%,
-    var(--wk-bg-hover, #e0e0e0) 50%,
-    var(--wk-bg-elevated, #f0f0f0) 75%
+    var(--wk-bg-elevated) 25%,
+    var(--wk-bg-hover) 50%,
+    var(--wk-bg-elevated) 75%
   );
   background-size: 200% 100%;
   animation: wk-skeleton-shimmer 1.2s infinite;
@@ -526,7 +526,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 .wk-conv-compact-item--unread .wk-conv-compact-name {
   font-weight: 600;
-  color: var(--wk-text-primary, #1a1c24);
+  color: var(--wk-text-primary);
 }
 
 .wk-conv-compact-badges {
@@ -539,16 +539,16 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-compact-badge {
   min-width: 16px;
   height: 16px;
-  border-radius: 100px;
+  border-radius: var(--wk-r-full);
   background: var(--wk-badge-danger-bg);
   color: var(--wk-badge-danger-text);
   font-family: var(--wk-font-sans);
-  font-size: 10px;
+  font-size: var(--wk-text-size-tiny);
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  padding: 0 var(--wk-sp-1);
   flex-shrink: 0;
 }
 
@@ -583,10 +583,10 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 /* DragOverlay ghost 样式 */
 .wk-conv-compact-item--ghost {
-  background: var(--wk-bg-base, #f7f8fa);
-  border: 1px solid var(--wk-brand-from, #1c1c23);
-  border-radius: var(--wk-r-sm, 6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  background: var(--wk-bg-base);
+  border: 1px solid var(--wk-brand-from);
+  border-radius: var(--wk-r-sm);
+  box-shadow: var(--wk-shadow-md);
   opacity: 0.9;
 }
 
@@ -596,12 +596,12 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   padding-left: 36px;
   min-height: 26px;
   height: auto;
-  gap: 6px;
+  gap: var(--wk-sp-1-5);
 }
 
 /* 子区名称比父群组小且不加粗，视觉层级区分 */
 .wk-conv-compact-item--thread .wk-conv-compact-name {
-  font-size: 13px;
+  font-size: var(--wk-text-size-base);
   font-weight: 400;
   color: var(--wk-icon-default);
 }
@@ -629,12 +629,12 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-compact-thread-overflow {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px 3px 36px;
-  font-size: 11px;
+  gap: var(--wk-sp-1);
+  padding: 3px var(--wk-sp-2) 3px 36px;
+  font-size: var(--wk-text-size-xs);
   color: var(--wk-icon-muted);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--wk-r-xs);
   transition: color 150ms;
   position: relative;
 }
@@ -649,8 +649,8 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   justify-content: center;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
-  font-size: 10px;
+  padding: 0 var(--wk-sp-1);
+  font-size: var(--wk-text-size-tiny);
   font-weight: 600;
   color: var(--wk-color-error);
   background: color-mix(in srgb, var(--wk-color-error) 10%, transparent);
@@ -670,8 +670,8 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   justify-content: center;
   width: 20px;
   height: 20px;
-  border-radius: 4px;
-  margin-left: 2px;
+  border-radius: var(--wk-r-xs);
+  margin-left: var(--wk-sp-0-5);
   cursor: pointer;
   opacity: 0.85;
   transition: background 0.15s, opacity 0.15s;
@@ -679,7 +679,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 .wk-conv-compact-thread-tag:hover {
   opacity: 1;
-  background: rgba(101, 105, 232, 0.12);
+  background: var(--wk-purple-alpha-12);
 }
 
 /* 父群聊有子区：不画竖线，连接线靠子区自身的 ::after L 形体现 */
@@ -698,25 +698,25 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   right: -3px;
   width: 12px;
   height: 12px;
-  border-radius: 3px;
-  background: var(--wk-bg-navrail, #f5f6f7);
-  border: 1px solid var(--wk-border-subtle, rgba(28, 28, 35, 0.1));
+  border-radius: var(--wk-r-xs);
+  background: var(--wk-bg-navrail);
+  border: 1px solid var(--wk-border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--wk-text-tertiary, #9498a8);
+  color: var(--wk-text-tertiary);
   pointer-events: none;
 }
 
 body[theme-mode="dark"] .wk-conv-compact-thread-badge {
-  background: var(--wk-bg-deep, #1c1c23);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--wk-bg-deep);
+  border-color: var(--wk-border-subtle);
 }
 
 /* compact 模式 mute 状态 */
 .wk-conv-compact-item--muted .wk-conv-compact-name {
   opacity: 0.45;
-  color: var(--semi-color-text-2, #8a8f99);
+  color: var(--wk-text-tertiary);
   font-weight: 400;
 }
 
@@ -724,7 +724,7 @@ body[theme-mode="dark"] .wk-conv-compact-thread-badge {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  margin-left: 2px;
+  margin-left: var(--wk-sp-0-5);
   opacity: 0.6;
 }
 
@@ -732,10 +732,10 @@ body[theme-mode="dark"] .wk-conv-compact-thread-badge {
 .wk-mention-badge {
   background: var(--wk-color-danger);
   color: var(--wk-color-white);
-  padding: 0 4px;
+  padding: 0 var(--wk-sp-1);
   height: 14px;
-  border-radius: 3px;
-  font-size: 10px;
+  border-radius: var(--wk-r-xs);
+  font-size: var(--wk-text-size-tiny);
   font-weight: 600;
   font-family: var(--wk-font-sans);
   line-height: 1;
@@ -743,7 +743,7 @@ body[theme-mode="dark"] .wk-conv-compact-thread-badge {
   align-items: center;
   flex-shrink: 0;
   user-select: none;
-  margin-left: 4px;
+  margin-left: var(--wk-sp-1);
 }
 
 /* ── 外部群角标 ── */
