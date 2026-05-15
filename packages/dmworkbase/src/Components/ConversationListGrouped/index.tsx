@@ -3,7 +3,7 @@ import { Modal } from "@douyinfe/semi-ui"
 import { flushSync } from "react-dom"
 import WKSDK, { ChannelTypeGroup, ChannelTypePerson, Channel, Conversation } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
-import { parseThreadChannelId } from "../../Service/Thread"
+import { parseThreadChannelId, isEffectivelyMuted } from "../../Service/Thread"
 import FollowService from "../../Service/FollowService"
 import { SidebarItem } from "../../Service/SidebarService"
 import { ConversationWrap } from "../../Service/Model"
@@ -197,9 +197,13 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                             target_type: c.channel.channelType,
                             target_id: c.channel.channelID,
                         })
-                        // 群下面紧跟其已关注子区
+                        // 群下面紧跟其已关注子区。必须按 followedKeys 过滤，否则 IM 缓存里
+                        // 仍活跃但已 unfollow 的子区会被塞进 sort payload，写穿后端的旧记录。
+                        // followedKeys 未传时退化到不过滤（与渲染分支一致）。
                         if (c.channel.channelType === ChannelTypeGroup) {
-                            const childThreads = threadConvsByParent.get(c.channel.channelID) || []
+                            const childThreads = (threadConvsByParent.get(c.channel.channelID) || [])
+                                .filter(t => !followedKeys
+                                    || followedKeys.has(`${ChannelTypeCommunityTopic}::${t.channel.channelID}`))
                             for (const t of childThreads) {
                                 sortItems.push({
                                     target_type: ChannelTypeCommunityTopic,
@@ -511,17 +515,18 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
         const groupCount = catConvs.length
         const isMuted = (c: ConversationWrap): boolean => {
-            if (c.channelInfo?.mute) return true
-            // 子区继承父群组勿扰状态
-            const parentGroupNo = c.channelInfo?.orgData?.parentGroupNo
-                || parseThreadChannelId(c.channel.channelID)?.groupNo
-            if (parentGroupNo) {
-                const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
-                    new Channel(parentGroupNo, ChannelTypeGroup)
-                )
-                if (parentInfo?.mute) return true
+            const isThread = c.channel.channelType === ChannelTypeCommunityTopic
+            let parentChannelInfo: any | undefined
+            if (isThread) {
+                const parentGroupNo = c.channelInfo?.orgData?.parentGroupNo
+                    || parseThreadChannelId(c.channel.channelID)?.groupNo
+                if (parentGroupNo) {
+                    parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+                        new Channel(parentGroupNo, ChannelTypeGroup)
+                    )
+                }
             }
-            return false
+            return isEffectivelyMuted({ isThread, channelInfo: c.channelInfo, parentChannelInfo })
         }
         const unreadCount = catConvs.reduce((sum, c) => sum + (isMuted(c) ? 0 : (c.unread || 0)), 0)
         const hasMention = catConvs.some(c => !isMuted(c) && c.isMentionMe)

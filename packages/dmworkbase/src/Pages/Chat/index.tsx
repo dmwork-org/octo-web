@@ -43,6 +43,7 @@ import {
   Thread,
   parseThreadChannelId,
   buildThreadStub,
+  isEffectivelyMuted,
 } from "../../Service/Thread";
 import FilePreviewPanel, {
   FilePreviewInfo,
@@ -88,35 +89,35 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     const info = WKSDK.shared().channelManager.getChannelInfo(
       new Channel(it.target_id, channelType),
     );
-    if (info?.mute) return true;
-    if (it.target_type === SidebarTargetType.THREAD) {
+    const isThread = it.target_type === SidebarTargetType.THREAD;
+    let parentChannelInfo: any | undefined;
+    if (isThread) {
       const parentGroupNo =
         it.parent_channel_id ||
         parseThreadChannelId(it.target_id)?.groupNo;
       if (parentGroupNo) {
-        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
+        parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
           new Channel(parentGroupNo, ChannelTypeGroup),
         );
-        if (parentInfo?.mute) return true;
       }
     }
-    return false;
+    return isEffectivelyMuted({ isThread, channelInfo: info, parentChannelInfo });
   };
 
   const isConversationMuted = (c: ConversationWrap): boolean => {
-    if (c.channelInfo?.mute) return true;
-    if (c.channel.channelType === ChannelTypeCommunityTopic) {
+    const isThread = c.channel.channelType === ChannelTypeCommunityTopic;
+    let parentChannelInfo: any | undefined;
+    if (isThread) {
       const parentGroupNo =
         (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
         parseThreadChannelId(c.channel.channelID)?.groupNo;
       if (parentGroupNo) {
-        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
+        parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
           new Channel(parentGroupNo, ChannelTypeGroup),
         );
-        if (parentInfo?.mute) return true;
       }
     }
-    return false;
+    return isEffectivelyMuted({ isThread, channelInfo: c.channelInfo, parentChannelInfo });
   };
 
   const followUnread = items.reduce((sum, it) => {
