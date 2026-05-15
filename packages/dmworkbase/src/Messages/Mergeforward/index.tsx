@@ -114,7 +114,7 @@ export default class MergeforwardContent extends MessageContent {
         return "[合并转发]"
     }
 
-    mapToMessage(messageMap: any, depth: number): Message {
+    mapToMessage(messageMap: any, depth: number = 0): Message {
         let message = new Message()
         message.messageID = `${messageMap['message_id']}`
         message.timestamp = messageMap["timestamp"]
@@ -133,11 +133,11 @@ export default class MergeforwardContent extends MessageContent {
         // Use decodeJSONWithDepth with depth limit for nested mergeforward to prevent stack overflow.
         // This ensures inner messages retain full payload for re-forwarding.
         if (contentType === MessageContentTypeConst.mergeForward
-            && messageContent instanceof MergeforwardContent) {
+            && (messageContent as any).decodeJSONWithDepth) {
             // Set contentObj before decoding to preserve the original payload,
             // mirroring SDK decode() semantics so re-forward works correctly
-            messageContent.contentObj = payloadObj
-            messageContent.decodeJSONWithDepth(payloadObj, depth)
+            (messageContent as any).contentObj = payloadObj
+            (messageContent as any).decodeJSONWithDepth(payloadObj, depth)
         } else {
             const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj))
             messageContent.decode(payloadData)

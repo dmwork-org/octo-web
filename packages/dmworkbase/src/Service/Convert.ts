@@ -2,7 +2,7 @@ import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
 import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
-import MergeforwardContent from "../Messages/Mergeforward";
+import { MessageContentTypeConst } from "./Const";
 
 
 /**
@@ -289,11 +289,12 @@ export class Convert {
             // contentType=mergeForward 的合并转发消息用专用的 decodeJSONWithDepth 处理
             // 这样既能调用正确的字段映射（channel_type→channelType），
             // 又能通过深度限制防止深层嵌套导致的栈溢出
-            if (messageContent instanceof MergeforwardContent) {
+            // Note: Uses duck typing to avoid circular dependency with Messages/Mergeforward
+            if (contentType === MessageContentTypeConst.mergeForward && (messageContent as any).decodeJSONWithDepth) {
                 // 保持 SDK decode() 的语义：设置 contentObj 后再调用 decodeJSONWithDepth
                 // 这样 re-forward 时能从 contentObj 读取原始 payload
-                messageContent.contentObj = contentObj
-                messageContent.decodeJSONWithDepth(contentObj, 0)
+                (messageContent as any).contentObj = contentObj
+                (messageContent as any).decodeJSONWithDepth(contentObj, 0)
             } else {
                 messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
             }
