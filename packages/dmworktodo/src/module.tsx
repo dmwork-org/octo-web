@@ -746,6 +746,7 @@ function GlobalSmartCreateModal() {
 
   return (
     <SmartCreateModal
+      key={sessionRef.current}
       visible={open}
       blank={messages.length === 0}
       count={messages.length}
@@ -760,6 +761,8 @@ function GlobalSmartCreateModal() {
         attachments: m.attachments || [],
       })) : undefined}
       onClose={async () => {
+        // 提交中不允许关闭（防止 Escape/native cancel 在 confirm 期间触发 delete）
+        if (submittingRef.current) return;
         // 用户主动取消：关闭弹窗 + 清理孤儿事项
         closedRef.current = true;
         setOpen(false);
