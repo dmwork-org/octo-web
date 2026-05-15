@@ -12,6 +12,11 @@ import SmartCreateModal from "./ui/SmartCreateModal";
 import {
   createMatter,
   extractMatter,
+  updateMatter,
+  addAssignee,
+  removeAssignee,
+  getMatter,
+  deleteMatter,
   listMatters,
   addTimelineEntry,
 } from "./api/todoApi";
@@ -647,6 +652,16 @@ function GlobalSmartCreateModal() {
   const [aiResult, setAiResult] = useState<
     { title?: string; description?: string; deadline?: string } | undefined
   >();
+  // 使用 ref 存储 extractedMatterId，避免闭包竞态
+  const extractedMatterIdRef = React.useRef<string | null>(null);
+  // 标记弹窗是否已关闭，防止 extractMatter 异步返回后产生孤儿
+  const closedRef = React.useRef(false);
+  // 每次打开递增的 session token，防止 overlapping requests 竞态
+  const sessionRef = React.useRef(0);
+  // 标记是否正在提交（confirm 在飞），防止新 session 删除正在保存的 matter
+  const submittingRef = React.useRef(false);
+  // 记录发起 confirm 的 session，onConfirmSuccess 只在匹配时生效
+  const confirmSessionRef = React.useRef(0);
 
   useEffect(() => {
     const handler = async (data?: {
@@ -662,6 +677,17 @@ function GlobalSmartCreateModal() {
       setChannel(currentChannel);
       setMessages(currentMessages);
       setAiResult(undefined);
+      setAiLoading(false);
+      // 清理上一个 session 遗留的已创建但未确认的 matter
+      // 如果当前正在 submitting，不删除（confirm 正在使用这个 matter）
+      const prevMatterId = extractedMatterIdRef.current;
+      if (prevMatterId && !submittingRef.current) {
+        deleteMatter(prevMatterId).catch((e) => console.warn('[SmartCreate] prev session cleanup failed:', prevMatterId, e));
+      }
+      extractedMatterIdRef.current = null;
+      closedRef.current = false;
+      sessionRef.current += 1;
+      const currentSession = sessionRef.current;
       setOpen(true);
 
       if (currentMessages.length > 0 && currentChannel) {
@@ -680,12 +706,19 @@ function GlobalSmartCreateModal() {
               attachments: m.attachments || [],
             })),
           });
+          // 用户在 extractMatter 期间关闭了弹窗，或已开启新 session → 立即清理孤儿
+          if (closedRef.current || sessionRef.current !== currentSession) {
+            try { await deleteMatter(res.id); } catch (e) { console.warn('[SmartCreate] orphan cleanup failed:', res.id, e); }
+            return;
+          }
+          extractedMatterIdRef.current = res.id;
           setAiResult({
             title: res.title,
             description: res.description,
+            // deadline: 值 < 1e12 为 unix 秒，>= 1e12 为 unix 毫秒
             deadline: res.deadline
               ? new Date(
-                  String(res.deadline).length === 10
+                  res.deadline < 1e12
                     ? (res.deadline as number) * 1000
                     : res.deadline,
                 )
@@ -694,9 +727,14 @@ function GlobalSmartCreateModal() {
               : undefined,
           });
         } catch (e) {
-          Toast.error("AI 提取失败，请手动填写");
+          // 仅当用户未关闭弹窗且仍在当前 session 时才弹 toast
+          if (sessionRef.current === currentSession && !closedRef.current) {
+            Toast.error("AI 提取失败，请手动填写");
+          }
         } finally {
-          setAiLoading(false);
+          if (sessionRef.current === currentSession && !closedRef.current) {
+            setAiLoading(false);
+          }
         }
       }
     };
@@ -708,6 +746,7 @@ function GlobalSmartCreateModal() {
 
   return (
     <SmartCreateModal
+      key={sessionRef.current}
       visible={open}
       blank={messages.length === 0}
       count={messages.length}
@@ -721,11 +760,67 @@ function GlobalSmartCreateModal() {
         content: m.content || "",
         attachments: m.attachments || [],
       })) : undefined}
-      onClose={() => setOpen(false)}
-      onConfirm={async (req) => {
-        await createMatter(req);
-        Toast.success("事项已创建");
+      onClose={async () => {
+        // 提交中不允许关闭（防止 Escape/native cancel 在 confirm 期间触发 delete）
+        if (submittingRef.current) return;
+        // 用户主动取消：关闭弹窗 + 清理孤儿事项
+        closedRef.current = true;
+        setOpen(false);
+        const idToDelete = extractedMatterIdRef.current;
+        extractedMatterIdRef.current = null;
+        if (idToDelete) {
+          try { await deleteMatter(idToDelete); } catch (e) { console.warn('[SmartCreate] cancel cleanup failed:', idToDelete, e); }
+        }
+      }}
+      onConfirmSuccess={() => {
+        // 确认成功：仅当仍是发起 confirm 的 session 时才关闭弹窗
+        if (confirmSessionRef.current !== sessionRef.current) return;
+        closedRef.current = true;
+        extractedMatterIdRef.current = null;
+        setOpen(false);
         WKApp.mittBus.emit("wk:exit-multiple-mode");
+      }}
+      onConfirm={async (req) => {
+        confirmSessionRef.current = sessionRef.current;
+        submittingRef.current = true;
+        try {
+          const matterId = extractedMatterIdRef.current;
+          if (matterId) {
+            // 后端在 extractMatter 时已创建事项，这里执行编辑
+            await updateMatter(matterId, {
+              title: req.title,
+              description: req.description,
+              deadline: req.deadline,
+            });
+            // 负责人 reconcile：对比当前 assignees，计算 add/remove
+            const detail = await getMatter(matterId);
+            const currentUids = new Set((detail.assignees || []).map(a => a.user_id));
+            const desiredUids = new Set(req.assignee_ids || []);
+            const toAdd = [...desiredUids].filter(uid => !currentUids.has(uid));
+            const toRemove = [...currentUids].filter(uid => !desiredUids.has(uid));
+            // 使用 Promise.all + catch 模式（兼容 es2019 target）
+            const ops = [
+              ...toAdd.map(uid => addAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
+              ...toRemove.map(uid => removeAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
+            ];
+            const results = await Promise.all(ops);
+            const failed = results.filter(r => r !== null);
+            if (failed.length > 0) {
+              Toast.error("负责人更新失败，请重试");
+              throw new Error("assignee reconciliation failed");
+            }
+            // Matter 已完整保存 — 立即清除 orphan 追踪，防止并发新 session
+            // 在 submittingRef=false 和 onConfirmSuccess 之间的微任务窗口误删
+            extractedMatterIdRef.current = null;
+            Toast.success("事项已保存");
+          } else {
+            // 空白新建模式（无 AI 提取），走正常创建流程
+            await createMatter(req);
+            Toast.success("事项已创建");
+          }
+        } finally {
+          submittingRef.current = false;
+        }
       }}
       channel={channel}
     />
