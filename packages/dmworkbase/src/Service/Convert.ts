@@ -289,17 +289,12 @@ export class Convert {
             // contentType=mergeForward 的合并转发消息用专用的 decodeJSONWithDepth 处理
             // 这样既能调用正确的字段映射（channel_type→channelType），
             // 又能通过深度限制防止深层嵌套导致的栈溢出。
-            // Note: Uses duck typing to avoid circular dependency with Messages/Mergeforward.
-            // Strategy: call SDK decode() first to correctly populate mention/reply/visibles/invisibles,
-            // then override msgs/users/channelType via decodeJSONWithDepth to limit recursion depth.
+            // For merge-forward at top level (depth=0), SDK decode() is safe and will trigger
+            // decodeJSON() → decodeJSONWithDepth(content, 0) via virtual dispatch.
+            // For nested merge-forward, mapToMessage avoids SDK decode() to prevent depth reset.
             if (contentType === MessageContentTypeConst.mergeForward && (messageContent as any).decodeJSONWithDepth) {
-                // Decode base fields (mention/reply/visibles/invisibles) with SDK semantics first
+                // SDK decode() will set contentObj and call our decodeJSON() which calls decodeJSONWithDepth
                 messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
-                // Then use depth-limited decode for merge-forward structure to prevent stack overflow
-                // Set contentObj before decoding to preserve the original payload for re-forwarding
-                const mf = messageContent as any
-                mf.contentObj = contentObj
-                mf.decodeJSONWithDepth(contentObj, 0)
             } else {
                 messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
             }

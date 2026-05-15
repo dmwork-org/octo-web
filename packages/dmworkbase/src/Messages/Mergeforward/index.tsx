@@ -1,5 +1,5 @@
 import WKModal from "../../Components/WKModal"
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk"
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent, Mention, Reply } from "wukongimjssdk"
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
 import { MessageContentTypeConst } from "../../Service/Const"
@@ -30,6 +30,7 @@ export default class MergeforwardContent extends MessageContent {
     msgs!: Array<Message>
     private static readonly MAX_MERGE_FORWARD_DEPTH = 8
     private static depthWarningLogged = false
+    private _truncated = false
 
     constructor(channelType?: number, users?: Array<MergeforwardUser>, msgs?: Array<Message>) {
         super()
@@ -80,6 +81,7 @@ export default class MergeforwardContent extends MessageContent {
             this.channelType = content["channel_type"] || 0
             this.users = MergeforwardContent.normalizeUsers(content["users"] || [])
             this.msgs = []
+            this._truncated = true
             if (!MergeforwardContent.depthWarningLogged) {
                 console.warn('[MergeforwardContent] truncating nested forwards at depth', depth,
                             'channelType:', content?.channel_type)
@@ -102,8 +104,9 @@ export default class MergeforwardContent extends MessageContent {
     }
     encodeJSON() {
         // If truncated at depth 8+, contentObj holds the full original payload.
-        // Prefer it over the truncated msgs array to ensure re-forward never loses data.
-        if (this.contentObj) {
+        // Only return contentObj when truncation occurred, to avoid silently dropping mutations
+        // to this.msgs / this.users / this.channelType that happened after decode.
+        if (this._truncated && this.contentObj) {
             return this.contentObj
         }
         let messageMaps = new Array()
@@ -142,11 +145,27 @@ export default class MergeforwardContent extends MessageContent {
         // This ensures inner messages retain full payload for re-forwarding.
         if (contentType === MessageContentTypeConst.mergeForward
             && (messageContent as any).decodeJSONWithDepth) {
-            // Decode base fields (mention/reply/visibles/invisibles) with SDK semantics first.
-            // Then use depth-limited decode for merge-forward structure to prevent stack overflow.
-            const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj))
-            messageContent.decode(payloadData)
-            // Set contentObj before depth-limited decode to preserve original payload for re-forwarding
+            // For nested merge-forward, do NOT call SDK decode() as it would reset depth to 0
+            // via virtual dispatch to decodeJSON(). Instead, manually hydrate base fields,
+            // then call decodeJSONWithDepth() directly to preserve depth tracking.
+
+            // Hydrate base message fields (mention, reply, visibles, invisibles) without triggering
+            // the SDK decode chain that would bypass our depth limit.
+            if (payloadObj.mention) {
+                const mention = new Mention()
+                mention.all = payloadObj.mention["all"] === 1
+                if (payloadObj.mention["uids"]) mention.uids = payloadObj.mention["uids"]
+                messageContent.mention = mention
+            }
+            if (payloadObj.reply) {
+                const reply = new Reply()
+                reply.decode(payloadObj.reply)  // Handles field mapping and nested content decode
+                messageContent.reply = reply
+            }
+            if (payloadObj.visibles !== undefined) messageContent.visibles = payloadObj.visibles
+            if (payloadObj.invisibles !== undefined) messageContent.invisibles = payloadObj.invisibles
+
+            // Set contentObj for re-forward preservation, then use depth-limited decode
             const mf = messageContent as any
             mf.contentObj = payloadObj
             mf.decodeJSONWithDepth(payloadObj, depth)
