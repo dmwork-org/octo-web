@@ -21,6 +21,18 @@ import ConversationListGrouped, { ValidCategoryItem, isValidCategoryItem } from 
 import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 
+/** 最近 Tab 3 天不活跃过滤阈值。tab 角标和列表必须共用同一阈值。 */
+export const RECENT_INACTIVE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000
+
+/**
+ * 最近 Tab 是否可见：群聊超过 3 天无消息隐藏；私聊 / 子区 不过滤。
+ * tab 角标计算和列表渲染必须用同一函数，否则角标 N 但列表看不到的情况就会出现。
+ */
+export function isVisibleInRecentTab(conv: ConversationWrap, now: number = Date.now()): boolean {
+    if (conv.channel.channelType !== ChannelTypeGroup) return true
+    return (now - conv.timestamp * 1000) < RECENT_INACTIVE_THRESHOLD_MS
+}
+
 export interface ChatConversationListProps {
     conversations: ConversationWrap[]
     filter: ConvFilter
@@ -49,8 +61,8 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 }) => {
     const {
         categories,
-        isLoading,
-        error,
+        isLoading: catLoading,
+        error: catError,
         reload,
         createCategory,
         renameCategory,
@@ -70,8 +82,16 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         versionRef,
         bumpVersion,
         applyOptimisticSort,
+        isLoading: sidebarLoading,
+        error: sidebarError,
         reload: reloadSidebar,
     } = useFollowSidebarContext()
+
+    // /categories 和 /sidebar/sync 都是 follow tab 的真实数据源——任意一个失败都需要
+    // 用户感知，否则会渲染半空 tab 但没有错误/重试入口。两边的 loading 也合并，
+    // 让 ConversationListGrouped 的骨架/错误态覆盖全套数据。
+    const isLoading = catLoading || sidebarLoading
+    const error = catError || sidebarError
 
     // 跨分组移群也会 bump 后端 follow_version；wrap useCategoryList 的实现，
     // 让本地 ref 同步乐观自增 + reload sidebar，避免下一次 sort CAS 冲突。
@@ -161,23 +181,12 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
     const existingCategoryNames = categories.map(c => c.name)
 
-    // 最近 Tab 3 天不活跃群聊隐藏逻辑
-    // - 群聊（channelType=2）超过 3 天没有消息 → 隐藏
-    // - 私聊（channelType=1）、子区（channelType=5）不受影响
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
+    // 最近 Tab 3 天不活跃群聊隐藏逻辑：列表渲染、tab 角标、其它复用方都必须共用一套
+    // 判定，否则会出现「badge 显示 N 但列表里看不到对应未读」。
     const filteredConversations = useMemo(() => {
         if (!hideInactiveGroups) return conversations
         const now = Date.now()
-        return conversations.filter(conv => {
-            // 只过滤群聊
-            if (conv.channel.channelType !== ChannelTypeGroup) return true
-            // 子区不过滤（虽然子区走的是 ChannelTypeCommunityTopic，不是 ChannelTypeGroup）
-            if (conv.channel.channelType === ChannelTypeCommunityTopic) return true
-            // timestamp 是秒还是毫秒？SDK 用秒
-            const lastMsgTime = conv.timestamp * 1000
-            // 3 天内有活动则保留
-            return (now - lastMsgTime) < THREE_DAYS_MS
-        })
+        return conversations.filter(conv => isVisibleInRecentTab(conv, now))
     }, [conversations, hideInactiveGroups])
 
     // 构建额外的右键菜单项

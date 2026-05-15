@@ -5,7 +5,7 @@ import ConversationList, {
 } from "../../Components/ConversationList";
 import SidebarTabBar, { SidebarTab } from "../../Components/SidebarTabBar";
 import ConversationListGrouped from "../../Components/ConversationListGrouped";
-import ChatConversationList from "../../Components/ChatConversationList";
+import ChatConversationList, { isVisibleInRecentTab } from "../../Components/ChatConversationList";
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
@@ -127,6 +127,9 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
 
   const recentUnread = conversations.reduce(
     (sum: number, c: ConversationWrap) => {
+      // 与 ChatConversationList 的 hideInactiveGroups 渲染过滤一致：3 天不活跃的群
+      // 不算入 badge，否则会出现「红点 N 但列表里看不到对应未读」。
+      if (!isVisibleInRecentTab(c)) return sum;
       if (isConversationMuted(c)) return sum;
       return sum + (c.unread || 0);
     },
