@@ -2,7 +2,7 @@ import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
 import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply, Mention } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
-import { MessageContentTypeConst } from "./Const";
+import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH } from "./Const";
 
 
 /**
@@ -70,9 +70,9 @@ export function hydrateMessageBaseFields(messageContent: any, contentObj: any, d
     const replyObj = contentObj["reply"]
     if (replyObj) {
         const reply = new Reply()
-        // Only decode reply if depth < 8. Beyond depth 8, skip reply.decode() to avoid
-        // recursing through mergeForward payloads in reply.payload and hitting stack overflow.
-        if (depth < 8) {
+        // Only decode reply if depth < MAX_MERGE_FORWARD_DEPTH. Beyond the limit,
+        // skip reply.decode() to avoid recursing through mergeForward payloads in reply.payload.
+        if (depth < MAX_MERGE_FORWARD_DEPTH) {
             reply.decode(replyObj)
         }
         messageContent.reply = reply

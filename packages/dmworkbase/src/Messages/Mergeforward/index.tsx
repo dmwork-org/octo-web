@@ -2,7 +2,7 @@ import WKModal from "../../Components/WKModal"
 import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk"
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
-import { MessageContentTypeConst } from "../../Service/Const"
+import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH } from "../../Service/Const"
 import { applyMsgLevelExternalFields, hydrateMessageBaseFields } from "../../Service/Convert"
 import MessageBase from "../Base"
 import MessageTrail from "../Base/tail"
@@ -39,7 +39,7 @@ export default class MergeforwardContent extends MessageContent {
      * practice, but deep reply chains + deep merge-forwards can still cause stack overflow.
      * See hydrateMessageBaseFields for details.
      */
-    public static readonly MAX_MERGE_FORWARD_DEPTH = 8
+    public static readonly MAX_MERGE_FORWARD_DEPTH = MAX_MERGE_FORWARD_DEPTH
     private static depthWarningLogged = false
     private _truncated = false
 
@@ -83,6 +83,7 @@ export default class MergeforwardContent extends MessageContent {
     decodeJSONWithDepth(content: any, depth: number) {
         if (depth === 0) {
             MergeforwardContent.depthWarningLogged = false
+            this._truncated = false
         }
         // Truncate at depth 8: depths 0-7 are decoded, depth 8+ are truncated.
         // Real-world nesting is ≤ 3-4 levels; depth 8 provides headroom against pathological inputs

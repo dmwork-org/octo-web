@@ -132,3 +132,7 @@ export const OrderFactor = 10000 // 排序因子
 
 export const ChannelTypeCustomerService = 3 // 客服频道
 export const ChannelTypeCommunityTopic = 5 // 子区频道
+
+// Merge-forward message depth limit: prevent stack overflow on deeply nested payloads.
+// Depths 0-7 are decoded, depth 8+ are truncated. Real-world nesting is ≤ 3-4 levels.
+export const MAX_MERGE_FORWARD_DEPTH = 8
