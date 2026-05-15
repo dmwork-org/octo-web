@@ -13,7 +13,7 @@ import { Modal, Tag } from "@douyinfe/semi-ui";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
 import { getTimeStringAutoShort2 } from "../../Utils/time";
 import classNames from "classnames";
-import { useDraggable } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import "./index.css";
@@ -95,19 +95,24 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
       : !!(parentChannelInfo?.mute)  // 未设置：继承父群
     : !!(channelInfo?.mute);         // 群组：只看自身
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: `grp::${conversationWrap.channel.channelID}`,
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({
+      // 同一分组内 sort 与跨分组 move 共用 sortable id：item::<channelType>::<channelID>
+      // handleDragEnd 通过 over 是 item / cat 判断分支。
+      id: `item::${conversationWrap.channel.channelType}::${conversationWrap.channel.channelID}`,
       data: {
-        type: "group",
-        groupNo: conversationWrap.channel.channelID,
+        type: "item",
+        channelType: conversationWrap.channel.channelType,
+        channelID: conversationWrap.channel.channelID,
+        isThread,
       },
-      // 子区不参与跨分组拖拽
+      // 子区跟随父频道，不独立拖拽 / 排序
       disabled: isThread,
     });
 
   const style: React.CSSProperties = {
-    transform: CSS.Translate.toString(transform),
+    transform: CSS.Transform.toString(transform),
+    transition,
     opacity: isDragging ? 0.4 : undefined,
   };
 
@@ -249,6 +254,16 @@ export interface ConversationListProps {
   extraContextMenus?: (
     conversation: ConversationWrap | undefined
   ) => ContextMenusData[];
+  /** 隐藏右键菜单的「关闭聊天窗口」项（关注 tab 不展示该入口，PM #337） */
+  hideCloseChat?: boolean;
+  /** 关闭按 channelInfo.top 拆分置顶 / 普通两段的渲染逻辑。
+   *  关注 tab 里会话顺序由 /v2/follow/sort 决定（sidebar 给的 follow_sort），
+   *  pin 只是标记不影响位置，关闭后保持 caller 传入的顺序原样渲染。 */
+  disablePinSplit?: boolean;
+  /** 隐藏「置顶/取消置顶」菜单项 + 行尾图钉图标。关注 tab 用手动拖拽排序，
+   *  pin 与拖拽语义冲突（pin 会强制顶到分组顶端覆盖手动顺序），所以在关注 tab 移除 pin 入口。
+   *  最近 tab 仍保留 pin。 */
+  hidePin?: boolean;
 }
 
 export interface ConversationListState {
@@ -862,6 +877,10 @@ export default class ConversationList extends Component<
     );
     const finalPinned: typeof grouped = [];
     const finalRecent: typeof grouped = [];
+    if (this.props.disablePinSplit) {
+      // 关注 tab 顺序由 sidebar 的 follow_sort 决定，不按 pin 状态拆段
+      finalRecent.push(...grouped);
+    } else {
     for (const item of grouped) {
       if ("type" in item) {
         // thread-overflow 跟随父群组
@@ -888,6 +907,7 @@ export default class ConversationList extends Component<
           finalRecent.push(item);
         }
       }
+    }
     }
 
     const { onThreadOverflowClick, compact } = this.props;
@@ -1001,30 +1021,32 @@ export default class ConversationList extends Component<
             }
 
             // 2. 关闭聊天窗口
-            menus.push({
-              title: "关闭聊天窗口",
-              icon: "M18 6 6 18 M6 6l12 12",
-              onClick: () => {
-                if (!channel) return;
-                Modal.confirm({
-                  title: "确认关闭",
-                  content: "确定要关闭此聊天窗口吗？",
-                  okText: "确定",
-                  cancelText: "取消",
-                  onOk: () => {
-                    this.onCloseChat(channel);
-                  },
-                });
-              },
-            });
+            if (!this.props.hideCloseChat) {
+              menus.push({
+                title: "关闭聊天窗口",
+                icon: "M18 6 6 18 M6 6l12 12",
+                onClick: () => {
+                  if (!channel) return;
+                  Modal.confirm({
+                    title: "确认关闭",
+                    content: "确定要关闭此聊天窗口吗？",
+                    okText: "确定",
+                    cancelText: "取消",
+                    onOk: () => {
+                      this.onCloseChat(channel);
+                    },
+                  });
+                },
+              });
+            }
 
             // 3. 额外菜单项（移出分组 / 移到分组等，由上层通过 extraContextMenus 传入）
             if (extraMenus.length > 0) {
               menus.push(...extraMenus);
             }
 
-            // 4. 置顶 / 取消置顶（子区不显示）
-            if (channel?.channelType !== ChannelTypeCommunityTopic) {
+            // 4. 置顶 / 取消置顶（子区不显示；关注 tab 用 hidePin 关闭）
+            if (channel?.channelType !== ChannelTypeCommunityTopic && !this.props.hidePin) {
               menus.push({
                 title: channelInfo?.top ? "取消置顶" : "置顶聊天",
                 icon: channelInfo?.top

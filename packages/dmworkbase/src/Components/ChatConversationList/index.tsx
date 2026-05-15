@@ -11,6 +11,7 @@ import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
+import { useFollowSidebar } from "../../Hooks/useFollowSidebar"
 import FollowService from "../../Service/FollowService"
 import { ConversationWrap } from "../../Service/Model"
 import { ConvFilter } from "../ConversationList"
@@ -57,6 +58,92 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         moveGroupToCategory,
     } = useCategoryList()
 
+    // 关注 tab 的 DM/thread 数据来源（/sidebar/sync）。/categories 接口只返回群，
+    // DM 关注关系存在 user_conversation_ext 表，由 sidebar 给出 (category_id → DMs) 映射。
+    const {
+        dmsByCategory,
+        threadsByCategory,
+        itemsByCategory,
+        followedGroupNos,
+        followedKeys,
+        versionRef,
+        bumpVersion,
+        applyOptimisticSort,
+        reload: reloadSidebar,
+    } = useFollowSidebar()
+
+    // 跨分组移群也会 bump 后端 follow_version；wrap useCategoryList 的实现，
+    // 让本地 ref 同步乐观自增 + reload sidebar，避免下一次 sort CAS 冲突。
+    const handleMoveGroupToCategory = React.useCallback(
+        async (groupNo: string, categoryId: string) => {
+            await moveGroupToCategory(groupNo, categoryId)
+            bumpVersion()
+            reloadSidebar()
+        },
+        [moveGroupToCategory, bumpVersion, reloadSidebar]
+    )
+
+    // 删除分组：后端级联取消关注分组下所有会话（spec #337），前端必须刷新 sidebar
+    // 才能让 followedKeys 反映取消关注的项（否则最近 tab 右键这些会话还显示"取消关注"）。
+    // useCategoryList.deleteCategory 只改本地 categories state 不动 sidebar，wrap 一下补上。
+    const handleDeleteCategory = React.useCallback(
+        async (categoryId: string) => {
+            await deleteCategory(categoryId)
+            bumpVersion()
+            reloadSidebar()
+        },
+        [deleteCategory, bumpVersion, reloadSidebar]
+    )
+    // 后端每个 follow 写操作都会 bump user_follow_version，本地 ref 同步乐观自增，
+    // 让随后的 sort 不必等 sidebar reload 就拿到正确版本号；若实际 bump >1（cascade）
+    // 由 sort 的冲突重试兜底。
+    const reloadAll = React.useCallback(() => {
+        bumpVersion()
+        reload()
+        reloadSidebar()
+    }, [bumpVersion, reload, reloadSidebar])
+
+    // 同分组内手动排序：调 /v2/follow/sort 带 follow_version 做 CAS。
+    // - 立刻乐观更新本地 items 顺序，避免 dnd-kit 把 item 放回原位 → API + reload 后再闪到新位置的视觉抖动
+    // - 用 versionRef 读最新 version（避免闭包持有旧值在连续拖拽时 CAS 冲突）
+    // - 成功后 bumpVersion() 乐观 +1，让下次拖拽不必等 reload
+    // - 冲突时 reload 一次拿到新 version 再重试一次；失败由 reload 兜底回退本地状态
+    const handleSortFollowItems = React.useCallback(
+        async (items: { target_type: number; target_id: string }[]) => {
+            applyOptimisticSort(items)
+            const payload = {
+                items: items.map((it, idx) => ({
+                    target_type: it.target_type,
+                    target_id: it.target_id,
+                    sort: idx,
+                })),
+            }
+            try {
+                await FollowService.sort({ ...payload, version: versionRef.current })
+                bumpVersion()
+            } catch (err: any) {
+                // APIClient response interceptor 把 400 reject 成 { error, msg, status }
+                const errMsg = String(err?.msg || err?.message || err || '')
+                if (errMsg.includes('version conflict')) {
+                    // 拉新 version 后重试一次
+                    await reloadSidebar()
+                    try {
+                        await FollowService.sort({ ...payload, version: versionRef.current })
+                        bumpVersion()
+                    } catch (retryErr) {
+                        console.error('排序重试仍失败', retryErr)
+                    }
+                } else {
+                    console.error('排序失败', err)
+                }
+            } finally {
+                // 最终拉一次保证 UI 与服务端一致
+                reloadSidebar()
+            }
+        },
+        [applyOptimisticSort, versionRef, bumpVersion, reloadSidebar]
+    )
+
     const [createModalVisible, setCreateModalVisible] = useState(false)
 
     // 暴露「打开新建分组 Modal」给外层（如顶部 + 按钮）
@@ -99,8 +186,11 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         if (!conv) return []
 
         const menus: ContextMenusData[] = []
-        const channelInfo = conv.channelInfo
-        const isFollowed = channelInfo?.orgData?.is_followed === true
+        const channel = conv.channel
+        // sidebar 是 follow 状态的唯一权威源。channelInfo.orgData.is_followed 在 IM sync
+        // 路径上不一定填齐（特别是子区），优先用 sidebar 集合判定，回退到旧字段。
+        const sidebarFollowed = followedKeys.has(`${channel.channelType}::${channel.channelID}`)
+        const isFollowed = sidebarFollowed || conv.channelInfo?.orgData?.is_followed === true
 
         // 最近 Tab（filter !== 'group'）显示「添加到关注 / 取消关注」
         if (filter !== 'group') {
@@ -119,24 +209,26 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                                 await FollowService.unfollowThread(channel.channelID)
                             }
                             // 刷新分组列表
-                            reload()
+                            reloadAll()
                         } catch (err) {
                             console.error('取消关注失败', err)
                         }
                     }
                 })
             } else {
-                // 未关注 → 显示「添加到关注」子菜单选择分组
+                // 未关注 → 显示「添加到关注」
                 const channel = conv.channel
 
-                // 子区不需要选分组，直接关注
+                // 子区：直接关注，后端 FollowThread 会级联关注父频道（PM #337 spec
+                // "关注子区时子区和频道一同关注"）。子区"不支持单独关注"指的是不能仅关注
+                // 子区不连带父频道，不是没有入口。
                 if (channel.channelType === ChannelTypeCommunityTopic) {
                     menus.push({
                         title: '添加到关注',
                         onClick: async () => {
                             try {
                                 await FollowService.followThread({ thread_channel_id: channel.channelID })
-                                reload()
+                                reloadAll()
                             } catch (err) {
                                 console.error('关注子区失败', err)
                             }
@@ -155,9 +247,9 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                                         // 移到指定分组
                                         await moveGroupToCategory(channel.channelID, cat.category_id)
                                     } else if (channel.channelType === ChannelTypePerson) {
-                                        await FollowService.followDM({ peer_uid: channel.channelID, category_id: parseInt(cat.category_id, 10) || undefined })
+                                        await FollowService.followDM({ peer_uid: channel.channelID, category_id: cat.category_id })
                                     }
-                                    reload()
+                                    reloadAll()
                                 } catch (err) {
                                     console.error('添加到关注失败', err)
                                 }
@@ -189,7 +281,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                 .map(cat => ({
                     title: cat.name,
                     checked: currentCategoryId === cat.category_id,
-                    onClick: () => moveGroupToCategory(groupNo, cat.category_id),
+                    onClick: () => handleMoveGroupToCategory(groupNo, cat.category_id),
                 }))
             moveItems.push({ separator: true } as ContextMenusData)
             moveItems.push({ title: '+ 新建分组', onClick: () => setCreateModalVisible(true) })
@@ -213,13 +305,19 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
                     categories={categories.filter(isValidCategoryItem)}
+                    dmsByCategory={dmsByCategory}
+                    threadsByCategory={threadsByCategory}
+                    itemsByCategory={itemsByCategory}
+                    followedGroupNos={followedGroupNos}
+                    followedKeys={followedKeys}
+                    onSortFollowItems={handleSortFollowItems}
                     isLoading={isLoading}
                     error={error}
-                    onRetry={reload}
+                    onRetry={reloadAll}
                     onRenameCategory={renameCategory}
-                    onDeleteCategory={deleteCategory}
+                    onDeleteCategory={handleDeleteCategory}
                     onSortCategories={sortCategories}
-                    onMoveGroupToCategory={moveGroupToCategory}
+                    onMoveGroupToCategory={handleMoveGroupToCategory}
                     onOpenCreateCategory={() => setCreateModalVisible(true)}
                     onStartGroup={() => {
                         WKApp.endpoints.organizationalLayer(null, {
@@ -238,7 +336,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                             }
                         })
                     }}
-                    onUnfollow={reload}
+                    onUnfollow={reloadAll}
                 />
             ) : (
                 <ConversationList

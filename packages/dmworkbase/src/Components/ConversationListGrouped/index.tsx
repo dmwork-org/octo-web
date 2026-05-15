@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from "react"
 import { Modal } from "@douyinfe/semi-ui"
 import { flushSync } from "react-dom"
-import WKSDK, { ChannelTypeGroup, ChannelTypePerson, Channel } from "wukongimjssdk"
+import WKSDK, { ChannelTypeGroup, ChannelTypePerson, Channel, Conversation } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import { parseThreadChannelId } from "../../Service/Thread"
 import FollowService from "../../Service/FollowService"
+import { SidebarItem } from "../../Service/SidebarService"
 import { ConversationWrap } from "../../Service/Model"
 import ConversationList from "../ConversationList"
 import ConversationListWithCategory from "../ConversationListWithCategory"
@@ -50,6 +51,21 @@ export interface ConversationListGroupedProps {
 
     // 分组数据（由 ChatConversationList 提供，不自己 fetch）
     categories: ValidCategoryItem[]
+    /** 已关注 DM 按 category_id 聚合（来自 /sidebar/sync）。key 为 category_id，"" 表示未分类 */
+    dmsByCategory?: Map<string, SidebarItem[]>
+    /** 已关注子区按 category_id 聚合（来自 /sidebar/sync） */
+    threadsByCategory?: Map<string, SidebarItem[]>
+    /** 全类型按 category_id 聚合，每桶按 follow_sort ASC（手动排序的源信息）。
+     *  非空时取代旧的「按 timestamp 排」分支，让用户的拖拽顺序可见。 */
+    itemsByCategory?: Map<string, SidebarItem[]>
+    /** 当前已关注的群 group_no 集合。/categories 不感知 follow 状态，渲染时与此 Set 求交。
+     *  传 undefined 时退化到不过滤（兼容旧调用方）。 */
+    followedGroupNos?: Set<string>
+    /** 全类型已关注集合（key 为 `${target_type}::${target_id}`）。
+     *  渲染父群下子区时与此求交，避免 IM 仍有活跃会话但 sidebar 已 unfollow 的子区还在显示。 */
+    followedKeys?: Set<string>
+    /** 同分组内手动排序回调；items 顺序即新顺序，target_type 与 target_id 取自会话频道 */
+    onSortFollowItems?: (items: { target_type: number; target_id: string }[]) => void | Promise<void>
     isLoading: boolean
     error: string | null
     onRetry: () => void
@@ -73,6 +89,12 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     onClearMessages,
     onThreadOverflowClick,
     categories,
+    dmsByCategory,
+    threadsByCategory,
+    itemsByCategory,
+    followedGroupNos,
+    followedKeys,
+    onSortFollowItems,
     isLoading,
     error,
     onRetry,
@@ -92,17 +114,22 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     const [activeDragId, setActiveDragId] = useState<string | null>(null)
     type DragData =
         | { type: 'category'; categoryId: string }
-        | { type: 'group'; groupNo: string }
+        | { type: 'item'; channelType: number; channelID: string; isThread?: boolean }
 
     function isDragData(d: unknown): d is DragData {
         if (!d || typeof d !== 'object') return false
         const obj = d as Record<string, unknown>
         if (obj.type === 'category') return typeof obj.categoryId === 'string'
-        if (obj.type === 'group') return typeof obj.groupNo === 'string'
+        if (obj.type === 'item') return typeof obj.channelID === 'string' && typeof obj.channelType === 'number'
         return false
     }
 
     const [activeDragData, setActiveDragData] = useState<DragData | null>(null)
+
+    // 分组内 sort：sortable id → 所属分组ID 反查；分组ID → 该分组的可排序 items（不含子区）。
+    // 在下方 categoriesForView 构建时填充，handleDragEnd 通过闭包读取最新值。
+    const itemToCategory = new Map<string, string>()
+    const categoryItems = new Map<string, ConversationWrap[]>()
 
     const handleDragStart = (event: DragStartEvent) => {
         setActiveDragId(String(event.active.id))
@@ -118,6 +145,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
         const activeType = active.data.current?.type
         const overId = String(over.id)
+        const overType = over.data.current?.type
 
         if (activeType === 'category') {
             // 分组整体排序
@@ -127,24 +155,67 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 const newOrder = arrayMove(categories, oldIndex, newIndex).map(c => c.category_id)
                 onSortCategories(newOrder)
             }
-        } else if (activeType === 'group') {
-            const d = active.data.current
-            if (!isDragData(d) || d.type !== 'group') return
-            const groupNo = d.groupNo
+            return
+        }
 
-            // over.id 可能是 useSortable 的 cat:: 或 useDroppable 的 drop::cat::
-            if (overId.startsWith('drop::cat::')) {
-                const targetCategoryId = overId.replace('drop::cat::', '')
-                // 虚拟默认分组不能作为移动目标（id 非后端真实 UUID）
-                if (targetCategoryId && !isVirtualCategory(targetCategoryId)) {
-                    onMoveGroupToCategory(groupNo, targetCategoryId)
+        if (activeType !== 'item') return
+        const d = active.data.current
+        if (!isDragData(d) || d.type !== 'item') return
+        const channelID = d.channelID
+        const channelType = d.channelType
+
+        // 分支 1：item → item，落在另一个会话上
+        if (overType === 'item') {
+            const sourceCatId = itemToCategory.get(String(active.id))
+            const targetCatId = itemToCategory.get(overId)
+            if (!sourceCatId || !targetCatId) return
+
+            if (sourceCatId === targetCatId) {
+                // 同分组内手动排序：调 /v2/follow/sort，items 顺序由数组下标决定。
+                // 子区跟随父群在视觉上一起移动 → 提交时把每个群的已关注子区紧跟其后，
+                // 否则后端不更新子区的 follow_sort，旧值会让子区在 sidebar 里漂离父群。
+                const items = categoryItems.get(sourceCatId) || []
+                const oldIndex = items.findIndex(c => `item::${c.channel.channelType}::${c.channel.channelID}` === String(active.id))
+                const newIndex = items.findIndex(c => `item::${c.channel.channelType}::${c.channel.channelID}` === overId)
+                if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+                    const newOrder = arrayMove(items, oldIndex, newIndex)
+                    const sortItems: { target_type: number; target_id: string }[] = []
+                    for (const c of newOrder) {
+                        sortItems.push({
+                            target_type: c.channel.channelType,
+                            target_id: c.channel.channelID,
+                        })
+                        // 群下面紧跟其已关注子区
+                        if (c.channel.channelType === ChannelTypeGroup) {
+                            const childThreads = threadConvsByParent.get(c.channel.channelID) || []
+                            for (const t of childThreads) {
+                                sortItems.push({
+                                    target_type: ChannelTypeCommunityTopic,
+                                    target_id: t.channel.channelID,
+                                })
+                            }
+                        }
+                    }
+                    onSortFollowItems?.(sortItems)
                 }
-            } else if (overId.startsWith('cat::')) {
-                // useSortable 的 id，同样是分组目标
-                const targetCategoryId = overId.replace('cat::', '')
-                if (targetCategoryId && !isVirtualCategory(targetCategoryId)) {
-                    onMoveGroupToCategory(groupNo, targetCategoryId)
-                }
+            } else if (channelType === ChannelTypeGroup && !isVirtualCategory(targetCatId)) {
+                // 跨分组：仅群可走 /groups/:group_no/category 移动
+                onMoveGroupToCategory(channelID, targetCatId)
+            }
+            return
+        }
+
+        // 分支 2：item → 分组 header / drop area（仅群跨分组移动）
+        if (channelType !== ChannelTypeGroup) return
+        if (overId.startsWith('drop::cat::')) {
+            const targetCatId = overId.replace('drop::cat::', '')
+            if (targetCatId && !isVirtualCategory(targetCatId)) {
+                onMoveGroupToCategory(channelID, targetCatId)
+            }
+        } else if (overId.startsWith('cat::')) {
+            const targetCatId = overId.replace('cat::', '')
+            if (targetCatId && !isVirtualCategory(targetCatId)) {
+                onMoveGroupToCategory(channelID, targetCatId)
             }
         }
     }
@@ -171,6 +242,19 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         c => c.channel.channelType === ChannelTypeGroup
     )
     const groupConvMap = new Map(groupConversations.map(c => [c.channel.channelID, c]))
+
+    // DM conversations 按 peer_uid (= channelID for ChannelTypePerson) 索引
+    const dmConvMap = new Map(
+        conversations
+            .filter(c => c.channel.channelType === ChannelTypePerson)
+            .map(c => [c.channel.channelID, c])
+    )
+    // 子区 conversations 按 channelID 索引（独立 follow item，不挂在父群下）
+    const threadConvByChannel = new Map(
+        conversations
+            .filter(c => c.channel.channelType === ChannelTypeCommunityTopic)
+            .map(c => [c.channel.channelID, c])
+    )
 
     // Thread conv: parentGroupNo → 子区列表
     const threadConvsByParent = new Map<string, ConversationWrap[]>()
@@ -221,7 +305,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
             // 「移到分组」二级子菜单（排除当前分组）
             const moveToChildren: ContextMenusData[] = categories
-                .filter(c => c.category_id !== currentCategoryId)
+                .filter(c => c.category_id !== currentCategoryId && !c.is_default)
                 .map(cat => ({
                     title: cat.name,
                     checked: false,
@@ -236,46 +320,71 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 children: moveToChildren,
             }
             menus.push(moveToItem)
-
-            if (currentCategoryId) {
-                const catName = categories.find(c => c.category_id === currentCategoryId)?.name ?? '当前分组'
-                const moveOutItem: ContextMenusData = {
-                    title: '移出分组',
-                    icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 18l3-3 3 3 M12 21v-6",
-                    onClick: () => {
-                        const defaultCategory = categories.find(c => c.is_default)
-                        if (!defaultCategory) {
-                            console.warn('[ConversationListGrouped] 找不到默认分组，无法移出分组')
-                            return
-                        }
-                        Modal.confirm({
-                            title: '移出分组',
-                            content: `确定将此群聊从「${catName}」移出到未分组吗？`,
-                            okText: '移出',
-                            cancelText: '取消',
-                            onOk: () => onMoveGroupToCategory(groupNo, defaultCategory.category_id),
-                        })
-                    },
-                }
-                menus.push(moveOutItem)
-            }
         }
-        
+
+        // 3. 移到分组（DM）—— 复用 followDM(peer_uid, category_id) 覆盖旧 category_id
+        if (channel.channelType === ChannelTypePerson && categories.length > 0) {
+            const peerUid = channel.channelID
+            // 反查当前 DM 所在分组
+            let currentDmCategoryId: string | undefined
+            if (dmsByCategory) {
+                for (const [catId, items] of dmsByCategory) {
+                    if (items.some(it => it.target_id === peerUid)) {
+                        currentDmCategoryId = catId || undefined
+                        break
+                    }
+                }
+            }
+            const moveToChildrenDm: ContextMenusData[] = categories
+                .filter(c => !c.is_default && c.category_id !== currentDmCategoryId)
+                .map(cat => ({
+                    title: cat.name,
+                    checked: false,
+                    onClick: async () => {
+                        try {
+                            await FollowService.followDM({ peer_uid: peerUid, category_id: cat.category_id })
+                            onUnfollow?.()
+                        } catch (err) {
+                            console.error('移动 DM 到分组失败', err)
+                        }
+                    },
+                }))
+            moveToChildrenDm.push({ separator: true } as ContextMenusData)
+            moveToChildrenDm.push({ title: '+ 新建分组', onClick: onOpenCreateCategory })
+            menus.push({
+                title: '移到分组',
+                icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 15l3 3 3-3 M12 12v6",
+                children: moveToChildrenDm,
+            })
+        }
+
         return menus
     }
 
-    const ConvListWithMenu = (convs: ConversationWrap[]) => (
-        <ConversationList
-            conversations={convs}
-            select={select}
-            filter="group"
-            compact
-            onClick={onConversationClick}
-            onClearMessages={onClearMessages}
-            onThreadOverflowClick={onThreadOverflowClick}
-            extraContextMenus={buildExtraContextMenus}
-        />
-    )
+    const ConvListWithMenu = (convs: ConversationWrap[]) => {
+        // 同分组内 sort 的 sortable items：排除子区（子区跟随父频道，不独立排序）。
+        // 注：DM/群的 useSortable id 与此处 items 必须一致 —— item::<channelType>::<channelID>
+        const sortableIds = convs
+            .filter(c => c.channel.channelType !== ChannelTypeCommunityTopic)
+            .map(c => `item::${c.channel.channelType}::${c.channel.channelID}`)
+        return (
+            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                <ConversationList
+                    conversations={convs}
+                    select={select}
+                    filter="all"
+                    compact
+                    onClick={onConversationClick}
+                    onClearMessages={onClearMessages}
+                    onThreadOverflowClick={onThreadOverflowClick}
+                    extraContextMenus={buildExtraContextMenus}
+                    hideCloseChat
+                    disablePinSplit
+                    hidePin
+                />
+            </SortableContext>
+        )
+    }
 
     // 所有非默认分组里已归组的群 group_no 集合（用于默认分组的兜底逻辑）
     const assignedGroupNos = new Set<string>()
@@ -289,16 +398,31 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
     // 兜底：后端 categories 为空（GH dmwork-web#1044 旧账号场景）时，渲染一个
     // 虚拟「默认」分组，避免 groupConversations 整列消失。真实 categories 走原逻辑。
+    // 关注 tab 按 PM #337 spec 不展示默认分组（含真实 is_default 与虚拟兜底分组）。
     const effectiveCategories = computeEffectiveCategories(categories)
+        .filter(cat => !cat.is_default && !isVirtualCategory(cat.category_id))
 
     const categoriesForView = effectiveCategories.map(cat => {
         let catConvs: ConversationWrap[]
 
+        const sidebarKey = cat.is_default ? "" : (cat.category_id ?? "")
+        const sidebarInCat = itemsByCategory?.get(sidebarKey) || []
+
+        // 把 sidebar item 解析成已存在的 ConversationWrap；如果 IM SDK 缓存里没有
+        // （新关注且从未聊过），就根据 sidebar item 现合成一个占位 Conversation —— 否则
+        // 关注列表里看不到该项。channelInfo 由 SDK ChannelManager 异步补齐。
+        const synthesizeFromItem = (it: SidebarItem): ConversationWrap => {
+            const conv = new Conversation()
+            conv.channel = new Channel(it.target_id, it.channel_type)
+            conv.unread = it.unread || 0
+            conv.timestamp = it.timestamp || 0
+            return new ConversationWrap(conv)
+        }
+
         if (cat.is_default) {
-            // 默认分组：显示所有不在非默认分组里的群聊（含新建后尚未 reload categories 的情况）
+            // 关注 tab 不会走默认分组（上层已 filter）；保留兜底以防其它 caller 复用。
             catConvs = groupConversations.filter(c => !assignedGroupNos.has(c.channel.channelID))
             catConvs = catConvs.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
-            // 加上每个群的子区
             const withThreads: ConversationWrap[] = []
             for (const conv of catConvs) {
                 withThreads.push(conv)
@@ -307,17 +431,44 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 withThreads.push(...threads)
             }
             catConvs = withThreads
-        } else {
-            // 非默认分组：按 cat.groups 顺序，按最新消息排序
-            const sortedGroups = [...(cat.groups || [])].sort((a, b) => {
-                const convA = groupConvMap.get(a.group_no)
-                const convB = groupConvMap.get(b.group_no)
-                const tA = convA?.timestamp ?? 0
-                const tB = convB?.timestamp ?? 0
-                return tB - tA
-            })
+        } else if (itemsByCategory) {
+            // 关注 tab 主路径：直接按 sidebar 给的 follow_sort 顺序铺。
+            // 每个 item 解析成 ConversationWrap，群下面紧跟其已关注子区。
+            // 这样手动排序结果立即可见，且 DM/群混排顺序与后端一致。
             catConvs = []
-            for (const g of sortedGroups) {
+            const seenIds = new Set<string>()
+            for (const it of sidebarInCat) {
+                if (seenIds.has(it.target_id)) continue
+                seenIds.add(it.target_id)
+
+                if (it.target_type === 1) {
+                    catConvs.push(dmConvMap.get(it.target_id) || synthesizeFromItem(it))
+                } else if (it.target_type === 2) {
+                    catConvs.push(groupConvMap.get(it.target_id) || synthesizeFromItem(it))
+                    // 父群下挂已关注子区：跟 followedKeys 求交，避免 IM 仍有活跃会话
+                    // 但 sidebar 已 unfollow 的子区被错误渲染。followedKeys 缺失时退化到不过滤。
+                    const childThreads = (threadConvsByParent.get(it.target_id) || [])
+                        .filter(t => !followedKeys
+                            || followedKeys.has(`${ChannelTypeCommunityTopic}::${t.channel.channelID}`))
+                        .slice()
+                        .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+                    for (const t of childThreads) {
+                        if (!seenIds.has(t.channel.channelID)) {
+                            seenIds.add(t.channel.channelID)
+                            catConvs.push(t)
+                        }
+                    }
+                } else if (it.target_type === 5) {
+                    catConvs.push(threadConvByChannel.get(it.target_id) || synthesizeFromItem(it))
+                }
+            }
+        } else {
+            // 兜底：旧 caller 没传 itemsByCategory 时，按 cat.groups 顺序拼装。
+            const visibleGroups = followedGroupNos
+                ? (cat.groups || []).filter(g => followedGroupNos.has(g.group_no))
+                : (cat.groups || [])
+            catConvs = []
+            for (const g of visibleGroups) {
                 const groupConv = groupConvMap.get(g.group_no)
                 if (groupConv) {
                     catConvs.push(groupConv)
@@ -325,12 +476,23 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     catConvs.push(...threads)
                 }
             }
+            const dmItems = dmsByCategory?.get(sidebarKey) || []
+            const threadItems = threadsByCategory?.get(sidebarKey) || []
+            const dmConvsInCat = dmItems.map(it => dmConvMap.get(it.target_id) || synthesizeFromItem(it))
+            const standaloneThreadConvs = threadItems.map(it => threadConvByChannel.get(it.target_id) || synthesizeFromItem(it))
+            const seenChannelIds = new Set(catConvs.map(c => c.channel.channelID))
+            const dedupedThreads = standaloneThreadConvs.filter(c => !seenChannelIds.has(c.channel.channelID))
+            catConvs.push(...dmConvsInCat, ...dedupedThreads)
         }
 
-        // groupCount：默认分组用实际 conv 数，非默认分组用 cat.groups 数
-        const groupCount = cat.is_default
-            ? groupConversations.filter(c => !assignedGroupNos.has(c.channel.channelID)).length
-            : (cat.groups || []).length
+        // 记录 sortable items（DM + 群，子区不参与 sort）→ handleDragEnd 用
+        const sortableInCat = catConvs.filter(c => c.channel.channelType !== ChannelTypeCommunityTopic)
+        categoryItems.set(cat.category_id, sortableInCat)
+        for (const c of sortableInCat) {
+            itemToCategory.set(`item::${c.channel.channelType}::${c.channel.channelID}`, cat.category_id)
+        }
+
+        const groupCount = catConvs.length
         const isMuted = (c: ConversationWrap): boolean => {
             if (c.channelInfo?.mute) return true
             // 子区继承父群组勿扰状态
@@ -418,7 +580,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 onClick: () => {
                     Modal.confirm({
                         title: '删除分组',
-                        content: `确定删除「${cat.name}」吗？分组内群聊将移至未分组。`,
+                        content: `确定删除「${cat.name}」吗？分组下的所有会话将取消关注。`,
                         okType: 'danger',
                         okText: '删除',
                         cancelText: '取消',
@@ -431,9 +593,9 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
     const categoryIds = categories.map(c => `cat::${c.category_id}`)
 
-    // 找到正在拖拽的 group item（用于 DragOverlay）
-    const activeDragConv = activeDragData?.type === 'group'
-        ? conversations.find(c => c.channel.channelID === activeDragData.groupNo)
+    // 找到正在拖拽的 conv item（用于 DragOverlay）
+    const activeDragConv = activeDragData?.type === 'item'
+        ? conversations.find(c => c.channel.channelID === activeDragData.channelID)
         : null
 
     return (

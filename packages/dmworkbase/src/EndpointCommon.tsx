@@ -1,4 +1,4 @@
-import { Channel, ChannelTypePerson, WKSDK, Message } from "wukongimjssdk";
+import { Channel, WKSDK, Message } from "wukongimjssdk";
 import WKApp from "./App";
 import React, { Component, ReactNode } from "react";
 import { ChatContentPage } from "./Pages/Chat";
@@ -120,9 +120,6 @@ export class EndpointCommon {
         if (param.opts) {
           opts = param.opts
         }
-
-        const targetTab = channel.channelType === ChannelTypePerson ? "dm" : "group";
-        WKApp.mittBus.emit("wk:switch-sidebar-tab", targetTab);
 
         let initLocateMessageSeq = 0;
         if (opts && opts.initLocateMessageSeq && opts.initLocateMessageSeq > 0) {
