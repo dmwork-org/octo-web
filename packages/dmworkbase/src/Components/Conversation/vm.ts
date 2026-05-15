@@ -1848,26 +1848,19 @@ export default class ConversationVM extends ProviderListener {
                 obj.space_id = spaceId
                 return obj
             }
-            // 覆盖 encode()：确保最终 wire payload 包含 space_id。
-            // 不能简单 bind 原始 content 的 encode，因为：
-            // 1. 某些 content 有实例级 encode 覆盖（如 mention），bind 原始对象会绕过代理的 encodeJSON
-            // 2. media 消息上传后 SDK 修改的是代理对象的属性，bind 原始对象会丢失上传 URL
-            // 方案：调用代理自身的 encodeJSON() 构建 payload（已包含 space_id），
-            // 然后补充 mention/reply 等 SDK 标准字段。
-            sendContent.encode = function (this: any) {
-                const contentObj = this.encodeJSON()
-                contentObj.type = this.contentType
-                if (this.mention) {
-                    const mentionObj: any = {}
-                    if (this.mention.all) mentionObj.all = 1
-                    if (this.mention.uids) mentionObj.uids = this.mention.uids
-                    if (this.mention.entities) mentionObj.entities = this.mention.entities
-                    contentObj.mention = mentionObj
+            // 覆盖 encode()：临时将 content.encodeJSON 替换为代理版本，
+            // 然后调用原始 content.encode()（可能是 SDK 默认或实例级覆盖，
+            // 如 mention entities 的自定义 encode）。这样保留了原始 encode
+            // 写入的所有字段（entities、reply 等），同时注入 space_id。
+            // JS 单线程模型下 swap-call-restore 是安全的。
+            sendContent.encode = function () {
+                const savedEncodeJSON = content.encodeJSON
+                content.encodeJSON = sendContent.encodeJSON
+                try {
+                    return content.encode.call(content)
+                } finally {
+                    content.encodeJSON = savedEncodeJSON
                 }
-                if (this.reply) {
-                    contentObj.reply = this.reply.encode()
-                }
-                return new TextEncoder().encode(JSON.stringify(contentObj))
             }
             // 同步 contentObj，让本地回显也通过 filterPersonMessagesBySpace (#784)
             sendContent.contentObj = { ...(content.contentObj || {}), space_id: spaceId }

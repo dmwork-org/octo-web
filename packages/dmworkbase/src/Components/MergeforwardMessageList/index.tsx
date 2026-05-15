@@ -71,12 +71,11 @@ export default class MergeforwardMessageList extends Component<
       this.syncGoBackRef();
       this.notifyNavigateChange();
     }
-    // props 变化时重置导航栈（用户打开了另一条合并转发消息）
-    if (prevProps.mergeforwardContent !== this.props.mergeforwardContent && this.state.contentStack.length > 0) {
-      this.setState({ contentStack: [] });
-    }
-    // 弹窗关闭时重置导航栈
-    if (prevProps.visible && !this.props.visible && this.state.contentStack.length > 0) {
+    // 合并两个重置条件，避免 back-to-back setState
+    const shouldReset =
+      prevProps.mergeforwardContent !== this.props.mergeforwardContent ||
+      (prevProps.visible && !this.props.visible);
+    if (shouldReset && this.state.contentStack.length > 0) {
       this.setState({ contentStack: [] });
     }
   }
