@@ -9,6 +9,7 @@ import {
 } from "wukongimjssdk";
 import React from "react";
 import { Component, ReactNode } from "react";
+import { Toast } from "@douyinfe/semi-ui";
 import { ImageContent } from "../../Messages/Image";
 import { FileContent } from "../../Messages/File/FileContent";
 import { MessageContentTypeConst } from "../../Service/Const";
@@ -75,8 +76,10 @@ export default class MergeforwardMessageList extends Component<
     const shouldReset =
       prevProps.mergeforwardContent !== this.props.mergeforwardContent ||
       (prevProps.visible && !this.props.visible);
-    if (shouldReset && this.state.contentStack.length > 0) {
-      this.setState({ contentStack: [] });
+    if (shouldReset) {
+      if (this.state.contentStack.length > 0 || this.state.previewImgSrc) {
+        this.setState({ contentStack: [], previewImgSrc: null, previewImageContent: null });
+      }
     }
   }
 
@@ -287,7 +290,7 @@ export default class MergeforwardMessageList extends Component<
           previewMsgs={previewMsgs}
           onClick={() => this.setState((prev) => {
             if (prev.contentStack.length >= MAX_NESTED_DEPTH) {
-              console.warn(`[MergeforwardMessageList] 嵌套层级已达上限(${MAX_NESTED_DEPTH})，无法继续展开`);
+              Toast.info("已达最大展开层级");
               return null;
             }
             return { contentStack: [...prev.contentStack, nestedContent] };

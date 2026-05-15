@@ -90,8 +90,8 @@
 }
 
 .wk-mergeforward-modal-header-title {
-    font-size: 16px;
-    font-weight: 500;
+    font-size: var(--wk-text-size-xl, 16px);
+    font-weight: var(--wk-font-medium, 500);
     color: var(--wk-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -102,15 +102,15 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--wk-size-icon-btn, 28px);
-    height: var(--wk-size-icon-btn, 28px);
+    width: var(--wk-sp-7, 28px);
+    height: var(--wk-sp-7, 28px);
     border: none;
     background: none;
     border-radius: var(--wk-r-sm, 6px);
     cursor: pointer;
     color: var(--wk-text-tertiary);
     font-size: 14px;
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--wk-dur-fast, 0.15s), color var(--wk-dur-fast, 0.15s);
     flex-shrink: 0;
 }
 

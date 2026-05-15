@@ -7,7 +7,7 @@ import {
   Message,
   MessageContent,
 } from "wukongimjssdk";
-import { IconArrowLeft } from "@douyinfe/semi-icons";
+import { IconArrowLeft, IconClose } from "@douyinfe/semi-icons";
 import React from "react";
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList";
 import { MessageContentTypeConst } from "../../Service/Const";
@@ -289,7 +289,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                   aria-label="关闭"
                   onClick={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
                 >
-                  ✕
+                  <IconClose size="inherit" />
                 </button>
               </div>
             }
@@ -368,7 +368,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                 aria-label="关闭"
                 onClick={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
               >
-                ✕
+                <IconClose size="inherit" />
               </button>
             </div>
           }
