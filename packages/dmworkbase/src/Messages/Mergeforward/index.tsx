@@ -28,9 +28,6 @@ export default class MergeforwardContent extends MessageContent {
     channelType!: number
     users!: Array<MergeforwardUser>
     msgs!: Array<Message>
-    // Real-world merge-forward nesting rarely exceeds 3–4 levels.
-    // Set to 8 to allow plenty of headroom for legitimate use while preventing
-    // pathological nesting from causing stack overflow.
     private static readonly MAX_MERGE_FORWARD_DEPTH = 8
     private static depthWarningLogged = false
 
@@ -42,7 +39,30 @@ export default class MergeforwardContent extends MessageContent {
     }
 
     decodeJSON(content: any) {
+        // Reset warning flag for each top-level message so truncation is logged per message
+        MergeforwardContent.depthWarningLogged = false
         this.decodeJSONWithDepth(content, 0)
+    }
+
+    private static normalizeUsers(rawUsers: Array<MergeforwardUser>): Array<MergeforwardUser> {
+        const seen = new Set<string>()
+        return rawUsers
+            .filter(u => {
+                if (seen.has(u.uid)) return false
+                seen.add(u.uid)
+                return true
+            })
+            .map(u => {
+                // 透传外部来源字段；仅保留有效值避免噪音
+                const mapped: MergeforwardUser = { uid: u.uid, name: u.name }
+                if (u.is_external === 1 || u.is_external === 0) {
+                    mapped.is_external = u.is_external
+                }
+                if (typeof u.source_space_name === "string" && u.source_space_name !== "") {
+                    mapped.source_space_name = u.source_space_name
+                }
+                return mapped
+            })
     }
 
     /**
@@ -50,8 +70,10 @@ export default class MergeforwardContent extends MessageContent {
      * Public to allow access from mapToMessage during recursive processing.
      */
     decodeJSONWithDepth(content: any, depth: number) {
-        // 深度超过限制时，停止处理，避免栈溢出
-        if (depth > MergeforwardContent.MAX_MERGE_FORWARD_DEPTH) {
+        // Truncate at depth 8: depths 0-7 are decoded, depth 8+ are truncated.
+        // This prevents deeply nested forwards from causing stack overflow while
+        // preserving the full original payload on contentObj for re-forward.
+        if (depth >= MergeforwardContent.MAX_MERGE_FORWARD_DEPTH) {
             this.channelType = content["channel_type"] || 0
             this.users = MergeforwardContent.normalizeUsers(content["users"] || [])
             this.msgs = []
@@ -92,7 +114,7 @@ export default class MergeforwardContent extends MessageContent {
         return "[合并转发]"
     }
 
-    mapToMessage(messageMap: any, depth: number = 0): Message {
+    mapToMessage(messageMap: any, depth: number): Message {
         let message = new Message()
         message.messageID = `${messageMap['message_id']}`
         message.timestamp = messageMap["timestamp"]
