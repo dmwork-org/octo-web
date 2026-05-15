@@ -3,7 +3,7 @@ import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageCo
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
 import { MessageContentTypeConst } from "../../Service/Const"
-import { applyMsgLevelExternalFields, hydrateMessageBaseFields } from "../../Service/Convert"
+import { applyMsgLevelExternalFields } from "../../Service/Convert"
 import MessageBase from "../Base"
 import MessageTrail from "../Base/tail"
 import { MessageCell } from "../MessageCell"
@@ -142,13 +142,13 @@ export default class MergeforwardContent extends MessageContent {
         // This ensures inner messages retain full payload for re-forwarding.
         if (contentType === MessageContentTypeConst.mergeForward
             && (messageContent as any).decodeJSONWithDepth) {
-            // Set contentObj before decoding to preserve the original payload,
-            // mirroring SDK decode() semantics so re-forward works correctly.
-            // Use defensive leading semicolon: ASI does not insert semicolon before '('
-            // Also hydrate SDK base fields (mention, reply, visibles, invisibles).
+            // Decode base fields (mention/reply/visibles/invisibles) with SDK semantics first.
+            // Then use depth-limited decode for merge-forward structure to prevent stack overflow.
+            const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj))
+            messageContent.decode(payloadData)
+            // Set contentObj before depth-limited decode to preserve original payload for re-forwarding
             const mf = messageContent as any
             mf.contentObj = payloadObj
-            hydrateMessageBaseFields(mf, payloadObj)
             mf.decodeJSONWithDepth(payloadObj, depth)
         } else {
             const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj))
