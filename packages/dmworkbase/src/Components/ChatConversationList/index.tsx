@@ -11,7 +11,7 @@ import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
-import { useFollowSidebar } from "../../Hooks/useFollowSidebar"
+import { useFollowSidebarContext } from "../../Hooks/useFollowSidebar"
 import FollowService from "../../Service/FollowService"
 import { parseThreadChannelId } from "../../Service/Thread"
 import { ConversationWrap } from "../../Service/Model"
@@ -71,7 +71,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         bumpVersion,
         applyOptimisticSort,
         reload: reloadSidebar,
-    } = useFollowSidebar()
+    } = useFollowSidebarContext()
 
     // 跨分组移群也会 bump 后端 follow_version；wrap useCategoryList 的实现，
     // 让本地 ref 同步乐观自增 + reload sidebar，避免下一次 sort CAS 冲突。

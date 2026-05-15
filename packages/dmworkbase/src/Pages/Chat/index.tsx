@@ -47,7 +47,8 @@ import {
 import FilePreviewPanel, {
   FilePreviewInfo,
 } from "../../Components/FilePreviewPanel";
-import { useFollowSidebar } from "../../Hooks/useFollowSidebar";
+import { FollowSidebarProvider, useFollowSidebarContext } from "../../Hooks/useFollowSidebar";
+import { SidebarTargetType } from "../../Service/SidebarService";
 
 interface SidebarTabBarWithBadgesProps {
   conversations: ConversationWrap[];
@@ -56,28 +57,54 @@ interface SidebarTabBarWithBadgesProps {
 }
 
 /**
- * 复用 useFollowSidebar 取 followedKeys，按 PM #337 spec 计算 tab 角标：
- * - 关注 tab：只计 sidebar 已关注项（DM + 群 + 群下已关注子区）
- * - 最近 tab：计所有非勿扰会话（DM + 群 + 子区），与 recent tab filter='all' 一致
- *   3 天不活跃过滤是前端临时方案，最终归后端 conversation sync，badge 不再重复。
+ * 关注 / 最近 tab 角标。按 PM #337 spec：
+ * - 关注 tab：sum 自 sidebar /sidebar/sync 的 items[].unread（已是后端 follow 视图）。
+ *   不再 sum IM 缓存——sidebar-only 的关注（用户关注但还没聊过，IM 缓存里没有）会被丢掉。
+ * - 最近 tab：sum IM 缓存里非勿扰的 conversations，和 recent tab filter='all' 一致。
  *
- * 子区勿扰判定：自身 mute 优先；未显式设置则继承父群组的 mute（与
- * ConversationList / ConversationListGrouped 处的渲染逻辑保持一致），
- * 否则父群已勿扰但子区未读仍计入 badge 会出现「角标 N 但列表里看不到任何未读」的错位。
+ * 勿扰判定：通过 WKSDK.channelManager 查 channelInfo.mute（拿不到当作非勿扰）；
+ * 子区未显式 mute 时回看父群组的 mute（与列表渲染保持一致）。
  *
- * 这里独立调用一次 useFollowSidebar（ChatConversationList 内部还有一次）会产生重复
- * /sidebar/sync 请求，是当前的小代价；后续可下沉 hook 或共享 Context 优化。
+ * 数据源由 <FollowSidebarProvider> 统一注入，避免双 hook 实例导致的重复
+ * /sidebar/sync + follow 写操作只刷一份的 stale badge 问题。
  */
 const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   conversations,
   activeTab,
   onTabChange,
 }) => {
-  const { followedKeys } = useFollowSidebar();
+  const { items } = useFollowSidebarContext();
 
-  const isEffectivelyMuted = (c: ConversationWrap): boolean => {
+  const isItemMuted = (it: {
+    target_type: number
+    target_id: string
+    parent_channel_id?: string
+  }): boolean => {
+    let channelType: number | null = null;
+    if (it.target_type === SidebarTargetType.DM) channelType = ChannelTypePerson;
+    else if (it.target_type === SidebarTargetType.CHANNEL) channelType = ChannelTypeGroup;
+    else if (it.target_type === SidebarTargetType.THREAD) channelType = ChannelTypeCommunityTopic;
+    if (channelType == null) return false;
+    const info = WKSDK.shared().channelManager.getChannelInfo(
+      new Channel(it.target_id, channelType),
+    );
+    if (info?.mute) return true;
+    if (it.target_type === SidebarTargetType.THREAD) {
+      const parentGroupNo =
+        it.parent_channel_id ||
+        parseThreadChannelId(it.target_id)?.groupNo;
+      if (parentGroupNo) {
+        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
+          new Channel(parentGroupNo, ChannelTypeGroup),
+        );
+        if (parentInfo?.mute) return true;
+      }
+    }
+    return false;
+  };
+
+  const isConversationMuted = (c: ConversationWrap): boolean => {
     if (c.channelInfo?.mute) return true;
-    // 子区：未显式设置 mute 时继承父群组的勿扰状态
     if (c.channel.channelType === ChannelTypeCommunityTopic) {
       const parentGroupNo =
         (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
@@ -92,21 +119,14 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     return false;
   };
 
-  const isFollowed = (c: ConversationWrap): boolean =>
-    followedKeys.has(`${c.channel.channelType}::${c.channel.channelID}`);
-
-  const followUnread = conversations.reduce(
-    (sum: number, c: ConversationWrap) => {
-      if (isEffectivelyMuted(c)) return sum;
-      if (!isFollowed(c)) return sum;
-      return sum + (c.unread || 0);
-    },
-    0,
-  );
+  const followUnread = items.reduce((sum, it) => {
+    if (isItemMuted(it)) return sum;
+    return sum + (it.unread || 0);
+  }, 0);
 
   const recentUnread = conversations.reduce(
     (sum: number, c: ConversationWrap) => {
-      if (isEffectivelyMuted(c)) return sum;
+      if (isConversationMuted(c)) return sum;
       return sum + (c.unread || 0);
     },
     0,
@@ -1057,7 +1077,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       </Popover>
                     </div>
                   </div>
-                  {/* 关注/最近 Tab Bar */}
+                  {/* 关注/最近 Tab Bar — Provider 给 tab 角标 + 列表共享一份 sidebar/sync */}
+                  <FollowSidebarProvider>
                   <SidebarTabBarWithBadges
                     conversations={vm.conversations}
                     activeTab={activeTab}
@@ -1068,7 +1089,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       <div className="wk-chat-conversation-list-loading">
                         <Spin style={{ marginTop: "20px" }} />
                       </div>
-                    ) : vm.filteredConversations.length === 0 ? (
+                    ) : activeTab === "recent" &&
+                      vm.filteredConversations.length === 0 ? (
                       <div className="wk-chat-empty-guide">
                         <div style={{ fontSize: 28, marginBottom: 12 }}>💬</div>
                         <div
@@ -1200,6 +1222,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       </ErrorBoundary>
                     )}
                   </div>
+                  </FollowSidebarProvider>
                 </div>
               </div>
               <SpaceCreate

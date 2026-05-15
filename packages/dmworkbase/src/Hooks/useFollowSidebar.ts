@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import WKApp from "../App"
 import SidebarService, { SidebarItem } from "../Service/SidebarService"
 
@@ -167,4 +167,25 @@ export function useFollowSidebar(): UseFollowSidebarResult {
         error,
         reload: load,
     }
+}
+
+/**
+ * 单一数据源：Provider 在父层调用一次 useFollowSidebar()，子组件通过
+ * useFollowSidebarContext() 共享。修复双实例导致的：
+ *   (a) /sidebar/sync 重复请求；
+ *   (b) follow 写操作只刷一份 hook，另一份保持 stale（badge / 列表 不一致）。
+ */
+const FollowSidebarContext = createContext<UseFollowSidebarResult | null>(null)
+
+export const FollowSidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const value = useFollowSidebar()
+    return React.createElement(FollowSidebarContext.Provider, { value }, children)
+}
+
+export function useFollowSidebarContext(): UseFollowSidebarResult {
+    const ctx = useContext(FollowSidebarContext)
+    if (!ctx) {
+        throw new Error("useFollowSidebarContext must be used inside <FollowSidebarProvider>")
+    }
+    return ctx
 }
