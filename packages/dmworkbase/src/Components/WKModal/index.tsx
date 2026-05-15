@@ -26,6 +26,8 @@ export interface WKModalProps {
   title?: React.ReactNode
   /** 预设尺寸，默认 'md'（400px）；与 width 同时传时 width 优先 */
   size?: WKModalSize
+  /** 自定义宽度，优先级高于 size */
+  width?: number | string
   /** 完全自定义 footer JSX；传此项时忽略 footerConfig */
   footer?: React.ReactNode
   /** 便捷 footer 配置，渲染标准 ok/cancel 按钮行 */
@@ -41,6 +43,12 @@ export interface WKModalProps {
     /** 按 Esc 是否关闭，默认 true */
     closeOnEsc?: boolean
   }
+  /** 透传给 Semi Modal 的 style */
+  style?: React.CSSProperties
+  /** 透传给 Semi Modal body 的 style */
+  bodyStyle?: React.CSSProperties
+  /** 自定义 header ReactNode（完全替换默认 header） */
+  header?: React.ReactNode
   className?: string
   children?: React.ReactNode
 }
@@ -86,9 +94,13 @@ const WKModal: React.FC<WKModalProps> = ({
   onCancel,
   title,
   size = 'md',
+  width: customWidth,
   footer,
   footerConfig,
   options,
+  style,
+  bodyStyle,
+  header: customHeader,
   className,
   children,
 }) => {
@@ -96,7 +108,7 @@ const WKModal: React.FC<WKModalProps> = ({
   const maskClosable = options?.maskClosable ?? true
   const mask = options?.mask ?? true
   const closeOnEsc = options?.closeOnEsc ?? true
-  const width = SIZE_MAP[size as WKModalSize]
+  const width = customWidth ?? SIZE_MAP[size as WKModalSize]
   const resolvedFooter = resolveFooter(footer, footerConfig, onCancel)
 
   const cls = ['wk-modal', className].filter(Boolean).join(' ')
@@ -109,7 +121,8 @@ const WKModal: React.FC<WKModalProps> = ({
     <Modal
       visible={visible}
       onCancel={onCancel}
-      title={title}
+      title={customHeader ? undefined : title}
+      header={customHeader}
       width={width}
       footer={resolvedFooter}
       closable={needCustomCloseBtn ? false : closable} // 自定义关闭按钮时禁用 Semi 默认按钮
@@ -118,6 +131,8 @@ const WKModal: React.FC<WKModalProps> = ({
       closeOnEsc={closeOnEsc}
       centered
       className={cls}
+      style={style}
+      bodyStyle={bodyStyle}
     >
       {needCustomCloseBtn && (
         <button
