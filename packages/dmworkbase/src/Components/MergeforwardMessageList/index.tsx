@@ -9,6 +9,7 @@ import {
 } from "wukongimjssdk";
 import React from "react";
 import { Component, ReactNode } from "react";
+import { Toast } from "@douyinfe/semi-ui";
 import { ImageContent } from "../../Messages/Image";
 import { FileContent } from "../../Messages/File/FileContent";
 import { MessageContentTypeConst } from "../../Service/Const";
@@ -16,7 +17,6 @@ import MergeforwardContent from "../../Messages/Mergeforward";
 import { dateFormat, getTimeStringAutoShort2 } from "../../Utils/time";
 import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
-import WKViewQueueHeader from "../WKViewQueueHeader";
 import WKApp from "../../App";
 import { downloadFile } from "../../Utils/download";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
@@ -24,16 +24,29 @@ import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import "yet-another-react-lightbox/styles.css";
 
+import MergeforwardCard from "../../ui/message/MergeforwardCard";
+
 import "./index.css";
+
+/** 嵌套合并转发最大导航深度 */
+const MAX_NESTED_DEPTH = 10;
 
 export interface MergeforwardMessageListProps {
   mergeforwardContent: MergeforwardContent;
   onClose?: () => void;
+  /** 弹窗是否可见；从 true→false 时重置导航栈 */
+  visible?: boolean;
+  /** 导航状态变化回调：通知父组件当前标题和是否可返回 */
+  onNavigateChange?: (info: { title: string; canGoBack: boolean }) => void;
+  /** 外部触发返回（由父组件的返回按钮调用） */
+  goBackRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 interface MergeforwardMessageListState {
   previewImgSrc: string | null;
   previewImageContent: ImageContent | null;
+  /** 导航栈：点击嵌套合并转发时 push，点返回时 pop */
+  contentStack: MergeforwardContent[];
 }
 
 export default class MergeforwardMessageList extends Component<
@@ -45,7 +58,56 @@ export default class MergeforwardMessageList extends Component<
     this.state = {
       previewImgSrc: null,
       previewImageContent: null,
+      contentStack: [],
     };
+  }
+
+  componentDidMount() {
+    this.syncGoBackRef();
+    this.notifyNavigateChange();
+  }
+
+  componentDidUpdate(prevProps: MergeforwardMessageListProps, prevState: MergeforwardMessageListState) {
+    if (prevState.contentStack !== this.state.contentStack) {
+      this.syncGoBackRef();
+      this.notifyNavigateChange();
+    }
+    // 合并两个重置条件，避免 back-to-back setState
+    const shouldReset =
+      prevProps.mergeforwardContent !== this.props.mergeforwardContent ||
+      (prevProps.visible && !this.props.visible);
+    if (shouldReset) {
+      if (this.state.contentStack.length > 0 || this.state.previewImgSrc) {
+        this.setState({ contentStack: [], previewImgSrc: null, previewImageContent: null });
+      }
+    }
+  }
+
+  private syncGoBackRef() {
+    if (this.props.goBackRef) {
+      this.props.goBackRef.current = this.state.contentStack.length > 0
+        ? () => this.goBack()
+        : null;
+    }
+  }
+
+  private notifyNavigateChange() {
+    if (this.props.onNavigateChange) {
+      const { contentStack } = this.state;
+      const currentContent = contentStack.length > 0
+        ? contentStack[contentStack.length - 1]
+        : this.props.mergeforwardContent;
+      this.props.onNavigateChange({
+        title: this.getTitle(currentContent),
+        canGoBack: contentStack.length > 0,
+      });
+    }
+  }
+
+  private goBack() {
+    this.setState((prev) => ({
+      contentStack: prev.contentStack.slice(0, -1),
+    }));
   }
 
   getTitle(content: MergeforwardContent) {
@@ -53,9 +115,13 @@ export default class MergeforwardMessageList extends Component<
       return "群的聊天记录";
     }
 
-    const names = content.users.map((v) => {
-      return v.name;
-    });
+    const names = content.users
+      .map((v) => v.name)
+      .filter(Boolean);
+
+    if (names.length === 0) {
+      return "聊天记录";
+    }
 
     return `${names.join("、")}的聊天记录`;
   }
@@ -200,6 +266,40 @@ export default class MergeforwardMessageList extends Component<
         />
       );
     }
+    if (msg.contentType === MessageContentTypeConst.mergeForward) {
+      const nestedContent = msg.content as MergeforwardContent;
+      const title = this.getTitle(nestedContent);
+      // 从 nestedContent.users 构建 uid→name 映射，避免显示 raw UID
+      const userNameMap = new Map<string, string>();
+      (nestedContent.users || []).forEach((u) => {
+        if (u && u.uid && u.name) userNameMap.set(u.uid, u.name);
+      });
+      const previewMsgs = (nestedContent.msgs || []).slice(0, 4).map((m) => {
+        const name = userNameMap.get(m.fromUID)
+          || WKSDK.shared().channelManager.getChannelInfo(new Channel(m.fromUID, ChannelTypePerson))?.title
+          || "";
+        const digest = m.content?.conversationDigest || "";
+        return {
+          fromUID: m.fromUID,
+          digest: name ? `${name}: ${digest}` : digest,
+        };
+      });
+      return (
+        <MergeforwardCard
+          title={title}
+          previewMsgs={previewMsgs}
+          onClick={() => {
+            if (this.state.contentStack.length >= MAX_NESTED_DEPTH) {
+              Toast.info("已达最大展开层级");
+              return;
+            }
+            this.setState((prev) => ({
+              contentStack: [...prev.contentStack, nestedContent],
+            }));
+          }}
+        />
+      );
+    }
     if (msg.contentType === MessageContentTypeConst.file) {
       const fileContent = msg.content as FileContent;
       const url = this.getFileURL(fileContent);
@@ -242,13 +342,19 @@ export default class MergeforwardMessageList extends Component<
 
   render(): ReactNode {
     const { mergeforwardContent } = this.props;
-    const { previewImgSrc, previewImageContent } = this.state;
+    const { previewImgSrc, previewImageContent, contentStack } = this.state;
+
+    // 当前显示的内容：栈顶 > props 传入的根内容
+    const currentContent = contentStack.length > 0
+      ? contentStack[contentStack.length - 1]
+      : mergeforwardContent;
+
     // 按 uid 建立外部来源映射，渲染时 O(1) 查询
     const externalByUid = new Map<
       string,
       { is_external?: number; source_space_name?: string }
     >();
-    (mergeforwardContent.users || []).forEach((u) => {
+    (currentContent.users || []).forEach((u) => {
       if (u && u.uid) {
         externalByUid.set(u.uid, {
           is_external: u.is_external,
@@ -259,9 +365,9 @@ export default class MergeforwardMessageList extends Component<
     return (
       <>
         <div className="wk-mergeforwardmessagelist">
-          {/* Content：消息列表，pad T10 B10 L16 R16，gap=16 */}
-          <div className="wk-mergeforwardmessagelist-content">
-            {mergeforwardContent.msgs.map((m, i) => {
+          {/* Content：消息列表，key 随栈深度变化强制重建 DOM 避免跨层复用 */}
+          <div className="wk-mergeforwardmessagelist-content" key={`stack-${contentStack.length}`}>
+            {currentContent.msgs.map((m, i) => {
               const fromChannel = new Channel(m.fromUID, ChannelTypePerson);
               let fromChannelInfo =
                 WKSDK.shared().channelManager.getChannelInfo(fromChannel);
@@ -270,7 +376,7 @@ export default class MergeforwardMessageList extends Component<
               }
               const showAvatar =
                 i === 0 ||
-                mergeforwardContent.msgs[i - 1].fromUID !== m.fromUID;
+                currentContent.msgs[i - 1].fromUID !== m.fromUID;
               const extInfo = externalByUid.get(m.fromUID);
               const showExtOrigin =
                 !!extInfo &&
@@ -279,7 +385,7 @@ export default class MergeforwardMessageList extends Component<
               return (
                 <div
                   className="wk-mergeforwardmessagelist-content-msg"
-                  key={m.messageID}
+                  key={m.messageID || `${m.fromUID}-${m.timestamp}-${i}`}
                 >
                   {/* 头像 32x32 圆形，连续消息占位 */}
                   <div
@@ -309,7 +415,7 @@ export default class MergeforwardMessageList extends Component<
                         </span>
                       </div>
                     )}
-                    {/* 外部来源：与 head.tsx 视觉一致，仅首条或换人时显示 */}
+                    {/* 外部来源 */}
                     {showAvatar && showExtOrigin && (
                       <span className="ext-origin wk-mergeforwardmessagelist-content-msg-info-origin">
                         来源: {extInfo!.source_space_name}
