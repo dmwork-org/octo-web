@@ -65,3 +65,25 @@ export function buildThreadStub(shortId: string, groupNo: string, channelId: str
     updated_at: "",
   }
 }
+
+/**
+ * 计算「有效勿扰」状态。子区采用 tri-state，覆盖优先于继承：
+ *   - channelInfo.orgData.thread.mute === 1 → 显式静音（覆盖父群组）
+ *   - channelInfo.orgData.thread.mute === 0 → 显式不静音（覆盖父群组）
+ *   - channelInfo.orgData.thread.mute null/undefined → 继承父群组 mute
+ * 非子区：直接看 channelInfo.mute。
+ *
+ * 角标 / 列表 / 分组未读 这三处必须共用同一份逻辑，否则 badge 和列表渲染会错位
+ * （父群勿扰但子区显式取消勿扰时尤其明显）。
+ */
+export function isEffectivelyMuted(args: {
+  isThread: boolean
+  channelInfo: any
+  parentChannelInfo?: any
+}): boolean {
+  const { isThread, channelInfo, parentChannelInfo } = args
+  if (!isThread) return !!channelInfo?.mute
+  const raw = channelInfo?.orgData?.thread?.mute as number | null | undefined
+  if (raw != null) return raw === 1
+  return !!parentChannelInfo?.mute
+}
