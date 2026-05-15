@@ -6,10 +6,14 @@
  * - 其他 filter：渲染 ConversationList，右键群聊有「移到分组」子菜单
  * - CreateCategoryModal 在此层管理，不依赖子组件挂载
  */
-import React, { useState } from "react"
-import { Channel, ChannelTypeGroup } from "wukongimjssdk"
+import React, { useState, useMemo } from "react"
+import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
+import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
+import { useFollowSidebarContext } from "../../Hooks/useFollowSidebar"
+import FollowService from "../../Service/FollowService"
+import { parseThreadChannelId } from "../../Service/Thread"
 import { ConversationWrap } from "../../Service/Model"
 import { ConvFilter } from "../ConversationList"
 import ConversationList from "../ConversationList"
@@ -17,9 +21,23 @@ import ConversationListGrouped, { ValidCategoryItem, isValidCategoryItem } from 
 import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 
+/** 最近 Tab 3 天不活跃过滤阈值。tab 角标和列表必须共用同一阈值。 */
+export const RECENT_INACTIVE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000
+
+/**
+ * 最近 Tab 是否可见：群聊超过 3 天无消息隐藏；私聊 / 子区 不过滤。
+ * tab 角标计算和列表渲染必须用同一函数，否则角标 N 但列表看不到的情况就会出现。
+ */
+export function isVisibleInRecentTab(conv: ConversationWrap, now: number = Date.now()): boolean {
+    if (conv.channel.channelType !== ChannelTypeGroup) return true
+    return (now - conv.timestamp * 1000) < RECENT_INACTIVE_THRESHOLD_MS
+}
+
 export interface ChatConversationListProps {
     conversations: ConversationWrap[]
     filter: ConvFilter
+    /** 是否隐藏 3 天不活跃的群聊（最近 Tab 使用） */
+    hideInactiveGroups?: boolean
     select?: Channel
     onConversationClick: (conv: ConversationWrap) => void
     onClearMessages: (channel: Channel) => void
@@ -33,6 +51,7 @@ export interface ChatConversationListProps {
 const ChatConversationList: React.FC<ChatConversationListProps> = ({
     conversations,
     filter,
+    hideInactiveGroups = false,
     select,
     onConversationClick,
     onClearMessages,
@@ -42,8 +61,8 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 }) => {
     const {
         categories,
-        isLoading,
-        error,
+        isLoading: catLoading,
+        error: catError,
         reload,
         createCategory,
         renameCategory,
@@ -51,6 +70,100 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         sortCategories,
         moveGroupToCategory,
     } = useCategoryList()
+
+    // 关注 tab 的 DM/thread 数据来源（/sidebar/sync）。/categories 接口只返回群，
+    // DM 关注关系存在 user_conversation_ext 表，由 sidebar 给出 (category_id → DMs) 映射。
+    const {
+        dmsByCategory,
+        threadsByCategory,
+        itemsByCategory,
+        followedGroupNos,
+        followedKeys,
+        versionRef,
+        bumpVersion,
+        applyOptimisticSort,
+        isLoading: sidebarLoading,
+        error: sidebarError,
+        reload: reloadSidebar,
+    } = useFollowSidebarContext()
+
+    // /categories 和 /sidebar/sync 都是 follow tab 的真实数据源——任意一个失败都需要
+    // 用户感知，否则会渲染半空 tab 但没有错误/重试入口。两边的 loading 也合并，
+    // 让 ConversationListGrouped 的骨架/错误态覆盖全套数据。
+    const isLoading = catLoading || sidebarLoading
+    const error = catError || sidebarError
+
+    // 跨分组移群也会 bump 后端 follow_version；wrap useCategoryList 的实现，
+    // 让本地 ref 同步乐观自增 + reload sidebar，避免下一次 sort CAS 冲突。
+    const handleMoveGroupToCategory = React.useCallback(
+        async (groupNo: string, categoryId: string) => {
+            await moveGroupToCategory(groupNo, categoryId)
+            bumpVersion()
+            reloadSidebar()
+        },
+        [moveGroupToCategory, bumpVersion, reloadSidebar]
+    )
+
+    // 删除分组：后端级联取消关注分组下所有会话（spec #337），前端必须刷新 sidebar
+    // 才能让 followedKeys 反映取消关注的项（否则最近 tab 右键这些会话还显示"取消关注"）。
+    // useCategoryList.deleteCategory 只改本地 categories state 不动 sidebar，wrap 一下补上。
+    const handleDeleteCategory = React.useCallback(
+        async (categoryId: string) => {
+            await deleteCategory(categoryId)
+            bumpVersion()
+            reloadSidebar()
+        },
+        [deleteCategory, bumpVersion, reloadSidebar]
+    )
+    // 后端每个 follow 写操作都会 bump user_follow_version，本地 ref 同步乐观自增，
+    // 让随后的 sort 不必等 sidebar reload 就拿到正确版本号；若实际 bump >1（cascade）
+    // 由 sort 的冲突重试兜底。
+    const reloadAll = React.useCallback(() => {
+        bumpVersion()
+        reload()
+        reloadSidebar()
+    }, [bumpVersion, reload, reloadSidebar])
+
+    // 同分组内手动排序：调 /v2/follow/sort 带 follow_version 做 CAS。
+    // - 立刻乐观更新本地 items 顺序，避免 dnd-kit 把 item 放回原位 → API + reload 后再闪到新位置的视觉抖动
+    // - 用 versionRef 读最新 version（避免闭包持有旧值在连续拖拽时 CAS 冲突）
+    // - 成功后 bumpVersion() 乐观 +1，让下次拖拽不必等 reload
+    // - 冲突时 reload 一次拿到新 version 再重试一次；失败由 reload 兜底回退本地状态
+    const handleSortFollowItems = React.useCallback(
+        async (items: { target_type: number; target_id: string }[]) => {
+            applyOptimisticSort(items)
+            const payload = {
+                items: items.map((it, idx) => ({
+                    target_type: it.target_type,
+                    target_id: it.target_id,
+                    sort: idx,
+                })),
+            }
+            try {
+                await FollowService.sort({ ...payload, version: versionRef.current })
+                bumpVersion()
+            } catch (err: any) {
+                // APIClient response interceptor 把 400 reject 成 { error, msg, status }
+                const errMsg = String(err?.msg || err?.message || err || '')
+                if (errMsg.includes('version conflict')) {
+                    // 拉新 version 后重试一次
+                    await reloadSidebar()
+                    try {
+                        await FollowService.sort({ ...payload, version: versionRef.current })
+                        bumpVersion()
+                    } catch (retryErr) {
+                        console.error('排序重试仍失败', retryErr)
+                    }
+                } else {
+                    console.error('排序失败', err)
+                }
+            } finally {
+                // 最终拉一次保证 UI 与服务端一致
+                reloadSidebar()
+            }
+        },
+        [applyOptimisticSort, versionRef, bumpVersion, reloadSidebar]
+    )
 
     const [createModalVisible, setCreateModalVisible] = useState(false)
 
@@ -68,48 +181,190 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
     const existingCategoryNames = categories.map(c => c.name)
 
-    // 构建「移到分组」子菜单（含 ✓ 标识 + 新建分组入口）
-    // 用于非 group filter 下的 ConversationList
-    const buildMoveToGroupMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
-        if (!conv || conv.channel.channelType !== ChannelTypeGroup) return []
-        if (categories.length === 0) return []
+    // 最近 Tab 3 天不活跃群聊隐藏逻辑：列表渲染、tab 角标、其它复用方都必须共用一套
+    // 判定，否则会出现「badge 显示 N 但列表里看不到对应未读」。
+    const filteredConversations = useMemo(() => {
+        if (!hideInactiveGroups) return conversations
+        const now = Date.now()
+        return conversations.filter(conv => isVisibleInRecentTab(conv, now))
+    }, [conversations, hideInactiveGroups])
 
-        const groupNo = conv.channel.channelID
-        const currentCategoryId = categories.find(
-            cat => (cat.groups || []).some(g => g.group_no === groupNo)
-        )?.category_id
+    // 构建额外的右键菜单项
+    // - 「移到分组」子菜单（仅关注 Tab 的群聊）
+    // - 「添加到关注 / 取消关注」（最近 Tab）
+    const buildExtraMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
+        if (!conv) return []
 
-        // 过滤默认分组（is_default），不在「移到分组」子菜单里显示
-        const items: ContextMenusData[] = categories
-            .filter(cat => !cat.is_default && isValidCategoryItem(cat))
-            .map(cat => ({
-                title: cat.name,
-                checked: currentCategoryId === cat.category_id,
-                onClick: () => moveGroupToCategory(groupNo, cat.category_id),
-            }))
-        items.push({ separator: true } as ContextMenusData)
-        items.push({ title: "+ 新建分组", onClick: () => setCreateModalVisible(true) })
+        const menus: ContextMenusData[] = []
+        const channel = conv.channel
+        // sidebar 是 follow 状态的唯一权威源。channelInfo.orgData.is_followed 是 IM 同步
+        // 缓存，删分组级联取关 / 取消关注后不会立即清空，回退到它会让取关后的项继续显示
+        // 「取消关注」（GH #337 review 指出的 bug）。sidebar reload 在所有 follow 写操作后
+        // 都会触发，初始未加载时退化为「都视为未关注」即可。
+        const isFollowed = followedKeys.has(`${channel.channelType}::${channel.channelID}`)
 
-        return items
+        // 最近 Tab（filter !== 'group'）显示「添加到关注 / 取消关注」
+        if (filter !== 'group') {
+            if (isFollowed) {
+                // 已关注 → 显示「取消关注」
+                menus.push({
+                    title: '取消关注',
+                    onClick: async () => {
+                        const channel = conv.channel
+                        try {
+                            if (channel.channelType === ChannelTypeGroup) {
+                                await FollowService.unfollowChannel({ group_no: channel.channelID })
+                            } else if (channel.channelType === ChannelTypePerson) {
+                                await FollowService.unfollowDM(channel.channelID)
+                            } else if (channel.channelType === ChannelTypeCommunityTopic) {
+                                await FollowService.unfollowThread(channel.channelID)
+                            }
+                            // 刷新分组列表
+                            reloadAll()
+                        } catch (err) {
+                            console.error('取消关注失败', err)
+                        }
+                    }
+                })
+            } else {
+                // 未关注 → 显示「添加到关注」
+                const channel = conv.channel
+
+                // 子区：父频道未关注时弹分组子菜单（含「+ 新建分组」），先把父频道
+                // 关注到目标分组再 followThread；父频道已关注时直接 followThread
+                // 跟随父频道分组（子区不能脱离父频道单独换分组）。
+                if (channel.channelType === ChannelTypeCommunityTopic) {
+                    const parentGroupNo = conv.channelInfo?.orgData?.parentGroupNo
+                        || parseThreadChannelId(channel.channelID)?.groupNo
+                    const parentFollowed = !!parentGroupNo && followedGroupNos.has(parentGroupNo)
+
+                    if (parentFollowed) {
+                        menus.push({
+                            title: '添加到关注',
+                            onClick: async () => {
+                                try {
+                                    await FollowService.followThread({ thread_channel_id: channel.channelID })
+                                    reloadAll()
+                                } catch (err) {
+                                    console.error('关注子区失败', err)
+                                }
+                            }
+                        })
+                    } else {
+                        const categoryItems: ContextMenusData[] = categories
+                            .filter(cat => !cat.is_default && isValidCategoryItem(cat))
+                            .map(cat => ({
+                                title: cat.name,
+                                onClick: async () => {
+                                    if (!parentGroupNo) {
+                                        console.error('关注子区失败: 无法解析父频道 groupNo', channel.channelID)
+                                        return
+                                    }
+                                    try {
+                                        await FollowService.refollowChannel({ group_no: parentGroupNo })
+                                        await moveGroupToCategory(parentGroupNo, cat.category_id)
+                                        await FollowService.followThread({ thread_channel_id: channel.channelID })
+                                        reloadAll()
+                                    } catch (err) {
+                                        console.error('关注子区失败', err)
+                                    }
+                                }
+                            }))
+                        categoryItems.push({ separator: true } as ContextMenusData)
+                        categoryItems.push({
+                            title: '+ 新建分组',
+                            onClick: () => setCreateModalVisible(true)
+                        })
+
+                        menus.push({
+                            title: '添加到关注',
+                            children: categoryItems
+                        })
+                    }
+                } else {
+                    // 群聊和私聊需要选分组
+                    const categoryItems: ContextMenusData[] = categories
+                        .filter(cat => !cat.is_default && isValidCategoryItem(cat))
+                        .map(cat => ({
+                            title: cat.name,
+                            onClick: async () => {
+                                try {
+                                    if (channel.channelType === ChannelTypeGroup) {
+                                        await FollowService.refollowChannel({ group_no: channel.channelID })
+                                        // 移到指定分组
+                                        await moveGroupToCategory(channel.channelID, cat.category_id)
+                                    } else if (channel.channelType === ChannelTypePerson) {
+                                        await FollowService.followDM({ peer_uid: channel.channelID, category_id: cat.category_id })
+                                    }
+                                    reloadAll()
+                                } catch (err) {
+                                    console.error('添加到关注失败', err)
+                                }
+                            }
+                        }))
+                    categoryItems.push({ separator: true } as ContextMenusData)
+                    categoryItems.push({
+                        title: '+ 新建分组',
+                        onClick: () => setCreateModalVisible(true)
+                    })
+
+                    menus.push({
+                        title: '添加到关注',
+                        children: categoryItems
+                    })
+                }
+            }
+        }
+
+        // 关注 Tab 的群聊显示「移到分组」（保留原有逻辑）
+        if (filter === 'group' && conv.channel.channelType === ChannelTypeGroup && categories.length > 0) {
+            const groupNo = conv.channel.channelID
+            const currentCategoryId = categories.find(
+                cat => (cat.groups || []).some(g => g.group_no === groupNo)
+            )?.category_id
+
+            const moveItems: ContextMenusData[] = categories
+                .filter(cat => !cat.is_default && isValidCategoryItem(cat))
+                .map(cat => ({
+                    title: cat.name,
+                    checked: currentCategoryId === cat.category_id,
+                    onClick: () => handleMoveGroupToCategory(groupNo, cat.category_id),
+                }))
+            moveItems.push({ separator: true } as ContextMenusData)
+            moveItems.push({ title: '+ 新建分组', onClick: () => setCreateModalVisible(true) })
+
+            menus.push({
+                title: '移到分组',
+                children: moveItems
+            })
+        }
+
+        return menus
     }
 
     return (
         <>
             {filter === 'group' ? (
                 <ConversationListGrouped
-                    conversations={conversations}
+                    conversations={filteredConversations}
                     select={select}
                     onConversationClick={onConversationClick}
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
                     categories={categories.filter(isValidCategoryItem)}
+                    dmsByCategory={dmsByCategory}
+                    threadsByCategory={threadsByCategory}
+                    itemsByCategory={itemsByCategory}
+                    followedGroupNos={followedGroupNos}
+                    followedKeys={followedKeys}
+                    onSortFollowItems={handleSortFollowItems}
                     isLoading={isLoading}
                     error={error}
-                    onRetry={reload}
+                    onRetry={reloadAll}
                     onRenameCategory={renameCategory}
-                    onDeleteCategory={deleteCategory}
+                    onDeleteCategory={handleDeleteCategory}
                     onSortCategories={sortCategories}
-                    onMoveGroupToCategory={moveGroupToCategory}
+                    onMoveGroupToCategory={handleMoveGroupToCategory}
                     onOpenCreateCategory={() => setCreateModalVisible(true)}
                     onStartGroup={() => {
                         WKApp.endpoints.organizationalLayer(null, {
@@ -128,16 +383,17 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                             }
                         })
                     }}
+                    onUnfollow={reloadAll}
                 />
             ) : (
                 <ConversationList
-                    conversations={conversations}
+                    conversations={filteredConversations}
                     select={select}
                     filter={filter}
                     onClick={onConversationClick}
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
-                    extraContextMenus={buildMoveToGroupMenus}
+                    extraContextMenus={buildExtraMenus}
                 />
             )}
 

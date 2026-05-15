@@ -3,7 +3,8 @@
   "private": true,
   "version": "1.5.0",
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev --parallel --filter=!./apps/extension",
+    "dev:all": "turbo run dev --parallel",
     "dev-ele": "turbo run dev-ele --parallel",
     "build": "turbo run build",
     "build-ele": "turbo run build && turbo run build-ele",
