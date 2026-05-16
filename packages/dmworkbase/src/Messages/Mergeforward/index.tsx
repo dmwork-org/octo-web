@@ -36,8 +36,9 @@ export default class MergeforwardContent extends MessageContent {
   channelType!: number;
   users!: Array<MergeforwardUser>;
   msgs!: Array<Message>;
+  truncated: boolean = false;
 
-  private static decodeDepth: number = 0;
+  private static readonly decodeStack: Set<MergeforwardContent> = new Set();
   private static readonly MAX_MERGE_FORWARD_DEPTH = 8;
 
   constructor(
@@ -51,61 +52,45 @@ export default class MergeforwardContent extends MessageContent {
     this.msgs = msgs!;
   }
 
+  private filterAndMapUsers(rawUsers: Array<MergeforwardUser>): Array<MergeforwardUser> {
+    const seen = new Set<string>();
+    return rawUsers
+      .filter((u) => {
+        if (seen.has(u.uid)) return false;
+        seen.add(u.uid);
+        return true;
+      })
+      .map((u) => {
+        const mapped: MergeforwardUser = { uid: u.uid, name: u.name };
+        if (u.is_external === 1 || u.is_external === 0) {
+          mapped.is_external = u.is_external;
+        }
+        if (
+          typeof u.source_space_name === "string" &&
+          u.source_space_name !== ""
+        ) {
+          mapped.source_space_name = u.source_space_name;
+        }
+        return mapped;
+      });
+  }
+
   decodeJSON(content: any) {
-    MergeforwardContent.decodeDepth++;
+    MergeforwardContent.decodeStack.add(this);
     try {
       // 防止深层嵌套转发导致栈溢出
-      if (MergeforwardContent.decodeDepth > MergeforwardContent.MAX_MERGE_FORWARD_DEPTH) {
+      // 深度限制通过 SDK decode() 调用 decodeJSON() 时的栈追踪实现
+      // SDK 确保每次递归调用都会创建新的 MergeforwardContent 实例并 add 到 decodeStack
+      if (MergeforwardContent.decodeStack.size > MergeforwardContent.MAX_MERGE_FORWARD_DEPTH) {
         this.channelType = content["channel_type"] || 0;
-        // 即使 truncation 也要进行 users 去重和字段过滤，保持数据一致性
-        const rawUsers: Array<MergeforwardUser> = content["users"] || [];
-        const seen = new Set<string>();
-        this.users = rawUsers
-          .filter((u) => {
-            if (seen.has(u.uid)) return false;
-            seen.add(u.uid);
-            return true;
-          })
-          .map((u) => {
-            const mapped: MergeforwardUser = { uid: u.uid, name: u.name };
-            if (u.is_external === 1 || u.is_external === 0) {
-              mapped.is_external = u.is_external;
-            }
-            if (
-              typeof u.source_space_name === "string" &&
-              u.source_space_name !== ""
-            ) {
-              mapped.source_space_name = u.source_space_name;
-            }
-            return mapped;
-          });
+        this.users = this.filterAndMapUsers(content["users"] || []);
         this.msgs = [];
+        this.truncated = true;
         return;
       }
 
       this.channelType = content["channel_type"] || 0;
-      const rawUsers: Array<MergeforwardUser> = content["users"] || [];
-      const seen = new Set<string>();
-      this.users = rawUsers
-        .filter((u) => {
-          if (seen.has(u.uid)) return false;
-          seen.add(u.uid);
-          return true;
-        })
-        .map((u) => {
-          // 透传外部来源字段；仅保留有效值避免噪音
-          const mapped: MergeforwardUser = { uid: u.uid, name: u.name };
-          if (u.is_external === 1 || u.is_external === 0) {
-            mapped.is_external = u.is_external;
-          }
-          if (
-            typeof u.source_space_name === "string" &&
-            u.source_space_name !== ""
-          ) {
-            mapped.source_space_name = u.source_space_name;
-          }
-          return mapped;
-        });
+      this.users = this.filterAndMapUsers(content["users"] || []);
       let msgMaps = content["msgs"];
 
       let messages = new Array();
@@ -116,7 +101,7 @@ export default class MergeforwardContent extends MessageContent {
       }
       this.msgs = messages;
     } finally {
-      MergeforwardContent.decodeDepth--;
+      MergeforwardContent.decodeStack.delete(this);
     }
   }
   encodeJSON() {
@@ -156,21 +141,11 @@ export default class MergeforwardContent extends MessageContent {
     }
     let messageContent = WKSDK.shared().getMessageContent(contentType);
 
-    if (contentType === MessageContentTypeConst.mergeForward && typeof (messageContent as any).decodeJSON === 'function') {
-      // 内层转发消息直接调用 decodeJSON，避免 SDK decode 的递归
-      // 手动设置 contentObj，保持与 SDK decode() 的对称性，确保 re-forward 时能从 contentObj 读取原始 payload
-      (messageContent as any).contentObj = payloadObj
-      (messageContent as any).decodeJSON(payloadObj);
-      message.content = messageContent;
-    } else {
-      // 其他消息类型使用标准 decode 路径
-      // Use decode() to properly set contentObj for re-forwarding
-      // NOTE: 通过 static decodeDepth 计数器，即使 SDK Reply.decode 处理 reply.payload 中的嵌套转发，
-      // 深度限制仍能正常工作（不会被绕过重置）。服务端应同时实现 payload 深度限制作为根本防护。
-      const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj));
-      messageContent.decode(payloadData);
-      message.content = messageContent;
-    }
+    // Use SDK decode() for all message types. For merge-forward messages,
+    // the depth limit is enforced in MergeforwardContent.decodeJSON().
+    const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj));
+    messageContent.decode(payloadData);
+    message.content = messageContent;
 
     // dmwork-web#1069：合并转发内嵌消息同样需要透传外部来源字段，
     // 否则转发历史中的外部成员发言会丢失 @SpaceName 头部标记。
@@ -233,8 +208,15 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
     return `${names.join("、")}的聊天记录`;
   }
 
-  getMsgListUI(msgs: Message[]) {
+  getMsgListUI(msgs: Message[], truncated: boolean = false) {
     if (!msgs || msgs.length === 0) {
+      if (truncated) {
+        return (
+          <div className="wk-mergeforwards-content-item" style={{ color: "#999" }}>
+            聊天记录过深，已折叠
+          </div>
+        );
+      }
       return;
     }
     let newMsgs = new Array();
@@ -373,7 +355,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               {this.getTitle(content)}
             </div>
             <div className="wk-mergeforwards-content-items">
-              {this.getMsgListUI(content.msgs)}
+              {this.getMsgListUI(content.msgs, content.truncated)}
             </div>
             <div className="wk-mergeforwards-content-line"></div>
             <div className="wk-mergeforwards-content-tip">
