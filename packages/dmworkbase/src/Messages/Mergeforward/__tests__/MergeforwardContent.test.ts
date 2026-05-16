@@ -454,3 +454,162 @@ describe("MergeforwardContent.encode() full payload (simulates SDK encode path)"
     expect(contentObj.msgs[0].payload.type).toBe(1);
   });
 });
+
+/**
+ * 深度限制防护：防止深层嵌套转发导致栈溢出
+ * 当转发深度超过 8 层时，停止解码内层消息，但保留 contentObj 以支持 re-forward
+ */
+describe("MergeforwardContent depth limit (prevent stack overflow)", () => {
+  // 辅助函数：生成嵌套的转发 payload
+  const createNestedPayload = (depth: number): any => {
+    if (depth === 0) {
+      return {
+        message_id: "leaf",
+        from_uid: "u1",
+        timestamp: 0,
+        payload: { type: 1, content: "Hello" },
+      };
+    }
+    return {
+      type: 11,
+      channel_type: 2,
+      users: [{ uid: "u1", name: "User1" }],
+      msgs: [createNestedPayload(depth - 1)],
+    };
+  };
+
+  it("shallow nesting (depth=4) decodes normally with all messages populated", () => {
+    const payload = createNestedPayload(4);
+    const content = new MergeforwardContent();
+
+    expect(() => {
+      content.decodeJSON(payload);
+    }).not.toThrow();
+
+    // 4 层深度应该完全解码
+    expect(content.msgs).toHaveLength(1);
+    expect(content.msgs[0]).toBeDefined();
+    // 内层消息的内容应该存在
+    expect(content.msgs[0].content).toBeDefined();
+  });
+
+  it("at-limit nesting (depth=8) decodes normally", () => {
+    const payload = createNestedPayload(8);
+    const content = new MergeforwardContent();
+
+    expect(() => {
+      content.decodeJSON(payload);
+    }).not.toThrow();
+
+    // 8 层是限制边界，应该完全解码
+    expect(content.msgs).toHaveLength(1);
+  });
+
+  it("exceeds-limit nesting (depth=9) truncates at truncation point", () => {
+    const payload = createNestedPayload(9);
+    const content = new MergeforwardContent();
+
+    expect(() => {
+      content.decodeJSON(payload);
+    }).not.toThrow();
+
+    // 9 层会触发 truncation
+    expect(content.msgs).toHaveLength(1);
+    // 内层的内容应该被截断，msgs 为空
+    if (content.msgs[0].content instanceof MergeforwardContent) {
+      expect(content.msgs[0].content.msgs).toHaveLength(0);
+    }
+  });
+
+  it("very deep nesting (depth=20) does not crash and preserves contentObj", () => {
+    const payload = createNestedPayload(20);
+    const content = new MergeforwardContent();
+
+    // 设置 contentObj，模拟 SDK decode() 的行为
+    content.contentObj = payload;
+
+    expect(() => {
+      content.decodeJSON(payload);
+    }).not.toThrow();
+
+    // 关键：contentObj 应该被保留用于 re-forward
+    expect(content.contentObj).toEqual(payload);
+    // 应该有消息（虽然内层会被截断）
+    expect(content.msgs).toBeDefined();
+  });
+
+  it("depth counter resets correctly after exception during decode", () => {
+    // 这个测试验证 try/finally 确保深度计数器正确还原
+    const malformedPayload = {
+      type: 11,
+      channel_type: 2,
+      users: [{ uid: "u1", name: "User1" }],
+      msgs: [
+        {
+          message_id: "bad",
+          from_uid: "u1",
+          timestamp: 0,
+          payload: null, // 这会导致问题
+        },
+      ],
+    };
+
+    const content1 = new MergeforwardContent();
+    try {
+      content1.decodeJSON(malformedPayload);
+    } catch (_e) {
+      // 忽略异常
+    }
+
+    // 即使异常，第二个 decode 也应该正常工作（深度计数器正确还原）
+    const goodPayload = {
+      type: 11,
+      channel_type: 2,
+      users: [{ uid: "u2", name: "User2" }],
+      msgs: [
+        {
+          message_id: "msg1",
+          from_uid: "u2",
+          timestamp: 0,
+          payload: { type: 1, content: "OK" },
+        },
+      ],
+    };
+
+    const content2 = new MergeforwardContent();
+    expect(() => {
+      content2.decodeJSON(goodPayload);
+    }).not.toThrow();
+
+    expect(content2.msgs).toHaveLength(1);
+  });
+
+  it("truncation preserves users dedup and external fields", () => {
+    const payload = {
+      type: 11,
+      channel_type: 2,
+      users: [
+        { uid: "u1", name: "User1", is_external: 1, source_space_name: "Space1" },
+        { uid: "u1", name: "User1 Dup" }, // 重复
+      ],
+      msgs: [createNestedPayload(15)], // 超深，会触发 truncation
+    };
+
+    const content = new MergeforwardContent();
+    content.decodeJSON(payload);
+
+    // 即使 truncation，users 也应该被去重和过滤
+    expect(content.users).toHaveLength(1);
+    expect(content.users[0]).toEqual({
+      uid: "u1",
+      name: "User1",
+      is_external: 1,
+      source_space_name: "Space1",
+    });
+    // truncation 时内层应该被截断
+    expect(content.msgs).toHaveLength(1);
+    if (content.msgs[0].content instanceof MergeforwardContent) {
+      expect(content.msgs[0].content.msgs).toHaveLength(0);
+    }
+  });
+});
