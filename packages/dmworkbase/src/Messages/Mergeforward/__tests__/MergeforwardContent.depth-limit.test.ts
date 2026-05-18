@@ -247,8 +247,8 @@ describe("MergeforwardContent decode() SDK metadata hydration", () => {
     }));
     const content = new MergeforwardContent();
     content.decode(raw);
-    expect(content.visibles).toEqual(["u1"]);
-    expect(content.invisibles).toEqual(["u2"]);
+    expect((content as any).visibles).toEqual(["u1"]);
+    expect((content as any).invisibles).toEqual(["u2"]);
   });
 
   it("sets contentObj and decodes msgs on valid payload", () => {

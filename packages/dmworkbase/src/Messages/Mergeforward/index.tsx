@@ -90,8 +90,10 @@ export default class MergeforwardContent extends MessageContent {
       reply.decode(replyObj);
       this.reply = reply;
     }
-    this.visibles = contentObj["visibles"];
-    this.invisibles = contentObj["invisibles"];
+    // visibles/invisibles are declared private on MessageContent in the SDK type
+    // contract; cast to any to mirror the SDK's own runtime assignment.
+    ;(this as any).visibles = contentObj["visibles"];
+    ;(this as any).invisibles = contentObj["invisibles"];
     this.decodeJSON(contentObj);
   }
 
@@ -122,7 +124,7 @@ export default class MergeforwardContent extends MessageContent {
 
     if (MergeforwardContent.decodeDepth >= MergeforwardContent.MAX_DECODE_DEPTH) {
       this.msgs = [];
-      if (process.env.NODE_ENV !== "production") {
+      if (import.meta.env.DEV) {
         console.warn("[MergeforwardContent] decode depth limit reached, inner msgs truncated");
       }
       return;
