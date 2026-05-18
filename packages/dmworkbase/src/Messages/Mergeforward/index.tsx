@@ -37,6 +37,9 @@ export default class MergeforwardContent extends MessageContent {
   users!: Array<MergeforwardUser>;
   msgs!: Array<Message>;
 
+  private static decodeDepth = 0;
+  private static readonly MAX_DECODE_DEPTH = 8;
+
   constructor(
     channelType?: number,
     users?: Array<MergeforwardUser>,
@@ -46,6 +49,18 @@ export default class MergeforwardContent extends MessageContent {
     this.channelType = channelType!;
     this.users = users!;
     this.msgs = msgs!;
+  }
+
+  decode(raw: Uint8Array) {
+    // The SDK's default MessageContent.decode() uses uint8ArrayToString which calls
+    // String.fromCharCode.apply(null, data). For large merge-forward payloads this
+    // overflows the call stack. Override to use TextDecoder which is safe for any size.
+    try {
+      this.contentObj = JSON.parse(new TextDecoder().decode(raw));
+      this.decodeJSON(this.contentObj);
+    } catch (_e) {
+      this.contentObj = {};
+    }
   }
 
   decodeJSON(content: any) {
@@ -72,15 +87,25 @@ export default class MergeforwardContent extends MessageContent {
         }
         return mapped;
       });
-    let msgMaps = content["msgs"];
 
-    let messages = new Array();
-    if (msgMaps && msgMaps.length > 0) {
-      for (const msgMap of msgMaps) {
-        messages.push(this.mapToMessage(msgMap));
-      }
+    if (MergeforwardContent.decodeDepth >= MergeforwardContent.MAX_DECODE_DEPTH) {
+      this.msgs = [];
+      return;
     }
-    this.msgs = messages;
+
+    MergeforwardContent.decodeDepth++;
+    try {
+      let msgMaps = content["msgs"];
+      let messages = new Array();
+      if (msgMaps && msgMaps.length > 0) {
+        for (const msgMap of msgMaps) {
+          messages.push(this.mapToMessage(msgMap));
+        }
+      }
+      this.msgs = messages;
+    } finally {
+      MergeforwardContent.decodeDepth--;
+    }
   }
   encodeJSON() {
     let messageMaps = new Array();
@@ -118,8 +143,10 @@ export default class MergeforwardContent extends MessageContent {
       contentType = payloadObj.type;
     }
     let messageContent = WKSDK.shared().getMessageContent(contentType);
-    // Use decode() instead of decodeJSON() to properly set contentObj
-    // This ensures inner messages retain full payload for re-forwarding
+    // Use decode() to properly set contentObj and call decodeJSON().
+    // For type=11 (MergeforwardContent), the overridden decode() uses TextDecoder
+    // instead of the SDK's uint8ArrayToString, preventing call-stack overflow on large
+    // payloads. For all other types, decode() handles mention/reply/visibles/invisibles.
     const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj));
     messageContent.decode(payloadData);
     message.content = messageContent;
