@@ -2,13 +2,10 @@ import React from "react";
 import type { Matter } from "../../bridge/types";
 import "./index.css";
 
-const STATUS_MAP: Record<string, { label: string; className: string }> = {
-  open: { label: "进行中", className: "wk-mp-sidebar-card__status--active" },
-  done: { label: "已完成", className: "wk-mp-sidebar-card__status--done" },
-  archived: {
-    label: "已归档",
-    className: "wk-mp-sidebar-card__status--archived",
-  },
+const STATUS_MAP: Record<string, { label: string; colorClass: string }> = {
+  open: { label: "进行中", colorClass: "wk-mp-sidebar-card__tag--blue" },
+  done: { label: "已完成", colorClass: "wk-mp-sidebar-card__tag--green" },
+  archived: { label: "已归档", colorClass: "wk-mp-sidebar-card__tag--gray" },
 };
 
 function formatDdl(deadline?: string): string {
@@ -39,7 +36,6 @@ export default function SidebarCard({
 }: SidebarCardProps) {
   const status = STATUS_MAP[matter.status] || STATUS_MAP.open;
   const ddl = formatDdl(matter.deadline);
-  const displaySourceName = sourceChannelName || matter.source_name;
 
   return (
     <button
@@ -47,60 +43,70 @@ export default function SidebarCard({
       className={`wk-mp-sidebar-card${selected ? " is-selected" : ""}`}
       onClick={onClick}
     >
+      {/* 第一行：状态标签 + 日期 */}
       <div className="wk-mp-sidebar-card__row1">
-        <span className="wk-mp-sidebar-card__id">
-          {matter.seq_no ? `M-${matter.seq_no}` : matter.id.slice(0, 8)}
+        <span className={`wk-mp-sidebar-card__tag ${status.colorClass}`}>
+          <span className="wk-mp-sidebar-card__tag-label">{status.label}</span>
+          {matter.seq_no ? (
+            <span className="wk-mp-sidebar-card__tag-no">｜M-{matter.seq_no}</span>
+          ) : null}
         </span>
-        <span className={`wk-mp-sidebar-card__status ${status.className}`}>
-          <span className="wk-mp-sidebar-card__status-dot" />
-          {status.label}
-        </span>
-        {ddl && <span className="wk-mp-sidebar-card__ddl">DDL {ddl}</span>}
-      </div>
-      <div className="wk-mp-sidebar-card__title">{matter.title}</div>
-      <div className="wk-mp-sidebar-card__meta">
-        <span className="wk-mp-sidebar-card__creator">
-          {renderAvatar(matter.creator_id, 14)}
-          {renderUserName(matter.creator_id)}
-        </span>
-        <span className="wk-mp-sidebar-card__meta-label">创建</span>
-        {matter.source_channel_id && displaySourceName && (
-          <>
-            <span className="wk-mp-sidebar-card__sep">·</span>
-            <span className="wk-mp-sidebar-card__channel">
-              #{displaySourceName}
-            </span>
-          </>
+        {ddl && (
+          <span className="wk-mp-sidebar-card__ddl">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="wk-mp-sidebar-card__calendar-icon">
+              <path
+                d="M4 1v1.5M8 1v1.5M1.5 4.5h9M2.5 2.5h7a1 1 0 011 1v6a1 1 0 01-1 1h-7a1 1 0 01-1-1v-6a1 1 0 011-1z"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {ddl}
+          </span>
         )}
       </div>
-      {matter.assignees && matter.assignees.length > 0 && (
-        <div className="wk-mp-sidebar-card__owners">
-          <span className="wk-mp-sidebar-card__owners-avatars">
-            {matter.assignees.slice(0, 3).map((a, i) => (
-              <span
-                key={a.user_id}
-                style={{ marginLeft: i > 0 ? -5 : 0, zIndex: 3 - i }}
-              >
-                {renderAvatar(a.user_id, 14)}
-              </span>
-            ))}
+
+      {/* 第二行：标题 */}
+      <div className="wk-mp-sidebar-card__title">{matter.title}</div>
+
+      {/* 第三行：创建人 + 负责人 */}
+      <div className="wk-mp-sidebar-card__meta">
+        <div className="wk-mp-sidebar-card__meta-item">
+          <span className="wk-mp-sidebar-card__meta-label">创建人：</span>
+          <span className="wk-mp-sidebar-card__user">
+            {renderAvatar(matter.creator_id, 16)}
+            <span className="wk-mp-sidebar-card__user-name">{renderUserName(matter.creator_id)}</span>
           </span>
-          <span className="wk-mp-sidebar-card__owners-names">
-            {matter.assignees.slice(0, 3).map((a, i) => (
-              <React.Fragment key={a.user_id}>
-                {i > 0 && "、"}
-                {renderUserName(a.user_id)}
-              </React.Fragment>
-            ))}
-            {matter.assignees.length > 3 && (
-              <span className="wk-mp-sidebar-card__owners-more">
-                {" "}等 {matter.assignees.length} 人
-              </span>
-            )}
-          </span>
-          <span className="wk-mp-sidebar-card__owners-label">负责</span>
         </div>
-      )}
+        {matter.assignees && matter.assignees.length > 0 && (
+          <div className="wk-mp-sidebar-card__meta-item">
+            <span className="wk-mp-sidebar-card__meta-label">负责人：</span>
+            <span className="wk-mp-sidebar-card__user">
+              <span className="wk-mp-sidebar-card__avatar-group">
+                {matter.assignees.slice(0, 3).map((a, i) => (
+                  <span
+                    key={a.user_id}
+                    style={{ marginLeft: i > 0 ? -4 : 0, zIndex: 3 - i }}
+                  >
+                    {renderAvatar(a.user_id, 16)}
+                  </span>
+                ))}
+              </span>
+              {matter.assignees.length === 1 && (
+                <span className="wk-mp-sidebar-card__user-name">
+                  {renderUserName(matter.assignees[0].user_id)}
+                </span>
+              )}
+              {matter.assignees.length > 1 && (
+                <span className="wk-mp-sidebar-card__user-name">
+                  {renderUserName(matter.assignees[0].user_id)}等{matter.assignees.length}人
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+      </div>
     </button>
   );
 }

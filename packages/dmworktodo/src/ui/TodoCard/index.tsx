@@ -6,49 +6,70 @@ import './index.css';
 
 export interface MatterCardProps {
   matter: Matter;
-  channelName?: string;            // 来源频道名（由父组件传入）
-  assigneeUids?: string[];         // 负责人 uid 列表（列表接口暂无，先留空数组）
-  selected?: boolean;              // 是否选中（高亮）
-  onClick?: (matterId: string) => void;         // 点击任务名展开详情
-  onStatusChange?: (matterId: string, newStatus: MatterStatus) => void;  // checkbox 回调
+  channelName?: string;
+  assigneeUids?: string[];
+  creatorUid?: string;
+  creatorName?: string;
+  selected?: boolean;
+  onClick?: (matterId: string) => void;
+  onStatusChange?: (matterId: string, newStatus: MatterStatus) => void;
   className?: string;
 }
 
-interface DeadlineInfo {
-  text: string;
-  className: string;
+// ─── 状态 → 标签颜色映射 ───────────────────────────────────
+interface StatusTagInfo {
+  label: string;
+  colorClass: string;
 }
 
-function formatDeadline(deadline: string): DeadlineInfo | null {
-  const deadlineDate = new Date(deadline);
-  deadlineDate.setHours(0, 0, 0, 0);
+function getStatusTag(matter: Matter): StatusTagInfo {
+  switch (matter.status) {
+    case 'open':
+      return { label: '进行中', colorClass: 'wk-matter-card__tag--blue' };
+    case 'done':
+      return { label: '已完成', colorClass: 'wk-matter-card__tag--green' };
+    case 'archived':
+      return { label: '已归档', colorClass: 'wk-matter-card__tag--gray' };
+    default:
+      return { label: '进行中', colorClass: 'wk-matter-card__tag--blue' };
+  }
+}
 
+// ─── 格式化 deadline 为 M/D ─────────────────────────────────
+function formatDeadlineShort(deadline: string): string {
+  const d = new Date(deadline);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function isOverdue(deadline: string): boolean {
+  const d = new Date(deadline);
+  d.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  return d < today;
+}
 
-  const diffTime = deadlineDate.getTime() - today.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-  // 今天
-  if (diffDays === 0) {
-    return { text: '今天', className: 'wk-matter-card__deadline--today' };
-  }
-
-  // 逾期
-  if (diffDays < 0) {
-    return { text: `逾期${Math.abs(diffDays)}天`, className: 'wk-matter-card__deadline--overdue' };
-  }
-
-  // 其他：M/D 格式
-  const month = deadlineDate.getMonth() + 1;
-  const day = deadlineDate.getDate();
-  return { text: `${month}/${day}`, className: '' };
+// ─── 日历 SVG 图标 ──────────────────────────────────────────
+function CalendarIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="wk-matter-card__calendar-icon">
+      <path
+        d="M4 1v1.5M8 1v1.5M1.5 4.5h9M2.5 2.5h7a1 1 0 011 1v6a1 1 0 01-1 1h-7a1 1 0 01-1-1v-6a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export default function MatterCard({
   matter,
   channelName,
   assigneeUids = [],
+  creatorUid,
+  creatorName,
   selected = false,
   onClick,
   onStatusChange,
@@ -58,64 +79,9 @@ export default function MatterCard({
     if (onClick) onClick(matter.id);
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onStatusChange  && matter.status !== 'archived') {
-      const newStatus: MatterStatus = matter.status === 'open' ? 'done' : 'open';
-      onStatusChange(matter.id, newStatus);
-    }
-  };
-
-  const handleCheckboxKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      e.stopPropagation();
-      if (onStatusChange  && matter.status !== 'archived') {
-        const newStatus: MatterStatus = matter.status === 'open' ? 'done' : 'open';
-        onStatusChange(matter.id, newStatus);
-      }
-    }
-  };
-
-  const deadlineInfo = matter.deadline ? formatDeadline(matter.deadline) : null;
-  const isDone = matter.status === 'done';
-  const isArchived = matter.status === 'archived';
-  const isClosed = isDone || isArchived;
-
-  // 构建 meta 行
-  const metaParts: React.ReactNode[] = [];
-
-  // 来源频道
-  if (channelName) {
-    metaParts.push(
-      <span key="channel" className="wk-matter-card__channel">
-        #{channelName}
-      </span>
-    );
-  }
-
-  // 负责人头像
-  if (assigneeUids.length > 0) {
-    const displayUids = assigneeUids.slice(0, 3);
-    const remainingCount = assigneeUids.length - 3;
-
-    metaParts.push(
-      <div key="assignees" className="wk-matter-card__assignees">
-        {displayUids.map((uid) => (
-          <WKAvatar
-            key={uid}
-            channel={new Channel(uid, ChannelTypePerson)}
-            style={{ width: 16, height: 16, borderRadius: '50%' }}
-          />
-        ))}
-        {remainingCount > 0 && (
-          <span className="wk-matter-card__assignees-more">+{remainingCount}</span>
-        )}
-      </div>
-    );
-  }
-
-  const showMetaRow = metaParts.length > 0;
+  const statusTag = getStatusTag(matter);
+  const matterNo = matter.seq_no ? `M-${matter.seq_no}` : '';
+  const overdue = matter.deadline ? isOverdue(matter.deadline) : false;
 
   return (
     <div
@@ -123,43 +89,65 @@ export default function MatterCard({
       onClick={handleClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') handleClick();
-      }}
+      onKeyDown={(e) => { if (e.key === 'Enter') handleClick(); }}
     >
+      {/* 第一行：状态标签 + 日期 */}
       <div className="wk-matter-card__row-1">
-        <div
-          className={`wk-matter-card__checkbox${!onStatusChange ? ' wk-matter-card__checkbox--disabled' : ''}`}
-          onClick={onStatusChange ? handleCheckboxClick : undefined}
-          onKeyDown={onStatusChange ? handleCheckboxKeyDown : undefined}
-          role="checkbox"
-          aria-label={isClosed ? '标记为待处理' : '标记为已完成'}
-          aria-checked={isClosed}
-          aria-disabled={!onStatusChange}
-          tabIndex={onStatusChange ? 0 : -1}
-        >
-          {isClosed && <span className="wk-matter-card__checkbox-check">✓</span>}
-        </div>
-        <div className={`wk-matter-card__title${isDone ? ' wk-matter-card__title--done' : isArchived ? ' wk-matter-card__title--archived' : ''}`}>
-          {matter.title.replace(/@\[([^:]+):([^\]]+)\]/g, (_m, _uid, name) => `@${name}`)}
-        </div>
-        {deadlineInfo && (
-          <div className={`wk-matter-card__deadline ${deadlineInfo.className}`.trim()}>
-            {deadlineInfo.text}
+        <span className={`wk-matter-card__tag ${statusTag.colorClass}`}>
+          <span className="wk-matter-card__tag-label">{statusTag.label}</span>
+          {matterNo && (
+            <span className="wk-matter-card__tag-no">｜{matterNo}</span>
+          )}
+        </span>
+        {matter.deadline && (
+          <div className={`wk-matter-card__deadline${overdue ? ' wk-matter-card__deadline--overdue' : ''}`}>
+            <CalendarIcon />
+            <span>{formatDeadlineShort(matter.deadline)}</span>
           </div>
         )}
       </div>
 
-      {showMetaRow && (
-        <div className="wk-matter-card__row-2">
-          {metaParts.map((part, index) => (
-            <React.Fragment key={index}>
-              {index > 0 && <span className="wk-matter-card__separator">·</span>}
-              {part}
-            </React.Fragment>
-          ))}
-        </div>
-      )}
+      {/* 第二行：事项标题 */}
+      <div className={`wk-matter-card__title${matter.status === 'done' ? ' wk-matter-card__title--done' : matter.status === 'archived' ? ' wk-matter-card__title--archived' : ''}`}>
+        {matter.title.replace(/@\[([^:]+):([^\]]+)\]/g, (_m, _uid, name) => `@${name}`)}
+      </div>
+
+      {/* 第三行：创建人 + 负责人 */}
+      <div className="wk-matter-card__meta">
+        {creatorUid && (
+          <div className="wk-matter-card__meta-item">
+            <span className="wk-matter-card__meta-label">创建人：</span>
+            <div className="wk-matter-card__user">
+              <WKAvatar
+                channel={new Channel(creatorUid, ChannelTypePerson)}
+                style={{ width: 16, height: 16, borderRadius: '50%' }}
+              />
+              {creatorName && <span className="wk-matter-card__user-name">{creatorName}</span>}
+            </div>
+          </div>
+        )}
+        {assigneeUids.length > 0 && (
+          <div className="wk-matter-card__meta-item">
+            <span className="wk-matter-card__meta-label">负责人：</span>
+            <div className="wk-matter-card__user">
+              <div className="wk-matter-card__avatar-group">
+                {assigneeUids.slice(0, 3).map((uid) => (
+                  <WKAvatar
+                    key={uid}
+                    channel={new Channel(uid, ChannelTypePerson)}
+                    style={{ width: 16, height: 16, borderRadius: '50%' }}
+                  />
+                ))}
+              </div>
+              {assigneeUids.length > 1 && (
+                <span className="wk-matter-card__assignee-text">
+                  等{assigneeUids.length}人
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

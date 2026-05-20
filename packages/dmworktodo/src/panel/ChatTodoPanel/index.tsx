@@ -250,12 +250,11 @@ export default function ChatMatterPanel({
       </div>
 
       <div className="wk-mp-page-sidebar__list" ref={listRef}>
-        {loading && <div className="wk-mp-page-sidebar__empty">加载中...</div>}
+        {loading && matters.length === 0 && <div className="wk-mp-page-sidebar__empty">加载中...</div>}
         {!loading && displayMatters.length === 0 && (
           <div className="wk-mp-page-sidebar__empty">暂无事项</div>
         )}
-        {!loading &&
-          displayMatters.map((matter) => (
+        {displayMatters.map((matter) => (
             <SidebarCard
               key={matter.id}
               matter={matter}
@@ -266,10 +265,15 @@ export default function ChatMatterPanel({
               sourceChannelName={matter.source_name}
             />
           ))}
-        {!loading && displayMatters.length > 0 && (
+        {displayMatters.length > 0 && (
           <button type="button" className="wk-mp-page-sidebar__archived-toggle">
-            <span className="wk-mp-page-sidebar__archived-chev">▸</span>
-            已归档 (0)
+            <span className="wk-mp-page-sidebar__archived-bar" />
+            <span className="wk-mp-page-sidebar__nav-label">未归档</span>
+            <span className="wk-mp-page-sidebar__archived-chev">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M6.29 4.27L9.71 8l-3.42 3.73" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
           </button>
         )}
       </div>

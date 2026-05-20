@@ -175,27 +175,16 @@ export default function MatterPage() {
       {/* Header */}
       <div className="wk-mp-page-sidebar__header">
         <h2 className="wk-mp-page-sidebar__title">事项</h2>
-        {/* TODO(interaction): 点击打开 SmartCreateModal（blank 模式，PRD §3） */}
         <button
           type="button"
           className="wk-mp-page-sidebar__new-btn"
           onClick={() => setShowCreateModal(true)}
           title="新建事项"
+          aria-label="新建事项"
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2.67v10.66M2.67 8h10.66" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          新建
         </button>
       </div>
 
@@ -224,6 +213,12 @@ export default function MatterPage() {
         {!loading && activeMatters.length === 0 && (
           <div className="wk-mp-page-sidebar__empty">暂无事项</div>
         )}
+        {!loading && activeMatters.length > 0 && (
+          <div className="wk-mp-page-sidebar__archived-toggle" style={{ cursor: 'default' }}>
+            <span className="wk-mp-page-sidebar__archived-bar" />
+            <span className="wk-mp-page-sidebar__nav-label">未归档</span>
+          </div>
+        )}
         {!loading &&
           activeMatters.map((matter) => (
             <SidebarCard
@@ -244,12 +239,15 @@ export default function MatterPage() {
             className="wk-mp-page-sidebar__archived-toggle"
             onClick={() => setArchivedExpanded(!archivedExpanded)}
           >
+            <span className="wk-mp-page-sidebar__archived-bar" />
+            <span className="wk-mp-page-sidebar__nav-label">已归档 ({archivedMatters.length})</span>
             <span
               className={`wk-mp-page-sidebar__archived-chev${archivedExpanded ? " is-open" : ""}`}
             >
-              ▸
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M6.29 4.27L9.71 8l-3.42 3.73" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </span>
-            已归档 ({archivedMatters.length})
           </button>
         )}
         {archivedExpanded &&
