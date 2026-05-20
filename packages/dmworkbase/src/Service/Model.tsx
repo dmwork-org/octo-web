@@ -106,11 +106,21 @@ export class ConversationWrap {
     }
 
     public get isMentionMe(): boolean {
-        // 优先用 reminders（覆盖历史未读 @ 场景，含子区）
-        // 兜底用 SDK 的 isMentionMe（基于 lastMessage.mention）
+        // 权威来源：server-side reminders（Plan X 下 ais-only 不建 reminder，
+        // 且 filterChannelLevelByPublisher 已排除 sender 自通知）
         const hasReminderMention = (this.conversation.reminders?.length ?? 0) > 0
             && this.conversation.reminders!.some(r => r.reminderType === ReminderType.ReminderTypeMentionMe && !r.done)
-        return hasReminderMention || (this.conversation.isMentionMe ?? false)
+        if (hasReminderMention) return true
+
+        // 实时兜底：只信 per-uid mention（不信 SDK 的 broadcast 判断）
+        // Plan X: mention.all=1 不再代表人类通知，SDK 的 isMentionMe 对 broadcast 不可靠
+        const mention = this.conversation.lastMessage?.content?.mention
+        const myUid = WKSDK.shared().config.uid
+        if (mention?.uids && Array.isArray(mention.uids) && myUid && mention.uids.includes(myUid)) {
+            return true
+        }
+
+        return false
     }
 
     public set isMentionMe(isMentionMe: boolean | undefined) {
