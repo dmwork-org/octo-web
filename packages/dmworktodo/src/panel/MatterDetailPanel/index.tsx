@@ -594,9 +594,6 @@ export default function MatterDetailPanel({
         {/* ── Header ── */}
         <header className="wk-mp-header">
           <div className="wk-mp-header__row1">
-            <span className="wk-mp-header__id">
-              {matter.seq_no ? `M-${matter.seq_no}` : matter.id.slice(0, 8)}
-            </span>
             <StatusPicker
               status={matter.status}
               onChange={handleStatusChange}
@@ -612,42 +609,25 @@ export default function MatterDetailPanel({
                 applyMatterUpdate(updated);
               }}
             />
-            {canForward && (
-              <button
-                type="button"
-                className="wk-mp-header__action"
-                title="关联新群"
-                onClick={handleLinkChannel}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                关联新群
-              </button>
-            )}
+          </div>
+          <div className="wk-mp-header__actions">
             <button
               type="button"
               className="wk-mp-header__close"
               onClick={onClose}
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path
-                  d="M4 4l8 8M12 4l-8 8"
+                  d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5"
                   stroke="currentColor"
-                  strokeWidth="1.6"
+                  strokeWidth="1.5"
                   strokeLinecap="round"
                 />
               </svg>
             </button>
           </div>
+        </header>
+
           <EditableTitle
             value={matter.title}
             onSave={async (newTitle) => {
@@ -655,20 +635,10 @@ export default function MatterDetailPanel({
               applyMatterUpdate(updated);
             }}
           />
-        </header>
 
         {/* ── 主要目标 ── */}
         <div className="wk-mp-goal">
           <div className="wk-mp-goal__label">主要目标</div>
-          <EditableDescription
-            value={matter.description || ""}
-            onSave={async (newDesc) => {
-              const updated = await updateMatter(matter.id, {
-                description: newDesc || null,
-              });
-              applyMatterUpdate(updated);
-            }}
-          />
           {matter.source_channel_id && (
             <div
               className={`wk-mp-goal__source${!myGroupsLoading && isSourceMember && matter.source_msgs && matter.source_msgs.length > 0 ? " wk-mp-goal__source--clickable" : ""}`}
@@ -700,62 +670,64 @@ export default function MatterDetailPanel({
               }
             >
               <svg
-                width="10"
-                height="10"
-                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
                 fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
               >
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <path d="M2.67 3.33h10.66v8H4l-1.33 1.34V3.33z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               {myGroupsLoading ? (
                 <span className="wk-mp-goal__source-skeleton" aria-label="加载中">
                   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
                 </span>
               ) : isSourceMember ? (
-                <span>来自 #{displaySourceName}</span>
+                <span>来自 #{displaySourceName} · <UserName uid={matter.creator_id} /> · {formatSourceTime(matter.created_at)}</span>
               ) : (
-                <span style={{ filter: "blur(2.5px)", opacity: 0.35, userSelect: "none", transition: "filter 0.3s ease, opacity 0.3s ease" }}>来自 #████</span>
+                <span style={{ filter: "blur(2.5px)", opacity: 0.35, userSelect: "none" }}>来自 #████</span>
               )}
               {!myGroupsLoading && isSourceMember && matter.source_msgs && matter.source_msgs.length > 0 && (
                 <span className="wk-mp-goal__source-anchor">↗</span>
               )}
-              <span className="wk-mp-goal__source-sep">·</span>
-              <UserName uid={matter.creator_id} />
-              <span className="wk-mp-goal__source-sep">·</span>
-              <span>{formatSourceTime(matter.created_at)}</span>
             </div>
           )}
-        </div>
-
-        {/* ── 创建人 / 负责人 ── */}
-        <div className="wk-mp-people">
-          {/* 创建人：纯展示, 按 PRD v0.7 不可变 */}
-          <div className="wk-mp-people__item">
-            <WKAvatar
-              channel={new Channel(matter.creator_id, ChannelTypePerson)}
-              style={{ width: 16, height: 16 }}
-            />
-            <UserName uid={matter.creator_id} className="wk-mp-people__name" />
-            <span className="wk-mp-people__role">创建人</span>
-          </div>
-          {/* 负责人：可改 (仅发起人 OR 当前负责人), 至少保留 1 位 */}
-          {assignees.length > 0 && (
+          <EditableDescription
+            value={matter.description || ""}
+            onSave={async (newDesc) => {
+              const updated = await updateMatter(matter.id, {
+                description: newDesc || null,
+              });
+              applyMatterUpdate(updated);
+            }}
+          />
+          {/* 创建人 / 负责人 */}
+          <div className="wk-mp-people">
             <div className="wk-mp-people__item">
-              <OwnerEditor
-                assignees={assignees}
-                canEdit={canEditOwner}
-                currentUid={currentUid || ""}
-                isCreator={matter.creator_id === currentUid}
-                candidates={ownerCandidates}
-                onToggle={handleToggleAssignee}
-                renderAvatar={renderAvatar}
-                resolveUserName={resolveOwnerName}
-              />
-              <span className="wk-mp-people__role">负责人</span>
+              <span className="wk-mp-people__role">创建人：</span>
+              <span className="wk-mp-people__tag">
+                <WKAvatar
+                  channel={new Channel(matter.creator_id, ChannelTypePerson)}
+                  style={{ width: 16, height: 16 }}
+                />
+                <UserName uid={matter.creator_id} className="wk-mp-people__name" />
+              </span>
             </div>
-          )}
+            {assignees.length > 0 && (
+              <div className="wk-mp-people__item">
+                <span className="wk-mp-people__role">负责人：</span>
+                <OwnerEditor
+                  assignees={assignees}
+                  canEdit={canEditOwner}
+                  currentUid={currentUid || ""}
+                  isCreator={matter.creator_id === currentUid}
+                  candidates={ownerCandidates}
+                  onToggle={handleToggleAssignee}
+                  renderAvatar={renderAvatar}
+                  resolveUserName={resolveOwnerName}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Tabs ── */}
@@ -787,16 +759,8 @@ export default function MatterDetailPanel({
                   className="wk-mp-channels__add"
                   onClick={handleLinkChannel}
                 >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path fillRule="evenodd" clipRule="evenodd" d="M8.00033 15.3332C12.0504 15.3332 15.3337 12.0499 15.3337 7.99984C15.3337 3.94975 12.0504 0.666504 8.00033 0.666504C3.95024 0.666504 0.666992 3.94975 0.666992 7.99984C0.666992 12.0499 3.95024 15.3332 8.00033 15.3332ZM12.6662 7.9184C12.6758 8.4706 12.236 8.92606 11.6838 8.9357L9.01751 8.98224L9.06405 11.6485C9.07369 12.2007 8.63386 12.6562 8.08166 12.6658C7.52945 12.6754 7.07399 12.2356 7.06435 11.6834L7.01781 9.01714L4.35155 9.06368C3.79935 9.07332 3.34389 8.63349 3.33425 8.08129C3.32462 7.52909 3.76445 7.07363 4.31665 7.06399L6.98291 7.01745L6.93637 4.35119C6.92673 3.79899 7.36657 3.34353 7.91877 3.33389C8.47097 3.32425 8.92643 3.76408 8.93607 4.31628L8.98261 6.98254L11.6489 6.936C12.2011 6.92637 12.6565 7.3662 12.6662 7.9184Z" fill="currentColor" />
                   </svg>
                   关联新群
                 </button>
@@ -821,26 +785,24 @@ export default function MatterDetailPanel({
                   !myGroupsFailed && myGroupNos.has(parentGroupNo);
                 return (
                 <div key={ch.id} className="wk-mp-channels__card">
+                  {/* 第一行：群名 + 同步时间 + 查看群聊 */}
                   <div className="wk-mp-channels__card-head">
-                    <span className="wk-mp-channels__card-name">
-                      #
-                      <ChannelNameLabel
-                        channelId={ch.channel_id}
-                        channelType={ch.channel_type}
-                        fallback={ch.channel_name}
-                        blur={!isMember}
-                        loading={myGroupsLoading}
-                      />
-                    </span>
-                    {!myGroupsLoading && !isMember && <NotMemberBadge />}
-                    <span className="wk-mp-channels__card-time">
-                      {new Date(ch.created_at).toLocaleDateString("zh-CN", {
-                        month: "numeric",
-                        day: "numeric",
-                      })}{" "}
-                      关联
-                    </span>
-                    {/* 查看群聊菜单: 仅群成员可见 (非成员无权限查看群聊) */}
+                    <div className="wk-mp-channels__card-info">
+                      <span className="wk-mp-channels__card-name">
+                        #
+                        <ChannelNameLabel
+                          channelId={ch.channel_id}
+                          channelType={ch.channel_type}
+                          fallback={ch.channel_name}
+                          blur={!isMember}
+                          loading={myGroupsLoading}
+                        />
+                      </span>
+                      {!myGroupsLoading && !isMember && <NotMemberBadge />}
+                      <span className="wk-mp-channels__card-time">
+                        {formatRelativeSyncTime(ch.created_at)}
+                      </span>
+                    </div>
                     {isMember && (
                       <ChannelMoreMenu
                         channelId={ch.channel_id}
@@ -849,55 +811,46 @@ export default function MatterDetailPanel({
                       />
                     )}
                   </div>
-                  {/* 最新进展: 有 timeline 条目时显示最新一条 content,
-                      没有时整块隐藏。非成员不展示 (信息隔离) */}
-                  {isMember && latestByChannel.has(ch.channel_id) && (
-                    <div className="wk-mp-channels__card-progress">
-                      <div className="wk-mp-channels__card-progress-label">
-                        最新进展
+
+                  {/* 第二行：用户 + 时间 + ColorTag + 内容 */}
+                  {isMember && latestByChannel.has(ch.channel_id) && (() => {
+                    const latest = latestByChannel.get(ch.channel_id)!;
+                    return (
+                      <div className="wk-mp-channels__card-msg">
+                        <div className="wk-mp-channels__card-msg-meta">
+                          <span className="wk-mp-channels__card-msg-user">
+                            <WKAvatar
+                              channel={new Channel(latest.user_id, ChannelTypePerson)}
+                              style={{ width: 20, height: 20 }}
+                            />
+                            <UserName uid={latest.user_id} className="wk-mp-channels__card-msg-name" />
+                          </span>
+                          <span className="wk-mp-channels__card-msg-time">
+                            {new Date(latest.created_at).toLocaleString("zh-CN", {
+                              month: "2-digit", day: "2-digit",
+                              hour: "2-digit", minute: "2-digit",
+                              hour12: false,
+                            }).replace(/\//g, "-")}
+                          </span>
+                        </div>
+                        <div className="wk-mp-channels__card-msg-content">
+                          {latest.content || "（无文本内容）"}
+                        </div>
                       </div>
-                      <div className="wk-mp-channels__card-progress-text">
-                        {latestByChannel.get(ch.channel_id)!.content ||
-                          "（无文本内容）"}
-                      </div>
-                    </div>
-                  )}
-                  {/* 展开时间线: 仅成员可见, 非成员无权查看群消息衍生内容 */}
+                    );
+                  })()}
+
+                  {/* 展开/收起时间线按钮 */}
                   {isMember && (<>
-                  <div className="wk-mp-channels__card-actions">
                     <button
                       type="button"
                       className="wk-mp-channels__timeline-btn"
                       onClick={() => toggleTimeline(ch.channel_id)}
                     >
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        style={{
-                          transform: expandedTimelines.has(ch.channel_id)
-                            ? "rotate(180deg)"
-                            : "none",
-                          transition: "transform 0.15s",
-                        }}
-                      >
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                      {expandedTimelines.has(ch.channel_id)
-                        ? "收起时间线"
-                        : "展开时间线"}
+                      {expandedTimelines.has(ch.channel_id) ? "收起群内时间线" : "展开群内时间线"}
                     </button>
-                  </div>
                   {expandedTimelines.has(ch.channel_id) &&
                     (() => {
-                      // 按 source_channel_id 匹配 (这是真实 IM group_no,
-                      // 跟 matter_channel.channel_id 同一份数据)。
-                      // timeline.channel_id 是 matter_channels 表的 UUID,
-                      // 跟外层 ch.channel_id (真实群号) 类型完全不同,
-                      // 曾经有同名字段误以为可以直接比对 (PR #xxx 修复)。
                       const chEntries = timeline.filter(
                         (e) =>
                           e.source_channel_id === ch.channel_id ||
@@ -920,10 +873,6 @@ export default function MatterDetailPanel({
                       return (
                         <TimelinePanel
                           entries={chEntries}
-                          // 未加入该群时整个群的 entries 都不允许看原消息,
-                          // 用 canShowAnchor 彻底隐藏按钮 (不是置灰),
-                          // 对齐原型 v19 V5_TimelinePanel 里 isMember &&
-                          // SourceTag 的 short-circuit 行为。
                           canShowAnchor={() => isMember}
                           onShowAnchor={
                             isMember
@@ -1312,6 +1261,20 @@ function formatTime(iso: string): string {
   });
 }
 
+/** 格式化为相对时间："X分钟前同步" / "X小时前同步" / "X天前同步" */
+function formatRelativeSyncTime(iso: string): string {
+  const now = Date.now();
+  const t = new Date(iso).getTime();
+  const diff = now - t;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "刚刚同步";
+  if (minutes < 60) return `${minutes}分钟前同步`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时前同步`;
+  const days = Math.floor(hours / 24);
+  return `${days}天前同步`;
+}
+
 function TimelinePanel({
   entries,
   onShowAnchor,
@@ -1346,47 +1309,19 @@ function TimelinePanel({
     <div className="wk-mp-tl">
       {/* Header: 标题 + 排序切换 */}
       <div className="wk-mp-tl__header">
-        <span className="wk-mp-tl__title">群内事件时间线</span>
-        <div className="wk-mp-tl__sort-group">
-          <button
-            type="button"
-            className={`wk-mp-tl__sort-btn${sortNewest ? " is-active" : ""}`}
-            onClick={() => setSortNewest(true)}
-          >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="15" y2="12" />
-              <line x1="3" y1="18" x2="9" y2="18" />
-            </svg>
-            最新在上
-          </button>
-          <button
-            type="button"
-            className={`wk-mp-tl__sort-btn${!sortNewest ? " is-active" : ""}`}
-            onClick={() => setSortNewest(false)}
-          >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <line x1="3" y1="6" x2="9" y2="6" />
-              <line x1="3" y1="12" x2="15" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-            最旧在上
-          </button>
-        </div>
+        <span className="wk-mp-tl__title">群内时间线</span>
+        <button
+          type="button"
+          className="wk-mp-tl__sort-btn"
+          onClick={() => setSortNewest((v) => !v)}
+          title={sortNewest ? '当前：最新在上，点击切换为最旧在上' : '当前：最旧在上，点击切换为最新在上'}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M7.33333 10.667L4.66667 13.3337L2 10.667M4.66667 13.3337V2.66699" stroke="currentColor" strokeOpacity={sortNewest ? 1 : 0.4} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M8.66602 5.33366L11.3327 2.66699L13.9993 5.33366M11.3327 2.66699V13.3337" stroke="currentColor" strokeOpacity={sortNewest ? 0.4 : 1} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          时间排序
+        </button>
       </div>
 
       {/* 按日期分组 */}
@@ -1406,31 +1341,32 @@ function TimelinePanel({
             <div className="wk-mp-tl__entries">
               {items.map((e) => (
                 <div key={e.id} className="wk-mp-tl__entry">
-                  {/* 时间 */}
-                  <span className="wk-mp-tl__time">
-                    {formatTime(e.created_at)}
-                  </span>
-                  {/* 头像 + 人名 */}
-                  <span className="wk-mp-tl__user">
-                    <WKAvatar
-                      channel={new Channel(e.user_id, ChannelTypePerson)}
-                      style={{ width: 16, height: 16 }}
-                    />
-                    <UserName uid={e.user_id} className="wk-mp-tl__user-name" />
-                  </span>
-                  {/* 内容 */}
-                  <span className="wk-mp-tl__content">{e.content || ""}</span>
-                  {/* 附件 */}
-                  {e.attachments && e.attachments.length > 0 && (
-                    <span className="wk-mp-tl__att-count">
-                      {e.attachments.length} 附件
+                  <div className="wk-mp-tl__entry-main">
+                    {/* 时间 */}
+                    <span className="wk-mp-tl__time">
+                      {formatTime(e.created_at)}
                     </span>
-                  )}
-                  {/* ↗ 原消息: 
-                      - entry 没有 source_msgs → 置灰 (保持原按钮占位, 避免
-                        其它条目对不齐) 
-                      - 调用方用 canShowAnchor 否决 (典型: 用户不在该条
-                        entry 所属 channel, 没权限查原消息) → 整个按钮不渲染 */}
+                    {/* 头像 + 人名 */}
+                    <span className="wk-mp-tl__user">
+                      <WKAvatar
+                        channel={new Channel(e.user_id, ChannelTypePerson)}
+                        style={{ width: 20, height: 20 }}
+                      />
+                      <UserName uid={e.user_id} className="wk-mp-tl__user-name" />
+                    </span>
+                    {/* 内容（前面带冒号） */}
+                    <span className="wk-mp-tl__content-wrap">
+                      <span className="wk-mp-tl__colon">：</span>
+                      <span className="wk-mp-tl__content">{e.content || ""}</span>
+                    </span>
+                    {/* 附件 */}
+                    {e.attachments && e.attachments.length > 0 && (
+                      <span className="wk-mp-tl__att-count">
+                        {e.attachments.length} 附件
+                      </span>
+                    )}
+                  </div>
+                  {/* 原消息按钮 */}
                   {(() => {
                     const anchorAllowed =
                       !canShowAnchor || canShowAnchor(e);
@@ -1458,17 +1394,10 @@ function TimelinePanel({
                           if (hasSource && onShowAnchor) onShowAnchor(e, ev);
                         }}
                       >
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                          <path fillRule="evenodd" clipRule="evenodd" d="M14.333 1.66654L9.33318 1.66654L9.33318 2.99988L12.0564 2.99988L6.46884 8.58773L7.41167 9.53051L12.9996 3.9423L12.9995 6.66652L14.3328 6.66657L14.333 1.66654ZM7.33288 2.99984L2.99955 2.99984L2.99955 12.9998L12.9995 12.9998L12.9995 8.6665L14.3329 8.6665L14.3329 13.3332C14.3329 13.8855 13.8852 14.3332 13.3329 14.3332L2.66621 14.3332C2.11393 14.3332 1.66621 13.8855 1.66621 13.3332L1.66621 2.6665C1.66621 2.11422 2.11393 1.6665 2.66621 1.6665L7.33288 1.6665L7.33288 2.99984Z" fill="currentColor" />
                         </svg>
-                        ↗ 原消息
+                        原消息
                       </button>
                     );
                   })()}

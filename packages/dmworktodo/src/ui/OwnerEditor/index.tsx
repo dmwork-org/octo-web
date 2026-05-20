@@ -166,35 +166,23 @@ export default function OwnerEditor({
 
   return (
     <span className="wk-owner-editor" ref={ref}>
-      <button {...triggerProps} className={triggerClass}>
-        <span className="wk-owner-editor__avatars">
-          {assignees.slice(0, 3).map((a, i) => (
-            <span
-              key={a.user_id}
-              className="wk-owner-editor__avatar-wrap"
-              style={{
-                marginLeft: i > 0 ? -6 : 0,
-                zIndex: assignees.length - i,
-              }}
-            >
-              {renderAvatar(a.user_id, 16)}
-            </span>
-          ))}
-        </span>
-        <span className="wk-owner-editor__names">
-          {assignees.slice(0, 3).map((a, i) => (
-            <React.Fragment key={a.user_id}>
-              {i > 0 && '\u3001'}
-              <OwnerNameInline uid={a.user_id} resolveName={resolveName} />
-            </React.Fragment>
-          ))}
-          {assignees.length > 3 && (
-            <span className="wk-owner-editor__names-more">
-              {` 等 ${assignees.length} 人`}
-            </span>
-          )}
-        </span>
-      </button>
+      <span className="wk-owner-editor__tags">
+        {assignees.slice(0, 2).map((a) => (
+          <button
+            key={a.user_id}
+            {...triggerProps}
+            className={triggerClass}
+          >
+            {renderAvatar(a.user_id, 16)}
+            <OwnerNameInline uid={a.user_id} resolveName={resolveName} />
+          </button>
+        ))}
+        {assignees.length > 2 && (
+          <span className="wk-owner-editor__more" onClick={canEdit ? () => setOpen((o) => !o) : undefined}>
+            +{assignees.length - 2}
+          </span>
+        )}
+      </span>
 
       {open && canEdit && (
         <div className="wk-owner-editor__dropdown">

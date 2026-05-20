@@ -18,26 +18,40 @@
 .wk-owner-editor__trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 6px;
-  margin: 0 -6px;
-  border: none;
-  background: transparent;
-  border-radius: 4px;
+  gap: var(--wk-sp-2, 8px);
+  padding: 2px 8px 2px 2px;
+  margin: 0;
+  border: 1px solid var(--wk-brand-tint-10, rgba(28, 28, 35, 0.1));
+  background: var(--wk-bg-surface, #fff);
+  border-radius: var(--wk-r-full, 9999px);
   cursor: pointer;
   font-size: 12px;
-  line-height: 1;
+  line-height: 20px;
+  height: 20px;
   color: inherit;
   transition: background 0.12s;
 }
 
 .wk-owner-editor__trigger:hover:not(:disabled) {
-  background: var(--wk-bg-hover, #f4f4f5);
+  background: var(--wk-bg-item-hover, rgba(0, 0, 0, 0.03));
 }
 
 .wk-owner-editor__trigger.is-readonly,
 .wk-owner-editor__trigger:disabled {
   cursor: default;
+}
+
+.wk-owner-editor__tags {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1, 4px);
+}
+
+.wk-owner-editor__more {
+  font-size: 12px;
+  line-height: 20px;
+  color: rgba(28, 28, 35, 0.6);
+  cursor: pointer;
 }
 
 /* ─── 头像堆叠 ─────────────────────────────────────── */
