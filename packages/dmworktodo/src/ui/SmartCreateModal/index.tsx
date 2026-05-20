@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Modal, DatePicker, Spin } from "@douyinfe/semi-ui";
 import { WKApp } from "@octo/base";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
-import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import type { CreateMatterReq, ExtractMessage } from "../../bridge/types";
 import MemberPicker from "../MemberPicker";
 import { Toast } from "../../utils/toast";
@@ -54,8 +53,8 @@ function getLocalTZOffset(): string {
 /**
  * SmartCreateModal — 新建事项 / 智能创建事项弹窗
  *
- * 对齐原型 v19 + 复用项目已有组件（Semi Modal / DatePicker / MemberPicker）。
- * 4 字段：标题 / 主要目标(description) / 负责人 / Deadline，全部必填。
+ * 对齐 Figma 设计稿 node 1411:10562。
+ * 4 字段：事项名称 / 主要目标(description) / 负责人 / Deadline，全部必填。
  */
 export default function SmartCreateModal({
   visible,
@@ -81,7 +80,6 @@ export default function SmartCreateModal({
   // 打开时聚焦标题输入框，设置默认负责人
   useEffect(() => {
     if (visible) {
-      // 设置当前用户为默认负责人
       const currentUid = WKApp.loginInfo.uid;
       if (currentUid && assigneeUids.length === 0) {
         setAssigneeUids([currentUid]);
@@ -92,7 +90,6 @@ export default function SmartCreateModal({
         }
       }, 100);
     } else {
-      // 关闭时重置
       setTitle("");
       setBrief("");
       setAssigneeUids([]);
@@ -126,35 +123,29 @@ export default function SmartCreateModal({
         source_msgs: sourceMsgs,
       });
       (onConfirmSuccess ?? onClose)();
-    } catch (e: any) {
-      // 失败不关闭，让用户重试
-      const msg = e?.message === "assignee reconciliation failed"
-        ? undefined  // assignee 失败已在 onConfirm 内 toast
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message === "assignee reconciliation failed"
+        ? undefined
         : "操作失败，请重试";
       if (msg) Toast.error(msg);
     } finally {
       setSubmitting(false);
     }
   }, [
-    canCreate,
-    submitting,
-    title,
-    brief,
-    assigneeUids,
-    deadline,
-    channel,
-    sourceMsgs,
-    onConfirm,
-    onConfirmSuccess,
-    onClose,
+    canCreate, submitting, title, brief, assigneeUids,
+    deadline, channel, sourceMsgs, onConfirm, onConfirmSuccess, onClose,
   ]);
 
-  // Enter 键确认（Esc 由 Semi Modal 原生处理，无需重复）
+  // Enter 键确认
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey && canCreate) {
-        e.preventDefault();
-        handleConfirm();
+      if (e.key === "Enter" && !e.shiftKey) {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === "TEXTAREA") return;
+        if (canCreate) {
+          e.preventDefault();
+          handleConfirm();
+        }
       }
     },
     [handleConfirm, canCreate],
@@ -165,8 +156,8 @@ export default function SmartCreateModal({
       visible={visible}
       onCancel={onClose}
       footer={null}
-      width={520}
-      closable={!submitting}
+      width={480}
+      closable={false}
       maskClosable={false}
       centered
       className="wk-smart-create-modal"
@@ -174,7 +165,7 @@ export default function SmartCreateModal({
       style={{ overflow: "visible" }}
     >
       <div className="wk-smart-create-modal__content" onKeyDown={handleKeyDown}>
-        {/* Header */}
+        {/* ─── Header ─── */}
         <div className="wk-smart-create-modal__head">
           <h3 className="wk-smart-create-modal__title">
             {!blank && (
@@ -192,8 +183,23 @@ export default function SmartCreateModal({
                 <path d="M12 3v4m0 14v-4m9-5h-4M3 12h4m12.3-5.3-2.8 2.8M7.5 16.5l-2.8 2.8m14.6 0-2.8-2.8M7.5 7.5 4.7 4.7" />
               </svg>
             )}
-            {blank ? "新建事项" : "智能创建事项"}
+            {blank ? "新建事项：" : "智能创建事项："}
           </h3>
+          <button
+            type="button"
+            className="wk-smart-create-modal__close-btn"
+            onClick={onClose}
+            aria-label="关闭"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
 
         {loading ? (
@@ -213,131 +219,145 @@ export default function SmartCreateModal({
           </div>
         ) : (
           <>
-            {/* 标题 */}
-            <div className="wk-smart-create-modal__field">
-              <label className="wk-smart-create-modal__label">
-                标题 <span className="wk-smart-create-modal__req">*</span>
-              </label>
-              <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-                <input
-                  ref={titleInputRef}
-                  type="text"
-                  className="wk-smart-create-modal__input"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="事件标题"
-                  style={{ flex: 1 }}
-                />
-                <VoiceInputButton
-                  inputRef={titleInputRef}
-                  onTranscribed={(text, mode, savedRange) => {
-                    if (mode === "all") {
-                      setTitle(text);
-                    } else if (mode === "selection" && savedRange) {
-                      // Note: savedRange indices are from recording start; assumes input is read-only during recording
-                      setTitle(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
-                    } else {
-                      setTitle(prev => {
-                        const pos = savedRange?.from ?? prev.length;
-                        return prev.slice(0, pos) + text + prev.slice(pos);
-                      });
-                    }
-                  }}
-                  getCurrentText={() => title}
-                  showModeMenu
-                  size="sm"
+            {/* ─── Fields ─── */}
+            <div className="wk-smart-create-modal__fields">
+              {/* 事项名称 */}
+              <div className="wk-smart-create-modal__field">
+                <label className="wk-smart-create-modal__label">
+                  事项名称<span className="wk-smart-create-modal__req">*</span>
+                </label>
+                <div className="wk-smart-create-modal__input-wrap">
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    className="wk-smart-create-modal__input"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="请输入"
+                  />
+                  <VoiceInputButton
+                    inputRef={titleInputRef}
+                    onTranscribed={(text, mode, savedRange) => {
+                      if (mode === "all") {
+                        setTitle(text);
+                      } else if (mode === "selection" && savedRange) {
+                        setTitle(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+                      } else {
+                        setTitle(prev => {
+                          const pos = savedRange?.from ?? prev.length;
+                          return prev.slice(0, pos) + text + prev.slice(pos);
+                        });
+                      }
+                    }}
+                    getCurrentText={() => title}
+                    size="sm"
+                  />
+                </div>
+              </div>
+
+              {/* 主要目标 */}
+              <div className="wk-smart-create-modal__field">
+                <label className="wk-smart-create-modal__label">
+                  主要目标<span className="wk-smart-create-modal__req">*</span>
+                </label>
+                <div className="wk-smart-create-modal__textarea-wrap">
+                  <textarea
+                    ref={briefRef}
+                    className="wk-smart-create-modal__textarea"
+                    value={brief}
+                    onChange={(e) => setBrief(e.target.value.slice(0, 200))}
+                    placeholder="一句话说清这件事"
+                    rows={3}
+                    maxLength={200}
+                  />
+                  <span className="wk-smart-create-modal__char-count">
+                    {brief.length}/200
+                  </span>
+                  <VoiceInputButton
+                    inputRef={briefRef}
+                    onTranscribed={(text, mode, savedRange) => {
+                      if (mode === "all") {
+                        setBrief(text.slice(0, 200));
+                      } else if (mode === "selection" && savedRange) {
+                        setBrief(prev => {
+                          const result = prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to);
+                          return result.slice(0, 200);
+                        });
+                      } else {
+                        setBrief(prev => {
+                          const pos = savedRange?.from ?? prev.length;
+                          const result = prev.slice(0, pos) + text + prev.slice(pos);
+                          return result.slice(0, 200);
+                        });
+                      }
+                    }}
+                    getCurrentText={() => brief}
+                    showModeMenu
+                    size="sm"
+                    className="wk-vib--textarea-corner"
+                  />
+                </div>
+              </div>
+
+              {/* 负责人 */}
+              <div className="wk-smart-create-modal__field">
+                <label className="wk-smart-create-modal__label">
+                  负责人<span className="wk-smart-create-modal__req">*</span>
+                </label>
+                <MemberPicker
+                  mode="controlled"
+                  value={assigneeUids}
+                  onChange={setAssigneeUids}
+                  channel={channel}
+                  placeholder="请选择"
                 />
               </div>
-            </div>
 
-            {/* 主要目标 */}
-            <div className="wk-smart-create-modal__field">
-              <label className="wk-smart-create-modal__label">
-                主要目标 <span className="wk-smart-create-modal__req">*</span>
-              </label>
-              <div style={{ position: "relative" }}>
-                <textarea
-                  ref={briefRef}
-                  className="wk-smart-create-modal__textarea"
-                  value={brief}
-                  onChange={(e) => setBrief(e.target.value)}
-                  placeholder="一句话说清这件事"
-                  rows={3}
-                />
-                <VoiceInputButton
-                  inputRef={briefRef}
-                  onTranscribed={(text, mode, savedRange) => {
-                    if (mode === "all") {
-                      setBrief(text);
-                    } else if (mode === "selection" && savedRange) {
-                      // Note: savedRange indices are from recording start; assumes input is read-only during recording
-                      setBrief(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
-                    } else {
-                      setBrief(prev => {
-                        const pos = savedRange?.from ?? prev.length;
-                        return prev.slice(0, pos) + text + prev.slice(pos);
-                      });
+              {/* Deadline */}
+              <div className="wk-smart-create-modal__field">
+                <label className="wk-smart-create-modal__label">
+                  Deadline<span className="wk-smart-create-modal__req">*</span>
+                </label>
+                <DatePicker
+                  className="wk-smart-create-modal__datepicker"
+                  style={{ width: "100%" }}
+                  value={deadline ? fromLocalDateString(deadline) : undefined}
+                  onChange={(date) => {
+                    if (!date) {
+                      setDeadline("");
+                      return;
                     }
+                    const d =
+                      date instanceof Date
+                        ? date
+                        : fromLocalDateString(String(date));
+                    setDeadline(toLocalDateString(d));
                   }}
-                  getCurrentText={() => brief}
-                  showModeMenu
-                  size="sm"
-                  className="wk-vib--textarea-corner"
-                />
-              </div>
-            </div>
-
-            {/* 负责人 */}
-            <div className="wk-smart-create-modal__field">
-              <label className="wk-smart-create-modal__label">
-                负责人 <span className="wk-smart-create-modal__req">*</span>
-              </label>
-              <MemberPicker
-                mode="controlled"
-                value={assigneeUids}
-                onChange={setAssigneeUids}
-                channel={channel}
-                placeholder="选择负责人（可多选）..."
-              />
-            </div>
-
-            {/* Deadline */}
-            <div className="wk-smart-create-modal__field">
-              <label className="wk-smart-create-modal__label">
-                Deadline <span className="wk-smart-create-modal__req">*</span>
-              </label>
-              <DatePicker
-                className="wk-smart-create-modal__datepicker"
-                style={{ width: "100%" }}
-                value={deadline ? fromLocalDateString(deadline) : undefined}
-                onChange={(date) => {
-                  if (!date) {
-                    setDeadline("");
-                    return;
+                  disabledDate={(date) =>
+                    !!date && date < new Date(new Date().setHours(0, 0, 0, 0))
                   }
-                  const d =
-                    date instanceof Date
-                      ? date
-                      : fromLocalDateString(String(date));
-                  setDeadline(toLocalDateString(d));
-                }}
-                disabledDate={(date) =>
-                  !!date && date < new Date(new Date().setHours(0, 0, 0, 0))
-                }
-                placeholder="选择截止日期"
-                density="compact"
-              />
+                  placeholder="请选择"
+                  density="compact"
+                />
+              </div>
             </div>
 
-            <div className="wk-smart-create-modal__footer-sep" />
+            {/* ─── Footer ─── */}
             <div className="wk-smart-create-modal__actions">
+              <button
+                type="button"
+                className="wk-smart-create-modal__btn wk-smart-create-modal__btn--cancel"
+                onClick={onClose}
+              >
+                取消
+              </button>
               <button
                 type="button"
                 className="wk-smart-create-modal__btn wk-smart-create-modal__btn--confirm"
                 onClick={handleConfirm}
                 disabled={!canCreate || submitting}
               >
-                {submitting ? "提交中..." : "确认事项"}
+                {submitting ? "提交中..." : "确定"}
               </button>
             </div>
           </>

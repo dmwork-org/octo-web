@@ -42,39 +42,6 @@ function getLocalTZOffset(): string {
   return `${sign}${h}:${m}`;
 }
 
-// ─── 快捷日期计算 ──────────────────────────────────────────
-
-function getTodayEnd(): Date {
-  const d = new Date();
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function getTomorrowEnd(): Date {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-// 返回「本周五」或「下周五」及对应日期
-function getFridayInfo(): { label: string; date: Date } {
-  const d = new Date();
-  const day = d.getDay();
-  // 中国习惯周一为周首，周五/周六/周日都视为"本周五已过"，跳下周五
-  const isThisWeekFridayPast = day === 5 || day === 6 || day === 0;
-  let daysUntilFriday: number;
-  if (isThisWeekFridayPast) {
-    daysUntilFriday = (5 - day + 7) % 7 || 7;
-  } else {
-    daysUntilFriday = 5 - day; // 周一(1)→4，周二(2)→3，周三(3)→2，周四(4)→1
-  }
-  const target = new Date(d);
-  target.setDate(d.getDate() + daysUntilFriday);
-  target.setHours(23, 59, 59, 999);
-  return { label: isThisWeekFridayPast ? '下周五' : '本周五', date: target };
-}
-
 // ─── CreateTaskModal 主组件 ────────────────────────────────
 
 export default function CreateTaskModal({
@@ -91,58 +58,32 @@ export default function CreateTaskModal({
   const [assigneeUids, setAssigneeUids] = useState<string[]>(prefillAssigneeUids);
   const [deadline, setDeadline] = useState('');
   const [description, setDescription] = useState('');
-  const [showDescription, setShowDescription] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
-  // 用 join 做稳定的 key，避免每次渲染新数组引用触发 effect（比 JSON.stringify 更轻量）
   const prefillAssigneeUidsKey = prefillAssigneeUids.join(',');
-  // stablePrefillAssigneeUids：用 key 做稳定化，避免每次渲染新数组引用导致 isDirty useMemo 失效
   const stablePrefillAssigneeUids = useMemo(
     () => prefillAssigneeUids,
     [prefillAssigneeUidsKey] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // ─── 快捷日期：在 visible 变为 true 时用 useEffect 计算，
-  //     避免 useMemo 依赖 visible 语义不正确（visible=false 时也会重算）
-  const [quickDates, setQuickDates] = useState(() => {
-    const fri = getFridayInfo();
-    return {
-      today: toLocalDateString(getTodayEnd()),
-      tomorrow: toLocalDateString(getTomorrowEnd()),
-      friday: toLocalDateString(fri.date),
-      fridayLabel: fri.label,
-    };
-  });
-
-  // ─── 初始化：当 visible 变化时重置表单 + 聚焦确认按钮 ─────
+  // ─── 初始化：当 visible 变化时重置表单 ─────
   useEffect(() => {
     if (visible) {
       setTitle(prefillTitle);
       setAssigneeUids(prefillAssigneeUids);
       setDeadline('');
       setDescription('');
-      setShowDescription(false);
-      // visible=true 时重新计算日期，确保跨天/多次打开都是正确的
-      const fri = getFridayInfo();
-      setQuickDates({
-        today: toLocalDateString(getTodayEnd()),
-        tomorrow: toLocalDateString(getTomorrowEnd()),
-        friday: toLocalDateString(fri.date),
-        fridayLabel: fri.label,
-      });
-      setTimeout(() => confirmBtnRef.current?.focus(), 50);
+      setTimeout(() => titleInputRef.current?.focus(), 50);
     }
-  // prefillAssigneeUidsKey = join(',')，内容不变时 key 相同，effect 不重跑
   }, [visible, prefillTitle, prefillAssigneeUidsKey]);
 
   // ─── dirty 检测 ────────────────────────────────────────
   const isDirty = useMemo(() => {
     if (title.trim() !== prefillTitle.trim()) return true;
     if (assigneeUids.length !== stablePrefillAssigneeUids.length) return true;
-    // 用 Set 比较，不依赖顺序（MemberPicker toggle 顺序可能与 prefill 不同）
     const prefillSet = new Set(stablePrefillAssigneeUids);
     if (assigneeUids.some((uid) => !prefillSet.has(uid))) return true;
     if (deadline) return true;
@@ -175,25 +116,11 @@ export default function CreateTaskModal({
         source_channel_type: channel?.channelType,
         source_name: channel?.name,
       };
-      // 不在这里调 onClose，由调用方在 onConfirm 完成后控制关闭
-      // 避免 onClose 被调用两次（调用方 + 这里各调一次）
       await onConfirm(req);
     } finally {
       setSubmitting(false);
     }
   }, [title, description, assigneeUids, deadline, submitting, onConfirm, channel]);
-
-  // ─── 快捷日期选择 ──────────────────────────────────────
-  const handleQuickDate = useCallback((type: 'today' | 'tomorrow' | 'friday' | 'custom') => {
-    if (type === 'today') {
-      setDeadline(quickDates.today);
-    } else if (type === 'tomorrow') {
-      setDeadline(quickDates.tomorrow);
-    } else if (type === 'friday') {
-      setDeadline(quickDates.friday);
-    }
-    // custom：不自动设置，让用户用 date picker 选
-  }, [quickDates]);
 
   // ─── 键盘快捷键 ────────────────────────────────────────
   const handleKeyDown = useCallback(
@@ -201,10 +128,8 @@ export default function CreateTaskModal({
       if (e.key === 'Escape') {
         handleClose();
       } else if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
-        // textarea / input（如 MemberPicker 搜索框）内 Enter 不触发提交
         const tag = (e.target as HTMLElement).tagName;
         if (tag === 'TEXTAREA') return;
-        // INPUT 里只有 title input 允许 Enter 提交，其他 input（MemberPicker 搜索、DatePicker）不触发
         if (tag === 'INPUT' && e.target !== titleInputRef.current) return;
         e.preventDefault();
         handleConfirm();
@@ -224,148 +149,159 @@ export default function CreateTaskModal({
       centered
       className="wk-create-task-modal"
     >
-      <div className="wk-create-task-modal__content" onKeyDown={handleKeyDown}>
-        <h3 className="wk-create-task-modal__title">创建事项</h3>
-
-        {/* 事项名 */}
-        <div className="wk-create-task-modal__field">
-          <label className="wk-create-task-modal__label">事项名</label>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <input
-              ref={titleInputRef}
-              type="text"
-              className={`wk-create-task-modal__input${sendOnConfirm ? ' wk-create-task-modal__input--readonly' : ''}`}
-              placeholder="输入事项名称..."
-              value={title}
-              onChange={sendOnConfirm ? () => {} : (e) => setTitle(e.target.value)}
-              readOnly={sendOnConfirm}
-              autoFocus={false}
-              style={{ flex: 1 }}
-            />
-            {!sendOnConfirm && (
-              <VoiceInputButton
-                inputRef={titleInputRef}
-                onTranscribed={(text, mode, savedRange) => {
-                  let newValue: string;
-                  if (mode === "all") {
-                    newValue = text;
-                  } else if (mode === "selection" && savedRange) {
-                    // Note: savedRange indices are from recording start; assumes input is read-only during recording
-                    const prev = title;
-                    newValue = prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to);
-                  } else {
-                    const prev = title;
-                    const pos = savedRange?.from ?? prev.length;
-                    newValue = prev.slice(0, pos) + text + prev.slice(pos);
-                  }
-                  setTitle(newValue.slice(0, 200));
-                }}
-                getCurrentText={() => title}
-                size="sm"
+      <div className="wk-create-task-modal__wrap" onKeyDown={handleKeyDown}>
+        {/* ─── Header ─── */}
+        <div className="wk-create-task-modal__header">
+          <h3 className="wk-create-task-modal__title">新建事项：</h3>
+          <button
+            type="button"
+            className="wk-create-task-modal__close-btn"
+            onClick={handleClose}
+            aria-label="关闭"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
               />
-            )}
-          </div>
+            </svg>
+          </button>
         </div>
 
-        {/* 负责人 */}
-        <div className="wk-create-task-modal__field">
-          <label className="wk-create-task-modal__label">负责人</label>
-          <MemberPicker mode="controlled" value={assigneeUids} onChange={setAssigneeUids} channel={channel} placeholder="选择负责人..." />
-        </div>
-
-        {/* 截止日期 */}
-        <div className="wk-create-task-modal__field">
-          <label className="wk-create-task-modal__label">截止日期</label>
-          <div className="wk-create-task-modal__date-shortcuts">
-            <button
-              type="button"
-              className={`wk-create-task-modal__date-btn ${deadline === quickDates.today ? 'active' : ''}`}
-              onClick={() => handleQuickDate('today')}
-            >
-              今天
-            </button>
-            <button
-              type="button"
-              className={`wk-create-task-modal__date-btn ${deadline === quickDates.tomorrow ? 'active' : ''}`}
-              onClick={() => handleQuickDate('tomorrow')}
-            >
-              明天
-            </button>
-            <button
-              type="button"
-              className={`wk-create-task-modal__date-btn ${deadline === quickDates.friday ? 'active' : ''}`}
-              onClick={() => handleQuickDate('friday')}
-            >
-              {quickDates.fridayLabel}
-            </button>
-
-          </div>
-          <DatePicker
-            className="wk-create-task-modal__datepicker"
-            style={{ width: '100%' }}
-            value={deadline ? fromLocalDateString(deadline) : undefined}
-            onChange={(date) => {
-              if (!date) { setDeadline(''); return; }
-              const d = date instanceof Date ? date : fromLocalDateString(String(date));
-              // 用本地年月日，避免 toISOString() UTC 转换导致日期退一天
-              const yyyy = d.getFullYear();
-              const mm = String(d.getMonth() + 1).padStart(2, '0');
-              const dd = String(d.getDate()).padStart(2, '0');
-              setDeadline(`${yyyy}-${mm}-${dd}`);
-            }}
-            disabledDate={(date) => !!date && date < new Date(new Date().setHours(0,0,0,0))}
-            placeholder="选择截止日期"
-            density="compact"
-          />
-        </div>
-
-        {/* 备注（折叠） */}
-        <div className="wk-create-task-modal__field">
-          {!showDescription ? (
-            <button type="button" className="wk-create-task-modal__toggle-desc" onClick={() => setShowDescription(true)}>
-              + 添加备注
-            </button>
-          ) : (
-            <>
-              <label className="wk-create-task-modal__label">备注</label>
-              <div style={{ position: "relative" }}>
-                <textarea
-                  ref={descRef}
-                  className="wk-create-task-modal__textarea"
-                  placeholder="添加事项备注..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                />
+        {/* ─── Content ─── */}
+        <div className="wk-create-task-modal__content">
+          {/* 事项名称 */}
+          <div className="wk-create-task-modal__field">
+            <label className="wk-create-task-modal__label">
+              事项名称<span className="wk-create-task-modal__required">*</span>
+            </label>
+            <div className="wk-create-task-modal__input-wrap">
+              <input
+                ref={titleInputRef}
+                type="text"
+                className={`wk-create-task-modal__input${sendOnConfirm ? ' wk-create-task-modal__input--readonly' : ''}`}
+                placeholder="请输入"
+                value={title}
+                onChange={sendOnConfirm ? () => {} : (e) => setTitle(e.target.value)}
+                readOnly={sendOnConfirm}
+                autoFocus={false}
+              />
+              {!sendOnConfirm && (
                 <VoiceInputButton
-                  inputRef={descRef}
+                  inputRef={titleInputRef}
                   onTranscribed={(text, mode, savedRange) => {
+                    let newValue: string;
                     if (mode === "all") {
-                      setDescription(text);
+                      newValue = text;
                     } else if (mode === "selection" && savedRange) {
-                      // Note: savedRange indices are from recording start; assumes input is read-only during recording
-                      setDescription(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+                      const prev = title;
+                      newValue = prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to);
                     } else {
-                      setDescription(prev => {
-                        const pos = savedRange?.from ?? prev.length;
-                        return prev.slice(0, pos) + text + prev.slice(pos);
-                      });
+                      const prev = title;
+                      const pos = savedRange?.from ?? prev.length;
+                      newValue = prev.slice(0, pos) + text + prev.slice(pos);
                     }
+                    setTitle(newValue.slice(0, 200));
                   }}
-                  getCurrentText={() => description}
-                  showModeMenu
+                  getCurrentText={() => title}
                   size="sm"
-                  className="wk-vib--textarea-corner"
                 />
-              </div>
-            </>
-          )}
+              )}
+            </div>
+          </div>
+
+          {/* 主要目标 */}
+          <div className="wk-create-task-modal__field">
+            <label className="wk-create-task-modal__label">
+              主要目标<span className="wk-create-task-modal__required">*</span>
+            </label>
+            <div className="wk-create-task-modal__textarea-wrap">
+              <textarea
+                ref={descRef}
+                className="wk-create-task-modal__textarea"
+                placeholder="一句话说清这件事"
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, 200))}
+                rows={3}
+                maxLength={200}
+              />
+              <span className="wk-create-task-modal__char-count">
+                {description.length}/200
+              </span>
+              <VoiceInputButton
+                inputRef={descRef}
+                onTranscribed={(text, mode, savedRange) => {
+                  if (mode === "all") {
+                    setDescription(text.slice(0, 200));
+                  } else if (mode === "selection" && savedRange) {
+                    setDescription(prev => {
+                      const result = prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to);
+                      return result.slice(0, 200);
+                    });
+                  } else {
+                    setDescription(prev => {
+                      const pos = savedRange?.from ?? prev.length;
+                      const result = prev.slice(0, pos) + text + prev.slice(pos);
+                      return result.slice(0, 200);
+                    });
+                  }
+                }}
+                getCurrentText={() => description}
+                showModeMenu
+                size="sm"
+                className="wk-vib--textarea-corner"
+              />
+            </div>
+          </div>
+
+          {/* 负责人 */}
+          <div className="wk-create-task-modal__field">
+            <label className="wk-create-task-modal__label">
+              负责人<span className="wk-create-task-modal__required">*</span>
+            </label>
+            <MemberPicker
+              mode="controlled"
+              value={assigneeUids}
+              onChange={setAssigneeUids}
+              channel={channel}
+              placeholder="请选择"
+            />
+          </div>
+
+          {/* Deadline */}
+          <div className="wk-create-task-modal__field">
+            <label className="wk-create-task-modal__label">
+              Deadline<span className="wk-create-task-modal__required">*</span>
+            </label>
+            <DatePicker
+              className="wk-create-task-modal__datepicker"
+              style={{ width: '100%' }}
+              value={deadline ? fromLocalDateString(deadline) : undefined}
+              onChange={(date) => {
+                if (!date) { setDeadline(''); return; }
+                const d = date instanceof Date ? date : fromLocalDateString(String(date));
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                setDeadline(`${yyyy}-${mm}-${dd}`);
+              }}
+              disabledDate={(date) => !!date && date < new Date(new Date().setHours(0,0,0,0))}
+              placeholder="请选择"
+              density="compact"
+            />
+          </div>
         </div>
 
-        {/* 按钮组 */}
-        <div className="wk-create-task-modal__actions">
-          <button type="button" className="wk-create-task-modal__btn wk-create-task-modal__btn--cancel" onClick={handleClose}>
-            取消 <span className="wk-create-task-modal__shortcut">Esc</span>
+        {/* ─── Footer ─── */}
+        <div className="wk-create-task-modal__footer">
+          <button
+            type="button"
+            className="wk-create-task-modal__btn wk-create-task-modal__btn--cancel"
+            onClick={handleClose}
+          >
+            取消
           </button>
           <button
             ref={confirmBtnRef}
@@ -374,10 +310,12 @@ export default function CreateTaskModal({
             onClick={handleConfirm}
             disabled={!title.trim() || submitting}
           >
-            {sendOnConfirm ? '发送并创建事项' : '创建事项'} <span className="wk-create-task-modal__shortcut">↵</span>
+            {sendOnConfirm ? '发送并创建事项' : '确定'}
           </button>
         </div>
       </div>
     </Modal>
   );
 }
+
+export { CreateTaskModal };
