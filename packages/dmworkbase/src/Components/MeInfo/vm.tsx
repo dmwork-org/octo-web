@@ -17,6 +17,7 @@ import { ChannelInfo, ChannelTypePerson } from "wukongimjssdk";
 import { Convert } from "../../Service/Convert";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
+import PersonaSettings from "../PersonaSettings";
 
 /**
  * MeInfoVM — 自己的「个人信息 / 设置」页面 ViewModel
@@ -432,6 +433,40 @@ export class MeInfoVM extends ProviderListener {
                         onClick: () => {
                             if (verified) return
                             this.startRealnameVerify()
+                        }
+                    }
+                })
+            ]
+        }))
+
+        // 「我的分身」入口 — Persona Clone / AI On-Behalf-Of (PR-C, GH octo-web#46)。
+        // 复用 RoutePage + Section/Row DSL：点击 Row 用 context.push 把 PersonaSettings
+        // 推进当前 MeInfo 栈，与「我的二维码」同款交互。注意 PersonaSettings 内部为了
+        // 承载 PersonaCreate / PersonaEdit 的子级跳转，会再创建一层 nested RoutePage
+        // 上下文（PR description 早期文案「zero new routes」并不精确：路由数量没变，
+        // 但是确实又多了一层 RouteContext 栈）。
+        //
+        // 因为存在 nested RoutePage，PersonaSettings 根页面那个「关闭」按钮回调走的是
+        // `this.props.onClose`，所以这里必须把 onClose 接到 MeInfo 当前栈的 pop 上，
+        // 否则进入分身页之后根级关闭按钮就成了 no-op，用户只能把整个 MeInfo 关掉
+        // 才能脱身（YUJ-1178 / PR #47 review 反馈 P1-1）。
+        //
+        // 设计取舍:这里**不** prefetch / 不查 active grant 状态,subTitle 故意留空,
+        // 进入子页才拉数据(后端 PR-A 未 merge 时会 404, 子页 vm 已做 graceful empty
+        // 态)。原因:本页是高频入口(每次开 MeInfo 都跑 sections()), 多塞一次 GET
+        // /v1/obo/grants 不划算; 而且 PR-A merge 前每次都打 404,日志噪音难处理。
+        //
+        // Section 故意单独成 section（不并入「账号安全」），原因是 v1 之后这块会扩成
+        // 「我的分身 / 草稿审批 / 活动日志」三行,提前做好视觉分组占位。
+        sections.push(new Section({
+            rows: [
+                new Row({
+                    cell: ListItem,
+                    properties: {
+                        title: "我的分身",
+                        subTitle: "",
+                        onClick: () => {
+                            context.push(<PersonaSettings onClose={() => context.pop()} />)
                         }
                     }
                 })

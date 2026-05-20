@@ -129,6 +129,14 @@ vi.mock("../../../Utils/displayName", () => ({
     !!(o as { realname_verified?: boolean })?.realname_verified,
 }))
 
+// PersonaSettings —— YUJ-1168 / GH octo-web#46 加的「我的分身」入口。
+// MeInfoVM 现在 import 它（vm.tsx:1 增量），链式拉到 APIClient.ts 里的
+// `static shared = new APIClient()` 顶层副作用，会调 `axios.interceptors.request.use(...)` —— 而本测试
+// 文件早已经把 axios mock 成 `{ default: { post: vi.fn() } }`,没有 interceptors,
+// 真实链路加载会抛 "Cannot read properties of undefined (reading 'request')"。
+// 直接 stub 掉整个组件即可,本测试只关心 MeInfoVM 本身的实名认证副作用。
+vi.mock("../../PersonaSettings", () => ({ default: () => null }))
+
 // 真正要测的 class
 import { MeInfoVM } from "../vm"
 
