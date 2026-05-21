@@ -596,51 +596,80 @@ export default function MatterDetailPanel({
       <div className="wk-mp-main__inner">
         {/* ── Header ── */}
         <header className="wk-mp-header">
-          <div className="wk-mp-header__row1">
-            <StatusPicker
-              status={matter.status}
-              seqNo={matter.seq_no}
-              onChange={handleStatusChange}
-              isCreator={matter.creator_id === WKApp.loginInfo.uid}
-              canEditStatus={canEditOwner}
-            />
-            <EditableDeadline
-              value={matter.deadline || null}
-              onSave={async (newVal) => {
-                const updated = await updateMatter(matter.id, {
-                  deadline: newVal || "",
-                });
+          {showClose ? (
+            /* 嵌入模式：标题+状态在第一行，日期在第二行 */
+            <>
+              <div className="wk-mp-header__left">
+                <div className="wk-mp-header__row1">
+                  <span className="wk-mp-header__inline-title">
+                    M-{matter.seq_no}｜{matter.title}
+                  </span>
+                  <StatusPicker
+                    status={matter.status}
+                    onChange={handleStatusChange}
+                    isCreator={matter.creator_id === WKApp.loginInfo.uid}
+                    canEditStatus={canEditOwner}
+                  />
+                </div>
+                <div className="wk-mp-header__row2">
+                  <EditableDeadline
+                    value={matter.deadline || null}
+                    onSave={async (newVal) => {
+                      const updated = await updateMatter(matter.id, {
+                        deadline: newVal || "",
+                      });
+                      applyMatterUpdate(updated);
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="wk-mp-header__actions">
+                <button
+                  type="button"
+                  className="wk-mp-header__close"
+                  onClick={onClose}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </>
+          ) : (
+            /* 独立模式：状态pill + 日期 */
+            <>
+              <div className="wk-mp-header__row1">
+                <StatusPicker
+                  status={matter.status}
+                  seqNo={matter.seq_no}
+                  onChange={handleStatusChange}
+                  isCreator={matter.creator_id === WKApp.loginInfo.uid}
+                  canEditStatus={canEditOwner}
+                />
+                <EditableDeadline
+                  value={matter.deadline || null}
+                  onSave={async (newVal) => {
+                    const updated = await updateMatter(matter.id, {
+                      deadline: newVal || "",
+                    });
+                    applyMatterUpdate(updated);
+                  }}
+                />
+              </div>
+              <div className="wk-mp-header__actions" />
+            </>
+          )}
+        </header>
+
+          {!showClose && (
+            <EditableTitle
+              value={matter.title}
+              onSave={async (newTitle) => {
+                const updated = await updateMatter(matter.id, { title: newTitle });
                 applyMatterUpdate(updated);
               }}
             />
-          </div>
-          <div className="wk-mp-header__actions">
-            {showClose && (
-              <button
-                type="button"
-                className="wk-mp-header__close"
-                onClick={onClose}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            )}
-          </div>
-        </header>
-
-          <EditableTitle
-            value={matter.title}
-            onSave={async (newTitle) => {
-              const updated = await updateMatter(matter.id, { title: newTitle });
-              applyMatterUpdate(updated);
-            }}
-          />
+          )}
 
         {/* ── 主要目标 ── */}
         <div className="wk-mp-goal">
