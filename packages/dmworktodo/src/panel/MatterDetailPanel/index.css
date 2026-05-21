@@ -1144,12 +1144,143 @@ textarea.wk-mp-goal__text--editing {
 }
 
 /* ─── Activity (变更记录) ─────────────────────────────── */
+/* ─── Activity (变更记录，按 Figma 设计稿) ───────────── */
+.wk-mp-activity {
+  padding: 0 var(--wk-sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
 .wk-mp-activity__toolbar {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+  gap: var(--wk-sp-3);
+  flex-wrap: nowrap;
+  margin-bottom: 0;
+}
+
+/* ─── 表格 ─── */
+.wk-mp-activity__table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--wk-brand-tint-15);
+  border-radius: var(--wk-r-md);
+}
+
+.wk-mp-activity__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.wk-mp-activity__th {
+  height: 32px;
+  padding: 0 var(--wk-sp-3);
+  background: #F5F6F7;
+  text-align: left;
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  line-height: 16px;
+  color: var(--wk-icon-default);
+  border-bottom: 1px solid var(--wk-brand-tint-15);
+}
+
+.wk-mp-activity__th:last-child {
+  border-right: none;
+}
+
+.wk-mp-activity__tr {
+  background: var(--wk-bg-surface);
+}
+
+.wk-mp-activity__td {
+  padding: var(--wk-sp-3);
+  vertical-align: top;
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-regular);
+  line-height: 20px;
+  color: var(--wk-text-primary);
+  border-bottom: 1px solid var(--wk-brand-tint-15);
+}
+
+.wk-mp-activity__tr:last-child .wk-mp-activity__td {
+  border-bottom: none;
+}
+
+.wk-mp-activity__col-time {
+  width: 96px;
+}
+
+.wk-mp-activity__col-type {
+  width: 96px;
+}
+
+.wk-mp-activity__col-content {
+  width: auto;
+}
+
+.wk-mp-activity__col-actor {
+  width: 144px;
+}
+
+.wk-mp-activity__col-source {
+  width: 160px;
+}
+
+.wk-mp-activity__time-text {
+  font-family: 'Inter', var(--wk-font-sans);
+}
+
+.wk-mp-activity__td-empty {
+  color: var(--wk-icon-muted);
+}
+
+/* ─── 变更内容 diff 渲染 ─── */
+.wk-mp-activity__diff-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-mp-activity__diff-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  font-size: var(--wk-text-size-md);
+  line-height: 20px;
+}
+
+.wk-mp-activity__diff-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+}
+
+.wk-mp-activity__icon-add {
+  color: #34C724;
+  flex-shrink: 0;
+}
+
+.wk-mp-activity__icon-rm {
+  color: #F54A45;
+  flex-shrink: 0;
+}
+
+.wk-mp-activity__icon-arrow {
+  color: var(--wk-icon-muted);
+  flex-shrink: 0;
+}
+
+.wk-mp-activity__old {
+  text-decoration: line-through;
+  color: var(--wk-icon-default);
+}
+
+.wk-mp-activity__new {
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-regular);
 }
 
 .wk-mp-activity__row {
@@ -1214,22 +1345,21 @@ textarea.wk-mp-goal__text--editing {
 }
 
 .wk-mp-activity__actor {
-  flex-shrink: 0;
-  min-width: 0;
-  max-width: 140px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--wk-text-tertiary, #a1a1aa);
+  gap: var(--wk-sp-1);
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-regular);
+  color: var(--wk-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 
 .wk-mp-activity__actor .wk-avatar {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -1243,22 +1373,22 @@ textarea.wk-mp-goal__text--editing {
 .wk-mp-activity__filter-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  min-width: 100px;
-  border: 1px solid var(--wk-border-default, #e4e4e7);
-  border-radius: 6px;
-  background: var(--wk-bg-surface, #fff);
-  font-size: 12px;
-  color: var(--wk-text-primary, #18181b);
+  gap: var(--wk-sp-1);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  line-height: 20px;
+  color: var(--wk-text-primary);
   cursor: pointer;
-  transition: all 0.12s;
+  transition: opacity var(--wk-dur-fast);
 }
 
 .wk-mp-activity__filter-btn:hover {
-  background: var(--wk-bg-hover, #f4f4f5);
+  background: transparent;
+  opacity: 0.8;
 }
 
 .wk-mp-activity__filter-dropdown {

@@ -1314,7 +1314,7 @@ function TimelinePanel({
           type="button"
           className="wk-mp-tl__sort-btn"
           onClick={() => setSortNewest((v) => !v)}
-          title={sortNewest ? '当前：最新在上，点击切换为最旧在上' : '当前：最旧在上，点击切换为最新在上'}
+          title="切换排序"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M7.33333 10.667L4.66667 13.3337L2 10.667M4.66667 13.3337V2.66699" stroke="currentColor" strokeOpacity={sortNewest ? 1 : 0.4} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
@@ -1524,23 +1524,44 @@ function ActivityContent({ activity }: { activity: MatterActivity }) {
   const detail = activity.detail || {};
   switch (activity.action) {
     case "created":
-      return <span>创建了事项</span>;
+      return <span>初始 {(detail.summary as string) || "创建了事项"}</span>;
     case "title_changed":
       return (
-        <span>
+        <span className="wk-mp-activity__diff-inline">
           <span className="wk-mp-activity__old">
             {(detail.from as string) || ""}
           </span>
-          {" → "}
+          <ActivityArrowIcon />
           <span className="wk-mp-activity__new">
             {(detail.to as string) || ""}
           </span>
         </span>
       );
-    case "description_changed":
+    case "description_changed": {
+      // 设计稿样式：每行带 +/- 图标 + diff 内容
+      // 后端 detail.summary 是文本摘要；如果有 added/removed 数组则按行渲染
+      const added = (detail.added as string[]) || [];
+      const removed = (detail.removed as string[]) || [];
+      if (added.length === 0 && removed.length === 0) {
+        return <span>{(detail.summary as string) || "更新了描述"}</span>;
+      }
       return (
-        <span>{(detail.summary as string) || "更新了描述"}</span>
+        <div className="wk-mp-activity__diff-list">
+          {added.map((line, i) => (
+            <div key={`add-${i}`} className="wk-mp-activity__diff-row wk-mp-activity__diff-row--add">
+              <ActivityPlusIcon />
+              <span className="wk-mp-activity__new">"{line}"</span>
+            </div>
+          ))}
+          {removed.map((line, i) => (
+            <div key={`rm-${i}`} className="wk-mp-activity__diff-row wk-mp-activity__diff-row--rm">
+              <ActivityMinusIcon />
+              <span className="wk-mp-activity__old">"{line}"</span>
+            </div>
+          ))}
+        </div>
       );
+    }
     case "deadline_changed": {
       const from = detail.from
         ? new Date((detail.from as number) * 1000).toLocaleDateString("zh-CN")
@@ -1549,20 +1570,20 @@ function ActivityContent({ activity }: { activity: MatterActivity }) {
         ? new Date((detail.to as number) * 1000).toLocaleDateString("zh-CN")
         : "无";
       return (
-        <span>
+        <span className="wk-mp-activity__diff-inline">
           <span className="wk-mp-activity__old">{from}</span>
-          {" → "}
+          <ActivityArrowIcon />
           <span className="wk-mp-activity__new">{to}</span>
         </span>
       );
     }
     case "status_changed":
       return (
-        <span>
+        <span className="wk-mp-activity__diff-inline">
           <span className="wk-mp-activity__old">
             {(detail.from as string) || ""}
           </span>
-          {" → "}
+          <ActivityArrowIcon />
           <span className="wk-mp-activity__new">
             {(detail.to as string) || ""}
           </span>
@@ -1570,31 +1591,60 @@ function ActivityContent({ activity }: { activity: MatterActivity }) {
       );
     case "assignee_added":
       return (
-        <span>
-          添加 <UserName uid={(detail.user_id as string) || ""} />
+        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--add">
+          <ActivityPlusIcon />
+          <UserName uid={(detail.user_id as string) || ""} />
         </span>
       );
     case "assignee_removed":
       return (
-        <span>
-          移除 <UserName uid={(detail.user_id as string) || ""} />
+        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--rm">
+          <ActivityMinusIcon />
+          <UserName uid={(detail.user_id as string) || ""} />
         </span>
       );
     case "channel_linked":
       return (
-        <span>
-          关联 #{(detail.channel_name as string) || (detail.channel_id as string) || ""}
+        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--add">
+          <ActivityPlusIcon />
+          #{(detail.channel_name as string) || (detail.channel_id as string) || ""}
         </span>
       );
     case "channel_unlinked":
       return (
-        <span>
-          取消关联 #{(detail.channel_id as string) || ""}
+        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--rm">
+          <ActivityMinusIcon />
+          #{(detail.channel_id as string) || ""}
         </span>
       );
     default:
       return <span>{activity.action}</span>;
   }
+}
+
+// ─── Activity 行内 SVG 图标 ──
+function ActivityPlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="wk-mp-activity__icon-add" aria-hidden="true">
+      <path fillRule="evenodd" clipRule="evenodd" d="M8 14.667A6.667 6.667 0 108 1.333a6.667 6.667 0 000 13.334zm.667-9.334a.667.667 0 10-1.334 0v2H5.333a.667.667 0 100 1.334h2v2a.667.667 0 101.334 0v-2h2a.667.667 0 100-1.334h-2v-2z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ActivityMinusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="wk-mp-activity__icon-rm" aria-hidden="true">
+      <path fillRule="evenodd" clipRule="evenodd" d="M8 14.667A6.667 6.667 0 108 1.333a6.667 6.667 0 000 13.334zM5.333 7.333a.667.667 0 100 1.334h5.334a.667.667 0 100-1.334H5.333z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ActivityArrowIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="wk-mp-activity__icon-arrow" aria-hidden="true">
+      <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function ActivityPanel({
@@ -1643,45 +1693,18 @@ function ActivityPanel({
     FILTER_OPTIONS.find((o) => o.id === filter) || FILTER_OPTIONS[0];
 
   return (
-    <div className="wk-mp-tl">
-      {/* Header: 排序 + 筛选 */}
+    <div className="wk-mp-activity">
+      {/* Toolbar: 类型筛选 + 时间排序 */}
       <div className="wk-mp-activity__toolbar">
-        <div className="wk-mp-tl__sort-group">
-          <button
-            type="button"
-            className={`wk-mp-tl__sort-btn${sortNewest ? " is-active" : ""}`}
-            onClick={() => setSortNewest(true)}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="15" y2="12" />
-              <line x1="3" y1="18" x2="9" y2="18" />
-            </svg>
-            最新在上
-          </button>
-          <button
-            type="button"
-            className={`wk-mp-tl__sort-btn${!sortNewest ? " is-active" : ""}`}
-            onClick={() => setSortNewest(false)}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="3" y1="6" x2="9" y2="6" />
-              <line x1="3" y1="12" x2="15" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-            最旧在上
-          </button>
-        </div>
-        {/* 类型筛选 */}
         <span className="wk-mp-activity__filter-wrap" ref={filterRef}>
           <button
             type="button"
             className="wk-mp-activity__filter-btn"
             onClick={() => setFilterOpen((o) => !o)}
           >
-            <span>{currentFilter.label}</span>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polyline points="6 9 12 15 18 9" />
+            <span>变更类型：{currentFilter.label}</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M4.29 6.27L8 9.71l3.71-3.42" stroke="currentColor" strokeOpacity="0.4" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
           {filterOpen && (
@@ -1703,41 +1726,68 @@ function ActivityPanel({
             </div>
           )}
         </span>
+        <button
+          type="button"
+          className="wk-mp-tl__sort-btn"
+          onClick={() => setSortNewest((v) => !v)}
+          title="切换排序"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M7.33333 10.667L4.66667 13.3337L2 10.667M4.66667 13.3337V2.66699" stroke="currentColor" strokeOpacity={sortNewest ? 1 : 0.4} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M8.66602 5.33366L11.3327 2.66699L13.9993 5.33366M11.3327 2.66699V13.3337" stroke="currentColor" strokeOpacity={sortNewest ? 0.4 : 1} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          时间排序
+        </button>
       </div>
 
       {loading && <div className="wk-mp-empty-tab">加载中...</div>}
       {!loading && sorted.length === 0 && (
         <div className="wk-mp-empty-tab">暂无变更记录</div>
       )}
-      {!loading &&
-        sorted.map((a) => {
-          const isGoal = a.action === "description_changed";
-          return (
-            <div
-              key={a.id}
-              className={`wk-mp-activity__row${isGoal ? " wk-mp-activity__row--goal" : ""}`}
-            >
-              <span className="wk-mp-activity__time">
-                {formatActivityTime(a.created_at)}
-              </span>
-              <span
-                className={`wk-mp-activity__label${isGoal ? " wk-mp-activity__label--goal" : ""}`}
-              >
-                {ACTION_LABELS[a.action] || a.action}
-              </span>
-              <span className="wk-mp-activity__content">
-                <ActivityContent activity={a} />
-              </span>
-              <span className="wk-mp-activity__actor">
-                <WKAvatar
-                  channel={new Channel(a.actor_id, ChannelTypePerson)}
-                  style={{ width: 14, height: 14 }}
-                />
-                <UserName uid={a.actor_id} />
-              </span>
-            </div>
-          );
-        })}
+      {!loading && sorted.length > 0 && (
+        <div className="wk-mp-activity__table-wrap">
+          <table className="wk-mp-activity__table">
+            <thead>
+              <tr>
+                <th className="wk-mp-activity__th wk-mp-activity__col-time">变更时间</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-type">变更类型</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-content">变更内容</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-actor">变更人</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-source">来源群</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((a) => (
+                <tr key={a.id} className="wk-mp-activity__tr">
+                  <td className="wk-mp-activity__td wk-mp-activity__col-time">
+                    <span className="wk-mp-activity__time-text">
+                      {formatActivityTime(a.created_at)}
+                    </span>
+                  </td>
+                  <td className="wk-mp-activity__td wk-mp-activity__col-type">
+                    {ACTION_LABELS[a.action] || a.action}
+                  </td>
+                  <td className="wk-mp-activity__td wk-mp-activity__col-content">
+                    <ActivityContent activity={a} />
+                  </td>
+                  <td className="wk-mp-activity__td wk-mp-activity__col-actor">
+                    <span className="wk-mp-activity__actor">
+                      <WKAvatar
+                        channel={new Channel(a.actor_id, ChannelTypePerson)}
+                        style={{ width: 20, height: 20 }}
+                      />
+                      <UserName uid={a.actor_id} />
+                    </span>
+                  </td>
+                  <td className="wk-mp-activity__td wk-mp-activity__col-source">
+                    <span className="wk-mp-activity__td-empty">-</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
