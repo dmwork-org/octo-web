@@ -192,12 +192,6 @@ export default function OwnerEditor({
 
       {open && canEdit && (
         <div className="wk-owner-editor__dropdown">
-          <div className="wk-owner-editor__hint">
-            多选 · 至少保留 1 位
-          </div>
-          <div className="wk-owner-editor__hint wk-owner-editor__hint--sub">
-            候选人来自 Matter 关联的群
-          </div>
           {mergedCandidates.length === 0 && (
             <div className="wk-owner-editor__empty">
               暂无可选成员
