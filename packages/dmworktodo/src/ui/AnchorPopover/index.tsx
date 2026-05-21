@@ -252,7 +252,7 @@ function MessageRow({
     const msg = result.data;
     return (
         <div
-            className={`wk-anchor-pop__msg${onJump ? ' wk-anchor-pop__msg--clickable' : ''}`}
+            className={`wk-anchor-pop__msg${onJump ? ' wk-anchor-pop__msg--clickable' : ' wk-anchor-pop__msg--disabled'}`}
             onClick={onJump}
             role={onJump ? 'button' : undefined}
             tabIndex={onJump ? 0 : undefined}
