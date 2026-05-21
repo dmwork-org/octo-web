@@ -596,6 +596,7 @@ export default function MatterDetailPanel({
           <div className="wk-mp-header__row1">
             <StatusPicker
               status={matter.status}
+              seqNo={matter.seq_no}
               onChange={handleStatusChange}
               isCreator={matter.creator_id === WKApp.loginInfo.uid}
               canEditStatus={canEditOwner}
@@ -959,11 +960,13 @@ const STATUS_OPTIONS: { value: MatterStatus; label: string; cls: string }[] = [
 
 function StatusPicker({
   status,
+  seqNo,
   onChange,
   isCreator,
   canEditStatus,
 }: {
   status: MatterStatus;
+  seqNo?: number;
   onChange: (s: MatterStatus) => void;
   isCreator: boolean;
   canEditStatus: boolean;
@@ -1007,6 +1010,7 @@ function StatusPicker({
       >
         <span className="wk-mp-pill__dot" />
         {current.label}
+        {seqNo ? <span className="wk-mp-pill__no">｜M-{seqNo}</span> : null}
       </button>
       {open && !isDisabled && (
         <div className="wk-mp-status-dropdown">
@@ -2117,7 +2121,8 @@ function EditableDeadline({
   const formatDisplay = (iso: string | null) => {
     if (!iso) return null;
     const d = new Date(iso);
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    return `${d.getMonth() + 1}/${d.getDate()} ${weekdays[d.getDay()]}`;
   };
 
   const handleChange = async (date: Date | Date[] | string | string[] | undefined) => {
@@ -2153,21 +2158,17 @@ function EditableDeadline({
         triggerRender={() => (
           <span className="wk-mp-header__ddl-trigger">
             <svg
-              width="11"
-              height="11"
-              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="1.2"
             >
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
+              <path d="M5.33 1.33v2M10.67 1.33v2M2 6h12M3.33 3.33h9.34a1.33 1.33 0 011.33 1.34v8a1.33 1.33 0 01-1.33 1.33H3.33A1.33 1.33 0 012 12.67v-8a1.33 1.33 0 011.33-1.34z" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="wk-mp-header__ddl-label">截止</span>
             <span className="wk-mp-header__ddl-value">
-              {display || "未设置"}
+              {display ? `截止到 ${display}` : "设置截止日期"}
             </span>
           </span>
         )}

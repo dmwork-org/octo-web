@@ -235,6 +235,10 @@ input.wk-mp-header__title--editing {
   border-color: transparent;
 }
 
+.wk-mp-pill__no {
+  font-weight: var(--wk-font-regular);
+}
+
 .wk-mp-status-dropdown {
   position: absolute;
   z-index: 50;
