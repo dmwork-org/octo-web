@@ -251,6 +251,7 @@ function MessageRow({
         <div
             className={`wk-anchor-pop__msg${onJump ? ' wk-anchor-pop__msg--clickable' : ' wk-anchor-pop__msg--disabled'}`}
             onClick={onJump}
+            onKeyDown={onJump ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onJump(); } } : undefined}
             role={onJump ? 'button' : undefined}
             tabIndex={onJump ? 0 : undefined}
         >

@@ -38,7 +38,7 @@ export type OpenCreateTaskPayload = {
 function parseMentionText(raw: string): { title: string; uids: string[] } {
   const uids: string[] = [];
   const title = raw.replace(/@\[([^:]*):([^\]]*)\]/g, (_match, uid, name) => {
-    if (uid !== "-1") uids.push(uid);
+    if (uid && uid !== "-1") uids.push(uid);
     return uid === "-1" ? "@所有人" : `@${name}`;
   });
   return { title: title.trim(), uids: [...new Set(uids)] };

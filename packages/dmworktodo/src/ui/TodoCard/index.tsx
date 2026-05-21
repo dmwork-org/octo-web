@@ -1,6 +1,6 @@
 import React from 'react';
 import { Channel, ChannelTypePerson } from 'wukongimjssdk';
-import type { Matter, MatterStatus } from '../../bridge/types';
+import type { Matter } from '../../bridge/types';
 import WKAvatar from '@octo/base/src/Components/WKAvatar';
 import './index.css';
 
@@ -12,7 +12,6 @@ export interface MatterCardProps {
   creatorName?: string;
   selected?: boolean;
   onClick?: (matterId: string) => void;
-  onStatusChange?: (matterId: string, newStatus: MatterStatus) => void;
   className?: string;
 }
 
@@ -72,7 +71,6 @@ export default function MatterCard({
   creatorName,
   selected = false,
   onClick,
-  onStatusChange,
   className,
 }: MatterCardProps) {
   const handleClick = () => {

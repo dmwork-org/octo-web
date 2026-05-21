@@ -103,7 +103,7 @@ export default function CreateTaskModal({
   // ─── 确认提交 ──────────────────────────────────────────
   const handleConfirm = useCallback(async () => {
     const trimmedTitle = title.trim();
-    if (!trimmedTitle || submitting) return;
+    if (!trimmedTitle || !description.trim() || assigneeUids.length === 0 || !deadline || submitting) return;
 
     setSubmitting(true);
     try {
@@ -308,7 +308,7 @@ export default function CreateTaskModal({
             type="button"
             className="wk-create-task-modal__btn wk-create-task-modal__btn--confirm"
             onClick={handleConfirm}
-            disabled={!title.trim() || submitting}
+            disabled={!title.trim() || !description.trim() || assigneeUids.length === 0 || !deadline || submitting}
           >
             {sendOnConfirm ? '发送并创建事项' : '确定'}
           </button>

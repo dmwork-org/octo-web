@@ -1,5 +1,5 @@
 /*
- * MatterDetailPanel — 严格对齐原型 v19
+ * MatterDetailPanel �?严格对齐原型 v19
  */
 
 /* ─── Main container ─────────────────────────────────── */
@@ -269,14 +269,14 @@ input.wk-mp-header__title--editing {
 }
 
 .wk-mp-pill--active {
-  background: #ebf9ff;
-  color: #005694;
+  background: var(--wk-status-active-bg);
+  color: var(--wk-status-active-text);
   border-color: transparent;
 }
 
 .wk-mp-pill--done {
-  background: #ecf9ec;
-  color: #176221;
+  background: var(--wk-status-done-bg);
+  color: var(--wk-status-done-text);
   border-color: transparent;
 }
 
@@ -438,7 +438,7 @@ textarea.wk-mp-goal__text--editing {
   flex-shrink: 0;
 }
 
-/* ─── 创建人 / 负责人（按 Figma 设计稿） ─────────────── */
+/* ─── 创建�?/ 负责人（�?Figma 设计稿） ─────────────── */
 .wk-mp-people {
   margin-top: var(--wk-sp-2);
   padding: 0;
@@ -747,27 +747,6 @@ textarea.wk-mp-goal__text--editing {
   color: var(--wk-text-primary);
 }
 
-/* 旧的 progress 样式保留兼容（已不使用） */
-.wk-mp-channels__card-progress {
-  margin-top: 0;
-  padding: 0;
-  border-left: none;
-  background: transparent;
-  border-radius: 0;
-}
-
-.wk-mp-channels__card-progress-label {
-  display: none;
-}
-
-.wk-mp-channels__card-progress-text {
-  font-size: var(--wk-text-size-md);
-  line-height: 20px;
-  color: var(--wk-text-primary);
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: var(--wk-font-regular);
-}
 
 .wk-mp-channels__card-actions {
   display: flex;
@@ -925,8 +904,8 @@ textarea.wk-mp-goal__text--editing {
   background: rgba(239, 68, 68, 0.06);
 }
 
-/* ─── Timeline Panel (对齐原型 v19 群内事件时间线) ────────── */
-/* ─── Timeline Panel（按 Figma 设计稿 1411:11453） ────── */
+/* ─── Timeline Panel (对齐原型 v19 群内事件时间�? ────────── */
+/* ─── Timeline Panel（按 Figma 设计�?1411:11453�?────── */
 .wk-mp-tl {
   margin-top: 0;
   padding: var(--wk-sp-6);
@@ -1122,7 +1101,7 @@ textarea.wk-mp-goal__text--editing {
   font-weight: var(--wk-font-regular);
 }
 
-/* 原消息 anchor button */
+/* 原消�?anchor button */
 .wk-mp-tl__anchor-btn {
   display: inline-flex;
   align-items: center;
@@ -1206,7 +1185,7 @@ textarea.wk-mp-goal__text--editing {
 }
 
 /* ─── Activity (变更记录) ─────────────────────────────── */
-/* ─── Activity (变更记录，按 Figma 设计稿) ───────────── */
+/* ─── Activity (变更记录，按 Figma 设计�? ───────────── */
 .wk-mp-activity {
   padding: 0 var(--wk-sp-4);
   display: flex;
@@ -1240,7 +1219,7 @@ textarea.wk-mp-goal__text--editing {
 .wk-mp-activity__th {
   height: 32px;
   padding: 0 var(--wk-sp-3);
-  background: #F5F6F7;
+  background: var(--wk-table-header-bg);
   text-align: left;
   font-size: var(--wk-text-size-sm);
   font-weight: var(--wk-font-medium);
@@ -1321,12 +1300,12 @@ textarea.wk-mp-goal__text--editing {
 }
 
 .wk-mp-activity__icon-add {
-  color: #34C724;
+  color: var(--wk-diff-add);
   flex-shrink: 0;
 }
 
 .wk-mp-activity__icon-rm {
-  color: #F54A45;
+  color: var(--wk-diff-remove);
   flex-shrink: 0;
 }
 
@@ -1358,7 +1337,7 @@ textarea.wk-mp-goal__text--editing {
   border-bottom: none;
 }
 
-/* 目标变更行: 紫色左边框 + 淡紫背景 (对齐原型 goal_change 高亮) */
+/* 目标变更�? 紫色左边�?+ 淡紫背景 (对齐原型 goal_change 高亮) */
 .wk-mp-activity__row--goal {
   padding-left: 8px;
   border-left: 2px solid var(--wk-brand-primary, #7c3aed);
@@ -1501,10 +1480,10 @@ textarea.wk-mp-goal__text--editing {
   color: var(--wk-icon-default);
 }
 
-/* ─── 响应式: 窄宽度适配 (container query) ─────────────────
- * 事项详情面板作为可拖拽宽度的侧栏, 拖到 < 420px 时:
+/* ─── 响应�? 窄宽度适配 (container query) ─────────────────
+ * 事项详情面板作为可拖拽宽度的侧栏, 拖到 < 420px �?
  *   - inner padding 缩减
- *   - activity actor 列 max-width 压到 80px 并强制省略号
+ *   - activity actor �?max-width 压到 80px 并强制省略号
  *   - 关联群卡头部 meta 允许换行
  *   - tabs 在需要时支持横滚
  */

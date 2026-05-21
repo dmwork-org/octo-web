@@ -66,6 +66,22 @@
   --wk-badge-danger-bg: rgba(245, 74, 69, 0.15); /* 淡红背景 */
   --wk-badge-danger-text: #f54a45; /* 红色文字 */
 
+  /* ── Status tag colors（事项状态 ColorTag） ── */
+  --wk-status-active-bg: #ebf9ff;
+  --wk-status-active-text: #005694;
+  --wk-status-done-bg: #ecf9ec;
+  --wk-status-done-text: #176221;
+  --wk-status-archived-bg: rgba(28, 28, 35, 0.04);
+  --wk-status-archived-text: var(--wk-text-tertiary);
+
+  /* ── Diff/activity icon colors ── */
+  --wk-diff-add: #34c724;
+  --wk-diff-remove: #f54a45;
+  --wk-tag-output: #4954e6;
+
+  /* ── Table header ── */
+  --wk-table-header-bg: #f5f6f7;
+
   /* ── Background hover states ── */
   --wk-bg-item-hover: rgba(46, 50, 56, 0.09); /* hover 态背景 */
   --wk-bg-tab: rgba(52, 59, 58, 0.05); /* tab 背景 */

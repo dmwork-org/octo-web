@@ -662,7 +662,6 @@ export default function MatterDetailPanel({
                   }}
                 />
               </div>
-              <div className="wk-mp-header__actions" />
             </>
           )}
         </header>

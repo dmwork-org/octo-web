@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { DatePicker } from '@douyinfe/semi-ui';
-import { WKApp, isSafeUrl } from '@octo/base';
+import { WKApp } from '@octo/base';
 import { Channel } from 'wukongimjssdk';
 import * as api from '../../api/todoApi';
-import type { MatterDetail, MatterComment, CommentAttachmentReq } from '../../bridge/types';
-import MemberPicker from '../MemberPicker';
+import type { MatterDetail, MatterComment } from '../../bridge/types';
 import UserName from '../UserName';
 import { Toast } from '../../utils/toast';
 import './index.css';
@@ -14,7 +12,6 @@ import './index.css';
 export interface DetailPanelProps {
   matterId: string;
   onClose?: () => void;
-  showBack?: boolean;
   onStatusChanged?: () => void;
   channel?: { channelId: string; channelType: number };
 }
@@ -34,7 +31,7 @@ function formatDeadlineDisplay(deadline: string): string {
 
 // ─── DetailPanel 主组件 ────────────────────────────────────
 
-export default function DetailPanel({ matterId, onClose, onStatusChanged, channel, showBack }: DetailPanelProps) {
+export default function DetailPanel({ matterId, onClose, onStatusChanged, channel }: DetailPanelProps) {
   const [matter, setMatter] = useState<MatterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [comments, setComments] = useState<MatterComment[]>([]);
@@ -139,15 +136,6 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
     } catch { Toast.error('删除评论失败'); }
   }, [matterId]);
 
-  const handleDeadlineChange = useCallback(async (deadline: string) => {
-    if (!matter || matter.status === 'archived') return;
-    try {
-      const updated = await api.updateMatter(matterId, { deadline: deadline || null });
-      setMatter(updated);
-      onStatusChanged?.();
-    } catch { Toast.error('更新截止日期失败'); }
-  }, [matter, matterId, onStatusChanged]);
-
   const statusTag = matter ? (STATUS_TAG[matter.status] || STATUS_TAG.open) : STATUS_TAG.open;
 
   return (
@@ -182,11 +170,13 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
               )}
             </button>
           )}
-          <button type="button" className="wk-matter-side-panel__header-btn" onClick={onClose} aria-label="关闭">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
+          {onClose && (
+            <button type="button" className="wk-matter-side-panel__header-btn" onClick={onClose} aria-label="关闭">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
