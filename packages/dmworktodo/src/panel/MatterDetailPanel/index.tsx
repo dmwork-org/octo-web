@@ -601,9 +601,15 @@ export default function MatterDetailPanel({
             <>
               <div className="wk-mp-header__left">
                 <div className="wk-mp-header__row1">
-                  <span className="wk-mp-header__inline-title">
-                    M-{matter.seq_no}｜{matter.title}
-                  </span>
+                  <EditableTitle
+                    value={matter.title}
+                    prefix={`M-${matter.seq_no}｜`}
+                    inline
+                    onSave={async (newTitle) => {
+                      const updated = await updateMatter(matter.id, { title: newTitle });
+                      applyMatterUpdate(updated);
+                    }}
+                  />
                   <StatusPicker
                     status={matter.status}
                     onChange={handleStatusChange}
@@ -1881,9 +1887,15 @@ function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
 function EditableTitle({
   value,
   onSave,
+  prefix,
+  inline,
 }: {
   value: string;
   onSave: (v: string) => Promise<void>;
+  /** 显示在标题前的前缀文字（如 "M-123｜"），不参与编辑 */
+  prefix?: string;
+  /** 内联模式：用 span 而非 h1，字号更小 */
+  inline?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -1930,7 +1942,8 @@ function EditableTitle({
 
   if (editing) {
     return (
-      <div ref={containerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
+      <div ref={containerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4, flex: inline ? 1 : undefined, minWidth: 0 }}>
+        {prefix && <span className="wk-mp-header__inline-prefix">{prefix}</span>}
         <input
           ref={inputRef}
           className="wk-mp-header__title wk-mp-header__title--editing"
@@ -1975,6 +1988,18 @@ function EditableTitle({
           size="sm"
         />
       </div>
+    );
+  }
+
+  if (inline) {
+    return (
+      <span
+        className="wk-mp-header__inline-title"
+        onClick={() => setEditing(true)}
+        title="点击编辑标题"
+      >
+        {prefix}{value}
+      </span>
     );
   }
 
