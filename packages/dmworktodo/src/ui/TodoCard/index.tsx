@@ -109,7 +109,7 @@ export default function MatterCard({
 
       {/* 第二行：事项标题 */}
       <div className={`wk-matter-card__title${matter.status === 'done' ? ' wk-matter-card__title--done' : matter.status === 'archived' ? ' wk-matter-card__title--archived' : ''}`}>
-        {matter.title.replace(/@\[([^:]+):([^\]]+)\]/g, (_m, _uid, name) => `@${name}`)}
+        {matter.title.replace(/@\[([^:]*):([^\]]*)\]/g, (_m, _uid, name) => `@${name}`)}
       </div>
 
       {/* 第三行：创建人 + 负责人 */}

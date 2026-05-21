@@ -37,7 +37,7 @@ export type OpenCreateTaskPayload = {
 /** 解析 @[uid:name] 格式，返回纯文本 title 和 uid 列表 */
 function parseMentionText(raw: string): { title: string; uids: string[] } {
   const uids: string[] = [];
-  const title = raw.replace(/@\[([^:]+):([^\]]+)\]/g, (_match, uid, name) => {
+  const title = raw.replace(/@\[([^:]*):([^\]]*)\]/g, (_match, uid, name) => {
     if (uid !== "-1") uids.push(uid);
     return uid === "-1" ? "@所有人" : `@${name}`;
   });

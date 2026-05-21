@@ -210,7 +210,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
                 />
               ) : (
                 <h2 className="wk-matter-detail__title" onClick={handleStartEditTitle} title="点击编辑标题">
-                  {matter.title.replace(/@\[([^:]+):([^\]]+)\]/g, (_m, _uid, name) => `@${name}`)}
+                  {matter.title.replace(/@\[([^:]*):([^\]]*)\]/g, (_m, _uid, name) => `@${name}`)}
                 </h2>
               )}
 
