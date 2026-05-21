@@ -183,6 +183,11 @@ export default function AnchorPopover({
                     <span className="wk-anchor-pop__channel">
                         #{displayChannelName}
                     </span>
+                    {!loading && results.length > 0 && results[0].ok && (
+                        <span className="wk-anchor-pop__head-time">
+                            {formatTime(results[0].data.timestamp)}
+                        </span>
+                    )}
                 </div>
 
                 <div className="wk-anchor-pop__body" ref={bodyRef}>

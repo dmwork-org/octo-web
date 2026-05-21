@@ -63,6 +63,14 @@
   max-width: 325px;
 }
 
+.wk-anchor-pop__head-time {
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-regular);
+  line-height: 18px;
+  color: var(--wk-icon-default);
+  flex-shrink: 0;
+}
+
 /* (close button removed — popover closes on mask click) */
 
 /* ─── Body ─── */
