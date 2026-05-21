@@ -225,6 +225,19 @@ input.wk-mp-header__title--editing {
   box-shadow: 0 0 0 2px rgba(127, 59, 245, 0.1);
 }
 
+/* 嵌入模式内联编辑 input */
+.wk-mp-header__left input.wk-mp-header__title--editing {
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  line-height: 20px;
+  margin: 0;
+  width: 100%;
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--wk-sp-1);
+  height: 24px;
+}
+
 /* ─── Status Pill ────────────────────────────────────── */
 .wk-mp-status-wrap {
   position: relative;
