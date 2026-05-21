@@ -26,6 +26,7 @@
   display: flex;
   flex-direction: column;
   height: 560px;
+  padding: 1px 0 1px 1px;
   background: var(--wk-bg-surface);
 }
 
@@ -67,8 +68,6 @@
 /* ─── Content (双栏) ─── */
 .wk-lcm__content {
   display: flex;
-  flex: 1;
-  min-height: 0;
   padding: 0 var(--wk-sp-4);
   border-bottom: 1px solid var(--wk-brand-tint-15);
 }
@@ -76,6 +75,7 @@
 /* ─── 左栏 ─── */
 .wk-lcm__left {
   width: 296px;
+  height: 537px;
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1);
@@ -113,7 +113,7 @@
 }
 
 .wk-lcm__search-input::placeholder {
-  color: var(--wk-brand-tint-35);
+  color: var(--wk-icon-muted);
 }
 
 /* ─── 列表 ─── */
@@ -198,9 +198,18 @@
   white-space: nowrap;
 }
 
+.wk-lcm__item-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+  flex: 1;
+  min-width: 0;
+}
+
 /* ─── 右栏 ─── */
 .wk-lcm__right {
   width: 296px;
+  height: 537px;
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1);
@@ -213,7 +222,7 @@
   font-size: var(--wk-text-size-md);
   font-weight: var(--wk-font-medium);
   line-height: 20px;
-  color: var(--wk-brand-tint-35);
+  color: var(--wk-icon-muted);
 }
 
 .wk-lcm__selected-item {
@@ -248,8 +257,14 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: var(--wk-sp-3);
+  gap: 10px;
   padding: var(--wk-sp-4);
+}
+
+.wk-lcm__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
 }
 
 .wk-lcm__btn-cancel {

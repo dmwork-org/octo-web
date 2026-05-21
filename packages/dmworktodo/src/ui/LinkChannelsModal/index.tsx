@@ -97,7 +97,7 @@ export default function LinkChannelsModal({
       visible={visible}
       onCancel={onClose}
       footer={null}
-      width={608}
+      width={624}
       closable={false}
       maskClosable
       centered
@@ -161,7 +161,9 @@ export default function LinkChannelsModal({
                         )}
                       </span>
                       <span className="wk-lcm__item-avatar" />
-                      <span className="wk-lcm__item-name">{c.name}</span>
+                      <span className="wk-lcm__item-info">
+                        <span className="wk-lcm__item-name">{c.name}</span>
+                      </span>
                     </button>
                   );
                 })
@@ -177,7 +179,9 @@ export default function LinkChannelsModal({
             {selectedChannels.map((c) => (
               <div key={c.channelId} className="wk-lcm__selected-item">
                 <span className="wk-lcm__item-avatar" />
-                <span className="wk-lcm__item-name">{c.name}</span>
+                <span className="wk-lcm__item-info">
+                  <span className="wk-lcm__item-name">{c.name}</span>
+                </span>
                 <button
                   type="button"
                   className="wk-lcm__selected-remove"
@@ -195,17 +199,19 @@ export default function LinkChannelsModal({
 
         {/* Footer */}
         <div className="wk-lcm__footer">
-          <button type="button" className="wk-lcm__btn-cancel" onClick={onClose}>
-            取消
-          </button>
-          <button
-            type="button"
-            className="wk-lcm__btn-confirm"
-            disabled={selected.length === 0 || submitting}
-            onClick={handleConfirm}
-          >
-            确定
-          </button>
+          <div className="wk-lcm__footer-actions">
+            <button type="button" className="wk-lcm__btn-cancel" onClick={onClose}>
+              取消
+            </button>
+            <button
+              type="button"
+              className="wk-lcm__btn-confirm"
+              disabled={selected.length === 0 || submitting}
+              onClick={handleConfirm}
+            >
+              确定
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
