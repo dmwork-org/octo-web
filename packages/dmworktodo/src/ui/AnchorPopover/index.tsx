@@ -346,9 +346,10 @@ function formatFileSize(bytes: number): string {
 
 function formatTime(ts: number): string {
     if (!ts) return '';
-    // 后端 timestamp 是秒级 10 位, 乘 1000 转毫秒
     const d = new Date(ts * 1000);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
     const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${mm}-${dd} ${hh}:${min}`;
 }
