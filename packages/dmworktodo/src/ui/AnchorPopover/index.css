@@ -47,6 +47,7 @@
   border-bottom: none;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--wk-sp-2);
   background: transparent;
   flex-shrink: 0;
