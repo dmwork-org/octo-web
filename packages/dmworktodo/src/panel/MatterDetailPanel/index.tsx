@@ -49,6 +49,8 @@ export interface MatterDetailPanelProps {
   channelType: number;
   matterId?: string;
   onClose: () => void;
+  /** 是否显示关闭按钮（嵌入会话页面时为 true） */
+  showClose?: boolean;
 }
 
 export default function MatterDetailPanel({
@@ -56,6 +58,7 @@ export default function MatterDetailPanel({
   channelType: _channelType,
   matterId,
   onClose,
+  showClose = false,
 }: MatterDetailPanelProps) {
   const [matter, setMatter] = useState<MatterDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -612,20 +615,22 @@ export default function MatterDetailPanel({
             />
           </div>
           <div className="wk-mp-header__actions">
-            <button
-              type="button"
-              className="wk-mp-header__close"
-              onClick={onClose}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+            {showClose && (
+              <button
+                type="button"
+                className="wk-mp-header__close"
+                onClick={onClose}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
         </header>
 

@@ -208,6 +208,7 @@ export default function ChatMatterPanel({
           channelId={channelId}
           channelType={channelType}
           onClose={() => setSelectedMatterId(null)}
+          showClose
         />
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
       </div>
