@@ -16,13 +16,10 @@ export interface LinkChannelsModalProps {
   visible: boolean;
   matterId: string;
   matterTitle?: string;
-  /** 已关联的频道（用于标记"已关联"不可重复选） */
   linkedChannels: MatterChannel[];
   onClose: () => void;
   onLinked: () => void;
-  /** 外部注入的群列表加载函数（UI/数据分离）。 */
   loadChannels: () => Promise<ChannelOption[]>;
-  /** 外部注入的关联提交函数。 */
   onLinkChannel: (matterId: string, channelId: string, channelType: number, channelName: string) => Promise<void>;
 }
 
@@ -42,7 +39,6 @@ export default function LinkChannelsModal({
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // 加载用户的群组列表
   useEffect(() => {
     if (!visible) {
       setSearch("");
@@ -61,19 +57,18 @@ export default function LinkChannelsModal({
   const filtered = channels.filter((c) => {
     if (!search.trim()) return true;
     const kw = search.trim().toLowerCase();
-    return (
-      c.name.toLowerCase().includes(kw) ||
-      (c.desc && c.desc.toLowerCase().includes(kw))
-    );
+    return c.name.toLowerCase().includes(kw) || (c.desc && c.desc.toLowerCase().includes(kw));
   });
 
   const toggle = (channelId: string) => {
     if (linkedIds.has(channelId)) return;
     setSelected((prev) =>
-      prev.includes(channelId)
-        ? prev.filter((id) => id !== channelId)
-        : [...prev, channelId],
+      prev.includes(channelId) ? prev.filter((id) => id !== channelId) : [...prev, channelId],
     );
+  };
+
+  const removeSelected = (channelId: string) => {
+    setSelected((prev) => prev.filter((id) => id !== channelId));
   };
 
   const handleConfirm = useCallback(async () => {
@@ -88,19 +83,21 @@ export default function LinkChannelsModal({
       Toast.success(`已关联 ${selected.length} 个群聊`);
       onLinked();
       onClose();
-    } catch (err: any) {
-      Toast.error(err?.message || "关联失败");
+    } catch (err: unknown) {
+      Toast.error((err as Error)?.message || "关联失败");
     } finally {
       setSubmitting(false);
     }
   }, [selected, submitting, channels, matterId, onLinked, onClose, onLinkChannel]);
+
+  const selectedChannels = channels.filter((c) => selected.includes(c.channelId));
 
   return (
     <Modal
       visible={visible}
       onCancel={onClose}
       footer={null}
-      width={520}
+      width={608}
       closable={false}
       maskClosable
       centered
@@ -109,140 +106,106 @@ export default function LinkChannelsModal({
       <div className="wk-lcm">
         {/* Header */}
         <div className="wk-lcm__header">
-          <div>
-            <div className="wk-lcm__title">
-              关联群聊到{" "}
-              <span className="wk-lcm__title-id">
-                {matterTitle || matterId.slice(0, 8)}
-              </span>
-            </div>
-            <div className="wk-lcm__sub">
-              选择要监测的群, AI 将持续从这些群里蒸馏跟本事项相关的内容
-            </div>
-          </div>
-          <button type="button" className="wk-lcm__close" onClick={onClose}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+          <span className="wk-lcm__title">关联群聊</span>
+          <button type="button" className="wk-lcm__close" onClick={onClose} aria-label="关闭">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        {/* Search */}
-        <div className="wk-lcm__search">
-          <svg
-            className="wk-lcm__search-icon"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            className="wk-lcm__search-input"
-            placeholder="搜索群聊名或描述..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            autoFocus
-          />
-        </div>
+        {/* Content: 左右双栏 */}
+        <div className="wk-lcm__content">
+          {/* 左栏：候选列表 */}
+          <div className="wk-lcm__left">
+            {/* 搜索框 */}
+            <div className="wk-lcm__search-wrap">
+              <div className="wk-lcm__search">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="wk-lcm__search-icon">
+                  <circle cx="7.33" cy="7.33" r="5" stroke="currentColor" strokeWidth="1.33" />
+                  <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.33" strokeLinecap="round" />
+                </svg>
+                <input
+                  className="wk-lcm__search-input"
+                  placeholder="输入群聊名称/描述搜索"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
 
-        {/* List */}
-        <div className="wk-lcm__list">
-          {loading ? (
-            <div className="wk-lcm__empty">加载中...</div>
-          ) : filtered.length === 0 ? (
-            <div className="wk-lcm__empty">没有匹配的群聊</div>
-          ) : (
-            filtered.map((c) => {
-              const isLinked = linkedIds.has(c.channelId);
-              const isSelected = selected.includes(c.channelId);
-              return (
-                <button
-                  key={c.channelId}
-                  type="button"
-                  disabled={isLinked}
-                  onClick={() => toggle(c.channelId)}
-                  className={`wk-lcm__item ${isLinked ? "is-linked" : isSelected ? "is-selected" : ""}`}
-                >
-                  <span
-                    className={`wk-lcm__check ${isLinked ? "is-linked" : isSelected ? "is-checked" : ""}`}
-                  >
-                    {(isLinked || isSelected) && (
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="3"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </span>
-                  <div className="wk-lcm__item-info">
-                    <span className="wk-lcm__item-name">{c.name}</span>
-                    {c.channelType === 1 && (
-                      <span className="wk-lcm__dm-badge">DM</span>
-                    )}
-                    {c.desc && (
-                      <div className="wk-lcm__item-desc">{c.desc}</div>
-                    )}
-                  </div>
-                  <div className="wk-lcm__item-meta">
-                    {c.memberCount && (
-                      <span className="wk-lcm__item-members">
-                        {c.memberCount} 人
+            {/* 列表 */}
+            <div className="wk-lcm__list">
+              {loading ? (
+                <div className="wk-lcm__empty">加载中...</div>
+              ) : filtered.length === 0 ? (
+                <div className="wk-lcm__empty">没有匹配的群聊</div>
+              ) : (
+                filtered.map((c) => {
+                  const isLinked = linkedIds.has(c.channelId);
+                  const isSelected = selected.includes(c.channelId);
+                  return (
+                    <button
+                      key={c.channelId}
+                      type="button"
+                      disabled={isLinked}
+                      onClick={() => toggle(c.channelId)}
+                      className={`wk-lcm__item${isLinked ? " is-linked" : isSelected ? " is-selected" : ""}`}
+                    >
+                      <span className={`wk-lcm__check${isLinked ? " is-linked" : isSelected ? " is-checked" : ""}`}>
+                        {(isLinked || isSelected) && (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
                       </span>
-                    )}
-                    {isLinked && (
-                      <span className="wk-lcm__item-badge">已关联</span>
-                    )}
-                  </div>
+                      <span className="wk-lcm__item-avatar" />
+                      <span className="wk-lcm__item-name">{c.name}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* 右栏：已选列表 */}
+          <div className="wk-lcm__right">
+            <div className="wk-lcm__right-title">
+              已选{selected.length}个对话
+            </div>
+            {selectedChannels.map((c) => (
+              <div key={c.channelId} className="wk-lcm__selected-item">
+                <span className="wk-lcm__item-avatar" />
+                <span className="wk-lcm__item-name">{c.name}</span>
+                <button
+                  type="button"
+                  className="wk-lcm__selected-remove"
+                  onClick={() => removeSelected(c.channelId)}
+                  aria-label="移除"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
                 </button>
-              );
-            })
-          )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Footer */}
         <div className="wk-lcm__footer">
-          <div className="wk-lcm__footer-info">
-            已选 <span className="wk-lcm__footer-count">{selected.length}</span>{" "}
-            个群
-            {selected.length > 0 && (
-              <span className="wk-lcm__footer-hint"> · 确认后 AI 开始监测</span>
-            )}
-          </div>
-          <div className="wk-lcm__footer-actions">
-            <button
-              type="button"
-              className="wk-lcm__btn-cancel"
-              onClick={onClose}
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              className="wk-lcm__btn-confirm"
-              disabled={selected.length === 0 || submitting}
-              onClick={handleConfirm}
-            >
-              关联{selected.length > 0 ? ` (${selected.length})` : ""}
-            </button>
-          </div>
+          <button type="button" className="wk-lcm__btn-cancel" onClick={onClose}>
+            取消
+          </button>
+          <button
+            type="button"
+            className="wk-lcm__btn-confirm"
+            disabled={selected.length === 0 || submitting}
+            onClick={handleConfirm}
+          >
+            确定
+          </button>
         </div>
       </div>
     </Modal>
