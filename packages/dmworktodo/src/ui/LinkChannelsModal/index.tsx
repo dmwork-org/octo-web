@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Modal } from "@douyinfe/semi-ui";
+import { Channel } from "wukongimjssdk";
+import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import type { MatterChannel } from "../../bridge/types";
 import { Toast } from "../../utils/toast";
 import "./LinkChannelsModal.css";
@@ -160,7 +162,10 @@ export default function LinkChannelsModal({
                           </svg>
                         )}
                       </span>
-                      <span className="wk-lcm__item-avatar" />
+                      <WKAvatar
+                        channel={new Channel(c.channelId, c.channelType)}
+                        style={{ width: 32, height: 32, borderRadius: '50%' }}
+                      />
                       <span className="wk-lcm__item-info">
                         <span className="wk-lcm__item-name">{c.name}</span>
                       </span>
@@ -178,7 +183,10 @@ export default function LinkChannelsModal({
             </div>
             {selectedChannels.map((c) => (
               <div key={c.channelId} className="wk-lcm__selected-item">
-                <span className="wk-lcm__item-avatar" />
+                <WKAvatar
+                  channel={new Channel(c.channelId, c.channelType)}
+                  style={{ width: 32, height: 32, borderRadius: '50%' }}
+                />
                 <span className="wk-lcm__item-info">
                   <span className="wk-lcm__item-name">{c.name}</span>
                 </span>
