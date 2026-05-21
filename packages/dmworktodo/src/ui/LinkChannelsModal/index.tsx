@@ -97,7 +97,7 @@ export default function LinkChannelsModal({
       visible={visible}
       onCancel={onClose}
       footer={null}
-      width={624}
+      width={625}
       closable={false}
       maskClosable
       centered
