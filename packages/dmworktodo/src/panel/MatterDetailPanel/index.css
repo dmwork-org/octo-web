@@ -349,12 +349,13 @@ textarea.wk-mp-goal__text--editing {
   margin-top: 0;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--wk-text-tertiary, #71717a);
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.12s;
+  gap: var(--wk-sp-1);
+  font-size: var(--wk-text-size-md);
+  line-height: 18px;
+  color: var(--wk-text-primary);
+  padding: 0;
+  border-radius: 0;
+  transition: opacity var(--wk-dur-fast);
 }
 
 .wk-mp-goal__source--clickable {
@@ -362,18 +363,24 @@ textarea.wk-mp-goal__text--editing {
 }
 
 .wk-mp-goal__source--clickable:hover {
-  color: var(--wk-text-primary, #18181b);
-  background: var(--wk-bg-hover, #f4f4f5);
+  opacity: 0.8;
+  color: var(--wk-text-primary);
+  background: transparent;
 }
 
 .wk-mp-goal__source-anchor {
-  font-size: 10px;
+  font-size: var(--wk-text-size-md);
   color: var(--wk-color-accent);
-  font-weight: 500;
+  font-weight: var(--wk-font-regular);
 }
 
 .wk-mp-goal__source-sep {
-  color: var(--wk-border-default, #e4e4e7);
+  display: none;
+}
+
+.wk-mp-goal__source svg {
+  color: var(--wk-icon-muted);
+  flex-shrink: 0;
 }
 
 /* ─── 创建人 / 负责人（按 Figma 设计稿） ─────────────── */

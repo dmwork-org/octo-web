@@ -669,13 +669,8 @@ export default function MatterDetailPanel({
                   : undefined
               }
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-              >
-                <path d="M2.67 3.33h10.66v8H4l-1.33 1.34V3.33z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path fillRule="evenodd" clipRule="evenodd" d="M14.0004 1.33301H8.94326C8.76645 1.33301 8.59688 1.40325 8.47185 1.52827L0.943259 9.05686C0.42256 9.57756 0.422559 10.4218 0.943258 10.9425L5.05764 15.0569C5.57834 15.5776 6.42256 15.5776 6.94326 15.0569L14.4719 7.52827C14.5969 7.40325 14.6671 7.23368 14.6671 7.05687V1.99967C14.6671 1.63148 14.3686 1.33301 14.0004 1.33301ZM10.3338 7.33301C11.2543 7.33301 12.0004 6.58682 12.0004 5.66634C12.0004 4.74587 11.2543 3.99967 10.3338 3.99967C9.41331 3.99967 8.66712 4.74587 8.66712 5.66634C8.66712 6.58682 9.41331 7.33301 10.3338 7.33301Z" fill="currentColor" />
               </svg>
               {myGroupsLoading ? (
                 <span className="wk-mp-goal__source-skeleton" aria-label="加载中">
@@ -685,9 +680,6 @@ export default function MatterDetailPanel({
                 <span>来自 #{displaySourceName} · <UserName uid={matter.creator_id} /> · {formatSourceTime(matter.created_at)}</span>
               ) : (
                 <span style={{ filter: "blur(2.5px)", opacity: 0.35, userSelect: "none" }}>来自 #████</span>
-              )}
-              {!myGroupsLoading && isSourceMember && matter.source_msgs && matter.source_msgs.length > 0 && (
-                <span className="wk-mp-goal__source-anchor">↗</span>
               )}
             </div>
           )}
