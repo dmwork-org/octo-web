@@ -441,6 +441,9 @@ export class ChatVM extends ProviderListener {
 
         this.notifyListener()
         WKApp.menus.refresh() // Fix #3: 切换 Space 后刷新 badge
+        // 通知一次性读取 conversationManager.conversations 的消费者（合并转发等）
+        // 缓存已经回填,可以重新 load 了。
+        WKApp.mittBus.emit('conversation-list-refreshed')
     }
 
     async reloadRequestConversationList() {

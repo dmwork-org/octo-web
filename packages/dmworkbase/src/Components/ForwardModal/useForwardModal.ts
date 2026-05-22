@@ -241,10 +241,19 @@ export function useForwardModal(
     }
     WKSDK.shared().channelManager.addListener(channelListener)
 
+    // 切 Space 后 conversationManager.conversations 会被先清空再回填,
+    // 如果 modal 在回填前打开,初次 load() 会读到空 cache（缺最近会话/子区）。
+    // 监听 ChatVM 的回填广播,触发后重新 load 一次,保证最终能拿到完整数据。
+    const onConversationListRefreshed = () => {
+      load()
+    }
+    WKApp.mittBus.on('conversation-list-refreshed', onConversationListRefreshed)
+
     load()
 
     return () => {
       WKSDK.shared().channelManager.removeListener(channelListener)
+      WKApp.mittBus.off('conversation-list-refreshed', onConversationListRefreshed)
       rebuildDebounced.cancel()
     }
   }, [rebuildConvItems])
