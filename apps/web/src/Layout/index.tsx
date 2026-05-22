@@ -247,6 +247,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             );
         }
 
+        // OIDC bind page must take precedence over the invite-landing branch
+        // below: if a future URL composition (deep link, stale cookie) ever puts
+        // ?invite= on a /oidc/bind URL, we must still render the bind page —
+        // otherwise the bind token gets silently dropped on the floor. Defense
+        // in depth even though no documented flow constructs such a URL today.
+        // PR #72 review yujiawei #2.
+        if (window.location.pathname === '/oidc/bind') {
+            const bindComponent = WKApp.route.get('/oidc/bind')
+            if (bindComponent) {
+                return bindComponent
+            }
+        }
+
         // 邀请链接检测
         const urlParams = new URLSearchParams(window.location.search);
         const inviteCode = urlParams.get("invite");
