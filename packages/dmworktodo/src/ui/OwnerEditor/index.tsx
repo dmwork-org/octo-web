@@ -65,9 +65,15 @@ function OwnerOption({
       disabled={disabled}
       title={disabled ? '至少保留 1 位负责人' : undefined}
     >
-      {renderAvatar(uid, 16)}
+      <span className="wk-owner-editor__option-tick">
+        {picked && (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
+      {renderAvatar(uid, 20)}
       <span className="wk-owner-editor__option-name">{name}</span>
-      {picked && <span className="wk-owner-editor__option-check">✓</span>}
     </button>
   );
 }
@@ -166,44 +172,26 @@ export default function OwnerEditor({
 
   return (
     <span className="wk-owner-editor" ref={ref}>
-      <button {...triggerProps} className={triggerClass}>
-        <span className="wk-owner-editor__avatars">
-          {assignees.slice(0, 3).map((a, i) => (
-            <span
-              key={a.user_id}
-              className="wk-owner-editor__avatar-wrap"
-              style={{
-                marginLeft: i > 0 ? -6 : 0,
-                zIndex: assignees.length - i,
-              }}
-            >
-              {renderAvatar(a.user_id, 16)}
-            </span>
-          ))}
-        </span>
-        <span className="wk-owner-editor__names">
-          {assignees.slice(0, 3).map((a, i) => (
-            <React.Fragment key={a.user_id}>
-              {i > 0 && '\u3001'}
-              <OwnerNameInline uid={a.user_id} resolveName={resolveName} />
-            </React.Fragment>
-          ))}
-          {assignees.length > 3 && (
-            <span className="wk-owner-editor__names-more">
-              {` 等 ${assignees.length} 人`}
-            </span>
-          )}
-        </span>
-      </button>
+      <span className="wk-owner-editor__tags">
+        {assignees.slice(0, 2).map((a) => (
+          <button
+            key={a.user_id}
+            {...triggerProps}
+            className={triggerClass}
+          >
+            {renderAvatar(a.user_id, 16)}
+            <OwnerNameInline uid={a.user_id} resolveName={resolveName} />
+          </button>
+        ))}
+        {assignees.length > 2 && (
+          <span className="wk-owner-editor__more" onClick={canEdit ? () => setOpen((o) => !o) : undefined}>
+            +{assignees.length - 2}
+          </span>
+        )}
+      </span>
 
       {open && canEdit && (
         <div className="wk-owner-editor__dropdown">
-          <div className="wk-owner-editor__hint">
-            多选 · 至少保留 1 位
-          </div>
-          <div className="wk-owner-editor__hint wk-owner-editor__hint--sub">
-            候选人来自 Matter 关联的群
-          </div>
           {mergedCandidates.length === 0 && (
             <div className="wk-owner-editor__empty">
               暂无可选成员

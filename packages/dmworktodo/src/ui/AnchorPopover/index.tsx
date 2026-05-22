@@ -183,14 +183,11 @@ export default function AnchorPopover({
                     <span className="wk-anchor-pop__channel">
                         #{displayChannelName}
                     </span>
-                    <button
-                        type="button"
-                        className="wk-anchor-pop__close"
-                        onClick={onClose}
-                        aria-label="关闭"
-                    >
-                        ✕
-                    </button>
+                    {!loading && results.length > 0 && results[0].ok && (
+                        <span className="wk-anchor-pop__head-time">
+                            {formatTime(results[0].data.timestamp)}
+                        </span>
+                    )}
                 </div>
 
                 <div className="wk-anchor-pop__body" ref={bodyRef}>
@@ -211,22 +208,13 @@ export default function AnchorPopover({
                                 result={r}
                                 renderAvatar={renderAvatar}
                                 renderUserName={renderUserName}
+                                onJump={r.ok && onJumpToMessage ? () => {
+                                    onClose();
+                                    onJumpToMessage(r.data.message_seq);
+                                } : undefined}
                             />
                         ))}
                 </div>
-
-                {/* 跳转到原消息链接：仅在有有效消息且提供了跳转回调时显示 */}
-                {hasValidMessage && (
-                    <div className="wk-anchor-pop__footer">
-                        <button
-                            type="button"
-                            className="wk-anchor-pop__jump-link"
-                            onClick={handleJumpToMessage}
-                        >
-                            ↗ 跳到原消息
-                        </button>
-                    </div>
-                )}
             </div>
         </>
     );
@@ -238,15 +226,19 @@ function MessageRow({
     result,
     renderAvatar,
     renderUserName,
+    onJump,
 }: {
     result: FetchResult;
     renderAvatar: (uid: string, size: number) => React.ReactNode;
     renderUserName: (uid: string) => React.ReactNode;
+    onJump?: () => void;
 }) {
     if (!result.ok) {
         return (
             <div className="wk-anchor-pop__msg wk-anchor-pop__msg--missing">
-                <span className="wk-anchor-pop__msg-time">—</span>
+                <div className="wk-anchor-pop__msg-header">
+                    <span className="wk-anchor-pop__msg-time">—</span>
+                </div>
                 <div className="wk-anchor-pop__msg-content">
                     <div className="wk-anchor-pop__msg-text wk-anchor-pop__msg-text--dim">
                         {result.reason === 'not_found'
@@ -259,17 +251,28 @@ function MessageRow({
     }
     const msg = result.data;
     return (
-        <div className="wk-anchor-pop__msg">
-            <span className="wk-anchor-pop__msg-time">
-                {formatTime(msg.timestamp)}
-            </span>
-            <span className="wk-anchor-pop__msg-avatar">
-                {renderAvatar(msg.from_uid, 18)}
-            </span>
+        <div
+            className={`wk-anchor-pop__msg${onJump ? ' wk-anchor-pop__msg--clickable' : ' wk-anchor-pop__msg--disabled'}`}
+            onClick={onJump}
+            onKeyDown={onJump ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onJump(); } } : undefined}
+            role={onJump ? 'button' : undefined}
+            tabIndex={onJump ? 0 : undefined}
+        >
+            <div className="wk-anchor-pop__msg-header">
+                <span className="wk-anchor-pop__msg-user">
+                    <span className="wk-anchor-pop__msg-avatar">
+                        {renderAvatar(msg.from_uid, 20)}
+                    </span>
+                    <span className="wk-anchor-pop__msg-name">
+                        {renderUserName(msg.from_uid)}
+                    </span>
+                </span>
+                <span className="wk-anchor-pop__msg-time">
+                    {formatTime(msg.timestamp)}
+                </span>
+                <span className="wk-anchor-pop__msg-colon">：</span>
+            </div>
             <div className="wk-anchor-pop__msg-content">
-                <div className="wk-anchor-pop__msg-name">
-                    {renderUserName(msg.from_uid)}
-                </div>
                 <div className="wk-anchor-pop__msg-text">
                     {extractDisplayText(msg)}
                 </div>
@@ -352,9 +355,10 @@ function formatFileSize(bytes: number): string {
 
 function formatTime(ts: number): string {
     if (!ts) return '';
-    // 后端 timestamp 是秒级 10 位, 乘 1000 转毫秒
     const d = new Date(ts * 1000);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
     const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${mm}-${dd} ${hh}:${min}`;
 }
