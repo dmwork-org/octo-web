@@ -8,6 +8,7 @@ import type {
   TimelineEntry,
   TimelineReq,
   MatterActivity,
+  MatterOutput,
 } from "../../bridge/types";
 import {
   getMatter,
@@ -22,6 +23,7 @@ import {
   addAssignee,
   removeAssignee,
   listActivities,
+  listOutputs,
 } from "../../api/todoApi";
 import { getMessageByChannel } from "../../api/imMessageApi";
 import { Toast } from "../../utils/toast";
@@ -31,7 +33,9 @@ import LinkChannelsModal from "../../ui/LinkChannelsModal";
 import type { ChannelOption } from "../../ui/LinkChannelsModal";
 import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
+import { OutputsPanel } from "../../ui/OutputsPanel";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
+import { getExtension } from "@octo/base/src/Components/FilePreviewPanel/types";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
@@ -64,7 +68,7 @@ export default function MatterDetailPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "channels" | "changelog"
+    "channels" | "outputs" | "changelog"
   >("channels");
 
   // Timeline
@@ -189,6 +193,79 @@ export default function MatterDetailPanel({
       WKApp.mittBus.off("wk:matter-updated", handler);
     };
   }, [matterId, loadActivities]);
+
+  // Outputs (产出文件): 去重后的文件列表, 来自 GET /matters/:id/outputs。
+  const [outputs, setOutputs] = useState<MatterOutput[]>([]);
+  const [outputsLoading, setOutputsLoading] = useState(false);
+  const [outputsHasMore, setOutputsHasMore] = useState(false);
+  const [outputsCursor, setOutputsCursor] = useState<string | undefined>();
+  const [outputsQuery, setOutputsQuery] = useState("");
+  const loadOutputs = useCallback(
+    async (cursor?: string, query?: string) => {
+      if (!matterId) {
+        setOutputs([]);
+        return;
+      }
+      setOutputsLoading(true);
+      try {
+        const res = await listOutputs(matterId, {
+          limit: 50,
+          cursor,
+          q: query || undefined,
+        });
+        if (cursor) {
+          // Append for pagination
+          setOutputs((prev) => [...prev, ...(res.data || [])]);
+        } else {
+          setOutputs(res.data || []);
+        }
+        setOutputsHasMore(res.pagination?.has_more ?? false);
+        setOutputsCursor(res.pagination?.next_cursor);
+      } catch {
+        if (!cursor) setOutputs([]);
+      } finally {
+        setOutputsLoading(false);
+      }
+    },
+    [matterId],
+  );
+  useEffect(() => {
+    loadOutputs(undefined, outputsQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadOutputs]);
+
+  const handleOutputsSearch = useCallback(
+    (q: string) => {
+      setOutputsQuery(q);
+      setOutputsCursor(undefined);
+      loadOutputs(undefined, q);
+    },
+    [loadOutputs],
+  );
+
+  const handleOutputsLoadMore = useCallback(() => {
+    if (outputsCursor) {
+      loadOutputs(outputsCursor, outputsQuery);
+    }
+  }, [loadOutputs, outputsCursor, outputsQuery]);
+
+  // 文件预览: 只在事项详情嵌入会话侧边栏时启用 (showClose === true)。
+  // 触发同一个 mittBus 事件 "wk:file-preview", Chat 页面的 _onFilePreview
+  // 处理器接管, 关闭其它互斥面板并打开文件预览壳子。
+  const handleOutputPreview = useCallback(
+    (item: MatterOutput) => {
+      const ext = getExtension("", item.file_name);
+      const previewData = {
+        url: item.file_url,
+        name: item.file_name || "未知文件",
+        extension: ext,
+        size: item.file_size,
+        sourceChannelId: item.source_channel_id,
+      };
+      WKApp.mittBus.emit("wk:file-preview", previewData);
+    },
+    [],
+  );
 
   // 每个 channel 的最新一条 timeline 条目 (用于 "最新进展" 展示)。
   // matter 加载后并发对每个关联 channel 调 listTimeline(limit=1),
@@ -583,11 +660,12 @@ export default function MatterDetailPanel({
   })();
 
   const tabs: {
-    id: "channels" | "changelog";
+    id: "channels" | "outputs" | "changelog";
     label: string;
     count: number;
   }[] = [
     { id: "channels", label: "关联群聊", count: channels.length },
+    { id: "outputs", label: "产出文件", count: outputs.length },
     { id: "changelog", label: "变更记录", count: activities.length },
   ];
 
@@ -932,6 +1010,19 @@ export default function MatterDetailPanel({
               })
             )}
           </div>
+        )}
+
+        {/* ── Tab: 产出文件 (outputs) ── */}
+        {activeTab === "outputs" && (
+          <OutputsPanel
+            outputs={outputs}
+            loading={outputsLoading}
+            hasMore={outputsHasMore}
+            onLoadMore={handleOutputsLoadMore}
+            onSearch={handleOutputsSearch}
+            renderAvatar={renderAvatar}
+            onPreview={showClose ? handleOutputPreview : undefined}
+          />
         )}
 
         {/* ── Tab: 变更记录 (activities) ── */}
