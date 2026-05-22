@@ -4,6 +4,7 @@ import classnames from "classnames";
 import React, { Component } from "react";
 import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
+import NavVoiceFeedbackItem from "./NavVoiceFeedbackItem";
 
 export interface NavSettingsPanelProps {
     settingSelected: boolean;
@@ -26,7 +27,7 @@ export interface NavSettingsPanelProps {
 interface NavSettingsPanelState {
     changelog: { notes: string; version: string; pub_date: string } | null;
     changelogLoading: boolean;
-    hasNewVersionLocal: boolean;   // 面板内自检版本结果
+    hasNewVersionLocal: boolean;
 }
 
 export default class NavSettingsPanel extends Component<NavSettingsPanelProps, NavSettingsPanelState> {
@@ -166,6 +167,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     }}>
                         {WKApp.shared.notificationIsClose ? "打开" : "关闭"}桌面通知
                     </li>
+                    <NavVoiceFeedbackItem />
                     <li onClick={() => {
                         onToggleSetting();
                         WKApp.shared.logout();
@@ -240,6 +242,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     )}
                     </div>
                 </WKModal>
+
             </>
         );
     }
