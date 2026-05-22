@@ -52,10 +52,14 @@ export interface ChatConversationListProps {
 // 右键的会话(添加到关注)或群(移到分组)一并归入新分类,否则就是 bug:用户
 // 以为操作连贯,实际只建了空分类。modal 是无 conv 上下文的全局组件,通过这
 // 个 state 把上下文从右键现场带到 onConfirm。
-type PendingAction =
+//
+// NewCategoryTarget = 非 null 的 PendingAction;子组件(如 ConversationListGrouped)
+// 通过 onOpenCreateCategory(target?) 把右键现场带过来,顶部 + 入口 target=undefined
+// 即可走"建空分类"的路径。
+export type NewCategoryTarget =
     | { kind: 'followToNewCategory'; conv: ConversationWrap }
     | { kind: 'moveGroupToNewCategory'; groupNo: string }
-    | null
+type PendingAction = NewCategoryTarget | null
 
 const ChatConversationList: React.FC<ChatConversationListProps> = ({
     conversations,
@@ -347,34 +351,8 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
             }
         }
 
-        // 关注 Tab 的群聊显示「移到分组」（保留原有逻辑）
-        if (filter === 'group' && conv.channel.channelType === ChannelTypeGroup && categories.length > 0) {
-            const groupNo = conv.channel.channelID
-            const currentCategoryId = categories.find(
-                cat => (cat.groups || []).some(g => g.group_no === groupNo)
-            )?.category_id
-
-            const moveItems: ContextMenusData[] = categories
-                .filter(cat => !cat.is_default && isValidCategoryItem(cat))
-                .map(cat => ({
-                    title: cat.name,
-                    checked: currentCategoryId === cat.category_id,
-                    onClick: () => handleMoveGroupToCategory(groupNo, cat.category_id),
-                }))
-            moveItems.push({ separator: true } as ContextMenusData)
-            moveItems.push({
-                title: '+ 新建分组',
-                onClick: () => {
-                    setPendingAction({ kind: 'moveGroupToNewCategory', groupNo })
-                    setCreateModalVisible(true)
-                }
-            })
-
-            menus.push({
-                title: '移到分组',
-                children: moveItems
-            })
-        }
+        // filter === 'group'(关注 Tab) 走 ConversationListGrouped 自建右键菜单,
+        // 通过下方 onOpenCreateCategory(target) 把现场带回这里,不在此处处理。
 
         return menus
     }
@@ -402,8 +380,10 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     onDeleteCategory={handleDeleteCategory}
                     onSortCategories={sortCategories}
                     onMoveGroupToCategory={handleMoveGroupToCategory}
-                    onOpenCreateCategory={() => {
-                        setPendingAction(null)
+                    onOpenCreateCategory={(target?: NewCategoryTarget) => {
+                        // target 由 ConversationListGrouped 右键"+ 新建分组"传入
+                        // (移到分组 / 添加到关注的分支);顶部 + 按钮不带 target,清空即可。
+                        setPendingAction(target ?? null)
                         setCreateModalVisible(true)
                     }}
                     onStartGroup={() => {

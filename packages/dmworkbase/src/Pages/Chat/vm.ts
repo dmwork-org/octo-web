@@ -413,8 +413,8 @@ export class ChatVM extends ProviderListener {
         // 先拉取数据，避免清空列表导致 UI 闪烁（fix #266）
         const conversations = await WKSDK.shared().conversationManager.sync({})
 
-        // 拉取成功后再清空+替换（切换 Space 时清空 SDK 内部缓存，避免旧 Space 会话残留）
-        WKSDK.shared().conversationManager.conversations = []
+        // _pendingSpaceConversations 是 ChatVM 自己的延迟队列,跟 SDK cache 无关,
+        // 切 Space 时清掉避免旧 Space 排队中的 incoming 落入新 Space 视图。
         this._pendingSpaceConversations.clear()
 
         const conversationWraps = new Array<ConversationWrap>()
