@@ -1,139 +1,166 @@
+/* ─── MatterCard 样式（按 Figma 设计稿） ─── */
+
+/* ─── 列表容器 ─── */
+.wk-matter-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+
+/* ─── Card 基础 ─── */
 .wk-matter-card {
   display: flex;
   flex-direction: column;
-  gap: var(--wk-sp-1, 4px);
-  padding: var(--wk-sp-3, 12px);
-  margin-bottom: 6px;
-  background: var(--wk-bg-surface, #fff);
-  border: 1px solid var(--wk-border-default, #e5e5e5);
-  border-radius: var(--wk-r-sm, 6px);
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: var(--wk-r-md);
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  transition: background var(--wk-dur-fast), border-color var(--wk-dur-fast), box-shadow var(--wk-dur-fast);
 }
 
 .wk-matter-card:hover {
-  border-color: var(--wk-brand-primary, #7C5CFC);
-  box-shadow: 0 2px 8px var(--wk-shadow-sm, rgba(0, 0, 0, 0.06));
+  background: var(--wk-bg-surface);
 }
 
+/* ─── Active / Selected 状态 ─── */
 .wk-matter-card--selected {
-  background: var(--wk-bg-hover, #f5f5f5);
-  border-color: var(--wk-brand-primary, #7C5CFC);
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-color-accent);
+  box-shadow: 0 4px 12px rgba(28, 28, 35, 0.04), 0 0 10px 1px rgba(28, 28, 35, 0.04);
 }
 
-/* 第一行：checkbox + 事项名 + 截止日期 */
+/* ─── 第一行：状态标签 + 日期 ─── */
 .wk-matter-card__row-1 {
   display: flex;
-  align-items: flex-start;
-  gap: var(--wk-sp-2, 8px);
+  justify-content: space-between;
+  align-items: center;
 }
 
-.wk-matter-card__checkbox {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  border: 1.5px solid var(--wk-text-tertiary, #aaa);
-  border-radius: var(--wk-r-xs, 3px);
-  cursor: pointer;
+/* ColorTag */
+.wk-matter-card__tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  font-size: var(--wk-text-size-sm);
+  line-height: 20px;
+}
+
+.wk-matter-card__tag--blue {
+  background: var(--wk-status-active-bg);
+  color: var(--wk-status-active-text);
+}
+
+.wk-matter-card__tag--green {
+  background: var(--wk-status-done-bg);
+  color: var(--wk-status-done-text);
+}
+
+.wk-matter-card__tag--gray {
+  background: var(--wk-brand-tint-04);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-matter-card__tag-label {
+  font-weight: var(--wk-font-semibold);
+}
+
+.wk-matter-card__tag-no {
+  font-weight: var(--wk-font-regular);
+}
+
+/* Deadline */
+.wk-matter-card__deadline {
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  background: var(--wk-bg-surface, #fff);
+  gap: 2px;
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  color: var(--wk-icon-default);
 }
 
-.wk-matter-card__checkbox:hover {
-  border-color: var(--wk-brand-primary, #7C5CFC);
-  background: var(--wk-bg-hover, #f9f9f9);
+.wk-matter-card__deadline--overdue {
+  color: var(--wk-color-danger);
 }
 
-.wk-matter-card__checkbox--disabled {
-  opacity: 0.3;
-  cursor: default;
-  pointer-events: none;
+.wk-matter-card__calendar-icon {
+  color: inherit;
 }
 
-.wk-matter-card__checkbox[aria-checked="true"] {
-  background: var(--wk-brand-primary, #7C5CFC);
-  border-color: var(--wk-brand-primary, #7C5CFC);
-}
-
-.wk-matter-card__checkbox-check {
-  color: white;
-  font-size: 11px;
-  line-height: 1;
-  font-weight: 600;
-}
-
+/* ─── 第二行：标题 ─── */
 .wk-matter-card__title {
-  flex: 1;
-  font-size: var(--wk-text-size-sm, 14px);
-  font-weight: 500;
-  color: var(--wk-text-primary, #1a1a1a);
-  line-height: 1.5;
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  line-height: 20px;
+  color: var(--wk-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.15s ease;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .wk-matter-card__title--done {
   text-decoration: line-through;
-  color: var(--wk-text-tertiary, #999);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-matter-card__title--archived {
   text-decoration: line-through;
-  color: var(--wk-text-disabled, #bbb);
-  font-style: italic;
+  color: var(--wk-text-disabled);
 }
 
-.wk-matter-card__deadline {
-  flex-shrink: 0;
-  font-size: var(--wk-text-size-xs, 12px);
-  color: var(--wk-text-tertiary, #999);
-  line-height: 1.5;
+/* ─── 第三行：创建人 + 负责人 ─── */
+.wk-matter-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
 }
 
-.wk-matter-card__deadline--today {
-  color: var(--wk-color-success, #22c55e);
-  font-weight: 500;
-}
-
-.wk-matter-card__deadline--overdue {
-  color: var(--wk-color-error, #ef4444);
-  font-weight: 500;
-}
-
-/* 第二行：项目名 + 频道名 + 负责人头像 */
-.wk-matter-card__row-2 {
+.wk-matter-card__meta-item {
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-1, 4px);
-  margin-left: 24px; /* checkbox width + gap */
-  font-size: var(--wk-text-size-xs, 12px);
-  color: var(--wk-text-secondary, #666);
+  gap: var(--wk-sp-1);
 }
 
-.wk-matter-card__separator {
-  color: var(--wk-text-tertiary, #ccc);
-  margin: 0 2px;
+.wk-matter-card__meta-label {
+  font-size: var(--wk-text-size-sm);
+  line-height: 16px;
+  color: var(--wk-icon-default);
 }
 
-
-.wk-matter-card__channel {
-  color: var(--wk-text-secondary, #666);
-}
-
-.wk-matter-card__assignees {
+.wk-matter-card__user {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--wk-sp-1);
 }
 
-.wk-matter-card__assignees-more {
-  margin-left: 2px;
-  font-size: var(--wk-text-size-xs, 12px);
-  color: var(--wk-text-tertiary, #999);
+.wk-matter-card__user-name {
+  font-size: var(--wk-text-size-sm);
+  line-height: 16px;
+  color: var(--wk-text-primary);
+}
+
+/* 多负责人头像重叠 */
+.wk-matter-card__avatar-group {
+  display: flex;
+  align-items: center;
+}
+
+.wk-matter-card__avatar-group > * {
+  margin-left: -4px;
+}
+
+.wk-matter-card__avatar-group > *:first-child {
+  margin-left: 0;
+}
+
+.wk-matter-card__assignee-text {
+  margin-left: var(--wk-sp-1);
+  font-size: var(--wk-text-size-sm);
+  line-height: 16px;
+  color: var(--wk-icon-default);
 }

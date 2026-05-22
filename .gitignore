@@ -57,6 +57,10 @@ AGENTS.config.local.json
 package-lock.json
 
 # AI/IDE 工件文件（不进仓库）
+.kiro/settings/mcp.json
+**/figma-spec.md
+**/rawdata.txt
+.kiro/handoff-*.md
 .claude/
 .zed/
 .ftre/memory/
