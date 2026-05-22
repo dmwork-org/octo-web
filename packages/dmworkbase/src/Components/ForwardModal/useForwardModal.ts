@@ -85,6 +85,10 @@ export function useForwardModal(
   const [loading, setLoading] = useState(true)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
+  // load() 可能并发(mount 自动触发 + conversation-list-refreshed 又触发一次)。
+  // 用一个单调递增的 generation,await 边界处比对,过期就丢弃 setState,
+  // 避免两次 setConversationItems(prev => [...prev, ...]) 重复 append 同一批群。
+  const loadGenRef = useRef(0)
 
   const setInputValue = useCallback((val: string) => {
     setInputValueState(val)
@@ -180,6 +184,7 @@ export function useForwardModal(
 
   useEffect(() => {
     async function load() {
+      const gen = ++loadGenRef.current
       setLoading(true)
       try {
         // 最近会话：仅构造 wrap，不再对每个 conv 主动 fetchChannelInfo。
@@ -197,6 +202,7 @@ export function useForwardModal(
 
         // 补全：获取用户加入的全部群聊（已支持 space_id 过滤）
         const allGroups = await WKApp.dataSource.channelDataSource.groupSaveList()
+        if (gen !== loadGenRef.current) return // 有更新的 load 在跑,丢弃本次结果
         const existingGroupIDs = new Set<string>()
         for (const wrap of wrapsRef.current) {
           if (wrap.channel.channelType === ChannelTypeGroup) {
@@ -216,6 +222,7 @@ export function useForwardModal(
 
         // 好友
         const friends = (await WKApp.dataSource.commonDataSource.searchFriends("")) ?? []
+        if (gen !== loadGenRef.current) return
         // 按 channelID 去重：Space 模式下后端 space/{id}/members 可能返回同一
         // uid 的多条记录（多角色等），不去重会触发 React duplicate key 警告。
         const seen = new Set<string>()
@@ -229,7 +236,9 @@ export function useForwardModal(
         }
         setFriendItems(fItems)
       } finally {
-        setLoading(false)
+        // 仅最新 generation 收尾 loading,避免老 load 的 setLoading(false)
+        // 把更新的 load 标记成"已完成"。
+        if (gen === loadGenRef.current) setLoading(false)
       }
     }
 
