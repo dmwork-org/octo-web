@@ -5,6 +5,7 @@ import * as api from '../../api/todoApi';
 import type { MatterDetail, MatterComment } from '../../bridge/types';
 import UserName from '../UserName';
 import { Toast } from '../../utils/toast';
+import { replaceMentions } from '../../utils/mention';
 import './index.css';
 
 // ─── Props 接口 ───────────────────────────────────────────
@@ -192,7 +193,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
                 />
               ) : (
                 <h2 className="wk-matter-detail__title" onClick={handleStartEditTitle} title="点击编辑标题">
-                  {matter.title.replace(/@\[([^:]*):([^\]]*)\]/g, (_m, _uid, name) => `@${name}`)}
+                  {replaceMentions(matter.title)}
                 </h2>
               )}
 

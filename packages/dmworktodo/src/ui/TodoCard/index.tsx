@@ -2,6 +2,7 @@ import React from 'react';
 import { Channel, ChannelTypePerson } from 'wukongimjssdk';
 import type { Matter } from '../../bridge/types';
 import WKAvatar from '@octo/base/src/Components/WKAvatar';
+import { replaceMentions } from '../../utils/mention';
 import './index.css';
 
 export interface MatterCardProps {
@@ -107,7 +108,7 @@ export default function MatterCard({
 
       {/* 第二行：事项标题 */}
       <div className={`wk-matter-card__title${matter.status === 'done' ? ' wk-matter-card__title--done' : matter.status === 'archived' ? ' wk-matter-card__title--archived' : ''}`}>
-        {matter.title.replace(/@\[([^:]*):([^\]]*)\]/g, (_m, _uid, name) => `@${name}`)}
+        {replaceMentions(matter.title)}
       </div>
 
       {/* 第三行：创建人 + 负责人 */}

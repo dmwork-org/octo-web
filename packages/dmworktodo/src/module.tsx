@@ -21,6 +21,7 @@ import {
   addTimelineEntry,
 } from "./api/todoApi";
 import { Toast } from "./utils/toast";
+import { parseMentions } from "./utils/mention";
 import CreateTaskModal from "./ui/CreateTaskModal";
 import "./ui/tokens.css";
 
@@ -36,12 +37,7 @@ export type OpenCreateTaskPayload = {
 
 /** 解析 @[uid:name] 格式，返回纯文本 title 和 uid 列表 */
 function parseMentionText(raw: string): { title: string; uids: string[] } {
-  const uids: string[] = [];
-  const title = raw.replace(/@\[([^:]*):([^\]]*)\]/g, (_match, uid, name) => {
-    if (uid && uid !== "-1") uids.push(uid);
-    return uid === "-1" ? "@所有人" : `@${name}`;
-  });
-  return { title: title.trim(), uids: [...new Set(uids)] };
+  return parseMentions(raw);
 }
 
 /** Guard against double-init (HMR in dev or future module lifecycle changes). */
