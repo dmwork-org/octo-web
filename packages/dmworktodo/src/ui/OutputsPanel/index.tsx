@@ -1,13 +1,17 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   getFileIcon,
   formatFileSize,
 } from "@octo/base/src/Components/MessageInput/AttachmentNode";
+import { downloadFile } from "@octo/base/src/Utils/download";
+import { isSafeUrl } from "@octo/base";
 import type { MatterOutput } from "../../bridge/types";
 import "./index.css";
 
 /**
  * Format ISO datetime → "YYYY-MM-DD HH:mm:ss" (对齐 Figma 设计稿格式)
+ *
+ * 使用浏览器本地时区展示 sent_at，符合用户本地阅读习惯。
  */
 function formatDateTime(isoStr: string): string {
   const d = new Date(isoStr);
@@ -73,8 +77,11 @@ export interface OutputsPanelProps {
   outputs: MatterOutput[];
   loading?: boolean;
   hasMore?: boolean;
+  query?: string;
+  error?: string | null;
   onLoadMore?: () => void;
   onSearch?: (query: string) => void;
+  onRetry?: () => void;
   /**
    * 渲染发送人头像。由调用方传入, 内部不直接调 WKAvatar/IM SDK,
    * 保持 ui/ 层与数据层分离 (跟 panel 现有模式一致)。
@@ -93,13 +100,26 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
   outputs,
   loading,
   hasMore,
+  query = "",
+  error,
   onLoadMore,
   onSearch,
+  onRetry,
   renderAvatar,
   onPreview,
 }) => {
-  const [searchValue, setSearchValue] = useState("");
+  const [searchValue, setSearchValue] = useState(query);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setSearchValue(query);
+  }, [query]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, []);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,20 +146,18 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
     (e: React.MouseEvent, item: MatterOutput) => {
       e.preventDefault();
       e.stopPropagation();
-      // 用 <a download> 触发下载, 兼容跨域 (浏览器忽略 download 属性时退化为新窗口)
-      const a = document.createElement("a");
-      a.href = item.file_url;
-      a.download = item.file_name || "";
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // 走 dmworkbase 的 downloadFile: 内部 isSafeUrl 校验 + 跨域时拉取
+      // 后端预签名下载 URL, 拒绝 javascript:/data:/file: 等危险协议。
+      // 跟 Messages/File 的 handleDownload 行为一致, 避免协议绕过。
+      const url = item.file_url || "";
+      if (!url || !isSafeUrl(url)) return;
+      void downloadFile(url, item.file_name || "file");
     },
     [],
   );
 
   const isEmpty = outputs.length === 0 && !loading;
+  const emptyText = query ? "没有匹配的产出文件" : "暂无产出文件";
 
   return (
     <div className="wk-outputs">
@@ -167,6 +185,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
             type="text"
             className="wk-outputs__search-input"
             placeholder="输入产出物的文件名/描述/产出者搜索"
+            aria-label="搜索产出文件"
             value={searchValue}
             onChange={handleSearchChange}
           />
@@ -198,7 +217,30 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
         </div>
 
         {/* 表体 */}
-        {isEmpty ? (
+        {error ? (
+          <div className="wk-outputs__empty" role="alert">
+            <svg
+              width="40"
+              height="40"
+              viewBox="0 0 40 40"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              opacity="0.4"
+              aria-hidden="true"
+            >
+              <path d="M20 5l16 28H4L20 5z" />
+              <path d="M20 15v8" />
+              <circle cx="20" cy="27" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+            <span>{error}</span>
+            {onRetry && (
+              <button type="button" className="wk-outputs__load-more" onClick={onRetry}>
+                重试
+              </button>
+            )}
+          </div>
+        ) : isEmpty ? (
           <div className="wk-outputs__empty">
             <svg
               width="40"
@@ -213,7 +255,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
               <path d="M10 5h12l10 10v20a2.5 2.5 0 01-2.5 2.5h-19A2.5 2.5 0 018 35V7.5A2.5 2.5 0 0110.5 5z" />
               <path d="M22 5v8a2 2 0 002 2h8" />
             </svg>
-            <span>暂无产出文件</span>
+            <span>{emptyText}</span>
           </div>
         ) : (
           outputs.map((item) => {
@@ -315,7 +357,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
         )}
 
         {/* 加载中骨架 (初次加载) */}
-        {loading && outputs.length === 0 && !isEmpty && (
+        {loading && outputs.length === 0 && (
           <div className="wk-outputs__loading">
             <div className="wk-outputs__skeleton-row" />
             <div className="wk-outputs__skeleton-row" />

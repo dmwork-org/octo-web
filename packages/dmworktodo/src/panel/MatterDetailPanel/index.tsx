@@ -207,19 +207,27 @@ export default function MatterDetailPanel({
   const [outputsHasMore, setOutputsHasMore] = useState(false);
   const [outputsCursor, setOutputsCursor] = useState<string | undefined>();
   const [outputsQuery, setOutputsQuery] = useState("");
+  const [outputsError, setOutputsError] = useState<string | null>(null);
+  // 单调递增请求序号: 防止 race condition (慢请求覆盖快请求)。
+  // 用户连续输入搜索词时, 旧请求可能后到, 用 seq 比对丢弃过期结果。
+  const outputsReqSeqRef = useRef(0);
   const loadOutputs = useCallback(
     async (cursor?: string, query?: string) => {
       if (!matterId) {
         setOutputs([]);
         return;
       }
+      const seq = ++outputsReqSeqRef.current;
       setOutputsLoading(true);
+      if (!cursor) setOutputsError(null);
       try {
         const res = await listOutputs(matterId, {
           limit: 50,
           cursor,
           q: query || undefined,
         });
+        // 过期结果: 期间已有更新的请求发出, 直接丢弃。
+        if (seq !== outputsReqSeqRef.current) return;
         if (cursor) {
           // Append for pagination
           setOutputs((prev) => [...prev, ...(res.data || [])]);
@@ -229,15 +237,25 @@ export default function MatterDetailPanel({
         setOutputsHasMore(res.pagination?.has_more ?? false);
         setOutputsCursor(res.pagination?.next_cursor);
       } catch {
-        if (!cursor) setOutputs([]);
+        if (seq !== outputsReqSeqRef.current) return;
+        if (!cursor) {
+          setOutputs([]);
+          setOutputsError("加载失败,请稍后重试");
+        }
       } finally {
-        setOutputsLoading(false);
+        if (seq === outputsReqSeqRef.current) {
+          setOutputsLoading(false);
+        }
       }
     },
     [matterId],
   );
   useEffect(() => {
-    loadOutputs(undefined, outputsQuery);
+    // matter 切换时重置搜索词和游标, 避免上一个 matter 的过滤条件
+    // 影响新 matter 的初次加载 (跟 OutputsPanel 内部的 searchValue 同步)。
+    setOutputsQuery("");
+    setOutputsCursor(undefined);
+    loadOutputs(undefined, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadOutputs]);
 
@@ -256,20 +274,34 @@ export default function MatterDetailPanel({
     }
   }, [loadOutputs, outputsCursor, outputsQuery]);
 
+  const handleOutputsRetry = useCallback(() => {
+    loadOutputs(undefined, outputsQuery);
+  }, [loadOutputs, outputsQuery]);
+
   // 文件预览: 只在事项详情嵌入会话侧边栏时启用 (showClose === true)。
   // 触发同一个 mittBus 事件 "wk:file-preview", Chat 页面的 _onFilePreview
   // 处理器接管, 关闭其它互斥面板并打开文件预览壳子。
+  //
+  // 安全: 跟 Messages/File 的 handlePreview 一致, 通过 getFileURL 解析 (相对
+  // 路径 → 绝对 URL, 拼后端域名), 然后用 isSafeUrl 拒绝 javascript:/data:/
+  // file:/ftp: 等危险协议。后端 outputs 接口返回的 file_url 不可信, 必须验证。
   const handleOutputPreview = useCallback(
     (item: MatterOutput) => {
+      const rawUrl = item.file_url || "";
+      if (!rawUrl) return;
+      let url = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+      if (url && !url.startsWith("http")) {
+        url = window.location.origin + "/" + url.replace(/^\//, "");
+      }
+      if (!url || !isSafeUrl(url)) return;
       const ext = getExtension("", item.file_name);
-      const previewData = {
-        url: item.file_url,
+      WKApp.mittBus.emit("wk:file-preview", {
+        url,
         name: item.file_name || "未知文件",
         extension: ext,
         size: item.file_size,
         sourceChannelId: item.source_channel_id,
-      };
-      WKApp.mittBus.emit("wk:file-preview", previewData);
+      });
     },
     [],
   );
@@ -1004,8 +1036,11 @@ export default function MatterDetailPanel({
             outputs={outputs}
             loading={outputsLoading}
             hasMore={outputsHasMore}
+            query={outputsQuery}
+            error={outputsError}
             onLoadMore={handleOutputsLoadMore}
             onSearch={handleOutputsSearch}
+            onRetry={handleOutputsRetry}
             renderAvatar={renderAvatar}
             onPreview={showClose ? handleOutputPreview : undefined}
           />
