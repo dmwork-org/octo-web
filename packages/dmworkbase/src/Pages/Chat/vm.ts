@@ -9,7 +9,8 @@ import { ProviderListener } from "../../Service/Provider";
 import { animateScroll, scroller } from 'react-scroll';
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, hasSpacePrefix } from "../../Service/SpaceService";
-import { EndpointID } from "../../Service/Const";
+import { ChannelTypeCommunityTopic, EndpointID } from "../../Service/Const";
+import { parseThreadChannelId } from "../../Service/Thread";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import { isSafeUrl } from "../../Utils/security";
@@ -184,13 +185,34 @@ export class ChatVM extends ProviderListener {
                         const info = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
                         const sid = info?.orgData?.space_id
                             || conversation.channelInfo?.orgData?.space_id
+                            || (conversation as any).extra?.spaceId
                         if (sid) {
                             WKApp.shared.channelSpaceMap.set(key, sid)
                         } else if (WKApp.shared.currentSpaceId && !hasSpacePrefix(conversation.channel.channelID)) {
-                            // Fix: fail-open — 新群假定属于当前 Space，先展示
-                            // 建群 API 已带 space_id，channelInfo 异步返回后会补写正确值
-                            // 下次 Space 切换时 requestConversationList() 会用真实缓存重新过滤
-                            WKApp.shared.channelSpaceMap.set(key, WKApp.shared.currentSpaceId)
+                            // Fix #107: 改为 fail-closed —— 不再假定新群属于当前 Space。
+                            // sync 响应已携带 space_id 时上面就命中了；缓存仍未命中
+                            // 说明这是 WS 推送的全新群，channelInfo 尚未到达。
+                            // 与 update handler 一致：暂存到待定队列，等 channelInfoListener
+                            // 回调拿到权威 space_id 后再二次检查并展示。
+                            this._pendingSpaceConversations.set(key, conversation)
+                            WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
+                            return
+                        }
+                    }
+                } else if (conversation.channel.channelType === ChannelTypeCommunityTopic) {
+                    // 子区跟父群走：父群缓存未命中时拉父群 channelInfo。
+                    // 这里 fail-open（不 return / 不 pending）—— shouldSkipChannelForSpace
+                    // 对子区分支父群缓存未命中时返回 false，子区会照常进入列表，
+                    // 避免回归 fail-closed 永久隐藏。父群 channelInfo 到达后，
+                    // channelListener 会在 removeParentAndThreads 路径里把不属于
+                    // 当前 Space 的父群+其所有子区一并移除。
+                    const parsed = parseThreadChannelId(conversation.channel.channelID)
+                    if (parsed) {
+                        const parentKey = `${parsed.groupNo}_${ChannelTypeGroup}`
+                        if (!WKApp.shared.channelSpaceMap.has(parentKey) && WKApp.shared.currentSpaceId) {
+                            WKSDK.shared().channelManager.fetchChannelInfo(
+                                new Channel(parsed.groupNo, ChannelTypeGroup),
+                            )
                         }
                     }
                 }
@@ -218,6 +240,20 @@ export class ChatVM extends ProviderListener {
                         this._pendingSpaceConversations.set(key, conversation)
                         WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
                         return // 等待 channelInfoListener 回调处理
+                    }
+                } else if (conversation.channel.channelType === ChannelTypeCommunityTopic) {
+                    // 子区更新：父群缓存未命中时拉父群 channelInfo，不要把子区
+                    // 丢进父群 pending（pending 用父群 key 是为新群补回，对子区
+                    // update 没用），fail-open 让 shouldSkip 兜底（父群无缓存
+                    // 时返回 false，子区照常更新）。
+                    const parsed = parseThreadChannelId(conversation.channel.channelID)
+                    if (parsed) {
+                        const parentKey = `${parsed.groupNo}_${ChannelTypeGroup}`
+                        if (!WKApp.shared.channelSpaceMap.has(parentKey) && WKApp.shared.currentSpaceId) {
+                            WKSDK.shared().channelManager.fetchChannelInfo(
+                                new Channel(parsed.groupNo, ChannelTypeGroup),
+                            )
+                        }
                     }
                 }
                 // Space 过滤：忽略不属于当前 Space 的会话更新
@@ -261,9 +297,10 @@ export class ChatVM extends ProviderListener {
             if (channelInfo.channel?.channelType === ChannelTypeGroup && channelInfo.orgData?.space_id) {
                 const key = `${channelInfo.channel.channelID}_${channelInfo.channel.channelType}`
                 WKApp.shared.channelSpaceMap.set(key, channelInfo.orgData.space_id)
-                // 如果该群不属于当前 Space，移除会话
+                // 如果该群不属于当前 Space，移除会话（包括所有挂在该父群下的子区）
                 if (shouldSkipChannelForSpace(channelInfo.channel)) {
                     this.removeConversation(channelInfo.channel)
+                    this.removeThreadsOfParent(channelInfo.channel.channelID)
                     return
                 }
             }
@@ -356,6 +393,27 @@ export class ChatVM extends ProviderListener {
         }
     }
 
+    /**
+     * 移除挂在指定父群下的所有 CommunityTopic（子区）会话。
+     * 当父群 channelInfo 到达且发现父群不属于当前 Space 时调用，
+     * 否则子区会以 fail-open 的姿态滞留在列表里。
+     */
+    removeThreadsOfParent(parentGroupNo: string) {
+        if (!this.conversations || this.conversations.length === 0) return
+        let mutated = false
+        this.conversations = this.conversations.filter((wrap) => {
+            const ch = wrap.channel
+            if (ch?.channelType !== ChannelTypeCommunityTopic) return true
+            const parsed = parseThreadChannelId(ch.channelID)
+            if (parsed?.groupNo === parentGroupNo) {
+                mutated = true
+                return false
+            }
+            return true
+        })
+        if (mutated) this.notifyListener()
+    }
+
     async clearMessages(channel: Channel) {
 
         const conversationWrap = this.findConversation(channel)
@@ -406,6 +464,57 @@ export class ChatVM extends ProviderListener {
         return sortAfter
     }
 
+    // 从 conversation sync 响应预填 channelSpaceMap / channelMySourceSpaceMap。
+    // octo-server PR#154+ 起 sync 会话条目携带 resolved space_id（群表权威值）和
+    // my_source_space_id（外部群成员的 source Space）。在过滤前预填两张缓存表，
+    // 可消除实时 WebSocket 消息到达时的 fail-open 竞态窗口。
+    // 字段缺失（老后端）时跳过，老路不受影响。
+    //
+    // CommunityTopic（子区）也会出现在 sync 列表里。子区跟父群走，所以这里把子区
+    // 携带的 space_id 写入“父群 key”：`${groupNo}_${ChannelTypeGroup}`，前提是
+    // 父群 key 尚未被写入（不覆盖父群自身条目带来的权威值）。
+    private prefillSpaceMapsFromSync(conversations: Conversation[]) {
+        for (const conv of conversations) {
+            const ch = conv.channel
+            if (!ch?.channelID) continue
+
+            if (ch.channelType === ChannelTypeGroup) {
+                const cid = ch.channelID
+                const key = `${cid}_${ch.channelType}`
+                const extra: any = conv.extra
+                const sid = extra?.spaceId
+                    || (conv as any).channelInfo?.orgData?.space_id
+                    || WKSDK.shared().channelManager.getChannelInfo(ch)?.orgData?.space_id
+                if (sid && !WKApp.shared.channelSpaceMap.has(key)) {
+                    WKApp.shared.channelSpaceMap.set(key, sid)
+                }
+                const mySrc = extra?.mySourceSpaceId
+                if (mySrc) {
+                    WKApp.shared.channelMySourceSpaceMap.set(key, mySrc)
+                }
+                continue
+            }
+
+            if (ch.channelType === ChannelTypeCommunityTopic) {
+                const parsed = parseThreadChannelId(ch.channelID)
+                if (!parsed) continue
+                const parentKey = `${parsed.groupNo}_${ChannelTypeGroup}`
+                const extra: any = conv.extra
+                const sid = extra?.spaceId
+                    || (conv as any).channelInfo?.orgData?.space_id
+                // 子区条目只能补写父群 key（不覆盖：父群自有 sync 条目优先）
+                if (sid && !WKApp.shared.channelSpaceMap.has(parentKey)) {
+                    WKApp.shared.channelSpaceMap.set(parentKey, sid)
+                }
+                const mySrc = extra?.mySourceSpaceId
+                if (mySrc && !WKApp.shared.channelMySourceSpaceMap.has(parentKey)) {
+                    WKApp.shared.channelMySourceSpaceMap.set(parentKey, mySrc)
+                }
+                continue
+            }
+        }
+    }
+
     async requestConversationList() {
         this.loading = true
         this.notifyListener()
@@ -427,6 +536,13 @@ export class ChatVM extends ProviderListener {
         // _pendingSpaceConversations 是 ChatVM 自己的延迟队列,跟 SDK cache 无关,
         // 切 Space 时清掉避免旧 Space 排队中的 incoming 落入新 Space 视图。
         this._pendingSpaceConversations.clear()
+
+        // 在做 Space 过滤前，先把 sync 响应携带的 space_id / my_source_space_id
+        // 写入缓存。这样 shouldSkipChannelForSpace 命中率最大化，下游实时消息
+        // 也能立即用到，避免 fail-open 误展示其他 Space 的群。
+        if (conversations && conversations.length > 0) {
+            this.prefillSpaceMapsFromSync(conversations)
+        }
 
         const conversationWraps = new Array<ConversationWrap>()
         const filteredForSdk = new Array<Conversation>()
@@ -460,6 +576,11 @@ export class ChatVM extends ProviderListener {
     async reloadRequestConversationList() {
         const conversationWraps = new Array<ConversationWrap>()
         const conversations = await WKSDK.shared().conversationManager.sync({})
+        // 先按 sync 响应预填 channelSpaceMap / channelMySourceSpaceMap
+        // 再做 Space 过滤，避免老缓存缺失时落到 fail-closed 默认值。
+        if (conversations && conversations.length > 0) {
+            this.prefillSpaceMapsFromSync(conversations)
+        }
         if (conversations && conversations.length > 0) {
             for (const conversation of conversations) {
                 // Space 过滤：复用共享函数（含 channelSpaceMap 缓存）
