@@ -105,6 +105,10 @@ const mockOutputs: MatterOutput[] = [
   },
 ];
 
+// 模拟下载回调 (生产环境由 panel 注入 resolveAndGuardUrl + downloadFile)。
+const mockOnDownload = (item: MatterOutput) =>
+  console.log("download:", item.file_name);
+
 export const Default: Story = {
   args: {
     outputs: mockOutputs,
@@ -112,6 +116,7 @@ export const Default: Story = {
     hasMore: false,
     onSearch: (q: string) => console.log("search:", q),
     renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
   },
 };
 
@@ -126,6 +131,7 @@ export const WithPreview: Story = {
     onSearch: (q: string) => console.log("search:", q),
     renderAvatar: mockRenderAvatar,
     onPreview: (item) => console.log("preview:", item.file_name),
+    onDownload: mockOnDownload,
   },
 };
 
@@ -137,6 +143,7 @@ export const WithPagination: Story = {
     onSearch: (q: string) => console.log("search:", q),
     onLoadMore: () => console.log("load more"),
     renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
   },
 };
 
@@ -147,6 +154,7 @@ export const Empty: Story = {
     hasMore: false,
     onSearch: (q: string) => console.log("search:", q),
     renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
   },
 };
 
@@ -156,6 +164,7 @@ export const Loading: Story = {
     loading: true,
     hasMore: false,
     renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
   },
 };
 
@@ -166,5 +175,59 @@ export const NoSearch: Story = {
     loading: false,
     hasMore: false,
     renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
+  },
+};
+
+/**
+ * 用户不在某个源群时, "来源群" 列遮罩 + "不在群" 徽章。
+ * 模拟 ch-2 (Octo设计群) 用户不在群; ch-1 / ch-3 用户在群。
+ */
+export const WithNotMemberChannels: Story = {
+  name: "Not in Some Source Channels",
+  args: {
+    outputs: mockOutputs,
+    loading: false,
+    hasMore: false,
+    onSearch: (q: string) => console.log("search:", q),
+    renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
+    getChannelMembership: (sourceChannelId) => {
+      const isMember = sourceChannelId !== "ch-2";
+      return { isMember, loading: false };
+    },
+  },
+};
+
+/**
+ * 成员关系拉取中 (myGroupsLoading=true): "来源群" 列显示 shimmer 骨架,
+ * 避免在权限未知时先模糊再清晰造成闪烁。
+ */
+export const WithLoadingMembership: Story = {
+  name: "Loading Membership",
+  args: {
+    outputs: mockOutputs,
+    loading: false,
+    hasMore: false,
+    onSearch: (q: string) => console.log("search:", q),
+    renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
+    getChannelMembership: () => ({ isMember: false, loading: true }),
+  },
+};
+
+/**
+ * 加载失败: 显示错误条 + 重试按钮; load-more 按钮被清空。
+ */
+export const WithError: Story = {
+  args: {
+    outputs: [],
+    loading: false,
+    hasMore: false,
+    error: "加载失败,请稍后重试",
+    onSearch: (q: string) => console.log("search:", q),
+    onRetry: () => console.log("retry"),
+    renderAvatar: mockRenderAvatar,
+    onDownload: mockOnDownload,
   },
 };

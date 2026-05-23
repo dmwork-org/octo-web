@@ -30,6 +30,7 @@ import { Toast } from "../../utils/toast";
 import { toParentGroupNo, CHANNEL_TYPE_COMMUNITY_TOPIC } from "../../utils/channelId";
 import { buildLinkableChannels } from "../../utils/buildLinkableChannels";
 import type { GroupSaveListRow } from "../../utils/buildLinkableChannels";
+import { resolveAndGuardUrl } from "../../utils/fileUrl";
 import UserName from "../../ui/UserName";
 import LinkChannelsModal from "../../ui/LinkChannelsModal";
 import type {
@@ -41,6 +42,7 @@ import AnchorPopover from "../../ui/AnchorPopover";
 import { OutputsPanel } from "../../ui/OutputsPanel";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { getExtension } from "@octo/base/src/Components/FilePreviewPanel/types";
+import { downloadFile } from "@octo/base/src/Utils/download";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp, i18n, useI18n, t as translate } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
@@ -240,8 +242,12 @@ export default function MatterDetailPanel({
         if (seq !== outputsReqSeqRef.current) return;
         if (!cursor) {
           // 初次加载失败: 列表可能从空开始, 或上一次成功结果已经过期不可信,
-          // 清空 + 显示错误条 + 保留 retry 按钮。
+          // 清空所有相关状态 (rows / cursor / has_more) + 显示错误条 +
+          // 保留 retry 按钮。如果不清 cursor/has_more, 错误态下还会
+          // 渲染出"加载更多"按钮, 误导用户。
           setOutputs([]);
+          setOutputsCursor(undefined);
+          setOutputsHasMore(false);
           setOutputsError("加载失败,请稍后重试");
         } else {
           // 加载更多失败: 已展示的行还能用, 不清不闪, 给个 toast 让用户重试。
@@ -290,18 +296,13 @@ export default function MatterDetailPanel({
   // 触发同一个 mittBus 事件 "wk:file-preview", Chat 页面的 _onFilePreview
   // 处理器接管, 关闭其它互斥面板并打开文件预览壳子。
   //
-  // 安全: 跟 Messages/File 的 handlePreview 一致, 通过 getFileURL 解析 (相对
-  // 路径 → 绝对 URL, 拼后端域名), 然后用 isSafeUrl 拒绝 javascript:/data:/
-  // file:/ftp: 等危险协议。后端 outputs 接口返回的 file_url 不可信, 必须验证。
+  // 安全: 跟 Messages/File 的 handlePreview 一致, 通过 resolveAndGuardUrl
+  // 一步走完 (getFileURL 解析相对路径 → isSafeUrl 拒绝危险协议)。后端
+  // outputs 接口返回的 file_url 不可信, 必须验证。
   const handleOutputPreview = useCallback(
     (item: MatterOutput) => {
-      const rawUrl = item.file_url || "";
-      if (!rawUrl) return;
-      let url = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
-      if (url && !url.startsWith("http")) {
-        url = window.location.origin + "/" + url.replace(/^\//, "");
-      }
-      if (!url || !isSafeUrl(url)) return;
+      const url = resolveAndGuardUrl(item.file_url);
+      if (!url) return;
       const ext = getExtension("", item.file_name);
       WKApp.mittBus.emit("wk:file-preview", {
         url,
@@ -313,6 +314,16 @@ export default function MatterDetailPanel({
     },
     [],
   );
+
+  // 文件下载: 跟 Messages/File 的 handleDownload 一致的两步,
+  // 复用同一个 resolveAndGuardUrl helper。注入给 OutputsPanel 后,
+  // 组件本身不再依赖 WKApp / dmworkbase 的 download utils, 保持
+  // ui/ 层纯展示 (review #97 Jerry-Xin nit, yujiawei P2 #3)。
+  const handleOutputDownload = useCallback((item: MatterOutput) => {
+    const url = resolveAndGuardUrl(item.file_url);
+    if (!url) return;
+    void downloadFile(url, item.file_name || "file");
+  }, []);
 
   // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
   // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
@@ -1099,6 +1110,7 @@ export default function MatterDetailPanel({
             onRetry={handleOutputsRetry}
             renderAvatar={renderAvatar}
             onPreview={showClose ? handleOutputPreview : undefined}
+            onDownload={handleOutputDownload}
             getChannelMembership={getOutputChannelMembership}
           />
         )}

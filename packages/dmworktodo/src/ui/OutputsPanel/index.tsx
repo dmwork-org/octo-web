@@ -3,8 +3,6 @@ import {
   getFileIcon,
   formatFileSize,
 } from "@octo/base/src/Components/MessageInput/AttachmentNode";
-import { downloadFile } from "@octo/base/src/Utils/download";
-import { WKApp, isSafeUrl } from "@octo/base";
 import type { MatterOutput } from "../../bridge/types";
 import "./index.css";
 
@@ -100,6 +98,12 @@ export interface OutputsPanelProps {
    */
   onPreview?: (item: MatterOutput) => void;
   /**
+   * 文件下载回调。由调用方注入 (panel 用 resolveAndGuardUrl + downloadFile)
+   * 保持 OutputsPanel 纯展示, 不依赖 WKApp / dmworkbase 的 download utils。
+   * 不传时下载按钮被隐藏。
+   */
+  onDownload?: (item: MatterOutput) => void;
+  /**
    * 来源群成员关系查询。由调用方根据 myGroupNos + matter.channels 注入。
    * 不传时所有行都按 "已加入" 处理 (向后兼容, 不影响独立预览场景)。
    *
@@ -126,6 +130,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
   onRetry,
   renderAvatar,
   onPreview,
+  onDownload,
   getChannelMembership,
 }) => {
   const [searchValue, setSearchValue] = useState(query);
@@ -166,20 +171,9 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
     (e: React.MouseEvent, item: MatterOutput) => {
       e.preventDefault();
       e.stopPropagation();
-      // 跟 Messages/File.handleDownload 一致: 先 getFileURL 解析相对路径
-      // (后端可能返回 /files/foo.pdf 而非完整 URL), 再 isSafeUrl 拒绝
-      // javascript:/data:/file: 等危险协议。dmworkbase 的 downloadFile 内部
-      // 还会跑一遍 isSafeUrl + 跨域时拉预签名 URL, 这里多一道闸防御深度。
-      const rawUrl = item.file_url || "";
-      if (!rawUrl) return;
-      let url = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
-      if (url && !url.startsWith("http")) {
-        url = window.location.origin + "/" + url.replace(/^\//, "");
-      }
-      if (!url || !isSafeUrl(url)) return;
-      void downloadFile(url, item.file_name || "file");
+      onDownload?.(item);
     },
-    [],
+    [onDownload],
   );
 
   const isEmpty = outputs.length === 0 && !loading;
@@ -345,8 +339,8 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                       return (
                         <span
                           className="wk-outputs__channel-name--skeleton"
-                          aria-label="加载中"
-                          role="presentation"
+                          role="status"
+                          aria-label="加载成员关系中"
                         >
                           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
                         </span>
@@ -400,7 +394,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                   </span>
                 </div>
 
-                {/* 操作: (可选)预览 + 下载 */}
+                {/* 操作: (可选)预览 + (可选)下载 */}
                 <div className="wk-outputs__td wk-outputs__col-actions" role="cell">
                   {onPreview && (
                     <button
@@ -413,15 +407,17 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                       <EyeIcon />
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="wk-outputs__action-btn"
-                    aria-label="下载"
-                    title="下载"
-                    onClick={(e) => handleDownload(e, item)}
-                  >
-                    <DownloadIcon />
-                  </button>
+                  {onDownload && (
+                    <button
+                      type="button"
+                      className="wk-outputs__action-btn"
+                      aria-label="下载"
+                      title="下载"
+                      onClick={(e) => handleDownload(e, item)}
+                    >
+                      <DownloadIcon />
+                    </button>
+                  )}
                 </div>
               </div>
             );
