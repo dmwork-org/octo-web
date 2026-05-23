@@ -144,11 +144,18 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
     setSearchValue((prev) => (prev.trim() === query ? prev : query));
   }, [query]);
 
+  // 当 onSearch / query 变化时 (典型场景: 父组件 matter 切换重建了
+  // handleOutputsSearch callback), 清掉 pending debounce timer, 防止
+  // 旧 matter 的搜索词漏给新 matter (review #97 round-5 Jerry-Xin
+  // blocking — stale debounced search)。
   useEffect(() => {
     return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
+      if (searchTimer.current) {
+        clearTimeout(searchTimer.current);
+        searchTimer.current = null;
+      }
     };
-  }, []);
+  }, [onSearch, query]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,7 +306,12 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                       {item.file_name || "未命名文件"}
                     </div>
                     <div className="wk-outputs__file-size">
-                      {item.file_size != null && item.file_size > 0
+                      {/*
+                        占位符仅用于 null/undefined (后端没给), 0 字节是
+                        合法值, 应展示 "0 B" (review #97 round-5
+                        Jerry-Xin suggestion)。
+                      */}
+                      {item.file_size != null
                         ? formatFileSize(item.file_size)
                         : "—"}
                     </div>

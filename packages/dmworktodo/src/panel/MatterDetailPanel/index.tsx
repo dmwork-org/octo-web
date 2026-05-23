@@ -210,15 +210,28 @@ export default function MatterDetailPanel({
   const [outputsCursor, setOutputsCursor] = useState<string | undefined>();
   const [outputsQuery, setOutputsQuery] = useState("");
   const [outputsError, setOutputsError] = useState<string | null>(null);
-  // 单调递增请求序号: 防止 race condition (慢请求覆盖快请求)。
-  // 用户连续输入搜索词时, 旧请求可能后到, 用 seq 比对丢弃过期结果。
+  // 单调递增请求序号 + matterId 快照: 双重防止 race condition。
+  //
+  // seq guard: 用户连续输入搜索词时, 旧请求可能后到, 用 seq 比对丢弃过期结果。
+  // matterId guard: matter 切换时, OutputsPanel 内部 pending 的 debounce
+  // setTimeout 可能在切换后才触发, 闭包持有的是上一个 matter 的
+  // loadOutputs。如果只用 seq, 那个旧请求会自增 seq 把自己变成 latest
+  // 然后用 Matter A 的数据覆盖 Matter B (review #97 round-5 Jerry-Xin
+  // blocking — stale debounced search). 这里用 matterId 快照 + 当前 ref
+  // 比对兜底, 跟 OutputsPanel 内部清 timer 形成两道防线。
   const outputsReqSeqRef = useRef(0);
+  const currentMatterIdRef = useRef<string | undefined>(matterId);
+  useEffect(() => {
+    currentMatterIdRef.current = matterId;
+  }, [matterId]);
+
   const loadOutputs = useCallback(
     async (cursor?: string, query?: string) => {
       if (!matterId) {
         setOutputs([]);
         return;
       }
+      const requestMatterId = matterId;
       const seq = ++outputsReqSeqRef.current;
       setOutputsLoading(true);
       if (!cursor) setOutputsError(null);
@@ -228,8 +241,13 @@ export default function MatterDetailPanel({
           cursor,
           q: query || undefined,
         });
-        // 过期结果: 期间已有更新的请求发出, 直接丢弃。
-        if (seq !== outputsReqSeqRef.current) return;
+        // 过期结果: 期间已有更新的请求发出, 或 matter 已切换, 直接丢弃。
+        if (
+          seq !== outputsReqSeqRef.current ||
+          currentMatterIdRef.current !== requestMatterId
+        ) {
+          return;
+        }
         if (cursor) {
           // Append for pagination
           setOutputs((prev) => [...prev, ...(res.data || [])]);
@@ -239,7 +257,12 @@ export default function MatterDetailPanel({
         setOutputsHasMore(res.pagination?.has_more ?? false);
         setOutputsCursor(res.pagination?.next_cursor);
       } catch {
-        if (seq !== outputsReqSeqRef.current) return;
+        if (
+          seq !== outputsReqSeqRef.current ||
+          currentMatterIdRef.current !== requestMatterId
+        ) {
+          return;
+        }
         if (!cursor) {
           // 初次加载失败: 列表可能从空开始, 或上一次成功结果已经过期不可信,
           // 清空所有相关状态 (rows / cursor / has_more) + 显示错误条 +
@@ -255,7 +278,10 @@ export default function MatterDetailPanel({
           Toast.error("加载更多失败,请稍后重试");
         }
       } finally {
-        if (seq === outputsReqSeqRef.current) {
+        if (
+          seq === outputsReqSeqRef.current &&
+          currentMatterIdRef.current === requestMatterId
+        ) {
           setOutputsLoading(false);
         }
       }
@@ -263,10 +289,12 @@ export default function MatterDetailPanel({
     [matterId],
   );
   useEffect(() => {
-    // matter 切换时重置搜索词和游标, 避免上一个 matter 的过滤条件
-    // 影响新 matter 的初次加载 (跟 OutputsPanel 内部的 searchValue 同步)。
+    // matter 切换时重置搜索词 / 游标 / has_more, 避免上一个 matter 的过滤
+    // 条件 + load-more 状态影响新 matter 的初次加载 (跟 OutputsPanel
+    // 内部的 searchValue 同步, hasMore 重置见 review #97 yujiawei P2-1)。
     setOutputsQuery("");
     setOutputsCursor(undefined);
+    setOutputsHasMore(false);
     loadOutputs(undefined, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadOutputs]);
