@@ -239,8 +239,14 @@ export default function MatterDetailPanel({
       } catch {
         if (seq !== outputsReqSeqRef.current) return;
         if (!cursor) {
+          // 初次加载失败: 列表可能从空开始, 或上一次成功结果已经过期不可信,
+          // 清空 + 显示错误条 + 保留 retry 按钮。
           setOutputs([]);
           setOutputsError("加载失败,请稍后重试");
+        } else {
+          // 加载更多失败: 已展示的行还能用, 不清不闪, 给个 toast 让用户重试。
+          // (load-more 按钮会在 loading=false 后重新可点)
+          Toast.error("加载更多失败,请稍后重试");
         }
       } finally {
         if (seq === outputsReqSeqRef.current) {
@@ -261,8 +267,10 @@ export default function MatterDetailPanel({
 
   const handleOutputsSearch = useCallback(
     (q: string) => {
+      // 注: setOutputsCursor 不需要在这里清, loadOutputs 收到非 cursor 调用会
+      // 用响应里的 next_cursor 重新覆盖。但搜索词刚换时清 query 状态保证
+      // OutputsPanel 的可控 input value 跟 panel 同步。
       setOutputsQuery(q);
-      setOutputsCursor(undefined);
       loadOutputs(undefined, q);
     },
     [loadOutputs],
@@ -305,6 +313,21 @@ export default function MatterDetailPanel({
     },
     [],
   );
+
+  // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
+  // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
+  //
+  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是
+  // matter_channels.id (UUID), 不是 IM 的 channel_id。本侧已经从
+  // matter.channels 拿到 (matter_channels.id → channel_id, channel_type),
+  // 配合 useMyGroups 的 myGroupNos 就能按 matter_channels.id 反查成员关系。
+  //
+  // 注: 后端 access policy (Mininglamp-OSS/octo-matter#34) 已经把 outputs
+  // 限制成 creator/assignees/participants, channel-member-only 用户被拒。
+  // 这里只是在 UI 上多一层 "来源群名" 遮罩, 避免泄漏 "事项关联了哪些
+  // 我没加入的群" 这种二阶信息 (跟关联群聊 tab 一致的处理)。
+  // 注: 这个 useMemo 引用了 myGroupNos, 必须放在 useMyGroups() 调用之后,
+  // 实际定义在该 hook 调用后 (见下方)。
 
   // 每个 channel 的最新一条 timeline 条目 (用于 "最新进展" 展示)。
   // matter 加载后并发对每个关联 channel 调 listTimeline(limit=1),
@@ -537,6 +560,35 @@ export default function MatterDetailPanel({
   //   - 没加入的群: 群名模糊展示, 时间线条目不展示 "↗ 原消息" (权限不允许)
   //   - 拉取失败时 failed=true, 保守处理成 "全部未加入" (宁可多遮)
   const { groupNos: myGroupNos, loading: myGroupsLoading, failed: myGroupsFailed } = useMyGroups();
+
+  // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
+  // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
+  //
+  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是
+  // matter_channels.id (UUID), 不是 IM 的 channel_id。从 matter.channels
+  // 拿到 (matter_channels.id → channel_id, channel_type), 配合 myGroupNos
+  // 就能按 matter_channels.id 反查成员关系。
+  const outputsChannelMembership = useMemo(() => {
+    const map = new Map<string, boolean>();
+    const chs = matter?.channels || [];
+    for (const ch of chs) {
+      const parentNo = toParentGroupNo(ch.channel_id, ch.channel_type);
+      const isMember = !myGroupsFailed && myGroupNos.has(parentNo);
+      map.set(ch.id, isMember);
+    }
+    return map;
+  }, [matter?.channels, myGroupNos, myGroupsFailed]);
+
+  const getOutputChannelMembership = useCallback(
+    (sourceChannelId?: string) => {
+      if (!sourceChannelId) return { isMember: true, loading: false };
+      if (myGroupsLoading) return { isMember: false, loading: true };
+      // 没在 map 里 = 该 channel 已被解关联 / 数据漂移, 保守当成不在群
+      const isMember = outputsChannelMembership.get(sourceChannelId) ?? false;
+      return { isMember, loading: false };
+    },
+    [outputsChannelMembership, myGroupsLoading],
+  );
 
   // ── UI/数据分离: 为 ui/ 组件提供 renderAvatar / renderUserName ──
   const renderAvatar = useCallback(
@@ -1031,6 +1083,10 @@ export default function MatterDetailPanel({
         )}
 
         {/* ── Tab: 产出文件 (outputs) ── */}
+        {/* 注: onPreview 用 showClose 作为 "嵌入会话侧边栏" 信号, 因为
+            wk:file-preview 事件目前只有 Pages/Chat 的 _onFilePreview 在监听。
+            如果以后别的宿主也想接管文件预览, 这条 gate 可能要改成显式
+            "embeddedInChatSidebar" 或类似的语义化 prop。 */}
         {activeTab === "outputs" && (
           <OutputsPanel
             outputs={outputs}
@@ -1043,6 +1099,7 @@ export default function MatterDetailPanel({
             onRetry={handleOutputsRetry}
             renderAvatar={renderAvatar}
             onPreview={showClose ? handleOutputPreview : undefined}
+            getChannelMembership={getOutputChannelMembership}
           />
         )}
 

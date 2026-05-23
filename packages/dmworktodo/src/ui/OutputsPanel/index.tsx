@@ -4,14 +4,16 @@ import {
   formatFileSize,
 } from "@octo/base/src/Components/MessageInput/AttachmentNode";
 import { downloadFile } from "@octo/base/src/Utils/download";
-import { isSafeUrl } from "@octo/base";
+import { WKApp, isSafeUrl } from "@octo/base";
 import type { MatterOutput } from "../../bridge/types";
 import "./index.css";
 
 /**
- * Format ISO datetime → "YYYY-MM-DD HH:mm:ss" (对齐 Figma 设计稿格式)
+ * Format ISO datetime → "YYYY-MM-DD HH:mm:ss" (对齐 Figma 设计稿格式)。
  *
- * 使用浏览器本地时区展示 sent_at，符合用户本地阅读习惯。
+ * 故意用浏览器本地时区展示 sent_at, 不带 TZ 后缀。这是项目里 chat 时间
+ * 戳的统一惯例 (用户在自己时区里看东西最自然)。后端 sent_at 通常是
+ * ISO UTC, 浏览器 Date 自动转本地时区, 不要手动改成 UTC getter。
  */
 function formatDateTime(isoStr: string): string {
   const d = new Date(isoStr);
@@ -73,6 +75,11 @@ function DownloadIcon() {
 
 // ─── Props ──────────────────────────────────────────────
 
+export interface OutputChannelMembership {
+  isMember: boolean;
+  loading: boolean;
+}
+
 export interface OutputsPanelProps {
   outputs: MatterOutput[];
   loading?: boolean;
@@ -92,6 +99,18 @@ export interface OutputsPanelProps {
    * 此时操作列会显示 "眼睛" 按钮; 不传时不显示预览按钮 (独立事项页面场景)。
    */
   onPreview?: (item: MatterOutput) => void;
+  /**
+   * 来源群成员关系查询。由调用方根据 myGroupNos + matter.channels 注入。
+   * 不传时所有行都按 "已加入" 处理 (向后兼容, 不影响独立预览场景)。
+   *
+   * 用户不在源群时, "来源群" 列显示遮罩 + "不在群" 徽章, 跟关联群聊 tab 一致。
+   * 注: 这是 UI 层的隐私防御 (defense-in-depth) — 后端 access policy 已经
+   * 把 outputs 限制成 creator/assignees/participants, 这里只是不让创建者看到
+   * "事项关联了哪些他没加入的群" 的二阶信息。
+   */
+  getChannelMembership?: (
+    sourceChannelId?: string,
+  ) => OutputChannelMembership;
 }
 
 // ─── Component ──────────────────────────────────────────
@@ -107,6 +126,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
   onRetry,
   renderAvatar,
   onPreview,
+  getChannelMembership,
 }) => {
   const [searchValue, setSearchValue] = useState(query);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,10 +166,16 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
     (e: React.MouseEvent, item: MatterOutput) => {
       e.preventDefault();
       e.stopPropagation();
-      // 走 dmworkbase 的 downloadFile: 内部 isSafeUrl 校验 + 跨域时拉取
-      // 后端预签名下载 URL, 拒绝 javascript:/data:/file: 等危险协议。
-      // 跟 Messages/File 的 handleDownload 行为一致, 避免协议绕过。
-      const url = item.file_url || "";
+      // 跟 Messages/File.handleDownload 一致: 先 getFileURL 解析相对路径
+      // (后端可能返回 /files/foo.pdf 而非完整 URL), 再 isSafeUrl 拒绝
+      // javascript:/data:/file: 等危险协议。dmworkbase 的 downloadFile 内部
+      // 还会跑一遍 isSafeUrl + 跨域时拉预签名 URL, 这里多一道闸防御深度。
+      const rawUrl = item.file_url || "";
+      if (!rawUrl) return;
+      let url = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+      if (url && !url.startsWith("http")) {
+        url = window.location.origin + "/" + url.replace(/^\//, "");
+      }
       if (!url || !isSafeUrl(url)) return;
       void downloadFile(url, item.file_name || "file");
     },
@@ -309,16 +335,62 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                   </div>
                 </div>
 
-                {/* 来源群: #群名 */}
+                {/* 来源群: #群名 (不在群时遮罩 + 不在群徽章) */}
                 <div className="wk-outputs__td wk-outputs__col-channel" role="cell">
-                  <span
-                    className="wk-outputs__channel-name"
-                    title={item.source_channel_name || ""}
-                  >
-                    {item.source_channel_name
-                      ? `#${item.source_channel_name}`
-                      : "—"}
-                  </span>
+                  {(() => {
+                    const m = getChannelMembership?.(item.source_channel_id);
+                    const loadingMembership = m?.loading ?? false;
+                    const isMember = m?.isMember ?? true;
+                    if (loadingMembership) {
+                      return (
+                        <span
+                          className="wk-outputs__channel-name--skeleton"
+                          aria-label="加载中"
+                          role="presentation"
+                        >
+                          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                        </span>
+                      );
+                    }
+                    if (!isMember && item.source_channel_name) {
+                      return (
+                        <span className="wk-outputs__channel-blocked">
+                          <span
+                            className="wk-outputs__channel-name--blur"
+                            title="你不在该群, 群名已隐藏"
+                            aria-label="群名已隐藏"
+                          >
+                            ████
+                          </span>
+                          <span className="wk-outputs__not-member-badge">
+                            <svg
+                              width="9"
+                              height="9"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              aria-hidden="true"
+                            >
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                            不在群
+                          </span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span
+                        className="wk-outputs__channel-name"
+                        title={item.source_channel_name || ""}
+                      >
+                        {item.source_channel_name
+                          ? `#${item.source_channel_name}`
+                          : "—"}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* 发送时间: YYYY-MM-DD HH:mm:ss */}

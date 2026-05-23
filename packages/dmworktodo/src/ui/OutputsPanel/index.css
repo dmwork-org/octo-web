@@ -245,13 +245,60 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.14px;
+}
+
+/* 不在群: 群名 blur 遮罩 + 灰底 "不在群" 徽章 (跟关联群聊 tab 一致) */
+.wk-outputs__channel-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  min-width: 0;
+}
+
+.wk-outputs__channel-name--blur {
+  display: inline-block;
+  filter: blur(2.5px);
+  opacity: 0.35;
+  user-select: none;
+  cursor: help;
+  letter-spacing: 0.05em;
+}
+
+/* 成员关系拉取中: shimmer 骨架 */
+.wk-outputs__channel-name--skeleton {
+  display: inline-block;
+  min-width: 64px;
+  height: 0.85em;
+  border-radius: var(--wk-r-xs);
+  background: linear-gradient(
+    90deg,
+    var(--wk-bg-elevated) 0%,
+    var(--wk-bg-hover) 50%,
+    var(--wk-bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: wk-outputs-shimmer 1.2s ease-in-out infinite;
+  vertical-align: baseline;
+}
+
+.wk-outputs__not-member-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px var(--wk-sp-1-5);
+  font-size: var(--wk-text-size-tiny);
+  color: var(--wk-text-tertiary);
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-xs);
+  font-weight: var(--wk-font-medium);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ─── 发送时间列 ──────────────────────────────────────── */
 .wk-outputs__time-text {
   font-family: 'Inter', var(--wk-font-sans);
-  letter-spacing: -0.14px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
