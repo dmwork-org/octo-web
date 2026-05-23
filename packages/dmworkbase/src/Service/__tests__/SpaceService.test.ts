@@ -149,6 +149,8 @@ vi.mock("wukongimjssdk", async () => {
 
 import { shouldSkipChannelForSpace } from "../SpaceService"
 import { Channel, ChannelTypeGroup } from "wukongimjssdk"
+import { ChannelTypeCommunityTopic } from "../Const"
+import { ThreadChannelIdSeparator } from "../Thread"
 
 const SPACE_A = "a".repeat(32)
 const SPACE_B = "b".repeat(32)
@@ -223,6 +225,87 @@ describe("shouldSkipChannelForSpace — external group", () => {
             { uid: "u_external", orgData: { is_external: 1, source_space_name: "Space B" } },
         ])
         expect(shouldSkipChannelForSpace(ch)).toBe(true)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// shouldSkipChannelForSpace — CommunityTopic (子区) branch (PR #105)
+//
+// Threads inherit their parent group's Space membership. The channelID format
+// is `{groupNo}____{shortId}` (see Thread.ts:40). The new branch parses the
+// parent groupNo, reuses the group's channelSpaceMap / channelInfo lookup,
+// and fail-closes when the parent's Space is unknown — preventing cross-Space
+// thread leaks in the recent tab.
+// ---------------------------------------------------------------------------
+
+function threadCid(groupNo: string, shortId: string) {
+    return `${groupNo}${ThreadChannelIdSeparator}${shortId}`
+}
+
+describe("shouldSkipChannelForSpace — CommunityTopic (thread)", () => {
+    beforeEach(() => {
+        mockState.channelSpaceMap.clear()
+        mockState.subscribesByChannel.clear()
+        mockState.channelInfoByChannel.clear()
+        mockState.currentSpaceId = ""
+        mockState.loginUid = "u_self"
+    })
+
+    it("does NOT skip when parent group is in current Space (cache hit)", () => {
+        mockState.currentSpaceId = SPACE_A
+        mockState.channelSpaceMap.set(`g1_${ChannelTypeGroup}`, SPACE_A)
+        const thread = new Channel(threadCid("g1", "t1"), ChannelTypeCommunityTopic)
+        expect(shouldSkipChannelForSpace(thread)).toBe(false)
+    })
+
+    it("skips when parent group belongs to another Space (cache hit)", () => {
+        mockState.currentSpaceId = SPACE_A
+        mockState.channelSpaceMap.set(`g1_${ChannelTypeGroup}`, SPACE_B)
+        const thread = new Channel(threadCid("g1", "t1"), ChannelTypeCommunityTopic)
+        expect(shouldSkipChannelForSpace(thread)).toBe(true)
+    })
+
+    it("falls back to parent channelInfo.orgData.space_id when cache misses", () => {
+        mockState.currentSpaceId = SPACE_A
+        mockState.channelInfoByChannel.set("g1", { orgData: { space_id: SPACE_B } })
+        const thread = new Channel(threadCid("g1", "t1"), ChannelTypeCommunityTopic)
+        expect(shouldSkipChannelForSpace(thread)).toBe(true)
+    })
+
+    it("writes parent cache when resolving via channelInfo", () => {
+        mockState.currentSpaceId = SPACE_A
+        mockState.channelInfoByChannel.set("g1", { orgData: { space_id: SPACE_A } })
+        const thread = new Channel(threadCid("g1", "t1"), ChannelTypeCommunityTopic)
+        shouldSkipChannelForSpace(thread)
+        expect(mockState.channelSpaceMap.get(`g1_${ChannelTypeGroup}`)).toBe(SPACE_A)
+    })
+
+    it("fail-closes (skip) when parent Space is completely unknown — no cache, no channelInfo", () => {
+        mockState.currentSpaceId = SPACE_A
+        const thread = new Channel(threadCid("g_unknown", "t1"), ChannelTypeCommunityTopic)
+        expect(shouldSkipChannelForSpace(thread)).toBe(true)
+    })
+
+    it("does NOT skip when I'm an external member of the parent group sourced from currentSpaceId", () => {
+        mockState.currentSpaceId = SPACE_B
+        mockState.channelSpaceMap.set(`g1_${ChannelTypeGroup}`, SPACE_A)
+        mockState.subscribesByChannel.set("g1", [
+            { uid: "u_self", orgData: { is_external: 1, source_space_id: SPACE_B } },
+        ])
+        const thread = new Channel(threadCid("g1", "t1"), ChannelTypeCommunityTopic)
+        expect(shouldSkipChannelForSpace(thread)).toBe(false)
+    })
+
+    it("fail-closes on malformed thread channelID (cannot parse parent)", () => {
+        mockState.currentSpaceId = SPACE_A
+        const malformed = new Channel("not_a_thread_id", ChannelTypeCommunityTopic)
+        expect(shouldSkipChannelForSpace(malformed)).toBe(true)
+    })
+
+    it("does NOT filter when no current Space (Space mode off)", () => {
+        mockState.currentSpaceId = ""
+        const thread = new Channel(threadCid("g_unknown", "t1"), ChannelTypeCommunityTopic)
+        expect(shouldSkipChannelForSpace(thread)).toBe(false)
     })
 })
 

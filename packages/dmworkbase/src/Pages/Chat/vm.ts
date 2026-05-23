@@ -289,7 +289,13 @@ export class ChatVM extends ProviderListener {
                     this._pendingSpaceConversations.delete(key)
                 }
                 const conv = pendingConv || WKSDK.shared().conversationManager.findConversation(channelInfo.channel)
-                if (conv && !shouldSkipChannelForSpace(channelInfo.channel)) {
+                // 排空 pending 时必须有 space_id 证据(channelInfo 直接给 OR 已写入
+                // channelSpaceMap)才插入。否则 shouldSkipChannelForSpace 在 group 分支会
+                // 走 SpaceService.tsx:142 fall-through `return false`,跨 Space 群在
+                // channelInfo 不带 space_id 时仍会被插入,等于 pending 队列形同虚设
+                // (PR #105 review by lml2468)。
+                const hasSpaceEvidence = !!sid || WKApp.shared.channelSpaceMap.has(key)
+                if (conv && hasSpaceEvidence && !shouldSkipChannelForSpace(channelInfo.channel)) {
                     const existingInListener = this.findConversation(channelInfo.channel)
                     if (!existingInListener) {
                         this.conversations = [new ConversationWrap(conv), ...this.conversations]
