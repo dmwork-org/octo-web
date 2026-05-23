@@ -1,6 +1,8 @@
 import WKApp from "../App"
 import { ChannelTypePerson, ChannelTypeGroup, Channel, Conversation, Message, WKSDK } from "wukongimjssdk"
 import { hasSpacePrefix } from "./SpacePrefix"
+import { parseThreadChannelId } from "./Thread"
+import { ChannelTypeCommunityTopic } from "./Const"
 
 export type JoinSpaceStatus = "NEED_APPROVAL" | "PENDING"
 
@@ -95,6 +97,7 @@ function getMyMembershipSourceSpaceId(channel: Channel): string | undefined {
  * - Person channel（私聊）→ 永远不过滤
  * - 有 Space 前缀（s{spaceId}_）的 channel → 前缀匹配
  * - 群聊（无前缀）→ 查 channelSpaceMap 缓存 → channelInfo.orgData.space_id
+ * - 子区（CommunityTopic）→ 按父群 Space 归属判定；父群 Space 未知时 fail-close
  * - 都未命中 → fail-open（放行，等 channelInfo 回调后再检查）
  *
  * 外部群兼容：当群归属 Space 与当前 Space 不一致时，额外检查自己是否
@@ -137,6 +140,37 @@ export function shouldSkipChannelForSpace(channel: Channel): boolean {
             return true
         }
         // channelInfo 也没有 → fail-open，等 channelInfo 回调后 channelListener 会二次检查
+    }
+
+    // 子区（CommunityTopic）→ Space 归属跟随父群
+    // channelID 形如 {groupNo}____{shortId}，解析出父群 groupNo 后复用群的判定路径
+    // 父群 Space 未知时 fail-close（return true）：跨 Space WS 推子区会一直卡在列表里
+    // （vm.ts 的 ChannelTypeGroup pending 路径不覆盖子区，channelListener 也不修正），
+    // 必须在过滤层兜底。代价是自己 Space 父群刚 cold-start 还没缓存 space_id 时，
+    // 第一次到达的子区会被拒一次；父群随后的 add/update 会写缓存,下一条消息恢复正常。
+    if (channel.channelType === ChannelTypeCommunityTopic) {
+        const parsed = parseThreadChannelId(cid)
+        if (!parsed) return true
+        const parentKey = `${parsed.groupNo}_${ChannelTypeGroup}`
+        const parent = new Channel(parsed.groupNo, ChannelTypeGroup)
+
+        const cachedSpaceId = WKApp.shared.channelSpaceMap.get(parentKey)
+        if (cachedSpaceId) {
+            if (cachedSpaceId === currentSpaceId) return false
+            if (getMyMembershipSourceSpaceId(parent) === currentSpaceId) return false
+            return true
+        }
+
+        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(parent)
+        const infoSpaceId = parentInfo?.orgData?.space_id
+        if (infoSpaceId) {
+            WKApp.shared.channelSpaceMap.set(parentKey, infoSpaceId)
+            if (infoSpaceId === currentSpaceId) return false
+            if (getMyMembershipSourceSpaceId(parent) === currentSpaceId) return false
+            return true
+        }
+
+        return true
     }
 
     return false

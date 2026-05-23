@@ -187,10 +187,14 @@ export class ChatVM extends ProviderListener {
                         if (sid) {
                             WKApp.shared.channelSpaceMap.set(key, sid)
                         } else if (WKApp.shared.currentSpaceId && !hasSpacePrefix(conversation.channel.channelID)) {
-                            // Fix: fail-open — 新群假定属于当前 Space，先展示
-                            // 建群 API 已带 space_id，channelInfo 异步返回后会补写正确值
-                            // 下次 Space 切换时 requestConversationList() 会用真实缓存重新过滤
-                            WKApp.shared.channelSpaceMap.set(key, WKApp.shared.currentSpaceId)
+                            // 缓存未命中 + channelInfo 同步取不到 space_id：暂存到 pending,
+                            // 等 channelInfoListener 拿到真实 space_id 后再决定是否加入
+                            // (与 update 分支一致)。旧 fail-open 兜底会把他 Space 群假定为
+                            // 当前 Space 写入缓存,后续 channelInfo 若不带 space_id (跨 Space
+                            // 场景常见) 纠正路径不触发,conv 持久卡在列表。
+                            this._pendingSpaceConversations.set(key, conversation)
+                            WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
+                            return
                         }
                     }
                 }
