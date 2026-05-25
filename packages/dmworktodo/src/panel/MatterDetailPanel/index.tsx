@@ -1550,7 +1550,7 @@ function formatRelativeSyncTime(iso: string): string {
   return translate("todo.sync.daysAgo", { values: { count: days } });
 }
 
-function TimelinePanel({
+export function TimelinePanel({
   entries,
   onShowAnchor,
   canShowAnchor,
