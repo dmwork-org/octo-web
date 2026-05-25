@@ -15,14 +15,13 @@ const meta: Meta<typeof SidebarTabBar> = {
 
 **Props：**
 - \`activeTab\`：当前激活的 Tab（'follow' | 'recent'）
-- \`followUnread\`：关注未读总数
 - \`recentUnread\`：最近未读总数
 - \`onTabChange\`：切换回调
 
 **States：**
 - 关注激活
 - 最近激活
-- 有未读角标（数字 / 99+）
+- 最近有未读角标（数字 / 99+）
 - 无未读
         `,
       },
@@ -46,7 +45,6 @@ export const FollowActive: Story = {
   name: '关注 Tab 激活',
   args: {
     activeTab: 'follow',
-    followUnread: 5,
     recentUnread: 3,
     onTabChange: () => {},
   },
@@ -55,8 +53,7 @@ export const FollowActive: Story = {
     const btns = canvas.getAllByRole('button')
     // 关注按钮有 active 样式
     expect(btns[0].className).toContain('active')
-    // 角标数字正确
-    expect(canvas.getByText('5')).toBeInTheDocument()
+    // 关注 tab 不显示总未读，最近 tab 仍显示未读
     expect(canvas.getByText('3')).toBeInTheDocument()
   },
 }
@@ -65,7 +62,6 @@ export const RecentActive: Story = {
   name: '最近 Tab 激活',
   args: {
     activeTab: 'recent',
-    followUnread: 5,
     recentUnread: 3,
     onTabChange: () => {},
   },
@@ -80,7 +76,6 @@ export const NoBadge: Story = {
   name: '无未读角标',
   args: {
     activeTab: 'follow',
-    followUnread: 0,
     recentUnread: 0,
     onTabChange: () => {},
   },
@@ -94,14 +89,13 @@ export const LargeUnread: Story = {
   name: '99+ 角标',
   args: {
     activeTab: 'follow',
-    followUnread: 999,
     recentUnread: 100,
     onTabChange: () => {},
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     const badges = canvas.getAllByText('99+')
-    expect(badges.length).toBe(2)
+    expect(badges.length).toBe(1)
   },
 }
 
@@ -114,7 +108,6 @@ export const TabSwitch: Story = {
     return (
       <SidebarTabBar
         activeTab={tab}
-        followUnread={5}
         recentUnread={3}
         onTabChange={setTab}
       />

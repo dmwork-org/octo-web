@@ -5,14 +5,12 @@ export type SidebarTab = 'follow' | 'recent'
 
 export interface SidebarTabBarProps {
     activeTab: SidebarTab
-    followUnread: number
     recentUnread: number
     onTabChange: (tab: SidebarTab) => void
 }
 
 const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
     activeTab,
-    followUnread,
     recentUnread,
     onTabChange,
 }) => {
@@ -24,11 +22,6 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
                     onClick={() => onTabChange('follow')}
                 >
                     <span className="wk-sidebar-tabbar__label">关注</span>
-                    {followUnread > 0 && (
-                        <span className="wk-sidebar-tabbar__badge">
-                            {followUnread > 99 ? '99+' : followUnread}
-                        </span>
-                    )}
                 </button>
                 <button
                     className={`wk-sidebar-tabbar__btn ${activeTab === 'recent' ? 'wk-sidebar-tabbar__btn--active' : ''}`}

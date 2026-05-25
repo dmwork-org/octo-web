@@ -48,8 +48,7 @@ import {
 import FilePreviewPanel, {
   FilePreviewInfo,
 } from "../../Components/FilePreviewPanel";
-import { FollowSidebarProvider, useFollowSidebarContext } from "../../Hooks/useFollowSidebar";
-import { SidebarTargetType } from "../../Service/SidebarService";
+import { FollowSidebarProvider } from "../../Hooks/useFollowSidebar";
 
 interface SidebarTabBarWithBadgesProps {
   conversations: ConversationWrap[];
@@ -58,52 +57,19 @@ interface SidebarTabBarWithBadgesProps {
 }
 
 /**
- * 关注 / 最近 tab 角标。按 PM #337 spec：
- * - 关注 tab：sum 自 sidebar /sidebar/sync 的 items[].unread（已是后端 follow 视图）。
- *   不再 sum IM 缓存——sidebar-only 的关注（用户关注但还没聊过，IM 缓存里没有）会被丢掉。
- * - 最近 tab：sum IM 缓存里非勿扰的 conversations，和 recent tab filter='all' 一致。
+ * 最近 tab 角标。关注 tab 是筛选/收藏视图，不展示 tab 级总未读；
+ * 关注列表内的会话行和分组 header 仍各自展示未读。
  *
  * 勿扰判定：通过 WKSDK.channelManager 查 channelInfo.mute（拿不到当作非勿扰）；
  * 子区未显式 mute 时回看父群组的 mute（与列表渲染保持一致）。
  *
- * 数据源由 <FollowSidebarProvider> 统一注入，避免双 hook 实例导致的重复
- * /sidebar/sync + follow 写操作只刷一份的 stale badge 问题。
+ * FollowSidebarProvider 仍包住 tab bar + 列表，让关注列表共享同一份 sidebar/sync 数据。
  */
 const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   conversations,
   activeTab,
   onTabChange,
 }) => {
-  const { items } = useFollowSidebarContext();
-
-  const isItemMuted = (it: {
-    target_type: number
-    target_id: string
-    parent_channel_id?: string
-  }): boolean => {
-    let channelType: number | null = null;
-    if (it.target_type === SidebarTargetType.DM) channelType = ChannelTypePerson;
-    else if (it.target_type === SidebarTargetType.CHANNEL) channelType = ChannelTypeGroup;
-    else if (it.target_type === SidebarTargetType.THREAD) channelType = ChannelTypeCommunityTopic;
-    if (channelType == null) return false;
-    const info = WKSDK.shared().channelManager.getChannelInfo(
-      new Channel(it.target_id, channelType),
-    );
-    const isThread = it.target_type === SidebarTargetType.THREAD;
-    let parentChannelInfo: any | undefined;
-    if (isThread) {
-      const parentGroupNo =
-        it.parent_channel_id ||
-        parseThreadChannelId(it.target_id)?.groupNo;
-      if (parentGroupNo) {
-        parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
-          new Channel(parentGroupNo, ChannelTypeGroup),
-        );
-      }
-    }
-    return isEffectivelyMuted({ isThread, channelInfo: info, parentChannelInfo });
-  };
-
   const isConversationMuted = (c: ConversationWrap): boolean => {
     const isThread = c.channel.channelType === ChannelTypeCommunityTopic;
     let parentChannelInfo: any | undefined;
@@ -120,25 +86,6 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     return isEffectivelyMuted({ isThread, channelInfo: c.channelInfo, parentChannelInfo });
   };
 
-  // sidebar items 是 /sidebar/sync 的快照，IM 缓存里 conv 才是 reactive 的。
-  // IM 缓存有这条会话就用 live unread；没有（sidebar-only 关注，从未聊过）才
-  // fallback sidebar 的 unread 快照——这样新消息一来 badge 即刻同步，sidebar-
-  // only 关注又不会被漏算。
-  const followUnread = items.reduce((sum, it) => {
-    if (isItemMuted(it)) return sum;
-    let channelType: number | null = null;
-    if (it.target_type === SidebarTargetType.DM) channelType = ChannelTypePerson;
-    else if (it.target_type === SidebarTargetType.CHANNEL) channelType = ChannelTypeGroup;
-    else if (it.target_type === SidebarTargetType.THREAD) channelType = ChannelTypeCommunityTopic;
-    const liveConv = channelType != null
-      ? conversations.find(c =>
-          c.channel.channelType === channelType && c.channel.channelID === it.target_id,
-        )
-      : undefined;
-    const unread = liveConv ? (liveConv.unread || 0) : (it.unread || 0);
-    return sum + unread;
-  }, 0);
-
   const recentUnread = conversations.reduce(
     (sum: number, c: ConversationWrap) => {
       // 与 ChatConversationList 的 hideInactiveGroups 渲染过滤一致：3 天不活跃的群
@@ -153,7 +100,6 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   return (
     <SidebarTabBar
       activeTab={activeTab}
-      followUnread={followUnread}
       recentUnread={recentUnread}
       onTabChange={onTabChange}
     />
