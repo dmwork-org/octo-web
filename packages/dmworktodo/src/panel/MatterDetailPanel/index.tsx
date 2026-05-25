@@ -589,7 +589,7 @@ export default function MatterDetailPanel({
     if (myGroupsFailed) return false; // 拉取失败保守处理
     const parentNo = toParentGroupNo(
       matter.source_channel_id,
-      matter.source_channel_type || 2,
+      matter.source_channel_type || ChannelTypeGroup,
     );
     return myGroupNos.has(parentNo);
   })();
