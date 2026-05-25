@@ -98,8 +98,11 @@ export default function LinkChannelsModal({
         setThreadLoadErrors(res.threadLoadErrors ?? []);
       })
       .catch(() => {
-        setChannels([]);
-        setThreadLoadErrors([]);
+        // 整体失败 (不光是部分子区失败) — 比如 groupSaveList 5xx。
+        // 不清掉 channels: 如果之前成功加载过, 保留旧的列表给用户继续操作,
+        // 不要因为一次重试失败就让用户从头来 (review #110 yujiawei P2-3/P2-4)。
+        // 走 toast 通知, 而不是默默空白。
+        Toast.error("加载会话列表失败,请稍后重试");
       })
       .finally(() => setLoading(false));
   }, [loadChannels]);
@@ -172,10 +175,17 @@ export default function LinkChannelsModal({
     }
   }, [selected, submitting, channels, matterId, onLinked, onClose, onLinkChannel]);
 
-  const selectedChannels = useMemo(() => {
-    const sel = new Set(selected);
-    return channels.filter((c) => sel.has(c.channelId));
-  }, [channels, selected]);
+  // 已选 Set: 同时给左侧列表 (每行 isSelected 判断) 和右侧已选列表用,
+  // 把行级 .includes (O(N×M)) 收敛成一次 Set 构造 (O(N+M))。
+  // 列表上限 200 行 + 选中数量小, 实际开销没差, 这里更多是 review #110
+  // yujiawei P2-1 提到的 "claim consistency" — 既然 commit message 说做了,
+  // 那就做完整。
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  const selectedChannels = useMemo(
+    () => channels.filter((c) => selectedSet.has(c.channelId)),
+    [channels, selectedSet],
+  );
 
   return (
     <Modal
@@ -255,7 +265,7 @@ export default function LinkChannelsModal({
                 <>
                   {visibleRows.map((c) => {
                     const isLinked = linkedIds.has(c.channelId);
-                    const isSelected = selected.includes(c.channelId);
+                    const isSelected = selectedSet.has(c.channelId);
                     const isThread = c.channelType === CHANNEL_TYPE_COMMUNITY_TOPIC;
                     const avatarChannel = channelForAvatar(c);
                     return (

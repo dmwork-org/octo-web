@@ -37,7 +37,7 @@ import AnchorPopover from "../../ui/AnchorPopover";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import type { Thread as ThreadType } from "@octo/base/src/Service/Thread";
 import { ThreadStatus } from "@octo/base/src/Service/Thread";
-import { Channel, ChannelTypePerson } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
 import { useChannelName } from "../../hooks/useChannelName";
@@ -530,21 +530,21 @@ export default function MatterDetailPanel({
     const groupOptions: GroupRow[] = (groups as any[])
       .map((g: any) => ({
         channelId: g.channel?.channelID || g.channel_id || "",
-        channelType: g.channel?.channelType || 2,
+        channelType: g.channel?.channelType || ChannelTypeGroup,
         name: g.title || g.name || "",
         desc: g.remark || g.desc || "",
         memberCount: g.memberCount || g.member_count || undefined,
       }))
       .filter((g) => !!g.channelId);
 
-    // 并发拉每个群的子区 (channel_type=2 才有子区)。
+    // 并发拉每个群的子区 (channel_type=Group 才有子区)。
     // 失败的群不阻断别的群: 记录失败的群名, 在 modal 上方 surface 警告。
     const groupNos = groupOptions
-      .filter((g) => g.channelType === 2)
+      .filter((g) => g.channelType === ChannelTypeGroup)
       .map((g) => g.channelId);
     const groupNameByNo = new Map(
       groupOptions
-        .filter((g) => g.channelType === 2)
+        .filter((g) => g.channelType === ChannelTypeGroup)
         .map((g) => [g.channelId, g.name]),
     );
 
@@ -590,7 +590,7 @@ export default function MatterDetailPanel({
     const result: ChannelOption[] = [];
     for (const g of groupOptions) {
       result.push(g);
-      if (g.channelType !== 2) continue;
+      if (g.channelType !== ChannelTypeGroup) continue;
       const threads = threadsByGroup.get(g.channelId) || [];
       for (const t of threads) {
         // 只列活跃子区 (跳过归档/删除); is_member 后端可能不填,
