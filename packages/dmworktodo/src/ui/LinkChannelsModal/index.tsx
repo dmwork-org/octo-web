@@ -96,12 +96,23 @@ export default function LinkChannelsModal({
       .then((res) => {
         setChannels(res.channels);
         setThreadLoadErrors(res.threadLoadErrors ?? []);
+        // reload 后对账 selected: 如果用户之前选了某个子区, 重试 / 重新拉取
+        // 后该子区可能不在新列表里 (后端临时不可达 / 子区被解散等)。
+        // 不清的话 handleConfirm 会 channels.find=undefined 默默 skip,
+        // 但 toast 还是按 selected.length 报 "已关联 N 个", 跟实际不符。
+        // 这里直接把不存在的 selected id 过滤掉, 让 UI 跟数据一致 (review
+        // #110 r3 Jerry-Xin 🟡-1)。
+        const validIds = new Set(res.channels.map((c) => c.channelId));
+        setSelected((prev) => {
+          const next = prev.filter((id) => validIds.has(id));
+          return next.length === prev.length ? prev : next;
+        });
       })
       .catch(() => {
         // 整体失败 (不光是部分子区失败) — 比如 groupSaveList 5xx。
-        // 不清掉 channels: 如果之前成功加载过, 保留旧的列表给用户继续操作,
-        // 不要因为一次重试失败就让用户从头来 (review #110 yujiawei P2-3/P2-4)。
-        // 走 toast 通知, 而不是默默空白。
+        // 不清掉 channels / selected: 如果之前成功加载过, 保留旧的列表给
+        // 用户继续操作, 不要因为一次重试失败就让用户从头来 (review #110
+        // r2 yujiawei P2-3/P2-4)。走 toast 通知, 而不是默默空白。
         Toast.error("加载会话列表失败,请稍后重试");
       })
       .finally(() => setLoading(false));
@@ -159,13 +170,23 @@ export default function LinkChannelsModal({
   const handleConfirm = useCallback(async () => {
     if (selected.length === 0 || submitting) return;
     setSubmitting(true);
+    let linkedCount = 0;
     try {
       for (const chId of selected) {
         const ch = channels.find((c) => c.channelId === chId);
         if (!ch) continue;
         await onLinkChannel(matterId, ch.channelId, ch.channelType, ch.name);
+        linkedCount++;
       }
-      Toast.success(`已关联 ${selected.length} 个会话`);
+      // 用真实成交数报 toast: 如果 reload 后某个 selected 已经不在 channels
+      // 里, 上面的 .find 会 skip 它, linkedCount 比 selected.length 小。
+      // 之前用 selected.length 会报 "已关联 N 个" 但实际只关联了 N-1 个,
+      // 跟用户实际看到的不一致 (review #110 r3 Jerry-Xin 🟡-1)。
+      if (linkedCount === 0) {
+        Toast.error("所选会话已不可用,请重新选择");
+        return;
+      }
+      Toast.success(`已关联 ${linkedCount} 个会话`);
       onLinked();
       onClose();
     } catch (err: unknown) {

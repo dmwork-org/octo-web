@@ -26,6 +26,8 @@ import {
 import { getMessageByChannel } from "../../api/imMessageApi";
 import { Toast } from "../../utils/toast";
 import { toParentGroupNo } from "../../utils/channelId";
+import { buildLinkableChannels } from "../../utils/buildLinkableChannels";
+import type { GroupSaveListRow } from "../../utils/buildLinkableChannels";
 import UserName from "../../ui/UserName";
 import LinkChannelsModal from "../../ui/LinkChannelsModal";
 import type {
@@ -35,8 +37,6 @@ import type {
 import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
-import type { Thread as ThreadType } from "@octo/base/src/Service/Thread";
-import { ThreadStatus } from "@octo/base/src/Service/Thread";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
@@ -508,110 +508,23 @@ export default function MatterDetailPanel({
   );
 
   // ── LinkChannelsModal: loadChannels / onLinkChannel callbacks ──
-  // 颗粒度: 群 (channel_type=2) + 子区 (channel_type=5)。
-  // 群直接来自 /channel/groupSaveList; 子区是 per-group fetch /groups/:no/threads,
-  // 用 4 路并发避免 N 个群 N 次串行 (用户可能在 20+ 个群)。
-  // 子区只列活跃 (status=Active) 的; is_member 字段后端不一定填 (undefined),
-  // 所以宽松判断: 显式 false 才过滤掉 (避免把后端没填字段当作 "不可见"
-  // 而把整批子区都隐藏)。注: ThreadListVM 本身不做 is_member 过滤,
-  // 这里收紧一层是为了不把用户已退出的子区作为可关联候选。
-  // 单群子区拉取失败不阻断整体: 收集失败的群名上抛, 由 modal 在列表上方
-  // surface "部分子区加载失败" 警示, 用户可重试 (那个群仍能选群本身,
-  // 子区缺位)。
-  const loadChannelsForModal = useCallback(async (): Promise<LoadChannelsResult> => {
-    const groups = await WKApp.dataSource.channelDataSource.groupSaveList();
-    type GroupRow = {
-      channelId: string;
-      channelType: number;
-      name: string;
-      desc?: string;
-      memberCount?: number;
-    };
-    const groupOptions: GroupRow[] = (groups as any[])
-      .map((g: any) => ({
-        channelId: g.channel?.channelID || g.channel_id || "",
-        channelType: g.channel?.channelType || ChannelTypeGroup,
-        name: g.title || g.name || "",
-        desc: g.remark || g.desc || "",
-        memberCount: g.memberCount || g.member_count || undefined,
-      }))
-      .filter((g) => !!g.channelId);
-
-    // 并发拉每个群的子区 (channel_type=Group 才有子区)。
-    // 失败的群不阻断别的群: 记录失败的群名, 在 modal 上方 surface 警告。
-    const groupNos = groupOptions
-      .filter((g) => g.channelType === ChannelTypeGroup)
-      .map((g) => g.channelId);
-    const groupNameByNo = new Map(
-      groupOptions
-        .filter((g) => g.channelType === ChannelTypeGroup)
-        .map((g) => [g.channelId, g.name]),
-    );
-
-    const concurrency = 4;
-    const threadsByGroup = new Map<string, ThreadType[]>();
-    const failedGroupNames: string[] = [];
-    let cursor = 0;
-    async function worker() {
-      while (cursor < groupNos.length) {
-        const idx = cursor++;
-        const no = groupNos[idx];
-        try {
-          // 必须传 page_index/page_size, 后端默认行为可能不分页 = 返回空。
-          // page_size=100 是与 ThreadListVM 一致的取值; 单群 100+ 活跃子区
-          // 罕见, 真到了那天再做分页/加载更多 (见 #110 PR description
-          // Follow-up)。
-          const list =
-            await WKApp.dataSource.channelDataSource.threadList(no, {
-              page_index: 1,
-              page_size: 100,
-            });
-          threadsByGroup.set(no, list || []);
-        } catch (err) {
-          // 不上抛: 一个群挂了不能让整个 picker 空白。但要记日志 + 收集失败
-          // 名字, 让 modal 上 surface 出来, 不然线上看起来跟 "这个群没子区"
-          // 一模一样, 没法 debug。
-          // eslint-disable-next-line no-console
-          console.warn(
-            "[MatterDetailPanel] threadList failed for group",
-            no,
-            err,
-          );
-          threadsByGroup.set(no, []);
-          failedGroupNames.push(groupNameByNo.get(no) || no);
-        }
-      }
-    }
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, groupNos.length) }, worker),
-    );
-
-    // 把子区按所属群的顺序展开成 ChannelOption[], 并标父群信息。
-    const result: ChannelOption[] = [];
-    for (const g of groupOptions) {
-      result.push(g);
-      if (g.channelType !== ChannelTypeGroup) continue;
-      const threads = threadsByGroup.get(g.channelId) || [];
-      for (const t of threads) {
-        // 只列活跃子区 (跳过归档/删除); is_member 后端可能不填,
-        // 显式 false 才视为不可见, undefined / true 都列出。
-        if (t.status !== ThreadStatus.Active) continue;
-        if (t.is_member === false) continue;
-        result.push({
-          channelId: t.channel_id,
-          channelType: t.channel_type, // 5
-          name: t.name || "(未命名子区)",
-          memberCount: t.member_count,
-          parentGroupName: g.name,
-          parentGroupNo: g.channelId,
-        });
-      }
-    }
-    return {
-      channels: result,
-      threadLoadErrors: failedGroupNames.length ? failedGroupNames : undefined,
-    };
-  }, []);
+  // 颗粒度: 群 (channel_type=Group) + 子区 (channel_type=CommunityTopic)。
+  // 详细行为见 utils/buildLinkableChannels.ts (并发, 过滤, 错误收集, 摊平)。
+  // 这里只负责把 WKApp 的 dataSource 接进来; helper 是纯函数, 单测在
+  // utils/__tests__/buildLinkableChannels.test.ts。
+  const loadChannelsForModal = useCallback(
+    async (): Promise<LoadChannelsResult> =>
+      buildLinkableChannels(
+        {
+          groupSaveList: async () =>
+            (await WKApp.dataSource.channelDataSource.groupSaveList()) as unknown as GroupSaveListRow[],
+          threadList: (no, req) =>
+            WKApp.dataSource.channelDataSource.threadList(no, req),
+        },
+        { channelTypeGroup: ChannelTypeGroup },
+      ),
+    [],
+  );
 
   const handleLinkChannelSubmit = useCallback(
     async (mId: string, chId: string, chType: number, chName: string) => {
