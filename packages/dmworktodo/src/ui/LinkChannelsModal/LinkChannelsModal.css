@@ -209,6 +209,43 @@
   min-width: 0;
 }
 
+/* ─── 子区 (channel_type=5): 二级缩进 + #前缀 + 父群上下文 ─── */
+/*
+ * 视觉区分子区:
+ *   - 整行左缩进 var(--wk-sp-4) 显示层级
+ *   - 名字前面带 #  , 跟 chat 里 thread 的视觉一致
+ *   - 父群名作为副标题用 11px tertiary 文字, "在 #xxx" 形式
+ */
+.wk-lcm__item.is-thread {
+  padding-left: calc(var(--wk-sp-2) + var(--wk-sp-4));
+}
+
+.wk-lcm__item-thread-prefix {
+  display: inline-block;
+  margin-right: 2px;
+  color: var(--wk-text-tertiary);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-lcm__item-context {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── 列表过长时的提示 ─── */
+.wk-lcm__overflow-hint {
+  padding: var(--wk-sp-2) var(--wk-sp-2);
+  margin-top: var(--wk-sp-1);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+  text-align: center;
+  border-top: 1px dashed var(--wk-border-default);
+}
+
 /* ─── 右栏 ─── */
 .wk-lcm__right {
   width: 296px;

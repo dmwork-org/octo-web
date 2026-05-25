@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Modal } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
@@ -6,12 +6,34 @@ import type { MatterChannel } from "../../bridge/types";
 import { Toast } from "../../utils/toast";
 import "./LinkChannelsModal.css";
 
+/**
+ * 列表硬性渲染上限。用户可能在 20+ 个群里, 每群可能有 5-10 个子区,
+ * 极端情况下选项数轻松破百。直接 .map 渲染过多 button 会让 modal
+ * 打开瞬间卡顿。这里设上限 + 引导用户搜索缩小范围, 避免引入虚拟列表
+ * 依赖。
+ */
+const VISIBLE_ROW_LIMIT = 200;
+
+/** 子区 (channel_type=5) 常量, 跟 utils/channelId.ts 保持一致 */
+const CHANNEL_TYPE_THREAD = 5;
+
 export interface ChannelOption {
   channelId: string;
   channelType: number;
   name: string;
   desc?: string;
   memberCount?: number;
+  /**
+   * 子区 (channel_type=5) 才有: 父群名, 用于:
+   *   - 列表/已选 区分子区时显示 "在 #父群名" 上下文
+   *   - 搜索时把父群名也算进匹配 (用户搜父群能搜出该群下所有子区)
+   */
+  parentGroupName?: string;
+  /**
+   * 子区 (channel_type=5) 才有: 父群 group_no, 用于渲染 WKAvatar
+   * (子区本身没有头像, 视觉上沿用父群头像)。
+   */
+  parentGroupNo?: string;
 }
 
 export interface LinkChannelsModalProps {
@@ -54,13 +76,33 @@ export default function LinkChannelsModal({
       .finally(() => setLoading(false));
   }, [visible, loadChannels]);
 
-  const linkedIds = new Set(linkedChannels.map((c) => c.channel_id));
+  const linkedIds = useMemo(
+    () => new Set(linkedChannels.map((c) => c.channel_id)),
+    [linkedChannels],
+  );
 
-  const filtered = channels.filter((c) => {
-    if (!search.trim()) return true;
+  // 搜索匹配: 匹配 name / desc / 子区父群名 (parentGroupName)。
+  // 父群名匹配的目的: 用户输 "产品" 应能搜到 "#产品群" 下挂的所有子区,
+  // 不光是子区本身的 name。
+  const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
-    return c.name.toLowerCase().includes(kw) || (c.desc && c.desc.toLowerCase().includes(kw));
-  });
+    if (!kw) return channels;
+    return channels.filter((c) => {
+      if (c.name.toLowerCase().includes(kw)) return true;
+      if (c.desc && c.desc.toLowerCase().includes(kw)) return true;
+      if (c.parentGroupName && c.parentGroupName.toLowerCase().includes(kw)) {
+        return true;
+      }
+      return false;
+    });
+  }, [channels, search]);
+
+  // 列表过长时截断渲染, 避免一次 mount 几百个 button 卡顿。
+  // 用户可以靠搜索把候选缩到 200 内。
+  const overflowing = filtered.length > VISIBLE_ROW_LIMIT;
+  const visibleRows = overflowing
+    ? filtered.slice(0, VISIBLE_ROW_LIMIT)
+    : filtered;
 
   const toggle = (channelId: string) => {
     if (linkedIds.has(channelId)) return;
@@ -82,7 +124,7 @@ export default function LinkChannelsModal({
         if (!ch) continue;
         await onLinkChannel(matterId, ch.channelId, ch.channelType, ch.name);
       }
-      Toast.success(`已关联 ${selected.length} 个群聊`);
+      Toast.success(`已关联 ${selected.length} 个会话`);
       onLinked();
       onClose();
     } catch (err: unknown) {
@@ -92,7 +134,10 @@ export default function LinkChannelsModal({
     }
   }, [selected, submitting, channels, matterId, onLinked, onClose, onLinkChannel]);
 
-  const selectedChannels = channels.filter((c) => selected.includes(c.channelId));
+  const selectedChannels = useMemo(
+    () => channels.filter((c) => selected.includes(c.channelId)),
+    [channels, selected],
+  );
 
   return (
     <Modal
@@ -108,7 +153,7 @@ export default function LinkChannelsModal({
       <div className="wk-lcm">
         {/* Header */}
         <div className="wk-lcm__header">
-          <span className="wk-lcm__title">关联群聊</span>
+          <span className="wk-lcm__title">关联会话</span>
           <button type="button" className="wk-lcm__close" onClick={onClose} aria-label="关闭">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -129,7 +174,7 @@ export default function LinkChannelsModal({
                 </svg>
                 <input
                   className="wk-lcm__search-input"
-                  placeholder="输入群聊名称/描述搜索"
+                  placeholder="搜索群聊 / 子区名 / 父群名"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   autoFocus
@@ -142,36 +187,63 @@ export default function LinkChannelsModal({
               {loading ? (
                 <div className="wk-lcm__empty">加载中...</div>
               ) : filtered.length === 0 ? (
-                <div className="wk-lcm__empty">没有匹配的群聊</div>
+                <div className="wk-lcm__empty">没有匹配的群聊或子区</div>
               ) : (
-                filtered.map((c) => {
-                  const isLinked = linkedIds.has(c.channelId);
-                  const isSelected = selected.includes(c.channelId);
-                  return (
-                    <button
-                      key={c.channelId}
-                      type="button"
-                      disabled={isLinked}
-                      onClick={() => toggle(c.channelId)}
-                      className={`wk-lcm__item${isLinked ? " is-linked" : isSelected ? " is-selected" : ""}`}
-                    >
-                      <span className={`wk-lcm__check${isLinked ? " is-linked" : isSelected ? " is-checked" : ""}`}>
-                        {(isLinked || isSelected) && (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
-                      </span>
-                      <WKAvatar
-                        channel={new Channel(c.channelId, c.channelType)}
-                        style={{ width: 32, height: 32, borderRadius: '50%' }}
-                      />
-                      <span className="wk-lcm__item-info">
-                        <span className="wk-lcm__item-name">{c.name}</span>
-                      </span>
-                    </button>
-                  );
-                })
+                <>
+                  {visibleRows.map((c) => {
+                    const isLinked = linkedIds.has(c.channelId);
+                    const isSelected = selected.includes(c.channelId);
+                    const isThread = c.channelType === CHANNEL_TYPE_THREAD;
+                    // 子区头像复用父群头像 (子区本身没头像)
+                    const avatarChannel = isThread && c.parentGroupNo
+                      ? new Channel(c.parentGroupNo, 2)
+                      : new Channel(c.channelId, c.channelType);
+                    return (
+                      <button
+                        key={c.channelId}
+                        type="button"
+                        disabled={isLinked}
+                        onClick={() => toggle(c.channelId)}
+                        className={`wk-lcm__item${isThread ? " is-thread" : ""}${isLinked ? " is-linked" : isSelected ? " is-selected" : ""}`}
+                      >
+                        <span className={`wk-lcm__check${isLinked ? " is-linked" : isSelected ? " is-checked" : ""}`}>
+                          {(isLinked || isSelected) && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </span>
+                        <WKAvatar
+                          channel={avatarChannel}
+                          style={{ width: 32, height: 32, borderRadius: '50%' }}
+                        />
+                        <span className="wk-lcm__item-info">
+                          <span className="wk-lcm__item-name">
+                            {isThread && (
+                              <span
+                                className="wk-lcm__item-thread-prefix"
+                                aria-hidden="true"
+                              >
+                                #
+                              </span>
+                            )}
+                            {c.name}
+                          </span>
+                          {isThread && c.parentGroupName && (
+                            <span className="wk-lcm__item-context">
+                              在 {c.parentGroupName}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {overflowing && (
+                    <div className="wk-lcm__overflow-hint">
+                      只显示前 {VISIBLE_ROW_LIMIT} 项, 共 {filtered.length} 项, 请输入关键词缩小范围
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -179,29 +251,50 @@ export default function LinkChannelsModal({
           {/* 右栏：已选列表 */}
           <div className="wk-lcm__right">
             <div className="wk-lcm__right-title">
-              已选{selected.length}个对话
+              已选{selected.length}个会话
             </div>
-            {selectedChannels.map((c) => (
-              <div key={c.channelId} className="wk-lcm__selected-item">
-                <WKAvatar
-                  channel={new Channel(c.channelId, c.channelType)}
-                  style={{ width: 32, height: 32, borderRadius: '50%' }}
-                />
-                <span className="wk-lcm__item-info">
-                  <span className="wk-lcm__item-name">{c.name}</span>
-                </span>
-                <button
-                  type="button"
-                  className="wk-lcm__selected-remove"
-                  onClick={() => removeSelected(c.channelId)}
-                  aria-label="移除"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
-            ))}
+            {selectedChannels.map((c) => {
+              const isThread = c.channelType === CHANNEL_TYPE_THREAD;
+              const avatarChannel = isThread && c.parentGroupNo
+                ? new Channel(c.parentGroupNo, 2)
+                : new Channel(c.channelId, c.channelType);
+              return (
+                <div key={c.channelId} className="wk-lcm__selected-item">
+                  <WKAvatar
+                    channel={avatarChannel}
+                    style={{ width: 32, height: 32, borderRadius: '50%' }}
+                  />
+                  <span className="wk-lcm__item-info">
+                    <span className="wk-lcm__item-name">
+                      {isThread && (
+                        <span
+                          className="wk-lcm__item-thread-prefix"
+                          aria-hidden="true"
+                        >
+                          #
+                        </span>
+                      )}
+                      {c.name}
+                    </span>
+                    {isThread && c.parentGroupName && (
+                      <span className="wk-lcm__item-context">
+                        在 {c.parentGroupName}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    className="wk-lcm__selected-remove"
+                    onClick={() => removeSelected(c.channelId)}
+                    aria-label="移除"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 

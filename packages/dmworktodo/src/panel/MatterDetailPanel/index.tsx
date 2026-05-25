@@ -32,6 +32,8 @@ import type { ChannelOption } from "../../ui/LinkChannelsModal";
 import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
+import type { Thread as ThreadType } from "@octo/base/src/Service/Thread";
+import { ThreadStatus } from "@octo/base/src/Service/Thread";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
@@ -503,15 +505,85 @@ export default function MatterDetailPanel({
   );
 
   // ── LinkChannelsModal: loadChannels / onLinkChannel callbacks ──
+  // 颗粒度: 群 (channel_type=2) + 子区 (channel_type=5)。
+  // 群直接来自 /channel/groupSaveList; 子区是 per-group fetch /groups/:no/threads,
+  // 用 4 路并发避免 N 个群 N 次串行 (用户可能在 20+ 个群)。
+  // 子区只列活跃 (status=Active) 的; is_member 字段后端不一定填 (undefined),
+  // 所以宽松判断: 显式 false 才过滤掉。
+  // 单群子区拉取失败不阻断整体, 默默跳过 (那个群只能选群本身, 子区列不出)。
   const loadChannelsForModal = useCallback(async (): Promise<ChannelOption[]> => {
     const groups = await WKApp.dataSource.channelDataSource.groupSaveList();
-    return (groups as any[]).map((g: any) => ({
-      channelId: g.channel?.channelID || g.channel_id || "",
-      channelType: g.channel?.channelType || 2,
-      name: g.title || g.name || "",
-      desc: g.remark || g.desc || "",
-      memberCount: g.memberCount || g.member_count || undefined,
-    }));
+    type GroupRow = {
+      channelId: string;
+      channelType: number;
+      name: string;
+      desc?: string;
+      memberCount?: number;
+    };
+    const groupOptions: GroupRow[] = (groups as any[])
+      .map((g: any) => ({
+        channelId: g.channel?.channelID || g.channel_id || "",
+        channelType: g.channel?.channelType || 2,
+        name: g.title || g.name || "",
+        desc: g.remark || g.desc || "",
+        memberCount: g.memberCount || g.member_count || undefined,
+      }))
+      .filter((g) => !!g.channelId);
+
+    // 并发拉每个群的子区 (channel_type=2 才有子区)。
+    // 失败的群直接给空数组, 不阻断别的群; 后端 threadList 已经在内部
+    // try-catch, 但保险起见再兜一层。
+    const groupNos = groupOptions
+      .filter((g) => g.channelType === 2)
+      .map((g) => g.channelId);
+
+    const concurrency = 4;
+    const threadsByGroup = new Map<string, ThreadType[]>();
+    let cursor = 0;
+    async function worker() {
+      while (cursor < groupNos.length) {
+        const idx = cursor++;
+        const no = groupNos[idx];
+        try {
+          // 必须传 page_index/page_size, 后端默认行为可能不分页 = 返回空。
+          // 跟 ThreadListVM 保持一致: 1 页 100 条 (单群 100+ 子区罕见, 够用)。
+          const list =
+            await WKApp.dataSource.channelDataSource.threadList(no, {
+              page_index: 1,
+              page_size: 100,
+            });
+          threadsByGroup.set(no, list || []);
+        } catch {
+          threadsByGroup.set(no, []);
+        }
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, groupNos.length) }, worker),
+    );
+
+    // 把子区按所属群的顺序展开成 ChannelOption[], 并标父群信息。
+    const result: ChannelOption[] = [];
+    for (const g of groupOptions) {
+      result.push(g);
+      if (g.channelType !== 2) continue;
+      const threads = threadsByGroup.get(g.channelId) || [];
+      for (const t of threads) {
+        // 只列活跃子区 (跳过归档/删除); is_member 后端可能不填,
+        // 显式 false 才视为不可见, undefined / true 都列出。
+        if (t.status !== ThreadStatus.Active) continue;
+        if (t.is_member === false) continue;
+        result.push({
+          channelId: t.channel_id,
+          channelType: t.channel_type, // 5
+          name: t.name || "(未命名子区)",
+          memberCount: t.member_count,
+          parentGroupName: g.name,
+          parentGroupNo: g.channelId,
+        });
+      }
+    }
+    return result;
   }, []);
 
   const handleLinkChannelSubmit = useCallback(
@@ -794,12 +866,12 @@ export default function MatterDetailPanel({
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path fillRule="evenodd" clipRule="evenodd" d="M8.00033 15.3332C12.0504 15.3332 15.3337 12.0499 15.3337 7.99984C15.3337 3.94975 12.0504 0.666504 8.00033 0.666504C3.95024 0.666504 0.666992 3.94975 0.666992 7.99984C0.666992 12.0499 3.95024 15.3332 8.00033 15.3332ZM12.6662 7.9184C12.6758 8.4706 12.236 8.92606 11.6838 8.9357L9.01751 8.98224L9.06405 11.6485C9.07369 12.2007 8.63386 12.6562 8.08166 12.6658C7.52945 12.6754 7.07399 12.2356 7.06435 11.6834L7.01781 9.01714L4.35155 9.06368C3.79935 9.07332 3.34389 8.63349 3.33425 8.08129C3.32462 7.52909 3.76445 7.07363 4.31665 7.06399L6.98291 7.01745L6.93637 4.35119C6.92673 3.79899 7.36657 3.34353 7.91877 3.33389C8.47097 3.32425 8.92643 3.76408 8.93607 4.31628L8.98261 6.98254L11.6489 6.936C12.2011 6.92637 12.6565 7.3662 12.6662 7.9184Z" fill="currentColor" />
                   </svg>
-                  关联新群
+                  关联新会话
                 </button>
               )}
             </div>
             {channels.length === 0 ? (
-              <div className="wk-mp-channels__empty">暂无关联群聊</div>
+              <div className="wk-mp-channels__empty">暂无关联群聊或子区</div>
             ) : (
               channels.map((ch) => {
                 // 用户是否加入本群: 从 /group/my 拉的 group_no 集合判断。

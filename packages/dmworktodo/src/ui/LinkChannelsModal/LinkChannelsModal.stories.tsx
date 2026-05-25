@@ -6,9 +6,37 @@ import type { ChannelOption } from './index'
 
 const mockLoadChannels = async (): Promise<ChannelOption[]> => [
   { channelId: 'ch-001', channelType: 2, name: '产品负责人群', desc: '产品方向讨论', memberCount: 12 },
+  { channelId: 'ch-001____t-001', channelType: 5, name: '需求评审', memberCount: 8, parentGroupName: '产品负责人群', parentGroupNo: 'ch-001' },
+  { channelId: 'ch-001____t-002', channelType: 5, name: '设计稿走查', memberCount: 5, parentGroupName: '产品负责人群', parentGroupNo: 'ch-001' },
   { channelId: 'ch-002', channelType: 2, name: '技术架构群', desc: '技术方案评审', memberCount: 8 },
+  { channelId: 'ch-002____t-101', channelType: 5, name: 'API 设计讨论', memberCount: 6, parentGroupName: '技术架构群', parentGroupNo: 'ch-002' },
   { channelId: 'ch-003', channelType: 2, name: '设计评审群', memberCount: 5 },
 ]
+
+// 群+子区数量超过 200 项的极端场景, 验证截断提示
+const mockLoadChannelsLarge = async (): Promise<ChannelOption[]> => {
+  const out: ChannelOption[] = []
+  for (let i = 0; i < 30; i++) {
+    out.push({
+      channelId: `g-${i}`,
+      channelType: 2,
+      name: `群-${i}`,
+      desc: `示例群 ${i}`,
+      memberCount: 10 + i,
+    })
+    for (let j = 0; j < 10; j++) {
+      out.push({
+        channelId: `g-${i}____t-${j}`,
+        channelType: 5,
+        name: `子区-${i}-${j}`,
+        memberCount: 3 + j,
+        parentGroupName: `群-${i}`,
+        parentGroupNo: `g-${i}`,
+      })
+    }
+  }
+  return out
+}
 
 const mockOnLinkChannel = async (_matterId: string, _channelId: string, _channelType: number, _channelName: string) => {
   // no-op for stories
@@ -93,6 +121,39 @@ export const Hidden: Story = {
     onClose: () => {},
     onLinked: () => {},
     loadChannels: mockLoadChannels,
+    onLinkChannel: mockOnLinkChannel,
+  },
+}
+
+/**
+ * 含子区的混合列表 — 群和子区一起渲染, 子区缩进 + #前缀 + 父群上下文
+ */
+export const WithThreads: Story = {
+  args: {
+    visible: true,
+    matterId: '8575cfce-e60a-4ee6-a3c5-7121cd46490d',
+    matterTitle: 'Octo 产品策略 PPT 打磨',
+    linkedChannels: [],
+    onClose: () => {},
+    onLinked: () => {},
+    loadChannels: mockLoadChannels,
+    onLinkChannel: mockOnLinkChannel,
+  },
+}
+
+/**
+ * 大量候选 — 30 个群 + 每群 10 个子区 = 330 项, 超过 VISIBLE_ROW_LIMIT,
+ * 应只渲染前 200 项并显示提示, 引导用户搜索缩小范围。
+ */
+export const ManyChannels: Story = {
+  args: {
+    visible: true,
+    matterId: '8575cfce-e60a-4ee6-a3c5-7121cd46490d',
+    matterTitle: 'Octo 产品策略 PPT 打磨',
+    linkedChannels: [],
+    onClose: () => {},
+    onLinked: () => {},
+    loadChannels: mockLoadChannelsLarge,
     onLinkChannel: mockOnLinkChannel,
   },
 }
