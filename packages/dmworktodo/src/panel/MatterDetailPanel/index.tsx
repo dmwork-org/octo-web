@@ -1183,10 +1183,6 @@ export default function MatterDetailPanel({
           />
         )}
 
-        {/* ── Footer ── */}
-        <div className="wk-mp-footer">
-          {t("todo.footer.tagline")}
-        </div>
       </div>
 
       {/* 关联群聊弹窗 */}
@@ -1639,12 +1635,6 @@ function TimelinePanel({
                       <span className="wk-mp-tl__colon">：</span>
                       <span className="wk-mp-tl__content">{e.content || ""}</span>
                     </span>
-                    {/* 附件 */}
-                    {e.attachments && e.attachments.length > 0 && (
-                      <span className="wk-mp-tl__att-count">
-                        {t("todo.timeline.attachments", { values: { count: e.attachments.length } })}
-                      </span>
-                    )}
                   </div>
                   {/* 原消息按钮 */}
                   {(() => {

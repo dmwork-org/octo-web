@@ -784,17 +784,6 @@ textarea.wk-mp-goal__text--editing {
   font-size: 12px;
 }
 
-/* ─── Footer ─────────────────────────────────────────── */
-.wk-mp-footer {
-  text-align: center;
-  font-size: 11px;
-  color: var(--wk-text-tertiary, #a1a1aa);
-  padding-top: 12px;
-  padding-bottom: 8px;
-  border-top: 1px solid var(--wk-border-default, #e4e4e7);
-  margin-top: 12px;
-}
-
 /* ─── More Menu (删除事项) ───────────────────────────────── */
 .wk-mp-more-wrap {
   position: relative;
@@ -1023,13 +1012,13 @@ textarea.wk-mp-goal__text--editing {
 .wk-mp-tl__entry {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--wk-sp-2);
 }
 
 .wk-mp-tl__entry-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--wk-sp-2);
   flex: 1;
   min-width: 0;
@@ -1063,7 +1052,7 @@ textarea.wk-mp-goal__text--editing {
 /* Content wrap (colon + text) */
 .wk-mp-tl__content-wrap {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   flex: 1;
   min-width: 0;
 }
@@ -1084,21 +1073,9 @@ textarea.wk-mp-goal__text--editing {
   flex: 1;
   min-width: 0;
   color: var(--wk-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Attachment count badge */
-.wk-mp-tl__att-count {
-  font-size: var(--wk-text-size-sm);
-  color: var(--wk-icon-default);
-  background: var(--wk-bg-surface);
-  border: 1px solid var(--wk-brand-tint-10);
-  padding: 1px var(--wk-sp-1-5);
-  border-radius: var(--wk-r-full);
-  flex-shrink: 0;
-  font-weight: var(--wk-font-regular);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* 原消息 anchor button */
