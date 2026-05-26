@@ -310,9 +310,16 @@ export default class MergeforwardMessageList extends Component<
           className={`wk-mergeforward-file${
             url ? " wk-mergeforward-file--clickable" : ""
           }`}
-          onClick={async () => {
+          onClick={() => {
             if (!url) return;
-            await downloadFile(url, fileContent.name || "file");
+            // 发送预览事件，与 FileCell 行为一致（fix #125）
+            const previewData = {
+              url,
+              name: fileContent.name || "未知文件",
+              extension: (fileContent.extension || "").toLowerCase(),
+              size: fileContent.size,
+            };
+            WKApp.mittBus.emit("wk:file-preview", previewData);
           }}
         >
           <div
