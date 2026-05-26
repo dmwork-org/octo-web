@@ -76,6 +76,7 @@ import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
+import { precheckUploadCredentials } from "../../Service/UploadCredentials";
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -2347,6 +2348,17 @@ export class Conversation
 
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
                         const sendImageFile = async (file: File) => {
+                          // 上传前预检：后端会对文件大小/类型做校验,失败时直接 Toast,
+                          // 不要让本地气泡先进聊天框再显示失败 (octo-web#119)。
+                          try {
+                            const dot = (file.name || "").lastIndexOf(".");
+                            const ext = dot > 0 ? file.name.substring(dot + 1) : "";
+                            await precheckUploadCredentials(file, this.channel(), ext);
+                          } catch (err) {
+                            const msg = (err as { msg?: string })?.msg || "上传失败";
+                            Toast.error(`图片「${file.name}」${msg}`);
+                            return;
+                          }
                           const reader = new FileReader();
                           const previewUrl = await new Promise<string>(
                             (resolve) => {
@@ -2385,6 +2397,14 @@ export class Conversation
                           const dotIndex = name.lastIndexOf(".");
                           const ext =
                             dotIndex > 0 ? name.substring(dotIndex + 1) : "";
+                          // 上传前预检 (octo-web#119)。
+                          try {
+                            await precheckUploadCredentials(file, this.channel(), ext);
+                          } catch (err) {
+                            const msg = (err as { msg?: string })?.msg || "上传失败";
+                            Toast.error(`文件「${name}」${msg}`);
+                            return;
+                          }
                           await this.sendMediaAndWait(
                             new FileContent(file, name, ext, file.size),
                           );
