@@ -327,6 +327,10 @@ export default class MergeforwardMessageList extends Component<
               fromUID: msg.fromUID,
               conversationDigest: msg.content?.conversationDigest,
             };
+            // 先关闭合并转发 modal, 再 emit 预览事件; 否则预览面板会
+            // 被仍然激活的 WKModal mask 挡住, 用户无法操作 (#136 r1
+            // Jerry-Xin blocking)。
+            this.props.onClose?.();
             WKApp.mittBus.emit("wk:file-preview", previewData);
           }}
         >
