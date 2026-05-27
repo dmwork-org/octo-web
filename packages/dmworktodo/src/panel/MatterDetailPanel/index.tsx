@@ -79,14 +79,15 @@ export default function MatterDetailPanel({
     new Set(),
   );
   // "查看原消息上下文" 弹框状态: 记录要查的消息 id 列表 + 所在 channel +
-  // 触发按钮的屏幕坐标 (x/y), 用于 popover 锚定到按钮下方而不是居中。
+  // 触发按钮的屏幕坐标, 用于 popover 锚定到按钮附近 (上方或下方)。
   const [anchor, setAnchor] = useState<{
     channelId: string;
     channelType: number;
     channelName: string;
     messageIds: string[];
     x: number;
-    y: number;
+    top?: number;
+    bottom?: number;
   } | null>(null);
   // 拉取 timeline (matter 加载时 + 每次展开时都调, 保证数据新鲜)。
   //
@@ -885,60 +886,29 @@ export default function MatterDetailPanel({
                   })()}
 
                   {/* 展开/收起时间线按钮 */}
-                  {isMember && (<>
-                    <button
-                      type="button"
-                      className="wk-mp-channels__timeline-btn"
-                      onClick={() => toggleTimeline(ch.channel_id)}
-                    >
-                      {expandedTimelines.has(ch.channel_id) ? "收起群内时间线" : "展开群内时间线"}
-                    </button>
-                  {expandedTimelines.has(ch.channel_id) &&
-                    (() => {
-                      const chEntries = timeline.filter(
+                  {isMember && (
+                    <ChannelTimelineSection
+                      ch={ch}
+                      expanded={expandedTimelines.has(ch.channel_id)}
+                      onToggle={() => toggleTimeline(ch.channel_id)}
+                      chEntries={timeline.filter(
                         (e) =>
                           e.source_channel_id === ch.channel_id ||
                           (!e.source_channel_id && !e.channel_id),
-                      );
-                      if (timelineLoading && chEntries.length === 0) {
-                        return (
-                          <div className="wk-mp-empty-tab">
-                            正在加载时间线...
-                          </div>
-                        );
-                      }
-                      if (chEntries.length === 0) {
-                        return (
-                          <div className="wk-mp-empty-tab">
-                            本群暂无时间线记录
-                          </div>
-                        );
-                      }
-                      return (
-                        <TimelinePanel
-                          entries={chEntries}
-                          canShowAnchor={() => isMember}
-                          onShowAnchor={
-                            isMember
-                              ? (entry, ev) => {
-                                  const rect =
-                                    ev.currentTarget.getBoundingClientRect();
-                                  setAnchor({
-                                    channelId: ch.channel_id,
-                                    channelType: ch.channel_type,
-                                    channelName:
-                                      ch.channel_name ||
-                                      ch.channel_id.slice(0, 8),
-                                    messageIds: entry.source_msgs || [],
-                                    ...computeAnchorPosition(rect),
-                                  });
-                                }
-                              : undefined
-                          }
-                        />
-                      );
-                    })()}
-                  </>)}
+                      )}
+                      timelineLoading={timelineLoading}
+                      onShowAnchor={(entry, ev, channelName) => {
+                        const rect = ev.currentTarget.getBoundingClientRect();
+                        setAnchor({
+                          channelId: ch.channel_id,
+                          channelType: ch.channel_type,
+                          channelName,
+                          messageIds: entry.source_msgs || [],
+                          ...computeAnchorPosition(rect),
+                        });
+                      }}
+                    />
+                  )}
                 </div>
                 );
               })
@@ -981,7 +951,8 @@ export default function MatterDetailPanel({
           channelName={anchor.channelName}
           messageIds={anchor.messageIds}
           x={anchor.x}
-          y={anchor.y}
+          top={anchor.top}
+          bottom={anchor.bottom}
           onClose={() => setAnchor(null)}
           fetchMessage={getMessageByChannel}
           renderAvatar={renderAvatar}
@@ -1235,13 +1206,20 @@ function ChannelMoreMenu({
 /**
  * 根据触发按钮的 rect 算 AnchorPopover 锚定位置 (对齐原型 v19 onShowAnchor):
  *   - 水平: 左对齐按钮, 防止弹框太靠右
- *   - 垂直: 按钮下方 8px, 优先向下展开，空间不足时向上展开
+ *   - 垂直: 优先按钮下方 8px (top 锚点); 下方空间不足时贴按钮上方 (bottom 锚点)。
+ *     上方用 bottom 锚点而非 top, 让弹框底边贴住按钮, 不依赖弹框实际高度
+ *     (避免一两条消息时空隙过大、漂得太远的问题)。
  *
- * 返回 viewport 坐标 (fixed 定位用)。调用方把 x/y 传进 AnchorPopover。
+ * 返回: 始终带 x; 垂直方向二选一返回 top 或 bottom (viewport 像素)。
+ * 调用方把 x/top/bottom 传进 AnchorPopover, 内部用 fixed 定位。
  */
-function computeAnchorPosition(rect: DOMRect): { x: number; y: number } {
+function computeAnchorPosition(rect: DOMRect): {
+  x: number;
+  top?: number;
+  bottom?: number;
+} {
   const POP_WIDTH = 420;
-  const POP_HEIGHT = 360;
+  const POP_MIN_HEIGHT = 120; // 触发"向上展开"判定的最小预留高度
   const SAFE = 16;
   const GAP = 8; // 按钮与弹框的间距
 
@@ -1251,26 +1229,20 @@ function computeAnchorPosition(rect: DOMRect): { x: number; y: number } {
     Math.min(rect.left, window.innerWidth - POP_WIDTH - SAFE),
   );
 
-  // 计算垂直位置：优先向下展开，空间不足时向上展开
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
 
-  let y: number;
-  if (spaceBelow >= POP_HEIGHT + GAP) {
-    // 下方空间充足，向下展开
-    y = rect.bottom + GAP;
-  } else if (spaceAbove >= POP_HEIGHT + GAP) {
-    // 上方空间充足，向上展开
-    y = rect.top - POP_HEIGHT - GAP;
-  } else {
-    // 两侧空间都不足，居中显示并限制在安全范围内
-    y = Math.max(SAFE, Math.min(
-      rect.top - POP_HEIGHT / 2 + rect.height / 2,
-      window.innerHeight - POP_HEIGHT - SAFE
-    ));
+  // 下方足够 (至少能放最小高度): 用 top 锚点, 顶边贴按钮下方
+  if (spaceBelow >= POP_MIN_HEIGHT + GAP) {
+    return { x, top: rect.bottom + GAP };
   }
-
-  return { x, y };
+  // 否则上方展开: 用 bottom 锚点, 底边贴按钮上方
+  // bottom = innerHeight - rect.top + GAP, 这样 popover 底边 = rect.top - GAP
+  if (spaceAbove >= POP_MIN_HEIGHT + GAP) {
+    return { x, bottom: window.innerHeight - rect.top + GAP };
+  }
+  // 极端情况 (按钮上下都没空间): 退化到 top 锚点 + SAFE 边距, 让 max-height 接管
+  return { x, top: SAFE };
 }
 
 /** 按日期分组 timeline entries */
@@ -1542,6 +1514,69 @@ function NotMemberBadge() {
       </svg>
       不在群
     </span>
+  );
+}
+
+// ─── ChannelTimelineSection (子组件: 展开/收起时间线 + 原消息按钮) ──
+//
+// 抽成子组件的原因: 需要在每个 channel card 里调 useChannelName hook
+// 拿实时群名 (含子区), 但 hook 不能放 .map() 循环里。
+// 子组件把 live name 传给 onShowAnchor callback, 解决子区群名无法渲染的问题。
+
+function ChannelTimelineSection({
+  ch,
+  expanded,
+  onToggle,
+  chEntries,
+  timelineLoading,
+  onShowAnchor,
+}: {
+  ch: MatterChannelType;
+  expanded: boolean;
+  onToggle: () => void;
+  chEntries: TimelineEntry[];
+  timelineLoading: boolean;
+  onShowAnchor: (entry: TimelineEntry, ev: React.MouseEvent, channelName: string) => void;
+}) {
+  // 实时解析 channel 名称 (群改名 / 子区标题都能跟上)
+  const liveChannelName = useChannelName(ch.channel_id, ch.channel_type);
+  const displayName = liveChannelName || ch.channel_name || ch.channel_id.slice(0, 8);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="wk-mp-channels__timeline-btn"
+        onClick={onToggle}
+      >
+        {expanded ? "收起群内时间线" : "展开群内时间线"}
+      </button>
+      {expanded && (() => {
+        if (timelineLoading && chEntries.length === 0) {
+          return (
+            <div className="wk-mp-empty-tab">
+              正在加载时间线...
+            </div>
+          );
+        }
+        if (chEntries.length === 0) {
+          return (
+            <div className="wk-mp-empty-tab">
+              本群暂无时间线记录
+            </div>
+          );
+        }
+        return (
+          <TimelinePanel
+            entries={chEntries}
+            canShowAnchor={() => true}
+            onShowAnchor={(entry, ev) => {
+              onShowAnchor(entry, ev, displayName);
+            }}
+          />
+        );
+      })()}
+    </>
   );
 }
 

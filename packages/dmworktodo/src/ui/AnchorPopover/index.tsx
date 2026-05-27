@@ -33,11 +33,19 @@ export interface AnchorPopoverProps {
     /** 展示在头部的 channel 名称 */
     channelName: string;
     /**
-     * popover 锚定 viewport 坐标 (px)。由调用方根据触发按钮
-     * boundingClientRect 计算, 已做边界收缩。未传时居中。
+     * popover 锚定 viewport 坐标 (px), 由调用方根据触发按钮
+     * boundingClientRect 计算, 已做边界收缩。
+     *
+     * 垂直方向二选一:
+     *   - top: 弹框顶边距 viewport 顶部的距离 (向下展开时使用)
+     *   - bottom: 弹框底边距 viewport 底部的距离 (向上展开时使用)
+     *
+     * 用 bottom 锚定能让"向上展开"的弹框底边贴住按钮顶边, 不依赖
+     * 弹框实际高度。两个都不传时居中。
      */
     x?: number;
-    y?: number;
+    top?: number;
+    bottom?: number;
     onClose: () => void;
     /** 外部注入的消息获取函数（UI/数据分离）。 */
     fetchMessage: (params: { channelId: string; channelType: number; messageId: string }) => Promise<IMMessageResp>;
@@ -67,7 +75,8 @@ export default function AnchorPopover({
     messageIds,
     channelName,
     x,
-    y,
+    top,
+    bottom,
     onClose,
     fetchMessage,
     renderAvatar,
@@ -160,10 +169,26 @@ export default function AnchorPopover({
         onJumpToMessage(messageSeq);
     }, [results, onClose, onJumpToMessage]);
 
-    // 有 x/y 时锚定到指定 viewport 坐标 (按钮下方), 无则走 CSS 居中
-    const anchored = typeof x === 'number' && typeof y === 'number';
+    // 有 x + top/bottom 时锚定到指定 viewport 坐标, 无则走 CSS 居中。
+    // 用 bottom 锚定时弹框底边贴按钮顶边, 不再依赖弹框预估高度。
+    const anchored =
+        typeof x === 'number' &&
+        (typeof top === 'number' || typeof bottom === 'number');
     const popStyle: React.CSSProperties | undefined = anchored
-        ? { top: y, left: x, right: 'auto', bottom: 'auto', transform: 'none' }
+        ? {
+              left: x,
+              right: 'auto',
+              top: typeof top === 'number' ? top : 'auto',
+              bottom: typeof bottom === 'number' ? bottom : 'auto',
+              transform: 'none',
+              // 限制 max-height 防止溢出 viewport
+              maxHeight:
+                  typeof top === 'number'
+                      ? `calc(100vh - ${top + 16}px)`
+                      : typeof bottom === 'number'
+                          ? `calc(100vh - ${bottom + 16}px)`
+                          : undefined,
+          }
         : undefined;
 
     // 是否有成功加载的消息且支持跳转（用于判断是否显示跳转按钮）
