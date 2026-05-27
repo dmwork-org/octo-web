@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { i18n } from '@octo/base/src/i18n'
 import { mapBindError } from '../errorMessages'
 import { OidcBindHttpError } from '../../oidc/http'
 
 describe('mapBindError', () => {
+  beforeEach(() => {
+    i18n.setLocale('zh-CN', { persist: false })
+  })
+
   it('treats non-Http errors as retryable on interactive endpoints', () => {
     const r = mapBindError('info', new Error('socket reset'))
     expect(r.terminal).toBe(false)

@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { i18n } from '@octo/base/src/i18n'
 
 import { IOSDownloadButton, IOS_DOWNLOAD_URL } from '../IOSDownloadButton'
 
 describe('IOSDownloadButton', () => {
+  beforeEach(() => {
+    i18n.setLocale('zh-CN', { persist: false })
+  })
+
   it('points at the public TestFlight URL', () => {
     expect(IOS_DOWNLOAD_URL).toBe('https://testflight.apple.com/join/uPrdCcy3')
   })

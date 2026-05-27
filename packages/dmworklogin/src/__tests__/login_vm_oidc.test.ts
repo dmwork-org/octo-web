@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { i18n } from '@octo/base/src/i18n'
 
 // Stub @octo/base so LoginVM can be instantiated in jsdom without bringing
 // in the real WKApp / apiClient. Only the surface LoginVM touches needs filling in.
@@ -96,6 +97,7 @@ function restoreLocation() {
 }
 
 beforeEach(() => {
+  i18n.setLocale('zh-CN', { persist: false })
   sessionStorage.clear()
   fetchAuthcodeMock.mockReset()
   pollAuthStatusMock.mockReset()

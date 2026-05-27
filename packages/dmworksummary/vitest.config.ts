@@ -15,6 +15,11 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: [
+      { find: /^@octo\/base\/src\/Components\/VoiceInputButton$/, replacement: path.resolve(__dirname, 'src/__mocks__/VoiceInputButton.tsx') },
+      { find: /^@octo\/base\/src\/Components\/AiBadge$/, replacement: path.resolve(__dirname, 'src/__mocks__/AiBadge.tsx') },
+      { find: /^@octo\/base\/src\/EndpointCommon$/, replacement: path.resolve(__dirname, 'src/__mocks__/EndpointCommon.ts') },
+      { find: /^@octo\/base\/src\/Service\/Const$/, replacement: path.resolve(__dirname, 'src/__mocks__/Const.ts') },
+      { find: /^@octo\/base\/src\/App$/, replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },
       { find: '@octo/base', replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },
       { find: /^react-dom\/(.*)/, replacement: path.resolve(pnpm, 'react-dom@17.0.2_react@17.0.2/node_modules/react-dom') + '/$1' },
       { find: /^react-dom$/, replacement: path.resolve(pnpm, 'react-dom@17.0.2_react@17.0.2/node_modules/react-dom') },

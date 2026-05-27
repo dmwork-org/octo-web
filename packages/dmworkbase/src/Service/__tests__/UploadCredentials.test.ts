@@ -3,6 +3,7 @@ import axios from "axios"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import APIClient from "../APIClient"
 import { precheckUploadCredentials } from "../UploadCredentials"
+import { i18n } from "../../i18n"
 
 /**
  * GH Mininglamp-OSS/octo-web#119 / #135 — preflight credentials helper.
@@ -22,6 +23,7 @@ describe("precheckUploadCredentials", () => {
     let lastUrl: string = ""
 
     beforeEach(() => {
+        i18n.setLocale("zh-CN", { notify: false, persist: false })
         lastUrl = ""
         client.config.tokenCallback = undefined
         client.config.spaceIdCallback = undefined

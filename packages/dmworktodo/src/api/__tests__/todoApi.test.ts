@@ -22,6 +22,25 @@ vi.mock('axios', () => {
   };
 });
 
+vi.mock('@octo/base', () => {
+  const messages: Record<string, string> = {
+    'todo.status.pending': '待处理',
+    'todo.status.done': '已完成',
+    'todo.status.archived': '已归档',
+  };
+  const t = (key: string) => messages[key] ?? key;
+
+  return {
+    useI18n: () => ({
+      locale: 'zh-CN',
+      setLocale: () => {},
+      t,
+      format: {},
+    }),
+    t,
+  };
+});
+
 // We need to import after mocking
 import * as matterApi from '../../api/todoApi';
 

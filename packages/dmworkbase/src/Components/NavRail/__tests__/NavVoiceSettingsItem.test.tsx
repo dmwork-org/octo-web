@@ -11,6 +11,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { act } from 'react-dom/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { i18n } from '../../../i18n';
 
 vi.mock('../../MessageInput/useSpaceFeedbackSetting', () => ({
   ensureVoiceFeedbackLoaded: vi.fn().mockResolvedValue(undefined),
@@ -37,6 +38,7 @@ let container: HTMLDivElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  i18n.setLocale('zh-CN', { notify: false, persist: false });
   container = document.createElement('div');
   document.body.appendChild(container);
 });
