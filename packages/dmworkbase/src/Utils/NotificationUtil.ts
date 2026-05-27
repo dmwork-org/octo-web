@@ -1,6 +1,7 @@
 import { Message, Channel, ChannelTypeGroup } from "wukongimjssdk";
 import WKApp from "../App";
 import WKSDK from "wukongimjssdk";
+import { t } from "../i18n";
 
 // Extend window interface for Electron APIs
 declare global {
@@ -233,7 +234,7 @@ export class NotificationUtil {
 
     // Create new notification using web API
     this.messageNotification = await this.createNotification({
-      title: channelInfo?.orgData?.displayName ?? "通知",
+      title: channelInfo?.orgData?.displayName ?? t("base.notification.title"),
       body: description,
       channel: message.channel,
       fromUid: message.fromUID,
@@ -270,8 +271,8 @@ export class NotificationUtil {
     const channel = new Channel(fromUID, 1); // ChannelTypePerson = 1
 
     this.callNotification = await this.createNotification({
-      title: channelInfo?.orgData?.displayName ?? "通知",
-      body: `${channelInfo?.title ?? "用户"}正在呼叫您`,
+      title: channelInfo?.orgData?.displayName ?? t("base.notification.title"),
+      body: t("base.notification.calling", { values: { name: channelInfo?.title ?? t("base.notification.user") } }),
       channel: channel,
       fromUid: fromUID,
       tag: "call",

@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react'
+import { useI18n } from '../../../i18n'
 import './index.css'
 
 export interface ImageTransferState {
@@ -39,6 +40,7 @@ export default function SingleImage({
   onClick,
   transferState,
 }: SingleImageProps) {
+  const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement>(null)
   const [maxWidth, setMaxWidth] = useState(FALLBACK_MAX_WIDTH)
   const isInteractive = !!onClick && !transferState
@@ -90,10 +92,10 @@ export default function SingleImage({
       : null
     const showProgress = transferState.status === 'uploading' && pct !== null
     const label = transferState.status === 'failed'
-      ? '上传失败，点击重试'
+      ? t('base.message.uploadFailedRetry')
       : transferState.status === 'uploading'
-        ? '上传中'
-        : '发送中'
+        ? t('base.message.uploading')
+        : t('base.message.sending')
 
     if (transferState.status === 'failed') {
       return (

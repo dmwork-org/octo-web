@@ -8,11 +8,12 @@ import type { VoiceMode } from "../../Service/VoiceService";
 import VoiceFeedbackNotice from "../MessageInput/VoiceFeedbackNotice";
 import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../MessageInput/useSpaceFeedbackSetting";
 import WKApp from "../../App";
+import { useI18n } from "../../i18n";
 import "./index.css";
 
-const VOICE_MODES: { value: VoiceMode; label: string }[] = [
-  { value: "append_only", label: "语音输入" },
-  { value: "edit_only", label: "语音编辑" },
+const VOICE_MODES: { value: VoiceMode; labelKey: string }[] = [
+  { value: "append_only", labelKey: "base.voiceInput.mode.input" },
+  { value: "edit_only", labelKey: "base.voiceInput.mode.edit" },
 ];
 
 const FLOATING_GAP = 12;
@@ -42,6 +43,7 @@ export default function VoiceInputButton({
   className,
   onRecordingStart,
 }: VoiceInputButtonProps) {
+  const { t } = useI18n();
   const [showMenu, setShowMenu] = useState(false);
   const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
@@ -201,7 +203,7 @@ export default function VoiceInputButton({
           shiftTimerRef.current = setTimeout(() => {
             shiftTimerRef.current = null;
             if (!isOnlineRef.current && !localAvailableRef.current) {
-              Toast.warning("网络不可用，无法使用语音功能");
+              Toast.warning(t("base.voiceInput.error.networkUnavailable"));
               return;
             }
             const feedbackState = getSharedSpaceFeedbackState();
@@ -286,14 +288,14 @@ export default function VoiceInputButton({
       window.removeEventListener("blur", handleBlurClear);
       clearShiftTimer();
     };
-  }, [isVoiceEnabled, inputRef, clearShiftTimer]);
+  }, [isVoiceEnabled, inputRef, clearShiftTimer, t]);
 
   if (!isVoiceEnabled) return null;
 
   const handleVoiceClick = () => {
     setShowMenu(false);
     if (!canRecord) {
-      Toast.warning("网络不可用，无法使用语音功能");
+      Toast.warning(t("base.voiceInput.error.networkUnavailable"));
       return;
     }
     if (!inputRef.current) return;
@@ -340,7 +342,9 @@ export default function VoiceInputButton({
 
   // Recording or transcribing state
   if (isRecording || isTranscribing) {
-    const statusText = isTranscribing ? "转写中" : "语音输入";
+    const statusText = isTranscribing
+      ? t("base.voiceInput.status.transcribing")
+      : t("base.voiceInput.mode.input");
 
     const floatingIndicator = floatingPosition ? (
       <div
@@ -378,7 +382,9 @@ export default function VoiceInputButton({
         >
           <div
             className="wk-vib__btn wk-vib__btn--recording"
-            title={isTranscribing ? "转写中..." : "点击停止录音"}
+            title={isTranscribing
+              ? t("base.voiceInput.status.transcribingDots")
+              : t("base.voiceInput.action.stopRecording")}
             role="button"
             tabIndex={0}
           >
@@ -403,9 +409,9 @@ export default function VoiceInputButton({
               key={mode.value}
               onClick={() => !itemDisabled && handleModeSelect(mode.value)}
               disabled={itemDisabled}
-              title={itemDisabled ? "输入框为空，无法使用语音编辑" : undefined}
+              title={itemDisabled ? t("base.voiceInput.error.emptyCannotEdit") : undefined}
             >
-              {mode.label}
+              {t(mode.labelKey)}
             </Dropdown.Item>
           );
         })}
@@ -430,7 +436,9 @@ export default function VoiceInputButton({
           >
             <div
               className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
-              title={canRecord ? "语音输入" : "网络不可用"}
+              title={canRecord
+                ? t("base.voiceInput.title.input")
+                : t("base.voiceInput.title.networkUnavailable")}
               role="button"
               tabIndex={isDisabled ? -1 : 0}
             >
@@ -448,7 +456,7 @@ export default function VoiceInputButton({
                   await acceptVoiceInput(spaceId, feedbackOn);
                 }
               } catch {
-                Toast.error('操作失败，请重试');
+                Toast.error(t("base.voiceInput.error.operationFailed"));
                 return;
               }
               onRecordingStart?.();
@@ -475,7 +483,9 @@ export default function VoiceInputButton({
       >
         <div
           className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
-          title={canRecord ? "语音输入" : "网络不可用"}
+          title={canRecord
+            ? t("base.voiceInput.title.input")
+            : t("base.voiceInput.title.networkUnavailable")}
           role="button"
           tabIndex={isDisabled ? -1 : 0}
         >
@@ -492,7 +502,7 @@ export default function VoiceInputButton({
                 await acceptVoiceInput(spaceId, feedbackOn);
               }
             } catch {
-              Toast.error('操作失败，请重试');
+              Toast.error(t("base.voiceInput.error.operationFailed"));
               return;
             }
             onRecordingStart?.();

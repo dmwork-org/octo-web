@@ -1,4 +1,5 @@
 import React from "react"
+import { useI18n } from "../../i18n"
 import "./index.css"
 
 export type SidebarTab = 'follow' | 'recent'
@@ -16,6 +17,7 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
     recentUnread,
     onTabChange,
 }) => {
+    const { t } = useI18n()
     return (
         <div className="wk-sidebar-tabbar">
             <div className="wk-sidebar-tabbar__container">
@@ -23,7 +25,7 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
                     className={`wk-sidebar-tabbar__btn ${activeTab === 'follow' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
                     onClick={() => onTabChange('follow')}
                 >
-                    <span className="wk-sidebar-tabbar__label">关注</span>
+                    <span className="wk-sidebar-tabbar__label">{t("base.sidebarTabBar.follow")}</span>
                     {followUnread > 0 && (
                         <span className="wk-sidebar-tabbar__badge">
                             {followUnread > 99 ? '99+' : followUnread}
@@ -34,7 +36,7 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
                     className={`wk-sidebar-tabbar__btn ${activeTab === 'recent' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
                     onClick={() => onTabChange('recent')}
                 >
-                    <span className="wk-sidebar-tabbar__label">最近</span>
+                    <span className="wk-sidebar-tabbar__label">{t("base.sidebarTabBar.recent")}</span>
                     {recentUnread > 0 && (
                         <span className="wk-sidebar-tabbar__badge">
                             {recentUnread > 99 ? '99+' : recentUnread}

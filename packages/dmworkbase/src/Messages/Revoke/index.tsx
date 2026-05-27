@@ -5,9 +5,13 @@ import WKApp from '../../App'
 import React from 'react'
 import "./index.css"
 import { ChannelInfoListener } from "wukongimjssdk"
+import { I18nContext, t } from "../../i18n"
 
 
 export class RevokeCell extends MessageCell {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     channelInfoListener!:ChannelInfoListener
 
     componentDidMount() {
@@ -28,7 +32,7 @@ export class RevokeCell extends MessageCell {
     }
 
     static tip(message: MessageWrap) {
-        let name = "你"
+        let name = t("base.revoke.you")
         let revoker = message.revoker
         if (revoker === WKApp.loginInfo.uid) {
             if (revoker !== message.fromUID) {
@@ -38,9 +42,11 @@ export class RevokeCell extends MessageCell {
                 } else {
                     WKSDK.shared().channelManager.fetchChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
                 }
-                return `${name}撤回了成员“${memberFromName}”的一条消息`
+                return t("base.revoke.revokedMemberMessageByYou", {
+                    values: { member: memberFromName },
+                })
             }
-            return `${name}撤回了一条消息`
+            return t("base.revoke.revokedMessage", { values: { name } })
 
         } else {
             const channel = new Channel(revoker ?? "", ChannelTypePerson)
@@ -52,14 +58,15 @@ export class RevokeCell extends MessageCell {
                 name = "--"
             }
             if (revoker !== message.fromUID) {
-                return `${name}撤回了一条成员消息`
+                return t("base.revoke.revokedMemberMessage", { values: { name } })
             }
-            return `${name}撤回了一条消息`
+            return t("base.revoke.revokedMessage", { values: { name } })
         }
     }
 
     render() {
         const { message } = this.props
+        this.context.locale
         return <div className="wk-message-system">{RevokeCell.tip(message)}</div>
     }
 }

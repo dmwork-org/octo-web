@@ -3,6 +3,7 @@ import { Toast } from "@douyinfe/semi-ui"
 import { X } from "lucide-react"
 import ThreadIcon from "../Icons/ThreadIcon"
 import WKApp from "../../App"
+import { I18nContext, t } from "../../i18n"
 import "./index.css"
 
 export interface ThreadCreateProps {
@@ -18,6 +19,9 @@ interface ThreadCreateState {
 }
 
 export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState> {
+  static contextType = I18nContext
+  declare context: React.ContextType<typeof I18nContext>
+
   constructor(props: ThreadCreateProps) {
     super(props)
     this.state = {
@@ -41,12 +45,12 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
     const { name } = this.state
 
     if (!name.trim()) {
-      Toast.warning("请输入子区名称")
+      Toast.warning(t("base.threadCreate.nameRequired"))
       return
     }
 
     if (name.length > 50) {
-      Toast.warning("子区名称不能超过50个字符")
+      Toast.warning(t("base.threadCreate.nameMaxLength"))
       return
     }
 
@@ -58,10 +62,10 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
         name.trim(),
         sourceMessageId
       )
-      Toast.success("创建成功")
+      Toast.success(t("base.threadCreate.success"))
       onSuccess?.()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "创建失败"
+      const msg = err instanceof Error ? err.message : t("base.module.createThread.failed")
       Toast.error(msg)
       this.setState({ loading: false })
     }
@@ -75,7 +79,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
       <div className="wk-thread-create">
         <div className="wk-thread-create-header">
           <ThreadIcon className="wk-thread-create-icon" size={24} />
-          <span className="wk-thread-create-title">创建子区</span>
+          <span className="wk-thread-create-title">{t("base.module.createThread.title")}</span>
           {onCancel && (
             <div className="wk-thread-create-close" onClick={onCancel}>
               <X size={18} />
@@ -86,7 +90,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
           <input
             className="wk-thread-create-input"
             type="text"
-            placeholder="输入子区名称"
+            placeholder={t("base.threadCreate.namePlaceholder")}
             value={name}
             onChange={this.handleNameChange}
             onKeyDown={this.handleKeyDown}
@@ -101,7 +105,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
               onClick={onCancel}
               disabled={loading}
             >
-              取消
+              {t("base.common.cancel")}
             </button>
           )}
           <button
@@ -109,7 +113,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
             onClick={this.handleSubmit}
             disabled={loading || !name.trim()}
           >
-            {loading ? "创建中..." : "创建"}
+            {loading ? t("base.threadCreate.creating") : t("base.module.createThread.ok")}
           </button>
         </div>
       </div>

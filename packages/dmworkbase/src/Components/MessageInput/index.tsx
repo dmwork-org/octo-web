@@ -32,6 +32,7 @@ import {
   formatFileSize,
   videoPlayIcon,
 } from "./AttachmentNode";
+import { t as translate, useI18n } from "../../i18n";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -39,11 +40,15 @@ const MAX_MESSAGE_LENGTH = 5000;
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
 
 /** 根据频道类型和名称生成 placeholder 文本 */
-function buildPlaceholder(channel: Channel, name: string): string {
+function buildPlaceholder(channel: Channel, name: string, t: typeof translate): string {
   if (channel.channelType === ChannelTypePerson) {
-    return name ? `对 ${name} 发送消息` : "发送消息";
+    return name
+      ? t("base.messageInput.placeholder.directWithName", { values: { name } })
+      : t("base.messageInput.placeholder.direct");
   } else {
-    return name ? `在 ${name} 中回复...  ${ALT_KEY}+↵ 创建任务` : `输入消息...  ${ALT_KEY}+↵ 创建任务`;
+    return name
+      ? t("base.messageInput.placeholder.replyWithName", { values: { name, shortcut: ALT_KEY } })
+      : t("base.messageInput.placeholder.reply", { values: { shortcut: ALT_KEY } });
   }
 }
 
@@ -349,7 +354,7 @@ function escapeRegExp(s: string): string {
 // Build a dynamic regex that matches @name for all known members.
 // Names are sorted longest-first so "Cindy Che" matches before "Cindy".
 function buildMentionRegex(members: MemberInfo[]): RegExp {
-  const specialNames = ["所有人", "all", "everyone"];
+  const specialNames = [MENTION_LABEL_HUMANS, "all", "everyone"];
   const allNames = [...specialNames, ...members.map((m) => m.name)];
   // Deduplicate and sort by length descending (longest match first)
   const unique = [...new Set(allNames)];
@@ -386,7 +391,7 @@ function parseMentionMarkers(
     }
 
     const isAll =
-      name === "所有人" ||
+      name === MENTION_LABEL_HUMANS ||
       name.toLowerCase() === "all" ||
       name.toLowerCase() === "everyone";
     const member = members.find(
@@ -396,7 +401,7 @@ function parseMentionMarkers(
     if (isAll) {
       result.push({
         type: "mention",
-        attrs: { id: "-1", label: "所有人" },
+        attrs: { id: "-1", label: MENTION_LABEL_HUMANS },
       });
       result.push({ type: "text", text: " " });
     } else if (member) {
@@ -528,6 +533,7 @@ function isVideoFileType(file: File): boolean {
 }
 
 const MessageInput: React.FC<MessageInputProps> = (props) => {
+  const { t } = useI18n();
   const [slashMenuVisible, setSlashMenuVisible] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
@@ -543,7 +549,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const [placeholder, setPlaceholder] = useState(() => {
     const channel = props.context.channel();
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
-    return buildPlaceholder(channel, channelInfo?.title || "");
+    return buildPlaceholder(channel, channelInfo?.title || "", t);
   });
 
   useEffect(() => {
@@ -552,7 +558,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     const updateName = (name: string) => {
       if (aborted) return;
-      setPlaceholder(buildPlaceholder(channel, name));
+      setPlaceholder(buildPlaceholder(channel, name, t));
     };
 
     // 监听 channelInfo 更新（SDK fetch 完成后会通知）
@@ -575,7 +581,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       aborted = true;
       WKSDK.shared().channelManager.removeListener(listener);
     };
-  }, [props.context]);
+  }, [props.context, t]);
 
   const memberInfos = useMemo<MemberInfo[]>(() => {
     const infos: MemberInfo[] = props.members
@@ -997,7 +1003,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
       Notification.error({
-        content: `输入内容长度不能大于${MAX_MESSAGE_LENGTH}字符！`,
+        content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
       return;
     }
@@ -1066,7 +1072,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       setExpanded(false);
       props.onExpandChange?.(false);
     }
-  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange]);
+  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
 
   // 更新 sendRef
   useEffect(() => {
@@ -1261,7 +1267,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                             className="wk-attachment-node-remove"
                             onClick={() => removeTopAttachment(item.id)}
                             type="button"
-                            title="移除"
+                            title={t("base.messageInput.attachment.remove")}
                           >
                             <X size={16} />
                           </button>
@@ -1313,7 +1319,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               <div
                 className="wk-messageinput-menu-btn"
                 onClick={handleMenuButtonClick}
-                title="斜杠命令"
+                title={t("base.messageInput.slashCommand")}
               >
                 /
               </div>
@@ -1461,7 +1467,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             {/* 展开/收起按钮 */}
             <IconClick
               size="sm"
-              title={expanded ? "收起" : "展开输入框"}
+              title={expanded ? t("base.messageInput.collapse") : t("base.messageInput.expand")}
               onClick={toggleExpand}
               icon={
                 expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />

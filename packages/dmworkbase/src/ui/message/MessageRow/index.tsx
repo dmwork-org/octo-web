@@ -4,6 +4,7 @@ import Avatar from '../Avatar'
 import Timestamp from '../Timestamp'
 import AiBadge from '../../../Components/AiBadge'
 import RealnameVerifiedBadge from '../../../Components/RealnameVerifiedBadge'
+import { useI18n } from '../../../i18n'
 import './index.css'
 
 export interface MessageRowProps {
@@ -118,6 +119,7 @@ export default function MessageRow({
   onAvatarClick,
   onSenderNameClick,
 }: MessageRowProps) {
+  const { t } = useI18n()
   return (
     <div
       className={classNames(
@@ -168,7 +170,7 @@ export default function MessageRow({
         {/* 连续消息：头像占位,hover 时显示时间戳 */}
         {!showAvatar && isContinue && (
           <div className="wk-msg-row-avatar-placeholder">
-            {isEdit && <span className="wk-msg-row-edited">已编辑</span>}
+            {isEdit && <span className="wk-msg-row-edited">{t("base.message.edited")}</span>}
             <span className="wk-msg-row-timestamp-hover">{timeOnly ?? timestamp}</span>
           </div>
         )}
@@ -206,7 +208,7 @@ export default function MessageRow({
               </span>
             )}
             {isBot && <AiBadge size="small" />}
-            {isEdit && <span className="wk-msg-row-edited">已编辑</span>}
+            {isEdit && <span className="wk-msg-row-edited">{t("base.message.edited")}</span>}
             <span className="wk-msg-row-timestamp">{timestamp}</span>
           </div>
         )}

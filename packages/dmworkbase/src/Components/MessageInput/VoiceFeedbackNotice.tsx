@@ -4,6 +4,7 @@ import DOMPurify from "dompurify";
 import WKModal from "../WKModal";
 import WKButton from "../WKButton";
 import { getDocument } from "../../Service/DocumentService";
+import { useI18n } from "../../i18n";
 
 interface VoiceFeedbackNoticeProps {
   onAccept: (feedbackOn: boolean) => Promise<void> | void;
@@ -18,6 +19,7 @@ export default function VoiceFeedbackNotice({
   feedbackPrivacyUrl,
   feedbackUserAgreementUrl,
 }: VoiceFeedbackNoticeProps) {
+  const { t } = useI18n();
   const [feedbackChecked, setFeedbackChecked] = useState(false);
   const [docContent, setDocContent] = useState<string | null>(null);
   const [docLoading, setDocLoading] = useState(true);
@@ -55,7 +57,7 @@ export default function VoiceFeedbackNotice({
   return (
     <WKModal
       visible
-      title="🎙️ 开启语音转写服务"
+      title={t("base.navRail.voiceNotice.title")}
       onCancel={onCancel}
       options={{ closeOnEsc: true, maskClosable: false }}
       footer={
@@ -65,12 +67,12 @@ export default function VoiceFeedbackNotice({
             checked={feedbackChecked}
             onChange={(e) => setFeedbackChecked(e.target.checked)}
           >
-            我愿意参与帮助改进语音识别服务
+            {t("base.navRail.voiceNotice.feedbackConsent")}
           </Checkbox>
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-            <WKButton onClick={onCancel}>取消</WKButton>
+            <WKButton onClick={onCancel}>{t("base.common.cancel")}</WKButton>
             <WKButton variant="primary" onClick={handleAccept} disabled={acceptDisabled}>
-              同意并开启
+              {t("base.navRail.voiceNotice.accept")}
             </WKButton>
           </div>
         </div>
@@ -84,7 +86,7 @@ export default function VoiceFeedbackNotice({
         )}
         {docError && !docLoading && (
           <div style={{ color: "var(--semi-color-warning)", padding: "8px 0" }}>
-            无法加载服务说明，请稍后重试
+            {t("base.navRail.voiceNotice.loadFailed")}
           </div>
         )}
         {docContent && (
@@ -92,7 +94,7 @@ export default function VoiceFeedbackNotice({
         )}
         {hasLinks && (
           <p style={{ margin: "12px 0 0" }}>
-            详细说明见
+            {t("base.navRail.voiceNotice.detailsPrefix")}
             {feedbackPrivacyUrl && (
               <a
                 href={feedbackPrivacyUrl}
@@ -100,10 +102,10 @@ export default function VoiceFeedbackNotice({
                 rel="noopener noreferrer"
                 style={{ color: "var(--semi-color-link)" }}
               >
-                《Octo个人信息保护政策》
+                {t("base.navRail.voiceSettings.privacyPolicy")}
               </a>
             )}
-            {feedbackPrivacyUrl && feedbackUserAgreementUrl && "和"}
+            {feedbackPrivacyUrl && feedbackUserAgreementUrl && t("base.navRail.voiceNotice.and")}
             {feedbackUserAgreementUrl && (
               <a
                 href={feedbackUserAgreementUrl}
@@ -111,7 +113,7 @@ export default function VoiceFeedbackNotice({
                 rel="noopener noreferrer"
                 style={{ color: "var(--semi-color-link)" }}
               >
-                《Octo 用户服务协议》
+                {t("base.navRail.voiceSettings.userAgreement")}
               </a>
             )}
           </p>

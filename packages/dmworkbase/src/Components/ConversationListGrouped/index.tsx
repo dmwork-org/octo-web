@@ -32,6 +32,7 @@ import {
     isVirtualCategory,
     type ValidCategoryItem,
 } from "./categoriesFallback"
+import { useI18n } from "../../i18n"
 
 // 兜底相关 helper 迁移至 ./categoriesFallback 独立模块，便于无依赖地单元测试。
 // 这里保留 re-export 以保持对外 API 不变（ConversationList.tsx / storybook 可直接从本模块引用）。
@@ -112,6 +113,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     onCreateGroupInCategory,
     onUnfollow,
 }) => {
+    const { t } = useI18n()
     // ── DnD 状态 ──────────────────────────────────────────────────────────────
     const sensors = useSensors(useSensor(PointerSensor, {
         activationConstraint: { distance: 6 }, // 6px 才触发拖拽，避免误触点击
@@ -179,7 +181,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 await FollowService.followDM({ peer_uid: peerUid, category_id: targetCatId })
                 onUnfollow?.()
             } catch (err) {
-                console.error('移动 DM 到分组失败', err)
+                console.error('[ConversationListGrouped] failed to move DM to category', err)
                 onUnfollow?.()
             }
         }
@@ -342,7 +344,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         
         // 1. 取消关注（所有类型都支持）
         const unfollowItem: ContextMenusData = {
-            title: '取消关注',
+            title: t("base.chatSidebar.context.unfollow"),
             icon: "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z M2.172 15.172a4 4 0 0 0 5.656 0L10 13l2.172 2.172a4 4 0 1 0 5.656-5.656L10 1.686 2.172 9.514a4 4 0 0 0 0 5.658Z",
             onClick: async () => {
                 try {
@@ -355,7 +357,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     }
                     onUnfollow?.()
                 } catch (err) {
-                    console.error('取消关注失败', err)
+                    console.error('[ConversationListGrouped] failed to unfollow conversation', err)
                 }
             }
         }
@@ -378,12 +380,12 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 }))
             moveToChildren.push({ separator: true } as ContextMenusData)
             moveToChildren.push({
-                title: '+ 新建分组',
+                title: t("base.chatSidebar.context.createCategory"),
                 onClick: () => onOpenCreateCategory({ kind: 'moveGroupToNewCategory', groupNo }),
             })
 
             const moveToItem: ContextMenusData = {
-                title: '移到分组',
+                title: t("base.chatSidebar.context.moveToCategory"),
                 icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 15l3 3 3-3 M12 12v6",
                 children: moveToChildren,
             }
@@ -413,19 +415,19 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                             await FollowService.followDM({ peer_uid: peerUid, category_id: cat.category_id })
                             onUnfollow?.()
                         } catch (err) {
-                            console.error('移动 DM 到分组失败', err)
+                            console.error('[ConversationListGrouped] failed to move DM to category', err)
                         }
                     },
                 }))
             moveToChildrenDm.push({ separator: true } as ContextMenusData)
             moveToChildrenDm.push({
-                title: '+ 新建分组',
+                title: t("base.chatSidebar.context.createCategory"),
                 // DM 的"新分组"语义 = 用新分类 followDM,与 followConvToCategory
                 // 对 ChannelTypePerson 分支等价(都走 FollowService.followDM)。
                 onClick: () => onOpenCreateCategory({ kind: 'followToNewCategory', conv }),
             })
             menus.push({
-                title: '移到分组',
+                title: t("base.chatSidebar.context.moveToCategory"),
                 icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 15l3 3 3-3 M12 12v6",
                 children: moveToChildrenDm,
             })
@@ -584,7 +586,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         const hasMention = catConvs.some(c => !isMuted(c) && c.isMentionMe)
         return {
             id: cat.category_id,
-            name: cat.is_default ? '默认分组' : cat.name,
+            name: cat.is_default ? t("base.chatSidebar.defaultCategory") : cat.name,
             groupCount,
             isEmpty: groupCount === 0,
             unreadCount,
@@ -603,7 +605,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
         const upDownMenus: ContextMenusData[] = [
             {
-                title: "上移",
+                title: t("base.chatSidebar.context.moveUp"),
                 icon: "M18 15 12 9 6 15",
                 onClick: () => {
                     if (idx <= 0) return
@@ -613,7 +615,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 },
             },
             {
-                title: "下移",
+                title: t("base.chatSidebar.context.moveDown"),
                 icon: "M6 9l6 6 6-6",
                 onClick: () => {
                     if (idx >= effectiveCategories.length - 1) return
@@ -631,7 +633,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
         return [
             {
-                title: "新建群聊",
+                title: t("base.chatSidebar.context.startGroup"),
                 icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 8 0 4 4 0 0 0-8 0 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
                 onClick: () => {
                     onCreateGroupInCategory?.(categoryId)
@@ -639,7 +641,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             },
             { separator: true } as ContextMenusData,
             {
-                title: "重命名",
+                title: t("base.chatSidebar.context.rename"),
                 icon: "M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z m-2-2 4 4",
                 onClick: () => {
                     setRenamingCategoryId(categoryId)
@@ -649,16 +651,18 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             ...upDownMenus,
             { separator: true } as ContextMenusData,
             {
-                title: "删除分组",
+                title: t("base.chatSidebar.context.deleteCategory"),
                 icon: "M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",
                 danger: true,
                 onClick: () => {
                     Modal.confirm({
-                        title: '删除分组',
-                        content: `确定删除「${cat.name}」吗？分组下的所有会话将取消关注。`,
+                        title: t("base.chatSidebar.confirm.deleteCategoryTitle"),
+                        content: t("base.chatSidebar.confirm.deleteCategoryContent", {
+                            values: { name: cat.name },
+                        }),
                         okType: 'danger',
-                        okText: '删除',
-                        cancelText: '取消',
+                        okText: t("base.chatSidebar.action.delete"),
+                        cancelText: t("base.common.cancel"),
                         onOk: () => onDeleteCategory(categoryId),
                     })
                 },
@@ -744,7 +748,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 ) : activeDragData?.type === 'category' ? (
                     <div className="wk-category-header wk-category-header--ghost">
                         <span className="wk-category-header__name">
-                            {categories.find(c => `cat::${c.category_id}` === activeDragId)?.name ?? '分组'}
+                            {categories.find(c => `cat::${c.category_id}` === activeDragId)?.name ?? t("base.chatSidebar.categoryFallback")}
                         </span>
                     </div>
                 ) : null}

@@ -6,6 +6,7 @@ import { Component } from "react";
 import WKApp from "../../App";
 import RouteContext, { FinishButtonContext, RouteContextConfig } from "../../Service/Context";
 import { WKAvatarEditor } from "../WKAvatarEditor";
+import { I18nContext } from "../../i18n";
 import "./index.css"
 
 export interface ChannelAvatarProps {
@@ -15,6 +16,9 @@ export interface ChannelAvatarProps {
     onFileUpload?:(f:File)=>Promise<void>
 }
 export class ChannelAvatar extends Component<ChannelAvatarProps>{
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     $fileInput: any
     avatarEdit?: WKAvatarEditor|null
 
@@ -26,7 +30,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps>{
             headers: { "Content-Type": "multipart/form-data", "token": WKApp.loginInfo.token || "" },
         }).catch(error => {
             console.error('Avatar upload failed:', error);
-            Toast.error('头像上传失败，请重试');
+            Toast.error(this.context.t('base.channelAvatar.uploadFailedRetry'));
             throw error;
         })
     }
@@ -57,7 +61,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps>{
                     if(canvas) {
                         canvas.toBlob( async (bob: Blob | null)  => {
                             if (!bob) {
-                                Toast.error('图片处理失败，请重试');
+                                Toast.error(this.context.t('base.channelAvatar.imageProcessFailedRetry'));
                                 return;
                             }
                             const file = new File([bob], `channelAvatarPicture.png`, {
@@ -94,7 +98,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps>{
                 <img style={{"width":"200px","height":"200px"}} src={WKApp.shared.avatarChannel(channel)}></img>
             </div>
             <div className="wk-channelavatar-upload" style={{display:showUpload?"block":"none"}}>
-                <Button onClick={this.chooseFile}>更换头像</Button>
+                <Button onClick={this.chooseFile}>{this.context.t('base.channelAvatar.changeAvatar')}</Button>
                 <input  onClick={this.onFileClick.bind(this)}  type="file" multiple={false} accept="image/*" style={{ display: 'none' }} ref={(ref) => { this.$fileInput = ref }}  onChange={this.onFileChange.bind(this)}></input>
             </div>
         </div>

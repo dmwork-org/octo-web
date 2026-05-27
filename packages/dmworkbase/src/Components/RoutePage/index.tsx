@@ -5,6 +5,7 @@ import RouteContext, { FinishButtonContext, RouteContextConfig } from "../../Ser
 import { Button } from "@douyinfe/semi-ui";
 import WKViewQueueHeader from "../WKViewQueueHeader";
 import WKViewQueue, { WKViewQueueContext } from "../WKViewQueue";
+import { I18nContext } from "../../i18n";
 
 export interface RoutePageState {
     pushViewCount: number
@@ -21,6 +22,9 @@ export interface RoutePageProps{
 }
 
 export default class RoutePage extends Component<RoutePageProps, RoutePageState> implements RouteContext<any>, FinishButtonContext {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     private _routeData: any
     viewQueueContext!: WKViewQueueContext
     constructor(props: any) {
@@ -164,7 +168,7 @@ export default class RoutePage extends Component<RoutePageProps, RoutePageState>
                             if (routeConfig?.onFinish) {
                                 routeConfig?.onFinish()
                             }
-                        }}>完成</Button> : undefined
+                        }}>{this.context.t("base.common.done")}</Button> : undefined
                     }
                 </div>
             </div>

@@ -1,6 +1,7 @@
 import { Thread } from "../../Service/Thread"
 import { Message } from "wukongimjssdk"
 import WKApp from "../../App"
+import { t } from "../../i18n"
 
 export interface ThreadPanelState {
   loading: boolean
@@ -53,7 +54,7 @@ export class ThreadPanelVM {
       )
       this.setState({ loading: false, thread })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "加载失败"
+      const msg = err instanceof Error ? err.message : t("base.threadPanel.loadFailed")
       this.setState({ loading: false, error: msg })
     }
   }

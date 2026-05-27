@@ -6,6 +6,7 @@ import WKAvatar from "../WKAvatar";
 import { SubscriberList } from "../Subscribers/list";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
+import { I18nContext, t } from "../../i18n";
 import "./index.css";
 
 export interface GroupManagementProps {
@@ -24,6 +25,9 @@ export class GroupManagement extends Component<
   GroupManagementProps,
   GroupManagementState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   constructor(props: GroupManagementProps) {
     super(props);
     this.state = {
@@ -64,7 +68,7 @@ export class GroupManagement extends Component<
       }
       this.setState({ managers, botAdmins, loading: false });
     } catch (err: any) {
-      Toast.error(err?.msg || "加载失败");
+      Toast.error(err?.msg || t("base.groupManagement.loadFailed"));
       this.setState({ loading: false });
     }
   };
@@ -72,17 +76,21 @@ export class GroupManagement extends Component<
   handleRemoveManager = (subscriber: Subscriber) => {
     const { channel } = this.props;
     Modal.confirm({
-      title: "移除管理员",
-      content: `确定将 ${subscriber.remark || subscriber.name} 移除管理员吗？`,
+      title: t("base.groupManagement.removeManagerTitle"),
+      content: t("base.groupManagement.removeManagerContent", {
+        values: { name: subscriber.remark || subscriber.name },
+      }),
+      okText: t("base.common.ok"),
+      cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
           await WKApp.dataSource.channelDataSource.managerRemove(channel, [
             subscriber.uid,
           ]);
-          Toast.success("已移除");
+          Toast.success(t("base.groupManagement.removed"));
           this.loadMembers();
         } catch (err: any) {
-          Toast.error(err?.msg || "操作失败");
+          Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
         }
       },
     });
@@ -91,18 +99,22 @@ export class GroupManagement extends Component<
   handleRemoveBotAdmin = (subscriber: Subscriber) => {
     const { channel } = this.props;
     Modal.confirm({
-      title: "移除 Bot 管理员",
-      content: `确定将 ${subscriber.remark || subscriber.name} 移除 Bot 管理员吗？`,
+      title: t("base.groupManagement.removeBotAdminTitle"),
+      content: t("base.groupManagement.removeBotAdminContent", {
+        values: { name: subscriber.remark || subscriber.name },
+      }),
+      okText: t("base.common.ok"),
+      cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
           await WKApp.dataSource.channelDataSource.removeBotAdmin(
             channel,
             subscriber.uid
           );
-          Toast.success("已移除");
+          Toast.success(t("base.groupManagement.removed"));
           this.loadMembers();
         } catch (err: any) {
-          Toast.error(err?.msg || "操作失败");
+          Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
         }
       },
     });
@@ -126,12 +138,12 @@ export class GroupManagement extends Component<
         }}
       />,
       new RouteContextConfig({
-        title: "添加管理员",
+        title: t("base.groupManagement.addManager"),
         showFinishButton: true,
-        finishButtonTitle: "确定",
+        finishButtonTitle: t("base.common.ok"),
         onFinish: async () => {
           if (selectedItems.length === 0) {
-            Toast.warning("请选择成员");
+            Toast.warning(t("base.groupManagement.selectMember"));
             return;
           }
           try {
@@ -139,11 +151,11 @@ export class GroupManagement extends Component<
               channel,
               selectedItems.map((s) => s.uid)
             );
-            Toast.success("已添加");
+            Toast.success(t("base.groupManagement.added"));
             context.pop();
             this.loadMembers();
           } catch (err: any) {
-            Toast.error(err?.msg || "操作失败");
+            Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
           }
         },
       })
@@ -168,12 +180,12 @@ export class GroupManagement extends Component<
         }}
       />,
       new RouteContextConfig({
-        title: "添加 Bot 管理员",
+        title: t("base.groupManagement.addBotAdmin"),
         showFinishButton: true,
-        finishButtonTitle: "确定",
+        finishButtonTitle: t("base.common.ok"),
         onFinish: async () => {
           if (selectedItems.length === 0) {
-            Toast.warning("请选择 Bot");
+            Toast.warning(t("base.groupManagement.selectBot"));
             return;
           }
           const uid = selectedItems[0].uid;
@@ -182,11 +194,11 @@ export class GroupManagement extends Component<
               channel,
               uid
             );
-            Toast.success("已添加");
+            Toast.success(t("base.groupManagement.added"));
             context.pop();
             this.loadMembers();
           } catch (err: any) {
-            Toast.error(err?.msg || "操作失败");
+            Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
           }
         },
       })
@@ -212,10 +224,10 @@ export class GroupManagement extends Component<
         {/* 群主、管理员 */}
         <div className="wk-group-mgmt-section">
           <div className="wk-group-mgmt-section-header">
-            <span className="wk-group-mgmt-section-title">群主、管理员</span>
+            <span className="wk-group-mgmt-section-title">{t("base.groupManagement.ownerAndManagers")}</span>
             {isCreator && (
               <Button size="small" onClick={this.handleAddManager}>
-                添加管理员
+                {t("base.groupManagement.addManager")}
               </Button>
             )}
           </div>
@@ -231,12 +243,12 @@ export class GroupManagement extends Component<
                   </span>
                   {item.role === GroupRole.owner && (
                     <Tag size="small" color="orange">
-                      群主
+                      {t("base.groupManagement.owner")}
                     </Tag>
                   )}
                   {item.role === GroupRole.manager && (
                     <Tag size="small" color="blue">
-                      管理员
+                      {t("base.groupManagement.manager")}
                     </Tag>
                   )}
                 </div>
@@ -258,14 +270,14 @@ export class GroupManagement extends Component<
         {/* Bot 管理员 */}
         <div className="wk-group-mgmt-section">
           <div className="wk-group-mgmt-section-header">
-            <span className="wk-group-mgmt-section-title">Bot 管理员</span>
+            <span className="wk-group-mgmt-section-title">{t("base.groupManagement.botAdmins")}</span>
             <Button size="small" onClick={this.handleAddBotAdmin}>
-              添加 Bot 管理员
+              {t("base.groupManagement.addBotAdmin")}
             </Button>
           </div>
           <div className="wk-group-mgmt-list">
             {botAdmins.length === 0 ? (
-              <div className="wk-group-mgmt-empty">暂无 Bot 管理员</div>
+              <div className="wk-group-mgmt-empty">{t("base.groupManagement.noBotAdmins")}</div>
             ) : (
               botAdmins.map((item) => (
                 <div className="wk-group-mgmt-item" key={item.uid}>
@@ -277,7 +289,7 @@ export class GroupManagement extends Component<
                       {item.remark || item.name}
                     </span>
                     <Tag size="small" color="green">
-                      Bot管理员
+                      {t("base.groupManagement.botAdmin")}
                     </Tag>
                   </div>
                   <div className="wk-group-mgmt-item-action">

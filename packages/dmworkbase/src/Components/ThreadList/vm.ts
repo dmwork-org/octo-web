@@ -1,5 +1,6 @@
 import { Thread } from "../../Service/Thread"
 import WKApp from "../../App"
+import { t } from "../../i18n"
 
 export interface ThreadListState {
   loading: boolean
@@ -40,7 +41,7 @@ export class ThreadListVM {
       })
       this.setState({ loading: false, threads })
     } catch (err: any) {
-      this.setState({ loading: false, error: err?.msg || "加载失败" })
+      this.setState({ loading: false, error: err?.msg || t("base.threadList.loadFailed") })
     }
   }
 
@@ -49,7 +50,7 @@ export class ThreadListVM {
       await WKApp.dataSource.channelDataSource.threadArchive(this.groupNo, shortId)
       await this.load()
     } catch (err: any) {
-      throw new Error(err?.msg || "归档失败")
+      throw new Error(err?.msg || t("base.module.thread.archiveFailedRetry"))
     }
   }
 
@@ -58,7 +59,7 @@ export class ThreadListVM {
       await WKApp.dataSource.channelDataSource.threadDelete(this.groupNo, shortId)
       await this.load()
     } catch (err: any) {
-      throw new Error(err?.msg || "删除失败")
+      throw new Error(err?.msg || t("base.threadPanel.deleteFailedRetry"))
     }
   }
 
@@ -67,7 +68,7 @@ export class ThreadListVM {
       await WKApp.dataSource.channelDataSource.threadJoin(shortId)
       await this.load()
     } catch (err: any) {
-      throw new Error(err?.msg || "加入失败")
+      throw new Error(err?.msg || t("base.threadList.joinFailed"))
     }
   }
 
@@ -76,7 +77,7 @@ export class ThreadListVM {
       await WKApp.dataSource.channelDataSource.threadLeave(shortId)
       await this.load()
     } catch (err: any) {
-      throw new Error(err?.msg || "离开失败")
+      throw new Error(err?.msg || t("base.threadList.leaveFailed"))
     }
   }
 }

@@ -1,6 +1,7 @@
 import { Switch } from "@douyinfe/semi-ui";
 import React, { CSSProperties } from "react";
 import { Component } from "react";
+import { I18nContext } from "../../i18n";
 import "./index.css"
 
 export interface ListItemProps {
@@ -35,6 +36,8 @@ export class ListItem extends Component<ListItemProps>{
 }
 
 export class ListItemMuliteLine extends Component<ListItemProps>{
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
 
     hasSubtitle() {
         const { subTitle } = this.props
@@ -58,7 +61,7 @@ export class ListItemMuliteLine extends Component<ListItemProps>{
                 this.hasSubtitle() ? <div className="wk-list-item-subtitle-muliteline">
                     {subTitle}
                 </div> : <div className="wk-list-item-subtitle wk-list-item-subtitle-oneline">
-                    未设置
+                    {this.context.t("base.common.notSet")}
                 </div>
             }
 

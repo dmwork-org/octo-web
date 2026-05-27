@@ -1,3 +1,5 @@
+import { t } from "../../i18n"
+
 const ChannelTypeGroup = 2
 const ChannelTypePerson = 1
 const ChannelTypeCommunityTopic = 5
@@ -46,12 +48,12 @@ export function buildChatContext(params: {
     if (channelType === ChannelTypePerson) {
         const peerName = channelInfo?.title?.trim() || channelInfo?.orgData?.remark?.trim() || ''
         if (peerName) {
-            channelLabel = `私聊「${peerName}」`
+            channelLabel = t("base.chatContext.direct", { values: { name: peerName } })
         }
     } else if (channelType === ChannelTypeCommunityTopic) {
         const parts: string[] = []
-        if (groupName) parts.push(`群聊「${groupName}」`)
-        if (threadName) parts.push(`子区「${threadName}」`)
+        if (groupName) parts.push(t("base.chatContext.group", { values: { name: groupName } }))
+        if (threadName) parts.push(t("base.chatContext.thread", { values: { name: threadName } }))
         channelLabel = parts.join('- ') || ''
 
         if (subscribers.length <= 100) {
@@ -82,7 +84,7 @@ export function buildChatContext(params: {
         }
     } else {
         if (groupName) {
-            channelLabel = `群聊「${groupName}」`
+            channelLabel = t("base.chatContext.group", { values: { name: groupName } })
         }
 
         if (channelType === ChannelTypeGroup) {
@@ -118,7 +120,9 @@ export function buildChatContext(params: {
     if (channelType !== ChannelTypePerson) {
         const uniqueNames = [...new Set(names)]
         if (uniqueNames.length > 0) {
-            result.memberContext = `聊天成员：${uniqueNames.join(",")}`
+            result.memberContext = t("base.chatContext.members", {
+                values: { names: uniqueNames.join(",") },
+            })
         }
     }
 

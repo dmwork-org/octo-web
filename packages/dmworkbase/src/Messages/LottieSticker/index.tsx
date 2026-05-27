@@ -5,6 +5,7 @@ import { MessageContentTypeConst } from "../../Service/Const"
 import MessageBase from "../Base"
 import { MessageCell } from "../MessageCell"
 import "@lottiefiles/lottie-player/dist/tgs-player";
+import { t } from "../../i18n"
 
 
 
@@ -21,7 +22,7 @@ export class LottieSticker extends MessageContent {
     }
     get conversationDigest() {
 
-        return "[贴图]"
+        return t("base.message.digest.sticker")
     }
     encodeJSON() {
         

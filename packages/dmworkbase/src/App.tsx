@@ -103,6 +103,7 @@ export enum ThemeMode {
 export class WKConfig {
   appName: string = "DMWork";
   appVersion: string = "0.0.0"; // app版本
+  locale: string = "zh-CN"; // 当前语言
   themeColor: string = "#1C1C23"; // 主题颜色
   secondColor: string = "rgba(232, 234, 237)";
   pageSize: number = 15; // 数据页大小

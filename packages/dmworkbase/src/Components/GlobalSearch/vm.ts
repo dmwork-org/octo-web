@@ -4,6 +4,7 @@ import WKApp from "../../App";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
+import { t } from "../../i18n";
 
 export default class GlobalSearchVM extends ProviderListener {
     // 选中的tab组件
@@ -25,14 +26,14 @@ export default class GlobalSearchVM extends ProviderListener {
     public get tabList() {
         if (this.searchInChannel) {
             return [
-                { tab: '聊天', itemKey: 'all' },
-                { tab: '文件', itemKey: 'files' },
+                { tab: t("base.globalSearch.tab.chat"), itemKey: 'all' },
+                { tab: t("base.globalSearch.tab.files"), itemKey: 'files' },
             ];
         }
         return [
-            { tab: '联系人', itemKey: 'contacts' },
-            { tab: '群组', itemKey: 'groups' },
-            { tab: '文件', itemKey: 'files' },
+            { tab: t("base.globalSearch.tab.contacts"), itemKey: 'contacts' },
+            { tab: t("base.globalSearch.tab.groups"), itemKey: 'groups' },
+            { tab: t("base.globalSearch.tab.files"), itemKey: 'files' },
         ];
     }
 
@@ -54,7 +55,9 @@ export default class GlobalSearchVM extends ProviderListener {
         if (this.searchInChannel) {
             const channelInfo = WKSDK.shared().channelManager.getChannelInfo(this.channel!)
             if(channelInfo) {
-                return `与“${channelInfo.title}”的聊天记录`
+                return t("base.globalSearch.chatHistoryWith", {
+                    values: { name: channelInfo.title },
+                });
             }
             return ""
         }
@@ -188,7 +191,7 @@ export default class GlobalSearchVM extends ProviderListener {
                         messageContent.decode(this.jsonToUint8Array(v.payload))
 
                         if(messageContent instanceof SystemContent) {
-                            messageContent.content["content"] = "[系统消息]"
+                            messageContent.content["content"] = t("base.globalSearch.systemMessage")
                         }
 
                         v.content = messageContent
@@ -199,7 +202,7 @@ export default class GlobalSearchVM extends ProviderListener {
         }).catch((err) => {
             console.error("[GlobalSearch] search failed:", err)
             if (currentRequestId === this.requestId) {
-                this.searchError = "搜索失败，请稍后重试"
+                this.searchError = t("base.globalSearch.searchFailedRetry")
                 this.notifyListener()
             }
         }).finally(() => {

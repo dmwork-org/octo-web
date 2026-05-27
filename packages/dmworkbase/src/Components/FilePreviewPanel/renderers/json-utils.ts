@@ -108,7 +108,7 @@ export function extractArrayFromJson(jsonData: unknown): Record<string, unknown>
 
     return [];
   } catch (error) {
-    console.error("提取JSON数组时出错:", error);
+    console.error("Failed to extract JSON array:", error);
     return [];
   }
 }

@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { Space } from "wukongimjssdk";
 import SpaceItem from "../SpaceItem";
 import ActionListItem from "../ActionListItem";
+import { I18nContext } from "../../i18n";
 
 function IconBuilding() {
     return (
@@ -28,6 +29,9 @@ interface NavSpaceSwitcherState {
 
 
 export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, NavSpaceSwitcherState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     constructor(props: NavSpaceSwitcherProps) {
         super(props);
         this.state = { open: false };
@@ -58,6 +62,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
     render() {
         const { spaces, currentSpaceId, onSpaceSelect, onJoinSpace } = this.props;
         const { open } = this.state;
+        const { t } = this.context;
         const current = spaces.find(s => s.space_id === currentSpaceId);
 
         return (
@@ -65,8 +70,8 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                 <button
                     type="button"
                     className="wk-navrail__space-icon-btn"
-                    title={current?.name ?? "切换 Space"}
-                    aria-label="切换 Space"
+                    title={current?.name ?? t("base.navRail.spaceSwitcher.switch")}
+                    aria-label={t("base.navRail.spaceSwitcher.switch")}
                     onClick={this.handleToggle}
                 >
                     <IconBuilding />
@@ -81,7 +86,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                         />
                         <div className="wk-navrail__dropdown" onClick={e => e.stopPropagation()}>
                             {/* 弹窗标题 */}
-                            <div className="wk-navrail__dropdown-title">已加入 Space</div>
+                            <div className="wk-navrail__dropdown-title">{t("base.navRail.spaceSwitcher.joinedSpaces")}</div>
                             {/* 可滚动的 Space 列表 */}
                             <div className="wk-navrail__dropdown-spaces">
                                 {spaces.map(space => (
@@ -91,8 +96,12 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                                         logo={space.logo}
                                         avatarSize="switcher"
                                         meta={space.max_users > 0
-                                            ? `${space.member_count}/${space.max_users} 人`
-                                            : `${space.member_count} 人`}
+                                            ? t("base.navRail.spaceSwitcher.memberCountWithLimit", {
+                                                values: { count: space.member_count, max: space.max_users },
+                                            })
+                                            : t("base.navRail.spaceSwitcher.memberCount", {
+                                                values: { count: space.member_count },
+                                            })}
                                         selected={space.space_id === currentSpaceId}
                                         onClick={() => {
                                             onSpaceSelect(space.space_id);
@@ -108,7 +117,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                                     <div className="wk-navrail__dropdown-actions">
                                         <ActionListItem
                                             icon={<IconJoinSpace />}
-                                            label="加入新Space"
+                                            label={t("base.navRail.spaceSwitcher.joinNewSpace")}
                                             compact
                                             trailing={<IconChevronRight />}
                                             onClick={() => { this.handleClose(); onJoinSpace(); }}

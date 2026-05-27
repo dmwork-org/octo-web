@@ -2,6 +2,7 @@ import React from 'react'
 import { Modal } from '@douyinfe/semi-ui'
 import { IconClose } from '@douyinfe/semi-icons'
 import WKButton from '../WKButton'
+import { t } from '../../i18n'
 import './index.css'
 
 export type WKModalSize = 'md' | 'lg' | 'full'
@@ -69,7 +70,7 @@ function resolveFooter(
     return footer === null ? null : footer
   }
   if (footerConfig?.onOk) {
-    const { okText = '确定', cancelText = '取消', isOkLoading, isDanger, onOk } = footerConfig
+    const { okText = t('base.common.ok'), cancelText = t('base.common.cancel'), isOkLoading, isDanger, onOk } = footerConfig
     return (
       <div className="wk-modal-footer">
         <WKButton variant="secondary" onClick={onCancel}>
@@ -138,7 +139,7 @@ const WKModal: React.FC<WKModalProps> = ({
         <button
           className="wk-modal-custom-close-btn"
           onClick={onCancel}
-          aria-label="关闭"
+          aria-label={t('base.common.close')}
         >
           <IconClose />
         </button>

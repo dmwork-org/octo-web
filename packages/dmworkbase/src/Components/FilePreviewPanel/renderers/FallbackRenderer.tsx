@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { BaseRendererProps } from "../types";
 import { formatFileSize } from "../config";
+import { useI18n } from "../../../i18n";
 import "./FallbackRenderer.css";
 
 export interface FallbackRendererProps extends BaseRendererProps {}
@@ -63,6 +64,7 @@ function getFileIcon(
  */
 const FallbackRenderer: React.FC<FallbackRendererProps> = ({ file }) => {
   const [loading, setLoading] = useState(false);
+  const { t } = useI18n();
 
   const handleDownload = async () => {
     if (loading) return;
@@ -122,14 +124,14 @@ const FallbackRenderer: React.FC<FallbackRendererProps> = ({ file }) => {
           ) : (
             <Download size={16} />
           )}
-          <span>下载</span>
+          <span>{t("base.filePreview.download")}</span>
         </button>
       </div>
 
       {/* 提示信息 */}
       <div className="wk-file-preview-fallback-renderer__hint">
         <Info size={16} />
-        <span>暂不支持预览此文件类型</span>
+        <span>{t("base.filePreview.unsupportedType")}</span>
       </div>
     </div>
   );

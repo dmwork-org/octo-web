@@ -6,6 +6,7 @@ import { DefaultEmojiService } from "./EmojiService"
 import { TypingManager } from "./TypingManager"
 import { getSpaceFilteredLastMessage, SYSTEM_BOTS } from "./SpaceService"
 import { isMessageContinuation } from "./messageContinuity"
+import { MENTION_LABEL_AIS, MENTION_LABEL_HUMANS } from "../Utils/mentionRender"
 
 export class ConversationWrap {
     conversation: Conversation
@@ -503,7 +504,7 @@ export class MessageWrap {
             // Defensive check: broadcast tokens (@all / @所有人 / @所有AI)
             // should not bind to personal entities.
             const mentionName = mentionText.slice(1)
-            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人' || mentionName === '所有AI') {
+            if (mentionName.toLowerCase() === 'all' || mentionName === MENTION_LABEL_HUMANS || mentionName === MENTION_LABEL_AIS) {
                 parts.push(new Part(PartType.text, mentionText))
                 cursor = entity.offset + entity.length
                 continue
@@ -537,7 +538,7 @@ export class MessageWrap {
             // @所有AI was added for GH#100: client-side bot UID expansion puts
             // routing UIDs into mention.uids, but the broadcast text token must
             // not bind to any of them.
-            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人' || mentionName === '所有AI') {
+            if (mentionName.toLowerCase() === 'all' || mentionName === MENTION_LABEL_HUMANS || mentionName === MENTION_LABEL_AIS) {
                 continue
             }
 

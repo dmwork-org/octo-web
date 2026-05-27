@@ -8,6 +8,7 @@ import { MessageBaseCellProps, MessageCell } from "../MessageCell"
 
 import "./index.css"
 import { MessageContentTypeConst } from "../../Service/Const"
+import { I18nContext, t } from "../../i18n"
 
 
 export class Card extends MessageContent {
@@ -38,7 +39,7 @@ export class Card extends MessageContent {
 
     get conversationDigest() {
 
-        return "[名片]"
+        return t("base.message.digest.card")
     }
 }
 
@@ -48,6 +49,9 @@ interface CardCellState {
 }
 
 export class CardCell extends MessageCell<MessageBaseCellProps, CardCellState> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     baseContext!:WKBaseContext
     constructor(props: any) {
         super(props)
@@ -76,7 +80,7 @@ export class CardCell extends MessageCell<MessageBaseCellProps, CardCellState> {
                         </div>
                     </div>
                     <div className="wk-message-card-bottom">
-                        <div className="wk-message-card-bottom-flag">个人名片</div>
+                        <div className="wk-message-card-bottom-flag">{this.context.t("base.message.card.personalCard")}</div>
                         <div className="wk-message-card-bottom-time">
                             <MessageTrail message={message} timeStyle={{ color: "#999" }} />
                         </div>

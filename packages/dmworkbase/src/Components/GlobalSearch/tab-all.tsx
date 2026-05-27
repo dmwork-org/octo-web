@@ -9,6 +9,7 @@ import { MessageContentTypeConst } from "../../Service/Const";
 import { debounce, throttle } from "../../Utils/rateLimit";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import VisibilityTrigger from "../VisibilityTrigger";
+import { I18nContext } from "../../i18n";
 
 
 interface TabAllProps {
@@ -20,6 +21,8 @@ interface TabAllProps {
 }
 
 export default class TabAll extends Component<TabAllProps> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
 
     handleScroll = throttle((event: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
@@ -113,17 +116,17 @@ export default class TabAll extends Component<TabAllProps> {
             {
                 !this.props.searchResult && !this.props.keyword && (
                     <div style={{ textAlign: 'center', color: 'var(--wk-text-tertiary, #9498A8)', padding: '48px 0', fontSize: '13px' }}>
-                        输入关键词开始搜索
+                        {this.context.t("base.globalSearch.startHint")}
                     </div>
                 )
             }
 
             {
                 existMessages ? (
-                    <Section title="消息">
+                    <Section title={this.context.t("base.globalSearch.messages")}>
                         {
                             this.props.searchResult?.messages.map((item: any) => {
-                                let digest = "[未知消息]"
+                                let digest = this.context.t("base.globalSearch.unknownMessage")
                                 if(item.content) {
                                     digest = item.content.conversationDigest
                                 }else {

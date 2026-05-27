@@ -1,6 +1,7 @@
 import React, { Component } from "react"
 import { WKSDK, ConnectStatus } from "wukongimjssdk"
 import WKApp from "../../App"
+import { I18nContext } from "../../i18n"
 import "./index.css"
 
 interface ConnectionStatusProps {
@@ -17,6 +18,9 @@ interface ConnectionStatusState {
 }
 
 export default class ConnectionStatus extends Component<ConnectionStatusProps, ConnectionStatusState> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     private statusListener: any
     private pingTimer: any
     private connectedTime: number = 0
@@ -99,14 +103,14 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
         return 1
     }
 
-    formatDuration(since: number | null): string {
+    formatDuration(since: number | null, translate: React.ContextType<typeof I18nContext>["t"]): string {
         if (!since) return ""
         const sec = Math.floor((Date.now() - since) / 1000)
-        if (sec < 60) return `${sec}秒`
+        if (sec < 60) return translate("base.connectionStatus.duration.seconds", { values: { count: sec } })
         const min = Math.floor(sec / 60)
-        if (min < 60) return `${min}分钟`
+        if (min < 60) return translate("base.connectionStatus.duration.minutes", { values: { count: min } })
         const hr = Math.floor(min / 60)
-        return `${hr}小时${min % 60}分`
+        return translate("base.connectionStatus.duration.hoursMinutes", { values: { hours: hr, minutes: min % 60 } })
     }
 
     handleClick = () => {
@@ -118,6 +122,7 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
     render() {
         const { status, latency, connectedSince, showTooltip } = this.state
         const { compact } = this.props
+        const { t } = this.context
         const connected = status === ConnectStatus.Connected
         const connecting = status === ConnectStatus.Connecting
         const bars = this.getSignalBars(latency, connected)
@@ -130,14 +135,30 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
 
         const labelText = connected && latency !== null
             ? `${latency}ms`
-            : connecting ? "连接中..." : "已断开"
+            : connecting ? t("base.connectionStatus.connectingDots") : t("base.connectionStatus.disconnected")
 
         const tooltip = showTooltip && (
             <div className="wk-conn-tooltip">
-                <div>状态：{connected ? "已连接" : connecting ? "连接中" : "已断开"}</div>
-                {connected && latency !== null && <div>延迟：{latency}ms</div>}
-                {connected && connectedSince && <div>已连接：{this.formatDuration(connectedSince)}</div>}
-                {!connected && !connecting && <div style={{ color: "var(--wk-brand-primary)", marginTop: 4 }}>点击重连</div>}
+                <div>
+                    {t("base.connectionStatus.statusLabel")}
+                    {connected
+                        ? t("base.connectionStatus.connected")
+                        : connecting
+                            ? t("base.connectionStatus.connecting")
+                            : t("base.connectionStatus.disconnected")}
+                </div>
+                {connected && latency !== null && <div>{t("base.connectionStatus.latencyLabel")}{latency}ms</div>}
+                {connected && connectedSince && (
+                    <div>
+                        {t("base.connectionStatus.connectedForLabel")}
+                        {this.formatDuration(connectedSince, t)}
+                    </div>
+                )}
+                {!connected && !connecting && (
+                    <div style={{ color: "var(--wk-brand-primary)", marginTop: 4 }}>
+                        {t("base.connectionStatus.clickReconnect")}
+                    </div>
+                )}
             </div>
         )
 

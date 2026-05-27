@@ -3,6 +3,7 @@ import ViewToggle, { ViewMode } from "../ViewToggle"
 import CategorySection from "../CategorySection"
 import CategoryEmptyState from "../CategoryEmptyState"
 import { useCategoryCollapse } from "../../Hooks/useCategoryCollapse"
+import { useI18n } from "../../i18n"
 import "./index.css"
 
 export interface CategoryData {
@@ -51,6 +52,7 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
     onRenameCancel,
     categorySectionDraggable,
 }) => {
+    const { t } = useI18n()
     const categoryIds = categories.map(c => c.id)
     const { isCollapsed, toggle: toggleCollapse } = useCategoryCollapse(categoryIds)
 
@@ -68,10 +70,10 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
         if (error) {
             return (
                 <div className="wk-conv-with-category__error">
-                    <span className="wk-conv-with-category__error-text">加载失败，请检查网络</span>
+                    <span className="wk-conv-with-category__error-text">{t("base.conversationListWithCategory.loadFailed")}</span>
                     {onRetry && (
                         <button className="wk-conv-with-category__retry" onClick={onRetry}>
-                            点击重试
+                            {t("base.conversationListWithCategory.retry")}
                         </button>
                     )}
                 </div>

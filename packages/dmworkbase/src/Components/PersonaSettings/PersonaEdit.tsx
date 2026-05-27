@@ -3,6 +3,7 @@ import RouteContext from "../../Service/Context"
 import Provider, { IProviderListener } from "../../Service/Provider"
 import { Switch, Toast } from "@douyinfe/semi-ui"
 import { OboGrant, OboScope, PersonaEditVM } from "./vm"
+import { I18nContext } from "../../i18n"
 
 /**
  * PersonaEdit — 单个 grant 的编辑页（mode + global toggle + scope 列表 + 删除）。
@@ -65,6 +66,9 @@ interface PersonaEditState {
 }
 
 export default class PersonaEdit extends Component<PersonaEditProps, PersonaEditState> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     state: PersonaEditState = {
         confirmDelete: false,
         prompt: this.props.grant.persona_prompt || "",
@@ -84,7 +88,7 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
     private handleDelete = (vm: PersonaEditVM) => {
         if (!this.state.confirmDelete) {
             this.setState({ confirmDelete: true })
-            Toast.warning("再次点击「删除分身」确认撤销")
+            Toast.warning(this.context.t("base.persona.delete.confirmToast"))
             if (this.confirmTimer) clearTimeout(this.confirmTimer)
             this.confirmTimer = setTimeout(() => {
                 this.setState({ confirmDelete: false })
@@ -113,7 +117,7 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
             .savePersonaForm(this.state.prompt, this.state.active)
             .then((ok) => {
                 if (ok) {
-                    Toast.success("已保存")
+                    Toast.success(this.context.t("base.persona.save.saved"))
                     if (this.props.onChange) this.props.onChange()
                 }
             })
@@ -128,6 +132,7 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
             <Provider
                 create={(): IProviderListener => new PersonaEditVM(grant)}
                 render={(vm: PersonaEditVM): ReactNode => {
+                    const { t } = this.context
                     // R4 P1: 严格按 enabled 分区。global=on 时 inclusion 与 global 重复，
                     // 隐藏避免噪声；global=off 时 exclusion 对生效集无贡献，隐藏避免误导。
                     const globalOn = !!vm.grant.global_enabled
@@ -136,12 +141,18 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                     const visibleScopes: OboScope[] = globalOn ? exclusions : inclusions
                     const showEmptyScope = !vm.loading && visibleScopes.length === 0
                     const sectionTitle = globalOn
-                        ? `已排除的会话 (${exclusions.length})`
-                        : `已启用的会话 (${inclusions.length})`
+                        ? t("base.persona.edit.excludedConversations", {
+                            values: { count: exclusions.length },
+                        })
+                        : t("base.persona.edit.enabledConversations", {
+                            values: { count: inclusions.length },
+                        })
                     const emptyHint = globalOn
-                        ? "暂无排除的会话\n请去具体会话的「设置 → 分身在此会话代答」关闭以将其排除"
-                        : "尚未启用任何会话\n请去具体会话的「设置 → 分身在此会话代答」开启"
-                    const removeLabel = globalOn ? "恢复代答" : "停止代答"
+                        ? t("base.persona.edit.emptyExcluded")
+                        : t("base.persona.edit.emptyEnabled")
+                    const removeLabel = globalOn
+                        ? t("base.persona.edit.restoreReply")
+                        : t("base.persona.edit.stopReply")
                     return (
                         <div className="wk-persona-edit">
                             {/* 基础信息 + v2 表单（octo-web#73）：
@@ -149,7 +160,9 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                 布局复用 Create 表单视觉风格，让用户在两条路径上拿到一致的填写体验。 */}
                             <div className="wk-persona-edit-section">
                                 <div className="wk-persona-edit-row">
-                                    <div className="wk-persona-edit-row-title">关联 Bot</div>
+                                    <div className="wk-persona-edit-row-title">
+                                        {t("base.persona.edit.associatedBot")}
+                                    </div>
                                     <div
                                         className="wk-persona-edit-row-value"
                                         data-testid="persona-edit-bot-name"
@@ -164,10 +177,12 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                  * mock 噪音；Semi TextArea 在 RoutePage 容器里也偶发样式 portal 问题）。
                                  */}
                                 <div className="wk-persona-edit-row wk-persona-edit-row-column">
-                                    <div className="wk-persona-edit-row-title">回复风格 prompt</div>
+                                    <div className="wk-persona-edit-row-title">
+                                        {t("base.persona.edit.promptLabel")}
+                                    </div>
                                     <textarea
                                         className="wk-persona-edit-prompt"
-                                        placeholder="设置分身的回复风格，如：用简洁专业的语气回复"
+                                        placeholder={t("base.persona.edit.promptPlaceholder")}
                                         value={this.state.prompt}
                                         onChange={(e) =>
                                             this.setState({ prompt: e.target.value })
@@ -177,7 +192,9 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                     />
                                 </div>
                                 <div className="wk-persona-edit-row">
-                                    <div className="wk-persona-edit-row-title">启用此分身</div>
+                                    <div className="wk-persona-edit-row-title">
+                                        {t("base.persona.edit.active")}
+                                    </div>
                                     <div className="wk-persona-edit-row-control">
                                         {/*
                                          * v2 (octo-web#73)：active 是 mutex 字段，后端在 PUT
@@ -200,17 +217,25 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                         onClick={() => this.handleSave(vm)}
                                         data-testid="persona-edit-save"
                                     >
-                                        {this.state.saving ? "保存中..." : "保存"}
+                                        {this.state.saving
+                                            ? t("base.persona.save.inProgress")
+                                            : t("base.persona.save.label")}
                                     </button>
                                 </div>
                                 <div className="wk-persona-edit-row">
-                                    <div className="wk-persona-edit-row-title">模式</div>
+                                    <div className="wk-persona-edit-row-title">
+                                        {t("base.persona.edit.mode")}
+                                    </div>
                                     <div className="wk-persona-edit-row-value">
-                                        {vm.grant.mode === "draft" ? "草稿审批" : "自动回复"}
+                                        {vm.grant.mode === "draft"
+                                            ? t("base.persona.edit.modeDraft")
+                                            : t("base.persona.edit.modeAuto")}
                                     </div>
                                 </div>
                                 <div className="wk-persona-edit-row">
-                                    <div className="wk-persona-edit-row-title">全局开关</div>
+                                    <div className="wk-persona-edit-row-title">
+                                        {t("base.persona.edit.globalSwitch")}
+                                    </div>
                                     {/*
                                      * BUG-2 fix (YUJ-1444, 2026-05-20)：Semi UI <Switch> 是裸 flex 子项时，
                                      * 浏览器对它应用默认 `flex-shrink: 1`，宽度可能被父行的 flex 算法压扁导致
@@ -242,16 +267,18 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                 </div>
                                 <div className="wk-persona-edit-scope-list">
                                     {vm.loading && (
-                                        <div className="wk-persona-edit-scope-empty">加载中...</div>
+                                        <div className="wk-persona-edit-scope-empty">
+                                            {t("base.persona.loading")}
+                                        </div>
                                     )}
                                     {vm.isBackendMissing && (
                                         <div className="wk-persona-edit-scope-empty">
-                                            分身功能即将上线
+                                            {t("base.persona.backendComingSoon")}
                                         </div>
                                     )}
                                     {vm.loadError && !vm.isBackendMissing && (
                                         <div className="wk-persona-edit-scope-empty">
-                                            加载失败,请稍后再试
+                                            {t("base.persona.edit.loadFailed")}
                                         </div>
                                     )}
                                     {showEmptyScope && !vm.isBackendMissing && !vm.loadError && (
@@ -274,7 +301,9 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                             }
                                         >
                                             <span>
-                                                {s.channel_type === 2 ? "群聊" : "私聊"} · {s.channel_id}
+                                                {s.channel_type === 2
+                                                    ? t("base.persona.groupChat")
+                                                    : t("base.persona.directChat")} · {s.channel_id}
                                             </span>
                                             <span
                                                 className="wk-persona-edit-scope-remove"
@@ -293,7 +322,9 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                 className="wk-persona-edit-danger"
                                 onClick={() => this.handleDelete(vm)}
                             >
-                                {this.state.confirmDelete ? "再次点击以确认删除" : "删除分身"}
+                                {this.state.confirmDelete
+                                    ? t("base.persona.delete.confirmAction")
+                                    : t("base.persona.delete.label")}
                             </div>
                         </div>
                     )

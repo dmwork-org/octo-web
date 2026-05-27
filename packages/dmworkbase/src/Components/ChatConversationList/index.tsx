@@ -20,6 +20,7 @@ import ConversationList from "../ConversationList"
 import ConversationListGrouped, { ValidCategoryItem, isValidCategoryItem } from "../ConversationListGrouped"
 import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
+import { useI18n } from "../../i18n"
 
 /** 最近 Tab 3 天不活跃过滤阈值。tab 角标和列表必须共用同一阈值。 */
 export const RECENT_INACTIVE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000
@@ -72,6 +73,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     onOpenCreateCategoryRef,
     onGroupCreated,
 }) => {
+    const { t } = useI18n()
     const {
         categories,
         isLoading: catLoading,
@@ -165,10 +167,10 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                         await FollowService.sort({ ...payload, version: versionRef.current })
                         bumpVersion()
                     } catch (retryErr) {
-                        console.error('排序重试仍失败', retryErr)
+                        console.error('[ChatConversationList] follow sort retry failed', retryErr)
                     }
                 } else {
-                    console.error('排序失败', err)
+                    console.error('[ChatConversationList] follow sort failed', err)
                 }
             } finally {
                 // 最终拉一次保证 UI 与服务端一致
@@ -218,7 +220,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         if (channel.channelType === ChannelTypeCommunityTopic) {
             const parentGroupNo = conv.channelInfo?.orgData?.parentGroupNo
                 || parseThreadChannelId(channel.channelID)?.groupNo
-            if (!parentGroupNo) throw new Error('无法解析父频道 groupNo')
+            if (!parentGroupNo) throw new Error('Unable to resolve parent groupNo')
             await FollowService.refollowChannel({ group_no: parentGroupNo })
             await moveGroupToCategory(parentGroupNo, categoryId)
             await FollowService.followThread({ thread_channel_id: channel.channelID })
@@ -249,7 +251,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
             if (isFollowed) {
                 // 已关注 → 显示「取消关注」
                 menus.push({
-                    title: '取消关注',
+                    title: t("base.chatSidebar.context.unfollow"),
                     onClick: async () => {
                         const channel = conv.channel
                         try {
@@ -263,7 +265,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                             // 刷新分组列表
                             reloadAll()
                         } catch (err) {
-                            console.error('取消关注失败', err)
+                            console.error('[ChatConversationList] failed to unfollow conversation', err)
                         }
                     }
                 })
@@ -281,13 +283,13 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
                     if (parentFollowed) {
                         menus.push({
-                            title: '添加到关注',
+                            title: t("base.chatSidebar.context.addToFollow"),
                             onClick: async () => {
                                 try {
                                     await FollowService.followThread({ thread_channel_id: channel.channelID })
                                     reloadAll()
                                 } catch (err) {
-                                    console.error('关注子区失败', err)
+                                    console.error('[ChatConversationList] failed to follow thread', err)
                                 }
                             }
                         })
@@ -301,13 +303,13 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                                         await followConvToCategory(conv, cat.category_id)
                                         reloadAll()
                                     } catch (err) {
-                                        console.error('关注子区失败', err)
+                                        console.error('[ChatConversationList] failed to follow thread', err)
                                     }
                                 }
                             }))
                         categoryItems.push({ separator: true } as ContextMenusData)
                         categoryItems.push({
-                            title: '+ 新建分组',
+                            title: t("base.chatSidebar.context.createCategory"),
                             onClick: () => {
                                 setPendingAction({ kind: 'followToNewCategory', conv })
                                 setCreateModalVisible(true)
@@ -315,7 +317,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                         })
 
                         menus.push({
-                            title: '添加到关注',
+                            title: t("base.chatSidebar.context.addToFollow"),
                             children: categoryItems
                         })
                     }
@@ -330,13 +332,13 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                                     await followConvToCategory(conv, cat.category_id)
                                     reloadAll()
                                 } catch (err) {
-                                    console.error('添加到关注失败', err)
+                                    console.error('[ChatConversationList] failed to follow conversation', err)
                                 }
                             }
                         }))
                     categoryItems.push({ separator: true } as ContextMenusData)
                     categoryItems.push({
-                        title: '+ 新建分组',
+                        title: t("base.chatSidebar.context.createCategory"),
                         onClick: () => {
                             setPendingAction({ kind: 'followToNewCategory', conv })
                             setCreateModalVisible(true)
@@ -344,7 +346,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     })
 
                     menus.push({
-                        title: '添加到关注',
+                        title: t("base.chatSidebar.context.addToFollow"),
                         children: categoryItems
                     })
                 }
@@ -438,7 +440,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                                 }
                             } catch (err) {
                                 // 分类已建出来,不阻塞 modal 关闭;打日志让用户重试关注操作
-                                console.error('归入新分组失败', err)
+                                console.error('[ChatConversationList] failed to assign item to new category', err)
                             }
                         }
                         reloadAll()

@@ -2,6 +2,7 @@ import React from "react";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { BaseRendererProps } from "../types";
 import { RenderMode, formatFileSize } from "../config";
+import { useI18n } from "../../../i18n";
 import "./CodeRenderer.css";
 import "./code-highlight.css";
 
@@ -39,6 +40,8 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
   fileSize,
   contentSize,
 }) => {
+  const { t } = useI18n();
+
   // 文件太大，不渲染
   if (renderMode === "too-large") {
     return (
@@ -57,14 +60,16 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
           </svg>
         </div>
         <span className="wk-file-preview-code-renderer__large-file-text">
-          文件过大（{formatFileSize(fileSize)}），建议下载到本地查看
+          {t("base.filePreview.largeFileMessage", {
+            values: { size: formatFileSize(fileSize) },
+          })}
         </span>
         <a
           href={file.url}
           download={file.name}
           className="wk-file-preview-code-renderer__download-btn"
         >
-          下载文件
+          {t("base.filePreview.downloadFile")}
         </a>
       </div>
     );
@@ -74,7 +79,7 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
     return (
       <div className="wk-file-preview-code-renderer wk-file-preview-code-renderer--loading">
         <div className="wk-file-preview-code-renderer__spinner" />
-        <span>加载中...</span>
+        <span>{t("base.filePreview.loading")}</span>
       </div>
     );
   }
@@ -87,7 +92,7 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
           className="wk-file-preview-code-renderer__retry"
           onClick={onReload}
         >
-          重试
+          {t("base.filePreview.retry")}
         </button>
       </div>
     );
@@ -96,7 +101,7 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
   if (formattedContent === null || formattedContent === "") {
     return (
       <div className="wk-file-preview-code-renderer wk-file-preview-code-renderer--error">
-        <span>暂无内容</span>
+        <span>{t("base.filePreview.empty")}</span>
       </div>
     );
   }
@@ -121,7 +126,9 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
   return (
     <div className="wk-file-preview-code-renderer">
       <div className="wk-file-preview-code-renderer__plain-hint">
-        文件较大（{formatFileSize(contentSize)}），已禁用语法高亮
+        {t("base.filePreview.largeFilePlainHint", {
+          values: { size: formatFileSize(contentSize) },
+        })}
       </div>
       <pre className="wk-file-preview-code-renderer__pre">
         <code className="wk-file-preview-code-renderer__code">{code}</code>

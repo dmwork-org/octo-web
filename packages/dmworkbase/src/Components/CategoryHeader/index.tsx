@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from "react"
+import { useI18n } from "../../i18n"
 import "./index.css"
 
 export interface CategoryHeaderProps {
@@ -35,6 +36,7 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     onRenameCancel,
     dragHandleProps,
 }) => {
+    const { t } = useI18n()
     const inputRef = useRef<HTMLInputElement>(null)
     const isConfirmed = useRef(false)
 
@@ -147,7 +149,9 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
             <span className="wk-category-header__name">
                 {name}
                 {isEmpty ? (
-                    <span className="wk-category-header__count wk-category-header__count--empty"> (空)</span>
+                    <span className="wk-category-header__count wk-category-header__count--empty">
+                        {" "}{t("base.categoryHeader.empty")}
+                    </span>
                 ) : isCollapsed && groupCount !== undefined ? (
                     <span className="wk-category-header__count"> ({groupCount})</span>
                 ) : null}
