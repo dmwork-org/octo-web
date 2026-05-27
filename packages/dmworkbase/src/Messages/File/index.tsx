@@ -279,9 +279,13 @@ function getExtension(extension: string, name?: string): string {
   // 或是 "file" 等占位值, 见 issue #143), 用文件名后缀更稳妥。
   if (name) {
     const dot = name.lastIndexOf(".");
-    if (dot >= 0) return name.substring(dot + 1).toLowerCase();
+    if (dot >= 0) {
+      const suffix = name.substring(dot + 1).toLowerCase();
+      if (suffix) return suffix;
+    }
   }
-  // fallback: 文件名无后缀时 (如 Makefile / Dockerfile) 才用 extension
+  // fallback: 文件名无后缀 (Makefile / Dockerfile) 或后缀为空 ("report.")
+  // 时才用 extension
   const ext = (extension || "").toLowerCase();
   if (ext) return ext;
   return "";
