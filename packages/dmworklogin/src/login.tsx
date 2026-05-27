@@ -441,7 +441,7 @@ class Login extends Component<any, LoginState> {
                                                 <path d="M12 2 4 5v6c0 5 3.5 9.4 8 11 4.5-1.6 8-6 8-11V5l-8-3z" />
                                                 <path d="m9 12 2 2 4-4" />
                                             </svg>
-                                            <span>使用 {ssoProvider!.name} 登录</span>
+                                            <span>Octo 登录</span>
                                         </span>
                                     </Button>
                                     {/* 主按钮下方信任锚: shield 图标 + "身份认证由 X 提供 · 企业级安全".
