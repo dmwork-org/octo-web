@@ -1,6 +1,8 @@
 import React, { Component } from "react";
 import { Space } from "wukongimjssdk";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
+import NavLanguageSwitcher from "./NavLanguageSwitcher";
+import { t } from "../../i18n";
 
 export interface NavBottomProps {
     settingSelected?: boolean;
@@ -49,13 +51,15 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                 {/* 设置上方分割线 */}
                 <div className="wk-navrail__sep" />
 
+                <NavLanguageSwitcher />
+
                 {/* 设置按钮 + 气泡 */}
                 <div className="wk-navrail__settings-wrap">
                     <button
                         type="button"
                         className="wk-navrail__item"
-                        title="设置"
-                        aria-label="设置"
+                        title={t("base.navRail.settings")}
+                        aria-label={t("base.navRail.settings")}
                         onClick={onSettingsClick}
                     >
                         <IconSettings />
@@ -65,7 +69,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                     {hasNewVersion && bubbleVisible && (
                         <div className="wk-navrail__version-bubble">
                             <span className="wk-navrail__version-bubble-text">
-                                发现新版本，点击刷新
+                                {t("base.navRail.versionBubble.text")}
                             </span>
                             <button
                                 className="wk-navrail__version-bubble-refresh"
@@ -76,15 +80,15 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                                         sessionStorage.setItem(key, String(count + 1));
                                         window.location.reload();
                                     } else {
-                                        alert('页面已多次刷新仍检测到新版本，请按 Ctrl+Shift+R（Mac: Cmd+Shift+R）强制刷新并清除缓存。');
+                                        alert(t("base.navRail.versionBubble.reloadLimit"));
                                     }
                                 }}
                             >
-                                刷新
+                                {t("base.navRail.versionBubble.refresh")}
                             </button>
                             <button
                                 className="wk-navrail__version-bubble-close"
-                                aria-label="关闭"
+                                aria-label={t("base.navRail.versionBubble.close")}
                                 onClick={() => {
                                     this.setState({ bubbleVisible: false });
                                     onDismissNewVersion?.();
