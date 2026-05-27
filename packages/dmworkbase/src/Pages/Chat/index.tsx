@@ -41,6 +41,7 @@ import NavSignalBadge from "../../Components/NavRail/NavSignalBadge";
 import ThreadPanel from "../../Components/ThreadPanel";
 import {
   Thread,
+  ThreadStatus,
   parseThreadChannelId,
   buildThreadStub,
   isEffectivelyMuted,
@@ -50,6 +51,10 @@ import FilePreviewPanel, {
 } from "../../Components/FilePreviewPanel";
 import { FollowSidebarProvider, useFollowSidebarContext } from "../../Hooks/useFollowSidebar";
 import { SidebarTargetType } from "../../Service/SidebarService";
+
+// 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
+// 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
+const THREAD_REACTIVATE_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
 
 interface SidebarTabBarWithBadgesProps {
   conversations: ConversationWrap[];
@@ -515,6 +520,90 @@ export class ChatContentPage extends Component<
     WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
   }
 
+  private getThreadStatus(channelInfo?: ChannelInfo | null) {
+    return (channelInfo?.orgData?.thread as any)?.status as
+      | ThreadStatus
+      | undefined;
+  }
+
+  private handleConversationMessageSent = () => {
+    const { channel } = this.props;
+    if (channel.channelType !== ChannelTypeCommunityTopic) return;
+
+    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    if (this.getThreadStatus(channelInfo) !== ThreadStatus.Archived) return;
+
+    const threadInfo = parseThreadChannelId(channel.channelID);
+    if (threadInfo) {
+      void this.reconcileConversationThreadAfterMessageSent(
+        threadInfo.groupNo,
+        threadInfo.shortId,
+        channel,
+      );
+    }
+  };
+
+  private async reconcileConversationThreadAfterMessageSent(
+    groupNo: string,
+    shortId: string,
+    channel: Channel,
+  ) {
+    try {
+      const updatedThread = await this.fetchThreadAfterMessageSent(
+        groupNo,
+        shortId,
+      );
+      if (!this.props.channel.isEqual(channel)) return;
+      if (updatedThread.status === ThreadStatus.Archived) return;
+
+      // 独立子区会话的提示来自 SDK channelInfo。
+      // 只有 threadGet 确认非归档后才刷新 channelInfo，避免 UI 先切活跃再回退。
+      await this.refreshCurrentThreadChannelInfo(channel);
+      if (!this.props.channel.isEqual(channel)) return;
+
+      this.setState({});
+    } catch {
+      // Message sending already succeeded. Leave the archived prompt visible
+      // until a backend-backed channel-info refresh confirms the state change.
+    }
+  }
+
+  private async fetchThreadAfterMessageSent(
+    groupNo: string,
+    shortId: string,
+  ): Promise<Thread> {
+    let lastThread: Thread | null = null;
+
+    for (const delay of THREAD_REACTIVATE_REFRESH_DELAYS_MS) {
+      if (delay > 0) {
+        await this.sleep(delay);
+      }
+
+      const updatedThread = await WKApp.dataSource.channelDataSource.threadGet(
+        groupNo,
+        shortId,
+      );
+      lastThread = updatedThread;
+      if (updatedThread.status !== ThreadStatus.Archived) {
+        break;
+      }
+    }
+
+    if (!lastThread) {
+      throw new Error("thread status refresh failed");
+    }
+    return lastThread;
+  }
+
+  private async refreshCurrentThreadChannelInfo(channel: Channel) {
+    WKSDK.shared().channelManager.deleteChannelInfo(channel);
+    await WKSDK.shared().channelManager.fetchChannelInfo(channel);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+  }
+
   render(): React.ReactNode {
     const { channel, initLocateMessageSeq } = this.props;
     const {
@@ -533,6 +622,7 @@ export class ChatContentPage extends Component<
     if (!channelInfo) {
       WKSDK.shared().channelManager.fetchChannelInfo(channel);
     }
+    const threadStatus = this.getThreadStatus(channelInfo);
     return (
       <div
         className={classNames(
@@ -786,6 +876,12 @@ export class ChatContentPage extends Component<
                 }
                 channel={channel}
                 activePreviewMessageId={this.state.activePreviewMessageId}
+                inputNotice={
+                  isThreadChannel && threadStatus === ThreadStatus.Archived
+                    ? "该子区已归档。发送消息后，子区会恢复为活跃状态。"
+                    : undefined
+                }
+                onMessageSent={this.handleConversationMessageSent}
               ></Conversation>
             </ErrorBoundary>
           </div>

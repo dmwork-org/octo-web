@@ -37,6 +37,8 @@ export enum ThreadStatus {
   Deleted = 3,
 }
 
+export type ThreadListStatus = "active" | "archived" | "all"
+
 export const ThreadChannelIdSeparator = '____'
 
 export function parseThreadChannelId(channelId: string): { groupNo: string; shortId: string } | null {
