@@ -106,7 +106,7 @@ import {
 } from "./Messages/ThreadCreated";
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
-import { parseThreadChannelId } from "./Service/Thread";
+import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
 function fallbackCopy(text: string) {
@@ -1903,6 +1903,18 @@ export default class BaseModule implements IModule {
         const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
         const isManagerOrOwner = data.isManagerOrCreatorOfMe;
         const canEdit = isCreator || isManagerOrOwner;
+        const statusTitle =
+          thread?.status === ThreadStatus.Archived
+            ? "已归档"
+            : thread?.status === ThreadStatus.Deleted
+              ? "已删除"
+              : "活跃中";
+        const statusColor =
+          thread?.status === ThreadStatus.Archived
+            ? "grey"
+            : thread?.status === ThreadStatus.Deleted
+              ? "red"
+              : "green";
 
         const rows = new Array<Row>();
         rows.push(
@@ -1945,6 +1957,19 @@ export default class BaseModule implements IModule {
             },
           })
         );
+        rows.push(
+          new Row({
+            cell: ListItem,
+            properties: {
+              title: "子区状态",
+              subTitle: (
+                <Tag color={statusColor} size="small">
+                  {statusTitle}
+                </Tag>
+              ),
+            },
+          })
+        );
         if (threadInfo) {
           const groupChannel = new Channel(
             threadInfo.groupNo,
@@ -1958,9 +1983,10 @@ export default class BaseModule implements IModule {
           const groupName = groupInfo?.title || threadInfo.groupNo;
           rows.push(
             new Row({
-              cell: ListItemButton,
+              cell: ListItem,
               properties: {
-                title: `返回群聊「${groupName}」`,
+                title: "所属群聊",
+                subTitle: groupName,
                 onClick: () => {
                   WKApp.endpoints.showConversation(groupChannel);
                 },
@@ -1969,6 +1995,7 @@ export default class BaseModule implements IModule {
           );
         }
         return new Section({
+          title: "子区信息",
           rows: rows,
         });
       },
@@ -2044,7 +2071,6 @@ export default class BaseModule implements IModule {
 
     // 子区设置说明：
     // - 消息免打扰/聊天置顶：子区继承父群组设置，暂不支持单独配置
-    // - 清空聊天记录/归档：子区管理由父群组统一处理，暂不开放
     // - 成员管理：子区成员通过加入/离开操作，不支持手动添加
     WKApp.shared.channelSettingRegister(
       "thread.actions",
@@ -2055,33 +2081,99 @@ export default class BaseModule implements IModule {
           return undefined;
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
-        return new Section({
-          rows: [
+        const thread = data.channelInfo?.orgData?.thread as any;
+        const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
+        const canArchive = isCreator || data.isManagerOrCreatorOfMe;
+        const isArchived = thread?.status === ThreadStatus.Archived;
+        const isActive = thread?.status === ThreadStatus.Active;
+        const rows = new Array<Row>();
+
+        if (threadInfo && canArchive && (isActive || isArchived)) {
+          rows.push(
             new Row({
               cell: ListItemButton,
               properties: {
-                title: "离开子区",
-                type: ListItemButtonType.warn,
+                title: isArchived ? "取消归档" : "归档子区",
+                type: ListItemButtonType.default,
                 onClick: () => {
-                  WKApp.shared.baseContext.showAlert({
-                    content: "确定要离开此子区吗？",
+                  Modal.confirm({
+                    title: isArchived
+                      ? `取消归档「${thread?.name || data.channelInfo?.title || "子区"}」？`
+                      : `归档子区「${thread?.name || data.channelInfo?.title || "子区"}」？`,
+                    icon: null,
+                    okText: isArchived ? "取消归档" : "归档",
+                    cancelText: "取消",
+                    content: isArchived
+                      ? "取消归档后会回到活跃子区列表。"
+                      : "归档后会从活跃子区列表移到已归档分组。",
                     onOk: async () => {
-                      if (threadInfo) {
-                        await WKApp.apiClient
-                          .post(`threads/${threadInfo.shortId}/leave`)
-                          .catch((err: any) => {
-                            Toast.error(err.msg || "离开失败");
-                          });
-                        WKApp.conversationProvider.deleteConversation(
-                          data.channel
+                      try {
+                        if (isArchived) {
+                          await WKApp.dataSource.channelDataSource.threadUnarchive(
+                            threadInfo.groupNo,
+                            threadInfo.shortId
+                          );
+                        } else {
+                          await WKApp.dataSource.channelDataSource.threadArchive(
+                            threadInfo.groupNo,
+                            threadInfo.shortId
+                          );
+                        }
+                        Toast.success(
+                          isArchived ? "已取消归档" : "子区已归档"
+                        );
+                        WKSDK.shared().channelManager.deleteChannelInfo(
+                          channel
+                        );
+                        await WKSDK.shared().channelManager.fetchChannelInfo(
+                          channel
+                        );
+                        data.refresh();
+                      } catch (err: any) {
+                        Toast.error(
+                          err?.msg ||
+                            (isArchived
+                              ? "取消归档失败，请重试"
+                              : "归档失败，请重试")
                         );
                       }
                     },
                   });
                 },
               },
-            }),
-          ],
+            })
+          );
+        }
+
+        rows.push(
+          new Row({
+            cell: ListItemButton,
+            properties: {
+              title: "离开子区",
+              type: ListItemButtonType.warn,
+              onClick: () => {
+                WKApp.shared.baseContext.showAlert({
+                  content: "确定要离开此子区吗？",
+                  onOk: async () => {
+                    if (threadInfo) {
+                      await WKApp.apiClient
+                        .post(`threads/${threadInfo.shortId}/leave`)
+                        .catch((err: any) => {
+                          Toast.error(err.msg || "离开失败");
+                        });
+                      WKApp.conversationProvider.deleteConversation(
+                        data.channel
+                      );
+                    }
+                  },
+                });
+              },
+            },
+          })
+        );
+        return new Section({
+          title: "子区管理",
+          rows,
         });
       },
       90000

@@ -256,6 +256,10 @@ export interface ConversationProps {
     editOn: boolean;
     checkedCount: number;
   }) => void;
+  /** 展示在输入框上方的轻量提示。 */
+  inputNotice?: React.ReactNode;
+  /** 当前会话发送完成后的回调。 */
+  onMessageSent?: () => void;
   /** 当前正在预览的文件消息 ID（用于文件卡片激活态） */
   activePreviewMessageId?: string | null;
 }
@@ -2204,6 +2208,13 @@ export class Conversation
                         : undefined
                     }
                   >
+                    {this.props.inputNotice && (
+                      <div className="wk-conversation-input-notice-wrap">
+                        <div className="wk-conversation-input-notice-bubble">
+                          {this.props.inputNotice}
+                        </div>
+                      </div>
+                    )}
                     <MessageInput
                       botCommands={botCommands}
                       onAddAttachment={(addFn: (files: File[]) => void) => {
@@ -2572,6 +2583,7 @@ export class Conversation
                             await this.sendTextAndWaitAck(emptyContent);
                           }
                         }
+                        this.props.onMessageSent?.();
                       }}
                     ></MessageInput>
                   </div>

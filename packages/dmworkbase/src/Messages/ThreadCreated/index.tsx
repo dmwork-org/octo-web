@@ -81,7 +81,7 @@ export class ThreadCreatedCell extends MessageCell {
           Toast.warning("该子区已删除")
           return
         }
-        // 归档状态允许进入查看，但会在聊天界面禁用发送
+        // 归档状态允许进入查看；是否自动恢复活跃由后端发送链路处理。
       } catch (err: any) {
         Toast.warning("该子区已删除或不存在")
         return

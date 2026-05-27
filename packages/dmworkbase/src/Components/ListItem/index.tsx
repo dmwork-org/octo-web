@@ -7,16 +7,17 @@ export interface ListItemProps {
     style: CSSProperties
     title: string
     subTitle?: React.ReactNode
-    onClick: () => void
+    onClick?: () => void
 }
 
 export class ListItem extends Component<ListItemProps>{
 
     render() {
         const { style, title, subTitle, onClick } = this.props
+        const clickable = typeof onClick === "function"
         const titleAttr = typeof subTitle === "string" ? subTitle : undefined
-        return <div className="wk-list-item wk-list-item-ripple" style={style} title={titleAttr} onClick={() => {
-            if (onClick) {
+        return <div className={`wk-list-item ${clickable ? "wk-list-item-ripple" : "wk-list-item-static"}`} style={style} title={titleAttr} onClick={() => {
+            if (clickable) {
                 onClick()
             }
         }}>

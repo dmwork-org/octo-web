@@ -20,6 +20,18 @@ body[theme-mode=dark] .wk-list-item {
     background-color: #eee;
 }
 
+.wk-list-item-static {
+    cursor: default;
+}
+
+.wk-list-item-static:hover {
+    background-color: white;
+}
+
+body[theme-mode=dark] .wk-list-item-static:hover {
+    background-color: var(--wk-color-secondary-2);
+}
+
 
 .wk-list-item-ripple {
     position: relative;
