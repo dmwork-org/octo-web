@@ -456,6 +456,34 @@ body[theme-mode="dark"] .wk-conversation-content {
   height: 100%;
 }
 
+.wk-conversation-input-notice-wrap {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 16px 6px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.wk-conversation-input-notice-bubble {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(28, 28, 35, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 14px rgba(28, 28, 35, 0.08);
+  color: var(--wk-status-archived-text, var(--wk-text-secondary));
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+body[theme-mode="dark"] .wk-conversation-input-notice-bubble {
+  background: rgba(38, 38, 42, 0.94);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 .wk-conversation-chattoolbars {
   height: 100%;
   margin-bottom: 0px;

@@ -40,6 +40,10 @@ import {
 } from "../WKLayout/layoutWidth";
 import "./index.css";
 
+// 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
+// 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
+const THREAD_REACTIVATE_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
+
 /** API 返回的文件数据结构 */
 interface ChannelFileResponse {
   message_id: string | number;
@@ -58,7 +62,7 @@ export interface ThreadPanelProps {
   groupNo?: string;
   thread?: Thread | null;
   onClose: () => void;
-  onThreadSelect?: (thread: Thread) => void;
+  onThreadSelect?: (thread: Thread | null) => void;
   onCreateThread?: () => void;
   /** 文件预览信息，传入时渲染文件预览内容而非子区内容 */
   filePreview?: FilePreviewInfo | null;
@@ -270,13 +274,31 @@ export default class ThreadPanel extends Component<
   componentDidUpdate(prevProps: ThreadPanelProps) {
     // 纯文件预览模式时跳过子区相关逻辑
     if (this.props.groupNo) {
-      if (this.props.thread !== prevProps.thread) {
+      const prevThreadShortId = prevProps.thread?.short_id;
+      const currentThreadShortId = this.props.thread?.short_id;
+      if (currentThreadShortId !== prevThreadShortId) {
         if (this.props.thread) {
           this.setState({ view: "detail" });
           this.initVM(this.props.thread.short_id);
         } else {
           this.setState({ view: "list" });
         }
+      } else if (this.props.thread !== prevProps.thread && this.props.thread) {
+        // 同一个子区的状态同步只合并数据，不能重新 initVM。
+        // 否则发送消息后父级传回新 thread 对象会重建右侧面板，造成二次刷新体感。
+        const nextThread = this.props.thread;
+        this.setState((prevState) => ({
+          vmState:
+            prevState.vmState.thread?.short_id === nextThread.short_id
+              ? {
+                  ...prevState.vmState,
+                  thread: {
+                    ...prevState.vmState.thread,
+                    ...nextThread,
+                  },
+                }
+              : prevState.vmState,
+        }));
       }
       if (this.props.groupNo !== prevProps.groupNo) {
         this.loadThreads();
@@ -433,17 +455,38 @@ export default class ThreadPanel extends Component<
         {
           page_index: 1,
           page_size: 100,
+          status: "all",
         }
       );
-      // 按活跃时间倒序排序
-      threads.sort(
-        (a, b) =>
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      );
-      this.setState({ threads, threadsLoading: false });
+      threads.sort((a, b) => this.threadSortTime(b) - this.threadSortTime(a));
+      this.setState((prevState) => {
+        const currentThread = prevState.vmState.thread;
+        const refreshedCurrentThread = currentThread
+          ? threads.find((item) => item.short_id === currentThread.short_id)
+          : undefined;
+        return {
+          threads,
+          threadsLoading: false,
+          vmState: currentThread && refreshedCurrentThread
+            ? {
+                ...prevState.vmState,
+                thread: {
+                  ...currentThread,
+                  ...refreshedCurrentThread,
+                },
+              }
+            : prevState.vmState,
+        };
+      });
     } catch {
       this.setState({ threadsLoading: false });
     }
+  }
+
+  private threadSortTime(thread: Thread): number {
+    const raw = thread.last_message_at || thread.updated_at || thread.created_at;
+    const time = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
   }
 
   private handleThreadClick = (thread: Thread) => {
@@ -465,7 +508,18 @@ export default class ThreadPanel extends Component<
   };
 
   private handleBackToList = () => {
-    this.setState({ view: "list" });
+    this.setState((prevState) => ({
+      view: "list",
+      showMoreMenu: false,
+      vmState: {
+        ...prevState.vmState,
+        thread: null,
+        loading: false,
+        error: null,
+      },
+    }));
+    this.props.onThreadSelect?.(null);
+    this.loadThreads();
   };
 
   private handleOpenFullView = () => {
@@ -486,6 +540,7 @@ export default class ThreadPanel extends Component<
   };
 
   private canEditThread(thread: Thread): boolean {
+    if (!this.props.groupNo) return false;
     const isCreator = thread.creator_uid === WKApp.loginInfo.uid;
     const groupChannel = new Channel(this.props.groupNo, ChannelTypeGroup);
     const subscribers =
@@ -498,8 +553,9 @@ export default class ThreadPanel extends Component<
 
   private handleEditThread = () => {
     const { vmState } = this.state;
+    const { groupNo } = this.props;
     const thread = vmState.thread;
-    if (!thread) return;
+    if (!thread || !groupNo) return;
     this.setState({ showMoreMenu: false });
 
     // 延迟弹窗，等 Popover 完全关闭后再触发，避免 Modal 被 Popover 关闭事件误关
@@ -540,7 +596,7 @@ export default class ThreadPanel extends Component<
           }
           try {
             await WKApp.dataSource.channelDataSource.threadUpdate(
-              this.props.groupNo,
+              groupNo,
               thread.short_id,
               { name: newName.trim() }
             );
@@ -556,12 +612,10 @@ export default class ThreadPanel extends Component<
             });
 
             // 清除 SDK 缓存，刷新 Chat header 展示的子区名称
-            const threadChannel = new Channel(
-              buildThreadChannelId(this.props.groupNo, thread.short_id),
-              ChannelTypeCommunityTopic
-            );
-            WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
-            WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+            this.refreshThreadChannelInfo({
+              ...thread,
+              name: newName.trim(),
+            });
           } catch {
             Toast.error("保存失败，请重试");
           }
@@ -570,10 +624,170 @@ export default class ThreadPanel extends Component<
     }, 100);
   };
 
+  private handleToggleArchiveThread = () => {
+    const { vmState } = this.state;
+    const { groupNo } = this.props;
+    const thread = vmState.thread;
+    if (!thread || !groupNo) return;
+
+    const archiving = thread.status === ThreadStatus.Active;
+    const unarchiving = thread.status === ThreadStatus.Archived;
+    if (!archiving && !unarchiving) return;
+
+    this.setState({ showMoreMenu: false });
+
+    setTimeout(() => {
+      Modal.confirm({
+        title: archiving
+          ? `归档子区「${thread.name}」？`
+          : `取消归档「${thread.name}」？`,
+        icon: null,
+        okText: archiving ? "归档" : "取消归档",
+        cancelText: "取消",
+        content: archiving
+          ? "归档后会从活跃子区列表移到已归档分组。"
+          : "取消归档后会回到活跃子区列表。",
+        onOk: async () => {
+          try {
+            if (archiving) {
+              await WKApp.dataSource.channelDataSource.threadArchive(
+                groupNo,
+                thread.short_id
+              );
+            } else {
+              await WKApp.dataSource.channelDataSource.threadUnarchive(
+                groupNo,
+                thread.short_id
+              );
+            }
+
+            const updatedThread =
+              await WKApp.dataSource.channelDataSource.threadGet(
+                groupNo,
+                thread.short_id
+              );
+            Toast.success(archiving ? "子区已归档" : "已取消归档");
+            this.setState((prevState) => ({
+              vmState: {
+                ...prevState.vmState,
+                thread: updatedThread,
+              },
+            }));
+            this.props.onThreadSelect?.(updatedThread);
+            this.refreshThreadChannelInfo(updatedThread);
+            await this.loadThreads();
+          } catch {
+            Toast.error(archiving ? "归档失败，请重试" : "取消归档失败，请重试");
+          }
+        },
+      });
+    }, 100);
+  };
+
+  private handleThreadMessageSent = async () => {
+    const { groupNo } = this.props;
+    const thread = this.state.vmState.thread;
+    if (!groupNo || !thread) return;
+
+    if (thread.status !== ThreadStatus.Archived) return;
+
+    void this.reconcileThreadAfterMessageSent(groupNo, thread);
+  };
+
+  private async reconcileThreadAfterMessageSent(
+    groupNo: string,
+    thread: Thread
+  ) {
+    try {
+      const updatedThread = await this.fetchThreadAfterMessageSent(
+        groupNo,
+        thread
+      );
+      if (this.state.vmState.thread?.short_id !== thread.short_id) {
+        return;
+      }
+
+      const currentThread = this.state.vmState.thread;
+      if (!currentThread || updatedThread.status === currentThread.status) {
+        return;
+      }
+      if (updatedThread.status === ThreadStatus.Archived) {
+        return;
+      }
+
+      // 不做乐观更新：只有后端确认子区已恢复活跃后，才切换提示和菜单状态。
+      this.applyThreadUpdate(updatedThread);
+      this.refreshThreadChannelInfo(updatedThread);
+    } catch {
+      // Message sending already succeeded. Keep the archived UI until a
+      // backend-backed refresh confirms the state change.
+    }
+  }
+
+  private async fetchThreadAfterMessageSent(
+    groupNo: string,
+    thread: Thread
+  ): Promise<Thread> {
+    let lastThread = thread;
+
+    for (const delay of THREAD_REACTIVATE_REFRESH_DELAYS_MS) {
+      if (delay > 0) {
+        await this.sleep(delay);
+      }
+
+      const updatedThread = await WKApp.dataSource.channelDataSource.threadGet(
+        groupNo,
+        thread.short_id
+      );
+      lastThread = updatedThread;
+      if (
+        thread.status !== ThreadStatus.Archived ||
+        updatedThread.status !== ThreadStatus.Archived
+      ) {
+        break;
+      }
+    }
+
+    return lastThread;
+  }
+
+  private applyThreadUpdate(thread: Thread) {
+    this.setState((prevState) => ({
+      threads: prevState.threads
+        .map((item) => (item.short_id === thread.short_id ? thread : item))
+        .sort((a, b) => this.threadSortTime(b) - this.threadSortTime(a)),
+      vmState: {
+        ...prevState.vmState,
+        thread:
+          prevState.vmState.thread?.short_id === thread.short_id
+            ? thread
+            : prevState.vmState.thread,
+      },
+    }));
+    this.props.onThreadSelect?.(thread);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  private refreshThreadChannelInfo(thread: Thread) {
+    const channelID =
+      thread.channel_id ||
+      (this.props.groupNo
+        ? buildThreadChannelId(this.props.groupNo, thread.short_id)
+        : "");
+    if (!channelID) return;
+    const threadChannel = new Channel(channelID, ChannelTypeCommunityTopic);
+    WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
+    WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+  }
+
   private handleDeleteThread = () => {
     const { vmState } = this.state;
+    const { groupNo } = this.props;
     const thread = vmState.thread;
-    if (!thread) return;
+    if (!thread || !groupNo) return;
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
@@ -587,12 +801,11 @@ export default class ThreadPanel extends Component<
         onOk: async () => {
           try {
             await WKApp.dataSource.channelDataSource.threadDelete(
-              this.props.groupNo,
+              groupNo,
               thread.short_id
             );
             Toast.success("子区已删除");
             this.handleBackToList();
-            this.loadThreads();
           } catch {
             Toast.error("删除失败，请重试");
           }
@@ -607,6 +820,7 @@ export default class ThreadPanel extends Component<
       onCreateThread();
       return;
     }
+    if (!groupNo) return;
 
     let threadName = "";
     Modal.confirm({
@@ -845,12 +1059,30 @@ export default class ThreadPanel extends Component<
                     </div>
                   )}
                   {vmState.thread && this.canEditThread(vmState.thread) && (
-                    <div
-                      className="wk-thread-more-menu-item"
-                      onClick={this.handleEditThread}
-                    >
-                      编辑子区名称
-                    </div>
+                    <>
+                      <div
+                        className="wk-thread-more-menu-item"
+                        onClick={this.handleEditThread}
+                      >
+                        编辑子区名称
+                      </div>
+                      {vmState.thread.status === ThreadStatus.Active && (
+                        <div
+                          className="wk-thread-more-menu-item"
+                          onClick={this.handleToggleArchiveThread}
+                        >
+                          归档子区
+                        </div>
+                      )}
+                      {vmState.thread.status === ThreadStatus.Archived && (
+                        <div
+                          className="wk-thread-more-menu-item"
+                          onClick={this.handleToggleArchiveThread}
+                        >
+                          取消归档
+                        </div>
+                      )}
+                    </>
                   )}
                   <div
                     className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
@@ -1043,6 +1275,12 @@ export default class ThreadPanel extends Component<
             key={thread.channel_id}
             channel={threadChannel}
             shouldShowHistorySplit={false}
+            inputNotice={
+              thread.status === ThreadStatus.Archived
+                ? "该子区已归档。发送消息后，子区会恢复为活跃状态。"
+                : undefined
+            }
+            onMessageSent={this.handleThreadMessageSent}
           />
         </ErrorBoundary>
       </div>

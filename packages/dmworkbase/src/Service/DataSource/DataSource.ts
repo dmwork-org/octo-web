@@ -1,5 +1,6 @@
 import { Channel, ChannelInfo, ConversationExtra, Message, Subscriber } from "wukongimjssdk";
 import { APIResp } from "../APIClient";
+import type { Thread, ThreadListStatus } from "../Thread";
 
 export type ContactsChangeListener = () => void;
 
@@ -318,7 +319,19 @@ export interface IChannelDataSource {
     deleteThreadMd(groupNo: string, shortId: string): Promise<void>
 
     // 子区信息
+    threadList(groupNo: string, req?: {
+        page_index?: number
+        page_size?: number
+        status?: ThreadListStatus
+    }): Promise<Thread[]>
+    threadCreate(groupNo: string, name: string, sourceMessageId?: number): Promise<Thread>
+    threadGet(groupNo: string, shortId: string): Promise<Thread>
+    threadArchive(groupNo: string, shortId: string): Promise<void>
+    threadUnarchive(groupNo: string, shortId: string): Promise<void>
+    threadDelete(groupNo: string, shortId: string): Promise<void>
     threadUpdate(groupNo: string, shortId: string, data: { name: string }): Promise<void>
+    threadJoin(shortId: string): Promise<void>
+    threadLeave(shortId: string): Promise<void>
 
     setBotAdmin(channel: Channel, uid: string): Promise<void>
     removeBotAdmin(channel: Channel, uid: string): Promise<void>

@@ -1,4 +1,4 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId } from "@octo/base";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId } from "@octo/base";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
 const MAX_GROUP_LIST_LIMIT = 100000;
@@ -204,10 +204,14 @@ export class ChannelDataSource implements IChannelDataSource {
     async threadList(groupNo: string, req?: {
         page_index?: number
         page_size?: number
+        status?: ThreadListStatus
     }): Promise<Thread[]> {
         const resp = await WKApp.apiClient.get(`groups/${groupNo}/threads`, {
             param: req
         })
+        if (Array.isArray(resp)) {
+            return resp.map((item: any) => this.toThread(item, groupNo))
+        }
         if (!resp || !resp.list || !Array.isArray(resp.list)) {
             return []
         }
@@ -230,6 +234,10 @@ export class ChannelDataSource implements IChannelDataSource {
 
     async threadArchive(groupNo: string, shortId: string): Promise<void> {
         return WKApp.apiClient.post(`groups/${groupNo}/threads/${shortId}/archive`)
+    }
+
+    async threadUnarchive(groupNo: string, shortId: string): Promise<void> {
+        return WKApp.apiClient.post(`groups/${groupNo}/threads/${shortId}/unarchive`)
     }
 
     async threadDelete(groupNo: string, shortId: string): Promise<void> {
