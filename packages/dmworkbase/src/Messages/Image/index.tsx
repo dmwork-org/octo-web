@@ -1,4 +1,4 @@
-import { MediaMessageContent, WKSDK, Task, TaskStatus } from "wukongimjssdk"
+import { MediaMessageContent, WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk"
 import React from "react"
 import WKApp from "../../App"
 import { MessageContentTypeConst } from "../../Service/Const"
@@ -12,6 +12,7 @@ import { downloadFile } from "../../Utils/download"
 import MessageRow from "../../ui/message/MessageRow"
 import SingleImage from "../../ui/message/ImageContent/SingleImage"
 import MultiImage from "../../ui/message/ImageContent/MultiImage"
+import type { ImageTransferState } from "../../ui/message/ImageContent/SingleImage"
 import { getImageMessageUI } from "../../bridge/message/useImageMessageUI"
 
 const SMALL_FILE_THRESHOLD = 1024 * 1024 // 1MB 以下不显示进度覆盖层
@@ -74,6 +75,58 @@ interface ImageCellState {
     uploadStatus: TaskStatus | null
 }
 
+export interface ImageTransferInput {
+    hasLocalFile: boolean
+    hasRemoteUrl: boolean
+    fileSize: number
+    messageStatus: MessageStatus
+    uploadStatus: TaskStatus | null
+    uploadProgress: number
+    onUploadRetry?: () => void
+    onMessageRetry?: () => void
+}
+
+function isTaskFailed(uploadStatus: TaskStatus | null) {
+    return uploadStatus === TaskStatus.fail || uploadStatus === TaskStatus.cancel
+}
+
+function isTaskActive(uploadStatus: TaskStatus | null) {
+    return uploadStatus !== null && uploadStatus !== TaskStatus.success && !isTaskFailed(uploadStatus)
+}
+
+export function getImageTransferState({
+    hasLocalFile,
+    hasRemoteUrl,
+    fileSize,
+    messageStatus,
+    uploadStatus,
+    uploadProgress,
+    onUploadRetry,
+    onMessageRetry,
+}: ImageTransferInput): ImageTransferState | undefined {
+    if (isTaskActive(uploadStatus)) {
+        const progress = Math.max(0, Math.min(100, Math.round(uploadProgress)))
+        if (fileSize >= SMALL_FILE_THRESHOLD && progress > 0) {
+            return { status: "uploading", progress }
+        }
+        return { status: "sending" }
+    }
+
+    if (isTaskFailed(uploadStatus)) {
+        return { status: "failed", onRetry: onUploadRetry }
+    }
+
+    if (messageStatus === MessageStatus.Fail) {
+        return { status: "failed", onRetry: onMessageRetry }
+    }
+
+    if (messageStatus === MessageStatus.Wait || (hasLocalFile && !hasRemoteUrl)) {
+        return { status: "sending" }
+    }
+
+    return undefined
+}
+
 /** task 自身支持的重试接口（MediaMessageUploadTask 实现） */
 interface RestartableTask extends Task {
     restart(): Promise<void>;
@@ -100,9 +153,6 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
     componentDidMount() {
         super.componentDidMount()
         const { message } = this.props
-        // 小文件（<1MB）不显示进度，跳过订阅
-        const fileSize = (message.content as any).file?.size ?? 0
-        if (fileSize < SMALL_FILE_THRESHOLD) return
         WKSDK.shared().taskManager.addListener(this._taskListener)
         const found = ((WKSDK.shared().taskManager as any).taskMap as Map<string, Task> | undefined)
             ?.get(message.clientMsgNo) as RestartableTask | undefined
@@ -155,6 +205,14 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
         return <img alt="" src={this.getImageSrc(content)} style={{ borderRadius: '8px', width: scaleSize.width, height: scaleSize.height, maxWidth: '100%' }} />
     }
 
+    private handleRetry = () => {
+        if (!this._task) {
+            Toast.warning('上传任务已失效，请重新发送文件')
+            return
+        }
+        this._task.restart()
+    }
+
     render() {
         const { message, context } = this.props
         const { showPreview, uploadProgress, uploadStatus } = this.state
@@ -164,6 +222,19 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
         const useNewUI = true
         if (useNewUI) {
             const uiProps = getImageMessageUI(message)
+            const hasRemoteUrl = !!(content.url || (content as any).remoteUrl)
+            const fileSize = (content as any).file?.size ?? 0
+            const transferState = getImageTransferState({
+                hasLocalFile: !!(content as any).file,
+                hasRemoteUrl,
+                fileSize,
+                messageStatus: message.status,
+                uploadStatus,
+                uploadProgress,
+                onUploadRetry: this.handleRetry,
+                onMessageRetry: () => context.resendMessage(message.message),
+            })
+            const canPreview = !transferState && hasRemoteUrl
             return (
                 <>
                     <MessageRow
@@ -179,6 +250,7 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                         {uiProps.isMulti
                             ? <MultiImage
                                 images={uiProps.images}
+                                transferState={transferState}
                                 onImageClick={(index) => {
                                     // TODO: 多图预览
                                 }}
@@ -186,7 +258,8 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                             : uiProps.singleImage
                                 ? <SingleImage
                                     {...uiProps.singleImage}
-                                    onClick={() => this.setState({ showPreview: true })}
+                                    transferState={transferState}
+                                    onClick={canPreview ? () => this.setState({ showPreview: true }) : undefined}
                                   />
                                 : null
                         }
