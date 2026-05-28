@@ -110,6 +110,7 @@
   },
   "field": {
     "assignee": "Assignee",
+    "deadline": "Deadline",
     "goal": "Main goal",
     "goalPlaceholder": "Enter the main goal",
     "title": "Task name"

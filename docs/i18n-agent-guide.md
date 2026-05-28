@@ -75,6 +75,8 @@ format.dateTime(createdAt);
 format.relativeTime(updatedAt);
 ```
 
+Semi UI component chrome is also locale-sensitive. The app-level `I18nProvider` owns the Semi `ConfigProvider` / `LocaleProvider` bridge, so do not set Semi locale per DatePicker, Pagination, Modal, or Select unless a component has a specific product reason. Component props that are still product copy, such as labels, placeholders, tooltips, and aria labels, must continue to use `t()`.
+
 ## Key Naming
 
 Use stable semantic keys, not source-language sentence keys.

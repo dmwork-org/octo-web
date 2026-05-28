@@ -275,7 +275,7 @@ export default function CreateTaskModal({
           {/* Deadline */}
           <div className="wk-create-task-modal__field">
             <label className="wk-create-task-modal__label">
-              Deadline<span className="wk-create-task-modal__required">*</span>
+              {t("todo.field.deadline")}<span className="wk-create-task-modal__required">*</span>
             </label>
             <DatePicker
               className="wk-create-task-modal__datepicker"

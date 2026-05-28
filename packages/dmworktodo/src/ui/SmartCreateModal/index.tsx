@@ -317,7 +317,7 @@ export default function SmartCreateModal({
               {/* Deadline */}
               <div className="wk-smart-create-modal__field">
                 <label className="wk-smart-create-modal__label">
-                  Deadline<span className="wk-smart-create-modal__req">*</span>
+                  {t("todo.field.deadline")}<span className="wk-smart-create-modal__req">*</span>
                 </label>
                 <DatePicker
                   className="wk-smart-create-modal__datepicker"
