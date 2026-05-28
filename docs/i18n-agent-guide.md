@@ -3,7 +3,7 @@
 This guide is the standard entry point for future agents handling multilingual UI work in Octo Web.
 
 For architecture decisions, rollout status, and governance rules, read `docs/i18n-tracking.md`.
-For backend i18n contract integration work, read `docs/i18n-backend-integration-goal-guide.md` before editing code.
+For backend i18n contract integration work, read `docs/i18n-backend-integration-goal-guide.zh-CN.md` before editing code. The English version is `docs/i18n-backend-integration-goal-guide.md`.
 
 ## Read First
 
