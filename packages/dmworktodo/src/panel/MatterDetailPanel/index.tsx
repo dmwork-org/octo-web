@@ -25,14 +25,19 @@ import {
 } from "../../api/todoApi";
 import { getMessageByChannel } from "../../api/imMessageApi";
 import { Toast } from "../../utils/toast";
-import { toParentGroupNo } from "../../utils/channelId";
+import { toParentGroupNo, CHANNEL_TYPE_COMMUNITY_TOPIC } from "../../utils/channelId";
+import { buildLinkableChannels } from "../../utils/buildLinkableChannels";
+import type { GroupSaveListRow } from "../../utils/buildLinkableChannels";
 import UserName from "../../ui/UserName";
 import LinkChannelsModal from "../../ui/LinkChannelsModal";
-import type { ChannelOption } from "../../ui/LinkChannelsModal";
+import type {
+  ChannelOption,
+  LoadChannelsResult,
+} from "../../ui/LinkChannelsModal";
 import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
-import { Channel, ChannelTypePerson } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
 import { useChannelName } from "../../hooks/useChannelName";
@@ -74,14 +79,15 @@ export default function MatterDetailPanel({
     new Set(),
   );
   // "查看原消息上下文" 弹框状态: 记录要查的消息 id 列表 + 所在 channel +
-  // 触发按钮的屏幕坐标 (x/y), 用于 popover 锚定到按钮下方而不是居中。
+  // 触发按钮的屏幕坐标, 用于 popover 锚定到按钮附近 (上方或下方)。
   const [anchor, setAnchor] = useState<{
     channelId: string;
     channelType: number;
     channelName: string;
     messageIds: string[];
     x: number;
-    y: number;
+    top?: number;
+    bottom?: number;
   } | null>(null);
   // 拉取 timeline (matter 加载时 + 每次展开时都调, 保证数据新鲜)。
   //
@@ -503,16 +509,23 @@ export default function MatterDetailPanel({
   );
 
   // ── LinkChannelsModal: loadChannels / onLinkChannel callbacks ──
-  const loadChannelsForModal = useCallback(async (): Promise<ChannelOption[]> => {
-    const groups = await WKApp.dataSource.channelDataSource.groupSaveList();
-    return (groups as any[]).map((g: any) => ({
-      channelId: g.channel?.channelID || g.channel_id || "",
-      channelType: g.channel?.channelType || 2,
-      name: g.title || g.name || "",
-      desc: g.remark || g.desc || "",
-      memberCount: g.memberCount || g.member_count || undefined,
-    }));
-  }, []);
+  // 颗粒度: 群 (channel_type=Group) + 子区 (channel_type=CommunityTopic)。
+  // 详细行为见 utils/buildLinkableChannels.ts (并发, 过滤, 错误收集, 摊平)。
+  // 这里只负责把 WKApp 的 dataSource 接进来; helper 是纯函数, 单测在
+  // utils/__tests__/buildLinkableChannels.test.ts。
+  const loadChannelsForModal = useCallback(
+    async (): Promise<LoadChannelsResult> =>
+      buildLinkableChannels(
+        {
+          groupSaveList: async () =>
+            (await WKApp.dataSource.channelDataSource.groupSaveList()) as unknown as GroupSaveListRow[],
+          threadList: (no, req) =>
+            WKApp.dataSource.channelDataSource.threadList(no, req),
+        },
+        { channelTypeGroup: ChannelTypeGroup },
+      ),
+    [],
+  );
 
   const handleLinkChannelSubmit = useCallback(
     async (mId: string, chId: string, chType: number, chName: string) => {
@@ -577,7 +590,7 @@ export default function MatterDetailPanel({
     if (myGroupsFailed) return false; // 拉取失败保守处理
     const parentNo = toParentGroupNo(
       matter.source_channel_id,
-      matter.source_channel_type || 2,
+      matter.source_channel_type || ChannelTypeGroup,
     );
     return myGroupNos.has(parentNo);
   })();
@@ -794,12 +807,12 @@ export default function MatterDetailPanel({
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path fillRule="evenodd" clipRule="evenodd" d="M8.00033 15.3332C12.0504 15.3332 15.3337 12.0499 15.3337 7.99984C15.3337 3.94975 12.0504 0.666504 8.00033 0.666504C3.95024 0.666504 0.666992 3.94975 0.666992 7.99984C0.666992 12.0499 3.95024 15.3332 8.00033 15.3332ZM12.6662 7.9184C12.6758 8.4706 12.236 8.92606 11.6838 8.9357L9.01751 8.98224L9.06405 11.6485C9.07369 12.2007 8.63386 12.6562 8.08166 12.6658C7.52945 12.6754 7.07399 12.2356 7.06435 11.6834L7.01781 9.01714L4.35155 9.06368C3.79935 9.07332 3.34389 8.63349 3.33425 8.08129C3.32462 7.52909 3.76445 7.07363 4.31665 7.06399L6.98291 7.01745L6.93637 4.35119C6.92673 3.79899 7.36657 3.34353 7.91877 3.33389C8.47097 3.32425 8.92643 3.76408 8.93607 4.31628L8.98261 6.98254L11.6489 6.936C12.2011 6.92637 12.6565 7.3662 12.6662 7.9184Z" fill="currentColor" />
                   </svg>
-                  关联新群
+                  关联新会话
                 </button>
               )}
             </div>
             {channels.length === 0 ? (
-              <div className="wk-mp-channels__empty">暂无关联群聊</div>
+              <div className="wk-mp-channels__empty">暂无关联群聊或子区</div>
             ) : (
               channels.map((ch) => {
                 // 用户是否加入本群: 从 /group/my 拉的 group_no 集合判断。
@@ -873,60 +886,29 @@ export default function MatterDetailPanel({
                   })()}
 
                   {/* 展开/收起时间线按钮 */}
-                  {isMember && (<>
-                    <button
-                      type="button"
-                      className="wk-mp-channels__timeline-btn"
-                      onClick={() => toggleTimeline(ch.channel_id)}
-                    >
-                      {expandedTimelines.has(ch.channel_id) ? "收起群内时间线" : "展开群内时间线"}
-                    </button>
-                  {expandedTimelines.has(ch.channel_id) &&
-                    (() => {
-                      const chEntries = timeline.filter(
+                  {isMember && (
+                    <ChannelTimelineSection
+                      ch={ch}
+                      expanded={expandedTimelines.has(ch.channel_id)}
+                      onToggle={() => toggleTimeline(ch.channel_id)}
+                      chEntries={timeline.filter(
                         (e) =>
                           e.source_channel_id === ch.channel_id ||
                           (!e.source_channel_id && !e.channel_id),
-                      );
-                      if (timelineLoading && chEntries.length === 0) {
-                        return (
-                          <div className="wk-mp-empty-tab">
-                            正在加载时间线...
-                          </div>
-                        );
-                      }
-                      if (chEntries.length === 0) {
-                        return (
-                          <div className="wk-mp-empty-tab">
-                            本群暂无时间线记录
-                          </div>
-                        );
-                      }
-                      return (
-                        <TimelinePanel
-                          entries={chEntries}
-                          canShowAnchor={() => isMember}
-                          onShowAnchor={
-                            isMember
-                              ? (entry, ev) => {
-                                  const rect =
-                                    ev.currentTarget.getBoundingClientRect();
-                                  setAnchor({
-                                    channelId: ch.channel_id,
-                                    channelType: ch.channel_type,
-                                    channelName:
-                                      ch.channel_name ||
-                                      ch.channel_id.slice(0, 8),
-                                    messageIds: entry.source_msgs || [],
-                                    ...computeAnchorPosition(rect),
-                                  });
-                                }
-                              : undefined
-                          }
-                        />
-                      );
-                    })()}
-                  </>)}
+                      )}
+                      timelineLoading={timelineLoading}
+                      onShowAnchor={(entry, ev, channelName) => {
+                        const rect = ev.currentTarget.getBoundingClientRect();
+                        setAnchor({
+                          channelId: ch.channel_id,
+                          channelType: ch.channel_type,
+                          channelName,
+                          messageIds: entry.source_msgs || [],
+                          ...computeAnchorPosition(rect),
+                        });
+                      }}
+                    />
+                  )}
                 </div>
                 );
               })
@@ -969,7 +951,8 @@ export default function MatterDetailPanel({
           channelName={anchor.channelName}
           messageIds={anchor.messageIds}
           x={anchor.x}
-          y={anchor.y}
+          top={anchor.top}
+          bottom={anchor.bottom}
           onClose={() => setAnchor(null)}
           fetchMessage={getMessageByChannel}
           renderAvatar={renderAvatar}
@@ -1223,13 +1206,20 @@ function ChannelMoreMenu({
 /**
  * 根据触发按钮的 rect 算 AnchorPopover 锚定位置 (对齐原型 v19 onShowAnchor):
  *   - 水平: 左对齐按钮, 防止弹框太靠右
- *   - 垂直: 按钮下方 8px, 优先向下展开，空间不足时向上展开
+ *   - 垂直: 优先按钮下方 8px (top 锚点); 下方空间不足时贴按钮上方 (bottom 锚点)。
+ *     上方用 bottom 锚点而非 top, 让弹框底边贴住按钮, 不依赖弹框实际高度
+ *     (避免一两条消息时空隙过大、漂得太远的问题)。
  *
- * 返回 viewport 坐标 (fixed 定位用)。调用方把 x/y 传进 AnchorPopover。
+ * 返回: 始终带 x; 垂直方向二选一返回 top 或 bottom (viewport 像素)。
+ * 调用方把 x/top/bottom 传进 AnchorPopover, 内部用 fixed 定位。
  */
-function computeAnchorPosition(rect: DOMRect): { x: number; y: number } {
+function computeAnchorPosition(rect: DOMRect): {
+  x: number;
+  top?: number;
+  bottom?: number;
+} {
   const POP_WIDTH = 420;
-  const POP_HEIGHT = 360;
+  const POP_MIN_HEIGHT = 120; // 触发"向上展开"判定的最小预留高度
   const SAFE = 16;
   const GAP = 8; // 按钮与弹框的间距
 
@@ -1239,26 +1229,20 @@ function computeAnchorPosition(rect: DOMRect): { x: number; y: number } {
     Math.min(rect.left, window.innerWidth - POP_WIDTH - SAFE),
   );
 
-  // 计算垂直位置：优先向下展开，空间不足时向上展开
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
 
-  let y: number;
-  if (spaceBelow >= POP_HEIGHT + GAP) {
-    // 下方空间充足，向下展开
-    y = rect.bottom + GAP;
-  } else if (spaceAbove >= POP_HEIGHT + GAP) {
-    // 上方空间充足，向上展开
-    y = rect.top - POP_HEIGHT - GAP;
-  } else {
-    // 两侧空间都不足，居中显示并限制在安全范围内
-    y = Math.max(SAFE, Math.min(
-      rect.top - POP_HEIGHT / 2 + rect.height / 2,
-      window.innerHeight - POP_HEIGHT - SAFE
-    ));
+  // 下方足够 (至少能放最小高度): 用 top 锚点, 顶边贴按钮下方
+  if (spaceBelow >= POP_MIN_HEIGHT + GAP) {
+    return { x, top: rect.bottom + GAP };
   }
-
-  return { x, y };
+  // 否则上方展开: 用 bottom 锚点, 底边贴按钮上方
+  // bottom = innerHeight - rect.top + GAP, 这样 popover 底边 = rect.top - GAP
+  if (spaceAbove >= POP_MIN_HEIGHT + GAP) {
+    return { x, bottom: window.innerHeight - rect.top + GAP };
+  }
+  // 极端情况 (按钮上下都没空间): 退化到 top 锚点 + SAFE 边距, 让 max-height 接管
+  return { x, top: SAFE };
 }
 
 /** 按日期分组 timeline entries */
@@ -1482,6 +1466,15 @@ function ChannelNameLabel({
   loading?: boolean;
 }) {
   const live = useChannelName(channelId, channelType);
+  // 子区 (channel_type=5): 额外反查父群名, 渲染成 "父群名/子区名"
+  // 让用户在事项关联群聊里能看到子区的归属。
+  // 父群号通过 toParentGroupNo 从子区 channel_id 拆出 (前半段)。
+  const isThread = channelType === CHANNEL_TYPE_COMMUNITY_TOPIC;
+  const parentGroupNo = isThread ? toParentGroupNo(channelId, channelType) : "";
+  const parentLive = useChannelName(
+    isThread ? parentGroupNo : null,
+    isThread ? ChannelTypeGroup : null,
+  );
   if (loading) {
     return (
       <span
@@ -1504,7 +1497,10 @@ function ChannelNameLabel({
       </span>
     );
   }
-  const display = live || fallback || channelId.slice(0, 8);
+  const selfName = live || fallback || channelId.slice(0, 8);
+  // 父群名解析不出来时退化为只显示子区名, 不渲染孤零零的 "/"
+  const display =
+    isThread && parentLive ? `${parentLive}/${selfName}` : selfName;
   return <span className="wk-mp-channels__card-name--clear">{display}</span>;
 }
 
@@ -1530,6 +1526,69 @@ function NotMemberBadge() {
       </svg>
       不在群
     </span>
+  );
+}
+
+// ─── ChannelTimelineSection (子组件: 展开/收起时间线 + 原消息按钮) ──
+//
+// 抽成子组件的原因: 需要在每个 channel card 里调 useChannelName hook
+// 拿实时群名 (含子区), 但 hook 不能放 .map() 循环里。
+// 子组件把 live name 传给 onShowAnchor callback, 解决子区群名无法渲染的问题。
+
+function ChannelTimelineSection({
+  ch,
+  expanded,
+  onToggle,
+  chEntries,
+  timelineLoading,
+  onShowAnchor,
+}: {
+  ch: MatterChannelType;
+  expanded: boolean;
+  onToggle: () => void;
+  chEntries: TimelineEntry[];
+  timelineLoading: boolean;
+  onShowAnchor: (entry: TimelineEntry, ev: React.MouseEvent, channelName: string) => void;
+}) {
+  // 实时解析 channel 名称 (群改名 / 子区标题都能跟上)
+  const liveChannelName = useChannelName(ch.channel_id, ch.channel_type);
+  const displayName = liveChannelName || ch.channel_name || ch.channel_id.slice(0, 8);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="wk-mp-channels__timeline-btn"
+        onClick={onToggle}
+      >
+        {expanded ? "收起群内时间线" : "展开群内时间线"}
+      </button>
+      {expanded && (() => {
+        if (timelineLoading && chEntries.length === 0) {
+          return (
+            <div className="wk-mp-empty-tab">
+              正在加载时间线...
+            </div>
+          );
+        }
+        if (chEntries.length === 0) {
+          return (
+            <div className="wk-mp-empty-tab">
+              本群暂无时间线记录
+            </div>
+          );
+        }
+        return (
+          <TimelinePanel
+            entries={chEntries}
+            canShowAnchor={() => true}
+            onShowAnchor={(entry, ev) => {
+              onShowAnchor(entry, ev, displayName);
+            }}
+          />
+        );
+      })()}
+    </>
   );
 }
 
