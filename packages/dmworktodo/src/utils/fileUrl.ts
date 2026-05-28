@@ -17,11 +17,11 @@ import { WKApp, isSafeUrl } from "@octo/base";
  * @returns 解析+校验通过的绝对 URL, 不通过返回 null
  */
 export function resolveAndGuardUrl(rawUrl: string | undefined): string | null {
-    if (!rawUrl) return null;
-    let url = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
-    if (url && !url.startsWith("http")) {
-        url = window.location.origin + "/" + url.replace(/^\//, "");
-    }
-    if (!url || !isSafeUrl(url)) return null;
-    return url;
+  if (!rawUrl) return null;
+  let url = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+  if (url && !url.startsWith("http")) {
+    url = window.location.origin + "/" + url.replace(/^\//, "");
+  }
+  if (!url || !isSafeUrl(url)) return null;
+  return url;
 }

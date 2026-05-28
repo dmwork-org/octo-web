@@ -284,8 +284,8 @@
 .wk-outputs__not-member-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 1px var(--wk-sp-1-5);
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-0-5) var(--wk-sp-1-5);
   font-size: var(--wk-text-size-tiny);
   color: var(--wk-text-tertiary);
   background: var(--wk-bg-elevated);
@@ -298,7 +298,7 @@
 
 /* ─── 发送时间列 ──────────────────────────────────────── */
 .wk-outputs__time-text {
-  font-family: 'Inter', var(--wk-font-sans);
+  font-family: var(--wk-font-sans);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
