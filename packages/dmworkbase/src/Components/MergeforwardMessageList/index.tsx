@@ -25,6 +25,7 @@ import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import "yet-another-react-lightbox/styles.css";
+import { I18nContext } from "../../i18n";
 
 import MergeforwardCard from "../../ui/message/MergeforwardCard";
 
@@ -55,6 +56,9 @@ export default class MergeforwardMessageList extends Component<
   MergeforwardMessageListProps,
   MergeforwardMessageListState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   constructor(props: MergeforwardMessageListProps) {
     super(props);
     this.state = {
@@ -113,8 +117,9 @@ export default class MergeforwardMessageList extends Component<
   }
 
   getTitle(content: MergeforwardContent) {
+    const { locale, t } = this.context;
     if (content.channelType === ChannelTypeGroup) {
-      return "群的聊天记录";
+      return t("base.mergeForward.groupChatHistory");
     }
 
     const names = content.users
@@ -122,10 +127,16 @@ export default class MergeforwardMessageList extends Component<
       .filter(Boolean);
 
     if (names.length === 0) {
-      return "聊天记录";
+      return t("base.mergeForward.chatHistory");
     }
 
-    return `${names.join("、")}的聊天记录`;
+    const formattedNames = locale === "zh-CN"
+      ? names.join("、")
+      : new Intl.ListFormat(locale, { style: "short", type: "conjunction" }).format(names);
+
+    return t("base.mergeForward.userChatHistory", {
+      values: { names: formattedNames },
+    });
   }
 
   getTimeline(content: MergeforwardContent) {
@@ -292,7 +303,7 @@ export default class MergeforwardMessageList extends Component<
           previewMsgs={previewMsgs}
           onClick={() => {
             if (this.state.contentStack.length >= MAX_NESTED_DEPTH) {
-              Toast.info("已达最大展开层级");
+              Toast.info(this.context.t("base.mergeForward.maxDepthReached"));
               return;
             }
             this.setState((prev) => ({
@@ -311,6 +322,7 @@ export default class MergeforwardMessageList extends Component<
       const canPreview = !!url && isSafeUrl(url);
       const ext = (fileContent.extension || "").toUpperCase();
       const iconBg = this.getFileExtColor(fileContent.extension);
+      const fileName = fileContent.name || this.context.t("base.messageFile.unknownFile");
       return (
         <div
           className={`wk-mergeforward-file${
@@ -324,7 +336,7 @@ export default class MergeforwardMessageList extends Component<
             // 预览面板的"回复"能力在这里不适用是预期行为。
             const previewData = {
               url,
-              name: fileContent.name || "未知文件",
+              name: fileName,
               extension: getExtension(fileContent.extension, fileContent.name),
               size: fileContent.size,
               messageId: msg.messageID,
@@ -349,9 +361,9 @@ export default class MergeforwardMessageList extends Component<
           <div className="wk-mergeforward-file__info">
             <div
               className="wk-mergeforward-file__name"
-              title={fileContent.name}
+              title={fileName}
             >
-              {fileContent.name || "unknown file"}
+              {fileName}
             </div>
             <div className="wk-mergeforward-file__size">
               {this.formatFileSize(fileContent.size)}
@@ -441,7 +453,7 @@ export default class MergeforwardMessageList extends Component<
                     {/* 外部来源 */}
                     {showAvatar && showExtOrigin && (
                       <span className="ext-origin wk-mergeforwardmessagelist-content-msg-info-origin">
-                        来源: {extInfo!.source_space_name}
+                        {this.context.t("base.mergeForward.sourceLabel")} {extInfo!.source_space_name}
                       </span>
                     )}
 

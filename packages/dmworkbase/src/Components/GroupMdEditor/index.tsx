@@ -5,6 +5,7 @@ import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
+import { I18nContext } from "../../i18n";
 import "./index.css";
 
 export interface GroupMdEditorProps {
@@ -27,24 +28,13 @@ function getByteLength(str: string): number {
   return new TextEncoder().encode(str).length;
 }
 
-const PLACEHOLDER_TEXT = `# 群组说明
-
-## 简介
-描述本群的用途和主题...
-
-## 规则
-1. 规则一
-2. 规则二
-
-## 常用链接
-- 链接一
-- 链接二
-`;
-
 export class GroupMdEditor extends Component<
   GroupMdEditorProps,
   GroupMdEditorState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   constructor(props: GroupMdEditorProps) {
     super(props);
     this.state = {
@@ -103,7 +93,7 @@ export class GroupMdEditor extends Component<
 
     const byteLen = getByteLength(content);
     if (byteLen > MAX_BYTES) {
-      Toast.error("内容超出大小限制");
+      Toast.error(this.context.t("base.groupMd.contentOverLimit"));
       return;
     }
 
@@ -132,23 +122,23 @@ export class GroupMdEditor extends Component<
         version: resp.version,
         saving: false,
       });
-      Toast.success("已保存");
+      Toast.success(this.context.t("base.groupMd.saved"));
     } catch (err: any) {
-      Toast.error(err?.msg || "保存失败");
+      Toast.error(err?.msg || this.context.t("base.groupMd.saveFailed"));
       this.setState({ saving: false });
     }
   };
 
   handleDelete = () => {
     Modal.confirm({
-      title: "删除 GROUP.md",
-      content: "确定要删除 GROUP.md 吗？此操作不可撤销。",
+      title: this.context.t("base.groupMd.deleteTitle"),
+      content: this.context.t("base.groupMd.deleteContent"),
       onOk: async () => {
         try {
           if (this.isThreadMd()) {
             const parsed = this.getThreadInfo();
             if (!parsed) {
-              Toast.error("无法解析子区信息");
+              Toast.error(this.context.t("base.groupMd.parseThreadFailed"));
               return;
             }
             await WKApp.dataSource.channelDataSource.deleteThreadMd(
@@ -165,9 +155,9 @@ export class GroupMdEditor extends Component<
             originalContent: "",
             version: 0,
           });
-          Toast.success("已删除");
+          Toast.success(this.context.t("base.groupMd.deleted"));
         } catch (err: any) {
-          Toast.error(err?.msg || "删除失败");
+          Toast.error(err?.msg || this.context.t("base.groupMd.deleteFailed"));
         }
       },
     });
@@ -179,6 +169,7 @@ export class GroupMdEditor extends Component<
       this.state;
     const byteLen = getByteLength(content);
     const overLimit = byteLen > MAX_BYTES;
+    const { t } = this.context;
 
     if (loading) {
       return (
@@ -200,14 +191,14 @@ export class GroupMdEditor extends Component<
                 size="small"
                 onClick={() => this.setState({ mode: "edit" })}
               >
-                编辑
+                {t("base.groupMd.edit")}
               </Button>
               <Button
                 type={mode === "preview" ? "primary" : "tertiary"}
                 size="small"
                 onClick={() => this.setState({ mode: "preview" })}
               >
-                预览
+                {t("base.groupMd.preview")}
               </Button>
             </div>
             <div className="wk-groupmd-actions">
@@ -217,7 +208,7 @@ export class GroupMdEditor extends Component<
                   size="small"
                   onClick={this.handleDelete}
                 >
-                  删除
+                  {t("base.groupMd.delete")}
                 </Button>
               )}
               <Button
@@ -227,7 +218,7 @@ export class GroupMdEditor extends Component<
                 disabled={content === originalContent || overLimit}
                 onClick={this.handleSave}
               >
-                保存
+                {t("base.groupMd.save")}
               </Button>
             </div>
           </div>
@@ -247,7 +238,7 @@ export class GroupMdEditor extends Component<
             <TextArea
               value={content}
               onChange={(value) => this.setState({ content: value })}
-              placeholder={PLACEHOLDER_TEXT}
+              placeholder={t("base.groupMd.placeholder")}
               autosize={{ minRows: 15 }}
               style={{ fontFamily: "monospace" }}
             />
@@ -257,7 +248,7 @@ export class GroupMdEditor extends Component<
             {content ? (
               <pre className="wk-groupmd-preview-content">{content}</pre>
             ) : (
-              <div className="wk-groupmd-empty">暂未配置 GROUP.md</div>
+              <div className="wk-groupmd-empty">{t("base.groupMd.empty")}</div>
             )}
           </div>
         )}

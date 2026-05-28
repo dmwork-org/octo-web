@@ -211,6 +211,85 @@
     background: var(--wk-brand-tint-04);
 }
 
+.wk-navrail__item:focus-visible {
+    outline: none;
+    background: var(--wk-brand-tint-06);
+    box-shadow: none;
+}
+
+.wk-navrail__language-wrap {
+    position: relative;
+}
+
+.wk-navrail__language,
+.wk-navrail__language--open {
+    color: var(--wk-icon-muted);
+}
+
+.wk-navrail__language:hover,
+.wk-navrail__language:focus-visible,
+.wk-navrail__language--open {
+    color: var(--wk-icon-default);
+}
+
+.wk-navrail__language .semi-icon {
+    display: inline-flex;
+    font-size: 20px;
+}
+
+.wk-navrail__language-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 190;
+}
+
+.wk-navrail__language-menu {
+    position: absolute;
+    left: calc(100% + 8px);
+    bottom: 0;
+    width: 132px;
+    padding: var(--wk-sp-1, 4px);
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-md, 10px);
+    background: var(--wk-bg-elevated);
+    box-shadow: var(--wk-shadow-lg);
+    z-index: 201;
+}
+
+.wk-navrail__language-menu-item {
+    width: 100%;
+    min-height: 32px;
+    padding: 0 var(--wk-sp-2, 8px);
+    border: none;
+    border-radius: var(--wk-r-sm, 6px);
+    background: transparent;
+    color: var(--wk-text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--wk-sp-2, 8px);
+    font: var(--wk-text-sm);
+    letter-spacing: 0;
+}
+
+.wk-navrail__language-menu-item:hover,
+.wk-navrail__language-menu-item--active {
+    background: var(--wk-bg-hover);
+}
+
+.wk-navrail__language-menu-item .semi-icon {
+    flex-shrink: 0;
+    color: var(--wk-brand-primary);
+    font-size: 14px;
+}
+
+.wk-navrail__language-menu-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Figma: 选中态只有颜色变化，无背景，无指示条 */
 .wk-navrail__item--active {
     color: var(--wk-brand-primary);     /* Figma: 纯黑 */
@@ -244,6 +323,10 @@
     align-items: center;
     gap: 8px;                          /* Figma: 间距 */
     padding-bottom: 16px;
+}
+
+.wk-navrail__bottom > .wk-navrail__sep {
+    margin: 0;
 }
 
 /* ── Space icon button (bottom) ── */
@@ -388,7 +471,7 @@
     position: fixed;
     left: 56px;
     bottom: var(--wk-sp-8, 32px);
-    width: 180px;
+    width: 224px;
     background: var(--wk-bg-elevated);
     border: 1px solid var(--wk-border-default);
     border-radius: var(--wk-r-md, 10px);
@@ -436,7 +519,6 @@
 }
 
 /* focus-visible for keyboard nav */
-.wk-navrail__item:focus-visible,
 .wk-navrail__space-btn:focus-visible,
 .wk-navrail__avatar:focus-visible {
     outline: 2px solid var(--wk-brand-primary);

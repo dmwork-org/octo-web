@@ -4,6 +4,7 @@ import ThreadIcon from "../Icons/ThreadIcon"
 import classNames from "classnames"
 import WKApp from "../../App"
 import VoiceInputButton from "../VoiceInputButton"
+import { I18nContext, t } from "../../i18n"
 import "./index.css"
 
 export interface ThreadCreateModalProps {
@@ -24,6 +25,9 @@ export default class ThreadCreateModal extends Component<
   ThreadCreateModalProps,
   ThreadCreateModalState
 > {
+  static contextType = I18nContext
+  declare context: React.ContextType<typeof I18nContext>
+
   private inputRef = React.createRef<HTMLInputElement>();
 
   constructor(props: ThreadCreateModalProps) {
@@ -57,11 +61,11 @@ export default class ThreadCreateModal extends Component<
     // 验证
     const trimmedName = name.trim()
     if (!trimmedName) {
-      this.setState({ error: "请输入话题名称" })
+      this.setState({ error: t("base.threadCreateModal.topicRequired") })
       return
     }
     if (trimmedName.length > 50) {
-      this.setState({ error: "话题名称不能超过50个字符" })
+      this.setState({ error: t("base.threadCreateModal.topicMaxLength") })
       return
     }
 
@@ -77,7 +81,7 @@ export default class ThreadCreateModal extends Component<
       onSuccess?.(result.short_id)
       onClose()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "创建失败"
+      const msg = err instanceof Error ? err.message : t("base.module.createThread.failed")
       this.setState({ loading: false, error: msg })
     }
   }
@@ -103,7 +107,7 @@ export default class ThreadCreateModal extends Component<
         <div className="wk-thread-modal-content">
           <div className="wk-thread-modal-header">
             <ThreadIcon className="wk-thread-modal-icon" size={24} />
-            <div className="wk-thread-modal-title">创建子区</div>
+            <div className="wk-thread-modal-title">{t("base.module.createThread.title")}</div>
             <div className="wk-thread-modal-close" onClick={onClose}>
               <X size={18} />
             </div>
@@ -118,7 +122,7 @@ export default class ThreadCreateModal extends Component<
                   error && "wk-thread-modal-input-error"
                 )}
                 type="text"
-                placeholder="输入话题名称"
+                placeholder={t("base.threadCreateModal.topicPlaceholder")}
                 value={name}
                 onChange={this.handleNameChange}
                 maxLength={50}
@@ -153,14 +157,14 @@ export default class ThreadCreateModal extends Component<
               className="wk-thread-modal-btn wk-thread-modal-btn-cancel"
               onClick={onClose}
             >
-              取消
+              {t("base.common.cancel")}
             </button>
             <button
               className="wk-thread-modal-btn wk-thread-modal-btn-submit"
               onClick={this.handleSubmit}
               disabled={loading || !name.trim()}
             >
-              {loading ? "创建中..." : "创建"}
+              {loading ? t("base.threadCreate.creating") : t("base.module.createThread.ok")}
             </button>
           </div>
         </div>

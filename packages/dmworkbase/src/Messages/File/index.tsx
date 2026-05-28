@@ -12,6 +12,7 @@ import MarkdownContent from "../Text/MarkdownContent";
 import MessageRow from "../../ui/message/MessageRow";
 import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
 import { isSafeUrl } from "../../Utils/security";
+import { I18nContext } from "../../i18n";
 
 export { FileContent } from "./FileContent";
 
@@ -332,6 +333,9 @@ interface FileCellState {
 }
 
 export class FileCell extends MessageCell<any, FileCellState> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   private _task?: RestartableTask;
 
   private _taskListener = (task: Task) => {
@@ -422,7 +426,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
     // 所有文件都发送预览事件，由面板决定如何渲染（支持的显示内容，不支持的显示提示）
     const previewData = {
       url,
-      name: content.name || "未知文件",
+      name: content.name || this.context.t("base.messageFile.unknownFile"),
       extension: ext,
       size: content.size,
       // 携带来源频道信息（用于判断是否在子区面板内触发）
@@ -443,7 +447,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
     try {
       const response = await fetch(url);
       if (!response.ok) {
-        Toast.error("文件预览失败");
+        Toast.error(this.context.t("base.messageFile.previewFailed"));
         return;
       }
       const contentLength = parseInt(
@@ -467,13 +471,14 @@ export class FileCell extends MessageCell<any, FileCellState> {
         textPreviewExt: extension.toLowerCase(),
       });
     } catch {
-      Toast.error("文件预览失败");
+      Toast.error(this.context.t("base.messageFile.previewFailed"));
     }
   };
 
   render() {
     const { message, context } = this.props;
     const content = message.content as FileContent;
+    const { t } = this.context;
     const iconInfo = getFileIconInfo(content.extension, content.name);
     const canPreview = isPreviewable(content.extension, content.name);
     const { uploadProgress, uploadStatus } = this.state;
@@ -499,7 +504,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
             </div>
             <div className="wk-message-file-info">
               <div className="wk-message-file-name" title={content.name}>
-                {content.name || "上传中…"}
+                {content.name || t("base.messageFile.uploading")}
               </div>
               <div className="wk-message-file-progress-bar">
                 <div
@@ -549,20 +554,20 @@ export class FileCell extends MessageCell<any, FileCellState> {
             </div>
             <div className="wk-message-file-info">
               <div className="wk-message-file-name" title={content.name}>
-                {content.name || "上传失败"}
+                {content.name || t("base.messageFile.uploadFailed")}
               </div>
               <div className="wk-message-file-meta">
-                <span className="wk-message-file-failed-text">上传失败</span>
+                <span className="wk-message-file-failed-text">{t("base.messageFile.uploadFailed")}</span>
               </div>
-              <div className="wk-message-file-retry-hint">点击图标重试</div>
+              <div className="wk-message-file-retry-hint">{t("base.messageFile.retryHint")}</div>
             </div>
             <div className="wk-message-file-actions">
               <div
                 className="wk-message-file-action"
-                title="重试"
+                title={t("base.messageFile.retry")}
                 onClick={() => {
                   if (!this._task) {
-                    Toast.warning("上传任务已失效，请重新发送文件");
+                    Toast.warning(t("base.messageFile.uploadTaskExpired"));
                     return;
                   }
                   this._task.restart();
@@ -613,7 +618,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                 isActive ? " wk-message-file--active" : ""
               }`}
               onClick={this.handlePreview}
-              title="点击预览"
+              title={t("base.messageFile.preview")}
             >
               <div className="wk-message-file-icon">
                 <FileTypeIcon
@@ -623,7 +628,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
               </div>
               <div className="wk-message-file-info">
                 <div className="wk-message-file-name" title={content.name}>
-                  {content.name || "未知文件"}
+                  {content.name || t("base.messageFile.unknownFile")}
                 </div>
                 <div className="wk-message-file-meta">
                   <span className="wk-message-file-size">
@@ -639,7 +644,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
               <div className="wk-message-file-actions">
                 <div
                   className="wk-message-file-action"
-                  title="下载"
+                  title={t("base.conversation.file.download")}
                   onClick={(e) => {
                     e.stopPropagation(); // 阻止冒泡，避免触发预览
                     this.handleDownload();

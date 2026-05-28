@@ -1753,7 +1753,7 @@ export default class ConversationVM extends ProviderListener {
 
     // 格式化时间
     formatMessageTime(message: MessageWrap) {
-        return moment(message.timestamp * 1000).format('MM月DD日');
+        return moment(message.timestamp * 1000).format('YYYY-MM-DD');
     }
 
     // 获取历史分割线消息

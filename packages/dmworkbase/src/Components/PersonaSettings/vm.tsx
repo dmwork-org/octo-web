@@ -2,6 +2,7 @@ import WKApp from "../../App"
 import { ProviderListener } from "../../Service/Provider"
 import { Toast } from "@douyinfe/semi-ui"
 import { extractErrorMsg } from "../../Service/APIClient"
+import { t } from "../../i18n"
 
 /**
  * PersonaSettings — AI 分身（On-Behalf-Of / OBO）页面 ViewModel
@@ -305,7 +306,7 @@ export class PersonaSettingsVM extends ProviderListener {
             this.notifyListener()
             return res as OboGrant
         } catch (e) {
-            const msg = extractErrorMsg(e) || "创建分身失败"
+            const msg = extractErrorMsg(e) || t("base.persona.create.failed")
             Toast.error(msg)
             return undefined
         }
@@ -318,7 +319,7 @@ export class PersonaSettingsVM extends ProviderListener {
             await this.loadGrants()
             return true
         } catch (e) {
-            Toast.error(extractErrorMsg(e) || "撤销分身失败")
+            Toast.error(extractErrorMsg(e) || t("base.persona.delete.failed"))
             return false
         }
     }
@@ -342,7 +343,7 @@ export class PersonaSettingsVM extends ProviderListener {
             await this.loadGrants()
             return true
         } catch (e) {
-            Toast.error(extractErrorMsg(e) || "更新失败")
+            Toast.error(extractErrorMsg(e) || t("base.persona.updateFailed"))
             return false
         }
     }
@@ -405,7 +406,7 @@ export class PersonaEditVM extends ProviderListener {
             await this.loadScopes()
             return true
         } catch (e) {
-            Toast.error(extractErrorMsg(e) || "添加会话失败")
+            Toast.error(extractErrorMsg(e) || t("base.persona.addConversationFailed"))
             return false
         }
     }
@@ -416,7 +417,7 @@ export class PersonaEditVM extends ProviderListener {
             await this.loadScopes()
             return true
         } catch (e) {
-            Toast.error(extractErrorMsg(e) || "移除会话失败")
+            Toast.error(extractErrorMsg(e) || t("base.persona.removeConversationFailed"))
             return false
         }
     }
@@ -428,7 +429,7 @@ export class PersonaEditVM extends ProviderListener {
             this.notifyListener()
             return true
         } catch (e) {
-            Toast.error(extractErrorMsg(e) || "切换失败")
+            Toast.error(extractErrorMsg(e) || t("base.persona.toggleFailed"))
             return false
         }
     }
@@ -460,7 +461,7 @@ export class PersonaEditVM extends ProviderListener {
             this.notifyListener()
             return true
         } catch (e) {
-            Toast.error(extractErrorMsg(e) || "保存失败")
+            Toast.error(extractErrorMsg(e) || t("base.persona.save.failed"))
             return false
         }
     }
@@ -470,7 +471,7 @@ export class PersonaEditVM extends ProviderListener {
             await WKApp.apiClient.delete(`obo/grants/${this.grant.id}`)
             return true
         } catch (e) {
-            Toast.error(extractErrorMsg(e) || "撤销分身失败")
+            Toast.error(extractErrorMsg(e) || t("base.persona.delete.failed"))
             return false
         }
     }

@@ -30,6 +30,7 @@ import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
 import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
+import { I18nContext, t } from "../../i18n";
 import {
   SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
@@ -115,6 +116,9 @@ export default class ThreadPanel extends Component<
   ThreadPanelProps,
   ThreadPanelComponentState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   private vm: ThreadPanelVM | null = null;
   private panelRef = React.createRef<HTMLDivElement>();
   private dragStartX = 0;
@@ -535,7 +539,7 @@ export default class ThreadPanel extends Component<
       WKApp.endpoints.showConversation(threadChannel);
       this.props.onClose();
     } catch {
-      Toast.error("打开失败，请重试");
+      Toast.error(t("base.threadPanel.openFailedRetry"));
     }
   };
 
@@ -562,10 +566,10 @@ export default class ThreadPanel extends Component<
     setTimeout(() => {
       let newName = thread.name;
       Modal.confirm({
-        title: "编辑子区名称",
+        title: t("base.threadPanel.editNameTitle"),
         icon: null,
-        okText: "保存",
-        cancelText: "取消",
+        okText: t("base.threadPanel.save"),
+        cancelText: t("base.common.cancel"),
         content: (
           <div>
             <input
@@ -591,7 +595,7 @@ export default class ThreadPanel extends Component<
         ),
         onOk: async () => {
           if (!newName || newName.trim() === "") {
-            Toast.error("子区名称不能为空");
+            Toast.error(t("base.threadPanel.nameRequired"));
             return;
           }
           try {
@@ -600,7 +604,7 @@ export default class ThreadPanel extends Component<
               thread.short_id,
               { name: newName.trim() }
             );
-            Toast.success("修改成功");
+            Toast.success(t("base.threadPanel.updateSuccess"));
             // 刷新左侧列表
             this.loadThreads();
             // 更新详情页标题
@@ -617,7 +621,7 @@ export default class ThreadPanel extends Component<
               name: newName.trim(),
             });
           } catch {
-            Toast.error("保存失败，请重试");
+            Toast.error(t("base.module.thread.saveFailedRetry"));
           }
         },
       });
@@ -639,14 +643,14 @@ export default class ThreadPanel extends Component<
     setTimeout(() => {
       Modal.confirm({
         title: archiving
-          ? `归档子区「${thread.name}」？`
-          : `取消归档「${thread.name}」？`,
+          ? t("base.module.thread.archiveConfirmTitle", { values: { name: thread.name } })
+          : t("base.module.thread.unarchiveConfirmTitle", { values: { name: thread.name } }),
         icon: null,
-        okText: archiving ? "归档" : "取消归档",
-        cancelText: "取消",
+        okText: archiving ? t("base.module.thread.archiveOk") : t("base.module.thread.unarchive"),
+        cancelText: t("base.common.cancel"),
         content: archiving
-          ? "归档后会从活跃子区列表移到已归档分组。"
-          : "取消归档后会回到活跃子区列表。",
+          ? t("base.module.thread.archiveConfirmContent")
+          : t("base.module.thread.unarchiveConfirmContent"),
         onOk: async () => {
           try {
             if (archiving) {
@@ -666,7 +670,9 @@ export default class ThreadPanel extends Component<
                 groupNo,
                 thread.short_id
               );
-            Toast.success(archiving ? "子区已归档" : "已取消归档");
+            Toast.success(archiving
+              ? t("base.module.thread.archiveSuccess")
+              : t("base.module.thread.unarchiveSuccess"));
             this.setState((prevState) => ({
               vmState: {
                 ...prevState.vmState,
@@ -677,7 +683,9 @@ export default class ThreadPanel extends Component<
             this.refreshThreadChannelInfo(updatedThread);
             await this.loadThreads();
           } catch {
-            Toast.error(archiving ? "归档失败，请重试" : "取消归档失败，请重试");
+            Toast.error(archiving
+              ? t("base.module.thread.archiveFailedRetry")
+              : t("base.module.thread.unarchiveFailedRetry"));
           }
         },
       });
@@ -792,22 +800,22 @@ export default class ThreadPanel extends Component<
 
     setTimeout(() => {
       Modal.confirm({
-        title: `删除子区「${thread.name}」？`,
+        title: t("base.threadPanel.deleteConfirmTitle", { values: { name: thread.name } }),
         icon: null,
-        okText: "删除",
+        okText: t("base.threadPanel.delete"),
         okType: "danger",
-        cancelText: "取消",
-        content: "删除后子区内所有消息将不可见，此操作不可恢复。",
+        cancelText: t("base.common.cancel"),
+        content: t("base.threadPanel.deleteConfirmContent"),
         onOk: async () => {
           try {
             await WKApp.dataSource.channelDataSource.threadDelete(
               groupNo,
               thread.short_id
             );
-            Toast.success("子区已删除");
+            Toast.success(t("base.threadPanel.deleteSuccess"));
             this.handleBackToList();
           } catch {
-            Toast.error("删除失败，请重试");
+            Toast.error(t("base.threadPanel.deleteFailedRetry"));
           }
         },
       });
@@ -824,10 +832,10 @@ export default class ThreadPanel extends Component<
 
     let threadName = "";
     Modal.confirm({
-      title: "创建子区",
+      title: t("base.module.createThread.title"),
       icon: null,
-      okText: "创建",
-      cancelText: "取消",
+      okText: t("base.module.createThread.ok"),
+      cancelText: t("base.common.cancel"),
       content: (
         <div>
           <div
@@ -837,11 +845,11 @@ export default class ThreadPanel extends Component<
               color: "var(--wk-text-secondary)",
             }}
           >
-            话题名称
+            {t("base.module.createThread.nameLabel")}
           </div>
           <input
             type="text"
-            placeholder="输入讨论话题..."
+            placeholder={t("base.module.createThread.namePlaceholder")}
             style={{
               width: "100%",
               padding: "10px 12px",
@@ -862,7 +870,7 @@ export default class ThreadPanel extends Component<
       ),
       onOk: async () => {
         if (!threadName || threadName.trim() === "") {
-          Toast.error("话题名称不能为空");
+          Toast.error(t("base.module.createThread.nameRequired"));
           return;
         }
         try {
@@ -870,10 +878,10 @@ export default class ThreadPanel extends Component<
             groupNo,
             threadName.trim()
           );
-          Toast.success("子区创建成功");
+          Toast.success(t("base.module.createThread.success"));
           this.loadThreads();
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "创建失败";
+          const msg = err instanceof Error ? err.message : t("base.module.createThread.failed");
           Toast.error(msg);
         }
       },
@@ -892,11 +900,11 @@ export default class ThreadPanel extends Component<
     // 根据文件类型生成回复摘要
     let digest = file.name;
     if (file.category === "image") {
-      digest = "[图片]";
+      digest = t("base.threadPanel.digest.image");
     } else if (file.category === "video") {
-      digest = "[视频]";
+      digest = t("base.threadPanel.digest.video");
     } else if (file.category) {
-      digest = `[文件] ${file.name}`;
+      digest = t("base.threadPanel.digest.file", { values: { name: file.name } });
     }
 
     // 构造 FilePreviewInfo 并调用回调
@@ -1019,7 +1027,7 @@ export default class ThreadPanel extends Component<
           <div
             className="wk-thread-panel-header-btn"
             onClick={this.handleBackToList}
-            title="返回全部子区"
+            title={t("base.threadPanel.backToAll")}
           >
             <ArrowLeft size={16} />
           </div>
@@ -1029,12 +1037,12 @@ export default class ThreadPanel extends Component<
           {view === "list" ? (
             <>
               <ThreadIcon className="wk-thread-panel-header-icon" size={18} />
-              <span>子区</span>
+              <span>{t("base.threadPanel.title")}</span>
             </>
           ) : (
             <>
               <ThreadIcon className="wk-thread-panel-header-icon" size={18} />
-              <span>{thread?.name || "子区"}</span>
+              <span>{thread?.name || t("base.module.thread.fallbackName")}</span>
             </>
           )}
         </div>
@@ -1055,7 +1063,7 @@ export default class ThreadPanel extends Component<
                       className="wk-thread-more-menu-item"
                       onClick={this.handleOpenFullView}
                     >
-                      在完整视图打开
+                      {t("base.threadPanel.openFullView")}
                     </div>
                   )}
                   {vmState.thread && this.canEditThread(vmState.thread) && (
@@ -1064,14 +1072,14 @@ export default class ThreadPanel extends Component<
                         className="wk-thread-more-menu-item"
                         onClick={this.handleEditThread}
                       >
-                        编辑子区名称
+                        {t("base.threadPanel.editNameTitle")}
                       </div>
                       {vmState.thread.status === ThreadStatus.Active && (
                         <div
                           className="wk-thread-more-menu-item"
                           onClick={this.handleToggleArchiveThread}
                         >
-                          归档子区
+                          {t("base.module.thread.archive")}
                         </div>
                       )}
                       {vmState.thread.status === ThreadStatus.Archived && (
@@ -1079,7 +1087,7 @@ export default class ThreadPanel extends Component<
                           className="wk-thread-more-menu-item"
                           onClick={this.handleToggleArchiveThread}
                         >
-                          取消归档
+                          {t("base.module.thread.unarchive")}
                         </div>
                       )}
                     </>
@@ -1088,12 +1096,12 @@ export default class ThreadPanel extends Component<
                     className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
                     onClick={this.handleDeleteThread}
                   >
-                    删除子区
+                    {t("base.threadPanel.delete")}
                   </div>
                 </div>
               }
             >
-              <div className="wk-thread-panel-header-btn" title="更多操作">
+              <div className="wk-thread-panel-header-btn" title={t("base.threadPanel.moreActions")}>
                 <MoreHorizontal size={16} />
               </div>
             </Popover>
@@ -1125,7 +1133,7 @@ export default class ThreadPanel extends Component<
           onClick={this.handleCreateThread}
         >
           <Plus size={16} />
-          <span>新建子区</span>
+          <span>{t("base.threadPanel.newThread")}</span>
         </div>
 
         {threadsLoading ? (
@@ -1149,12 +1157,12 @@ export default class ThreadPanel extends Component<
                     !activeExpanded && "wk-thread-panel-group-arrow-collapsed"
                   )}
                 />
-                <span>活跃中</span>
+                <span>{t("base.module.thread.status.active")}</span>
               </div>
               {activeExpanded && (
                 <div className="wk-thread-panel-group-list">
                   {activeThreads.length === 0 ? (
-                    <div className="wk-thread-panel-empty">暂无活跃子区</div>
+                    <div className="wk-thread-panel-empty">{t("base.threadPanel.noActiveThreads")}</div>
                   ) : (
                     activeThreads.map((thread) => this.renderThreadItem(thread))
                   )}
@@ -1179,7 +1187,7 @@ export default class ThreadPanel extends Component<
                         "wk-thread-panel-group-arrow-collapsed"
                     )}
                   />
-                  <span>已归档</span>
+                  <span>{t("base.module.thread.status.archived")}</span>
                 </div>
                 {archivedExpanded && (
                   <div className="wk-thread-panel-group-list">
@@ -1206,7 +1214,7 @@ export default class ThreadPanel extends Component<
       );
       return channelInfo?.title || thread.creator_uid;
     }
-    return "未知";
+    return t("base.common.unknown");
   }
 
   private renderThreadItem(thread: Thread) {
@@ -1229,8 +1237,13 @@ export default class ThreadPanel extends Component<
           </span>
         </div>
         <div className="wk-thread-panel-item-meta">
-          {thread.message_count || 0} 条回复 · 参与 {thread.member_count || 0}{" "}
-          人 · {creatorName} 发起
+          {t("base.threadPanel.itemMeta", {
+            values: {
+              replies: thread.message_count || 0,
+              members: thread.member_count || 0,
+              creator: creatorName,
+            },
+          })}
         </div>
         {thread.last_message_content && (
           <div className="wk-thread-panel-item-preview">
@@ -1239,7 +1252,7 @@ export default class ThreadPanel extends Component<
         )}
         {!thread.last_message_content && (
           <div className="wk-thread-panel-item-preview wk-thread-panel-item-preview-empty">
-            暂无消息
+            {t("base.threadPanel.noMessages")}
           </div>
         )}
       </div>
@@ -1259,7 +1272,7 @@ export default class ThreadPanel extends Component<
     }
 
     if (!thread) {
-      return <div className="wk-thread-panel-empty">未找到子区</div>;
+      return <div className="wk-thread-panel-empty">{t("base.threadPanel.notFound")}</div>;
     }
 
     // 使用 Thread 的 channel_id 创建 Channel 对象
@@ -1270,14 +1283,14 @@ export default class ThreadPanel extends Component<
 
     return (
       <div className="wk-thread-panel-conversation">
-        <ErrorBoundary moduleName="子区消息">
+        <ErrorBoundary moduleName={t("base.threadPanel.messagesModuleName")}>
           <Conversation
             key={thread.channel_id}
             channel={threadChannel}
             shouldShowHistorySplit={false}
             inputNotice={
               thread.status === ThreadStatus.Archived
-                ? "该子区已归档。发送消息后，子区会恢复为活跃状态。"
+                ? t("base.threadPanel.archivedInputNotice")
                 : undefined
             }
             onMessageSent={this.handleThreadMessageSent}

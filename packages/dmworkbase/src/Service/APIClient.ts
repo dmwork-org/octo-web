@@ -1,4 +1,5 @@
 import axios, { AxiosResponse } from "axios";
+import { t } from "../i18n";
 
 
 /**
@@ -80,16 +81,16 @@ export default class APIClient {
                     msg = backendMsg;
                     break;
                 case 404:
-                    msg = backendMsg || "请求地址没有找到（404）"
+                    msg = backendMsg || t("base.api.error.notFound")
                     break;
                 case 401:
-                    msg = backendMsg || "登录已过期，请重新登录";
+                    msg = backendMsg || t("base.api.error.sessionExpired");
                     if(self.logoutCallback) {
                         self.logoutCallback()
                     }
                     break;
                 default:
-                    msg = backendMsg || "未知错误"
+                    msg = backendMsg || t("base.api.error.unknown")
                     break;
             }
             return Promise.reject({ error: error, msg: msg, status: error?.response?.status });

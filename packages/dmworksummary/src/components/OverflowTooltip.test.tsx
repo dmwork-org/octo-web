@@ -1,8 +1,9 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
+import { vi } from "vitest";
 import OverflowTooltip from "./OverflowTooltip";
 
-jest.mock("@douyinfe/semi-ui", () => ({
+vi.mock("@douyinfe/semi-ui", () => ({
     Tooltip: ({ children, content, visible, onVisibleChange, trigger }: any) => (
         <div data-testid="tooltip-wrapper" data-visible={visible} data-trigger={trigger}>
             {visible && <div data-testid="tooltip-content">{content}</div>}
@@ -16,6 +17,10 @@ jest.mock("@douyinfe/semi-ui", () => ({
         </div>
     ),
 }));
+
+function render(ui: React.ReactElement, options?: any) {
+    return rtlRender(ui, { legacyRoot: true, ...options });
+}
 
 function mockOverflow(el: HTMLElement, overflowing: boolean) {
     Object.defineProperty(el, "scrollWidth", { value: overflowing ? 200 : 100, configurable: true });
@@ -74,7 +79,7 @@ describe("OverflowTooltip", () => {
 
         const el = screen.getByText("Styled content");
         expect(el).toHaveClass("custom-class");
-        expect(el).toHaveStyle({ color: "red", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
+        expect(el).toHaveStyle("color: rgb(255, 0, 0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;");
     });
 
     it("uses hover trigger for selectable tooltip text", () => {

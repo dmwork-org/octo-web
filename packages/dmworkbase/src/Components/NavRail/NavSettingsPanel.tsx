@@ -5,6 +5,7 @@ import React, { Component } from "react";
 import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import NavVoiceSettingsItem from "./NavVoiceSettingsItem";
+import { i18n, t } from "../../i18n";
 
 export interface NavSettingsPanelProps {
     settingSelected: boolean;
@@ -67,7 +68,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
         } catch (e) {
             console.error('[NavSettingsPanel] fetch changelog failed', e);
             this.setState({ changelogLoading: false });
-            Toast.error("获取更新日志失败");
+            Toast.error(t("base.navRail.settingsPanel.changelogLoadFailed"));
         } finally {
             this._fetchingChangelog = false;
         }
@@ -117,7 +118,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     {/* 版本更新提示（面板打开时自检，有新版本时展示） */}
                     {hasNewVersionLocal && (
                         <li className="wk-navrail__settings-version-update" onClick={(e) => e.stopPropagation()}>
-                            <span>发现新版本</span>
+                            <span>{t("base.navRail.settingsPanel.versionAvailable")}</span>
                             <button
                                 className="wk-navrail__settings-version-refresh"
                                 onClick={() => {
@@ -127,11 +128,11 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                                         sessionStorage.setItem(key, String(count + 1));
                                         window.location.reload();
                                     } else {
-                                        alert('页面已多次刷新仍检测到新版本，请按 Ctrl+Shift+R（Mac: Cmd+Shift+R）强制刷新并清除缓存。');
+                                        alert(t("base.navRail.versionBubble.reloadLimit"));
                                     }
                                 }}
                             >
-                                立即刷新
+                                {t("base.navRail.settingsPanel.refreshNow")}
                             </button>
                         </li>
                     )}
@@ -141,7 +142,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             onToggleSetting();
                             window.open(accountCenterUrl, '_blank', 'noopener,noreferrer');
                         }}>
-                            账户中心
+                            {t("base.navRail.settingsPanel.accountCenter")}
                         </li>
                     )}
                     <li onClick={() => {
@@ -149,7 +150,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                         this.fetchChangelog();
                         onSetShowNewVersion(true);
                     }}>
-                        更新日志
+                        {t("base.navRail.settingsPanel.changelog")}
                     </li>
                     {canManageSpace && (
                         <li onClick={() => {
@@ -158,27 +159,29 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             // 真实鉴权由 admin 后端负责，此处仅用于 UI 可见性控制。
                             window.location.href = "/space";
                         }}>
-                            空间管理
+                            {t("base.navRail.settingsPanel.spaceManagement")}
                         </li>
                     )}
                     <li onClick={() => {
                         onToggleSetting();
                         WKApp.shared.notificationIsClose = !WKApp.shared.notificationIsClose;
                     }}>
-                        {WKApp.shared.notificationIsClose ? "打开" : "关闭"}桌面通知
+                        {WKApp.shared.notificationIsClose
+                            ? t("base.navRail.settingsPanel.desktopNotification.on")
+                            : t("base.navRail.settingsPanel.desktopNotification.off")}
                     </li>
                     <NavVoiceSettingsItem />
                     <li onClick={() => {
                         onToggleSetting();
                         WKApp.shared.logout();
                     }}>
-                        退出登录
+                        {t("base.navRail.settingsPanel.logout")}
                     </li>
                 </ul>
 
                 {/* 更新日志 Modal */}
                 <WKModal
-                    title="更新日志"
+                    title={t("base.navRail.settingsPanel.changelog")}
                     visible={showNewVersion}
                     onCancel={() => onSetShowNewVersion(false)}
                 >
@@ -189,7 +192,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     ) : this.state.changelog ? (
                         <div style={{ overflow: 'auto', maxHeight: 400, padding: '8px 0' }}>
                             <div style={{ fontSize: 13, color: 'rgba(28,28,35,0.4)', marginBottom: 12 }}>
-                                版本 {this.state.changelog.version || '未知'} · {this.state.changelog.pub_date ? new Date(this.state.changelog.pub_date).toLocaleDateString('zh-CN') : ''}
+                                {t("base.common.version")} {this.state.changelog.version || t("base.common.unknown")} · {this.state.changelog.pub_date ? i18n.format.date(this.state.changelog.pub_date) : ''}
                             </div>
                             <pre style={{
                                 whiteSpace: 'pre-wrap',
@@ -205,21 +208,21 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                         </div>
                     ) : (
                         <div style={{ textAlign: 'center', padding: '32px', color: 'rgba(28,28,35,0.4)' }}>
-                            暂无更新日志
+                            {t("base.navRail.settingsPanel.noChangelog")}
                         </div>
                     )}
                 </WKModal>
 
                 {/* 更新进度 Modal */}
                 <WKModal
-                    title="检测更新"
+                    title={t("base.navRail.settingsPanel.updateCheckTitle")}
                     visible={showAppVersion}
                     options={{ maskClosable: false, closeOnEsc: false }}
                     onCancel={() => { onSetShowAppVersion(false); onNotifyListener(); }}
                     footer={showAppUpdateOperation ? (
                         <>
-                            <Button theme="solid" type="tertiary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>取消</Button>
-                            <Button theme="solid" type="primary" onClick={onInstallUpdate}>更新</Button>
+                            <Button theme="solid" type="tertiary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</Button>
+                            <Button theme="solid" type="primary" onClick={onInstallUpdate}>{t("base.common.update")}</Button>
                         </>
                     ) : undefined}
                 >
@@ -229,8 +232,8 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             <div className="wk-versioncheckview-content">
                                 <div className="wk-versioncheckview-updateinfo">
                                     <ul>
-                                        <li>当前版本: {WKApp.config.appVersion}&nbsp;&nbsp;目标版本: {lastVersionInfo.appVersion}</li>
-                                        <li>更新内容：</li>
+                                        <li>{t("base.navRail.settingsPanel.currentVersion")}: {WKApp.config.appVersion}&nbsp;&nbsp;{t("base.navRail.settingsPanel.targetVersion")}: {lastVersionInfo.appVersion}</li>
+                                        <li>{t("base.navRail.settingsPanel.updateContent")}</li>
                                         <li><pre>{lastVersionInfo.updateDesc}</pre></li>
                                     </ul>
                                 </div>
@@ -247,5 +250,4 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
         );
     }
 }
-
 

@@ -17,6 +17,7 @@ import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { OnlineStatusBadge } from "../ConversationList";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
+import { I18nContext } from "../../i18n";
 
 export interface SubscriberListProps {
   channel: Channel;
@@ -37,6 +38,9 @@ export class SubscriberList extends Component<
   SubscriberListProps,
   SubscriberListState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   private channelInfoListener!: ChannelInfoListener;
   // 当前已预取过 channelInfo 的 uid 集合，避免重复发请求
   private prefetchedUids = new Set<string>();
@@ -83,8 +87,10 @@ export class SubscriberList extends Component<
     );
     if (!channelInfo || channelInfo.online) return undefined;
     const btwTime = new Date().getTime() / 1000 - channelInfo.lastOffline;
-    if (btwTime < 60) return "刚刚";
-    return `${(btwTime / 60).toFixed(0)}分钟`;
+    if (btwTime < 60) return this.context.t("base.subscribers.justNow");
+    return this.context.t("base.subscribers.minutesAgoShort", {
+      values: { count: (btwTime / 60).toFixed(0) },
+    });
   }
 
   // Store debounced search functions per VM instance
@@ -218,9 +224,9 @@ export class SubscriberList extends Component<
 
   getRoleName = (item: Subscriber) => {
     if (item.role === GroupRole.owner) {
-      return "群主";
+      return this.context.t("base.subscribers.role.owner");
     } else if (item.role === GroupRole.manager) {
-      return "管理员";
+      return this.context.t("base.subscribers.role.manager");
     } else {
       return "";
     }
@@ -258,7 +264,7 @@ export class SubscriberList extends Component<
                     onChange={(v) => {
                       this.onSearch(v.target.value, vm);
                     }}
-                    placeholder={"搜索"}
+                    placeholder={this.context.t("base.subscribers.searchPlaceholder")}
                     ref={(rf) => {}}
                     type="text"
                     style={{ fontSize: "17px" }}
@@ -332,7 +338,7 @@ export class SubscriberList extends Component<
                           {itemIsBot && <AiBadge />}
                           {itemIsBot && isBotAdmin && (
                             <Tag size="small" color="green" style={{ marginLeft: 4 }}>
-                              Bot 管理员
+                              {this.context.t("base.subscribers.botAdmin")}
                             </Tag>
                           )}
                         </div>

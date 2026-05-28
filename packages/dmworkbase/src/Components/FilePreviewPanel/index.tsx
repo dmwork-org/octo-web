@@ -2,6 +2,7 @@ import React from "react";
 import { X, Download, ExternalLink } from "lucide-react";
 import { fileRendererRegistry } from "./registry";
 import { FilePreviewInfo, FilePreviewPanelProps, getExtension } from "./types";
+import { useI18n } from "../../i18n";
 import "./index.css";
 
 /**
@@ -12,6 +13,8 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   file,
   onClose,
 }) => {
+  const { t } = useI18n();
+
   if (!file) return null;
 
   const ext = getExtension(file.extension, file.name);
@@ -45,21 +48,21 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
         <div className="wk-file-preview-actions">
           <button
             className="wk-file-preview-action"
-            title="在新窗口打开"
+            title={t("base.filePreview.openInNewWindow")}
             onClick={handleOpenExternal}
           >
             <ExternalLink size={18} />
           </button>
           <button
             className="wk-file-preview-action"
-            title="下载"
+            title={t("base.filePreview.download")}
             onClick={handleDownload}
           >
             <Download size={18} />
           </button>
           <button
             className="wk-file-preview-action wk-file-preview-close"
-            title="关闭"
+            title={t("base.filePreview.close")}
             onClick={onClose}
           >
             <X size={20} />

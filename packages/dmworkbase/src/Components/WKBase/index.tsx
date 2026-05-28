@@ -14,6 +14,7 @@ import {
   ExternalViewerGate,
   UserInfoRouter,
 } from "./userInfoRouter";
+import { I18nContext } from "../../i18n";
 import "./index.css";
 
 /**
@@ -145,6 +146,9 @@ export default class WKBase
   extends Component<WKBaseProps, WKBaseState>
   implements WKBaseContext
 {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   // PR#1113 review: bot-vs-human routing + stale-request guard are
   // delegated to a React-free production helper (UserInfoRouter). The helper
   // tracks a monotonically-increasing token so that a late-resolving async
@@ -416,7 +420,7 @@ export default class WKBase
         {/* 加入组织 */}
         <WKModal
           visible={showJoinOrgInfo}
-          title="加入组织"
+          title={this.context.t("base.wkBase.joinOrganization")}
           className="wk-base-modal-join-org"
           options={{ mask: false }}
           onCancel={() => {

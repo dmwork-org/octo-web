@@ -20,6 +20,7 @@ import { MessageCell } from "../MessageCell";
 import MessageRow from "../../ui/message/MessageRow";
 import MergeforwardCard from "../../ui/message/MergeforwardCard";
 import { getMergeforwardMessageUI } from "../../bridge/message/useMergeforwardMessageUI";
+import { I18nContext, t } from "../../i18n";
 
 import "./index.css";
 
@@ -162,7 +163,7 @@ export default class MergeforwardContent extends MessageContent {
     return MessageContentTypeConst.mergeForward;
   }
   get conversationDigest() {
-    return "[合并转发]";
+    return t("base.mergeForward.digest");
   }
 
   mapToMessage(messageMap: any): Message {
@@ -222,6 +223,9 @@ interface MergeforwardCellState {
 }
 
 export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   private goBackRef: React.MutableRefObject<(() => void) | null> = { current: null };
 
   constructor(props: any) {
@@ -234,8 +238,9 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
   }
 
   getTitle(content: MergeforwardContent) {
+    const { locale, t } = this.context;
     if (content.channelType === ChannelTypeGroup) {
-      return "群的聊天记录";
+      return t("base.mergeForward.groupChatHistory");
     }
 
     const names = content.users
@@ -243,10 +248,16 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
       .filter(Boolean);
 
     if (names.length === 0) {
-      return "聊天记录";
+      return t("base.mergeForward.chatHistory");
     }
 
-    return `${names.join("、")}的聊天记录`;
+    const formattedNames = locale === "zh-CN"
+      ? names.join("、")
+      : new Intl.ListFormat(locale, { style: "short", type: "conjunction" }).format(names);
+
+    return t("base.mergeForward.userChatHistory", {
+      values: { names: formattedNames },
+    });
   }
 
   getMsgListUI(msgs: Message[]) {
@@ -339,7 +350,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                       <button
                         className="wk-mergeforward-modal-back-btn"
                         type="button"
-                        aria-label="返回"
+                        aria-label={this.context.t("base.mergeForward.back")}
                         onClick={() => this.goBackRef.current?.()}
                       >
                         <IconArrowLeft size="inherit" />
@@ -351,7 +362,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                 <button
                   className="wk-mergeforward-modal-close-btn"
                   type="button"
-                  aria-label="关闭"
+                  aria-label={this.context.t("base.mergeForward.close")}
                   onClick={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
                 >
                   <IconClose size="inherit" />
@@ -393,7 +404,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             </div>
             <div className="wk-mergeforwards-content-line"></div>
             <div className="wk-mergeforwards-content-tip">
-              <p>聊天记录</p>
+              <p>{this.context.t("base.mergeForward.chatHistory")}</p>
               <p>
                 {" "}
                 <MessageTrail message={message} timeStyle={{ color: "#999" }} />
@@ -419,7 +430,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                     <button
                       className="wk-mergeforward-modal-back-btn"
                       type="button"
-                      aria-label="返回"
+                      aria-label={this.context.t("base.mergeForward.back")}
                       onClick={() => this.goBackRef.current?.()}
                     >
                       <IconArrowLeft size="inherit" />
@@ -431,7 +442,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               <button
                 className="wk-mergeforward-modal-close-btn"
                 type="button"
-                aria-label="关闭"
+                aria-label={this.context.t("base.mergeForward.close")}
                 onClick={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
               >
                 <IconClose size="inherit" />

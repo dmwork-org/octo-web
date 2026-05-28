@@ -1,4 +1,5 @@
 import { MessageContent } from "wukongimjssdk";
+import { t } from "../../i18n";
 
 export class SummaryCardContent extends MessageContent {
   taskId!: number;
@@ -16,7 +17,7 @@ export class SummaryCardContent extends MessageContent {
   }
 
   get conversationDigest() {
-    return "[智能总结]";
+    return t("base.message.digest.summaryCard");
   }
 
   encodeJSON(): Record<string, any> {

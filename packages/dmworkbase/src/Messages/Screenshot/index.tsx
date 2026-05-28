@@ -3,6 +3,7 @@ import React from "react";
 import WKApp from "../../App";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { MessageCell } from "../MessageCell";
+import { t } from "../../i18n";
 
 
 export class ScreenshotContent extends MessageContent {
@@ -13,7 +14,7 @@ export class ScreenshotContent extends MessageContent {
     get tip() {
         let name = ""
         if (this.fromUID === WKApp.loginInfo.uid) {
-            name = "你"
+            name = t("base.message.screenshot.you")
         } else {
             let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(this.fromUID, ChannelTypePerson))
             if (channelInfo) {
@@ -22,7 +23,7 @@ export class ScreenshotContent extends MessageContent {
                 name = this.fromName
             }
         }
-        return `${name}在聊天中截屏了`
+        return t("base.message.screenshot.text", { values: { name } })
     }
 
     decodeJSON(content: any): void {

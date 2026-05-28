@@ -5,6 +5,7 @@ import { Switch } from "@douyinfe/semi-ui"
 import RoutePage from "../RoutePage"
 import { MyBot, OboGrant, PersonaSettingsVM } from "./vm"
 import PersonaEdit from "./PersonaEdit"
+import { I18nContext, useI18n } from "../../i18n"
 import "./index.css"
 
 /**
@@ -48,7 +49,11 @@ interface PersonaSettingsProps {
 }
 
 export default class PersonaSettings extends Component<PersonaSettingsProps> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     render(): ReactNode {
+        const { t } = this.context
         return (
             <Provider
                 create={(): IProviderListener => new PersonaSettingsVM()}
@@ -66,7 +71,7 @@ export default class PersonaSettings extends Component<PersonaSettingsProps> {
                     // 独立模式：维持旧行为，自带 RoutePage（向后兼容 / 测试 / 模态化场景）。
                     return (
                         <RoutePage
-                            title="我的分身"
+                            title={t("base.persona.title")}
                             onClose={() => {
                                 if (this.props.onClose) this.props.onClose()
                             }}
@@ -106,6 +111,9 @@ interface PersonaListBodyProps {
 }
 
 class PersonaListBody extends Component<PersonaListBodyProps> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     componentDidMount(): void {
         const { vm } = this.props
         // 与 VM.didMount 的 loadGrants 重复触发是无害的（最坏多一次 GET，且第二次
@@ -158,6 +166,7 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
 
     render(): ReactNode {
         const { vm, routeContext } = this.props
+        const { t } = this.context
         return (
             <div className="wk-persona-page">
                 {/*
@@ -177,33 +186,35 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
                             onClick={this.handleCreate}
                             disabled={vm.loading}
                         >
-                            + 新建分身
+                            {t("base.persona.create.addButton")}
                         </button>
                     </div>
                 )}
 
                 {vm.loading && (
-                    <div className="wk-persona-loading">加载中...</div>
+                    <div className="wk-persona-loading">
+                        {t("base.persona.loading")}
+                    </div>
                 )}
 
                 {/* 后端 404（PR-A 尚未 merge）→ 不报错, 用「即将上线」文案 */}
                 {!vm.loading && vm.isBackendMissing && (
                     <div className="wk-persona-empty">
-                        分身功能即将上线
+                        {t("base.persona.backendComingSoon")}
                         <br />
-                        敬请期待 ✨
+                        {t("base.persona.stayTuned")}
                     </div>
                 )}
 
                 {/* 其他网络/服务端错误 → 显示重试按钮 */}
                 {!vm.loading && vm.loadError && !vm.isBackendMissing && (
                     <div className="wk-persona-error">
-                        加载失败
+                        {t("base.persona.loadFailed")}
                         <div
                             className="wk-persona-error-retry"
                             onClick={() => void vm.loadGrants()}
                         >
-                            重新加载
+                            {t("base.persona.reload")}
                         </div>
                     </div>
                 )}
@@ -214,9 +225,9 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
                     !vm.loadError &&
                     vm.grants.length === 0 && (
                         <div className="wk-persona-empty">
-                            还没有创建任何分身
+                            {t("base.persona.empty")}
                             <br />
-                            点击上方「新建分身」开始
+                            {t("base.persona.create.startHint")}
                         </div>
                     )}
 
@@ -277,6 +288,7 @@ function PersonaCard(props: {
     onClick: () => void
     onToggle: (next: boolean) => Promise<void> | void
 }) {
+    const { t } = useI18n()
     const { grant, dimmed, onClick, onToggle } = props
     const name = grant.grantee_bot_name || grant.grantee_bot_uid
     const initial = (name || "P").charAt(0).toUpperCase()
@@ -296,12 +308,14 @@ function PersonaCard(props: {
                 <div className="wk-persona-card-info">
                     <div className="wk-persona-card-name">
                         {name}
-                        <span className="wk-persona-card-name-badge">分身</span>
+                        <span className="wk-persona-card-name-badge">
+                            {t("base.persona.badge")}
+                        </span>
                     </div>
                     <div className="wk-persona-card-sub">
                         {grant.persona_prompt && grant.persona_prompt.trim()
                             ? grant.persona_prompt
-                            : "未设置回复风格"}
+                            : t("base.persona.noPrompt")}
                     </div>
                 </div>
                 {/*
@@ -349,6 +363,7 @@ function PersonaCreate(props: {
     onCreated: (botUid: string, personaPrompt: string) => Promise<void> | void
 }) {
     const { vm, onCreated } = props
+    const { t } = useI18n()
     const [selectedUid, setSelectedUid] = React.useState<string>("")
     const [prompt, setPrompt] = React.useState<string>("")
     const [submitting, setSubmitting] = React.useState<boolean>(false)
@@ -381,13 +396,15 @@ function PersonaCreate(props: {
     return (
         <div className="wk-persona-create">
             {vm.myBotsLoading && (
-                <div className="wk-persona-loading">加载中...</div>
+                <div className="wk-persona-loading">
+                    {t("base.persona.loading")}
+                </div>
             )}
             {!vm.myBotsLoading && vm.myBots.length === 0 && (
                 <div className="wk-persona-empty">
-                    暂无可关联的 Bot
+                    {t("base.persona.create.noBots")}
                     <br />
-                    请先去 AI 广场添加一个 bot
+                    {t("base.persona.create.noBotsHint")}
                 </div>
             )}
             {vm.myBots.map((b: MyBot) => {
@@ -415,11 +432,11 @@ function PersonaCreate(props: {
             {selectedBot && (
                 <div className="wk-persona-create-form">
                     <div className="wk-persona-create-form-label">
-                        回复风格 prompt（可选）
+                        {t("base.persona.edit.promptOptionalLabel")}
                     </div>
                     <textarea
                         className="wk-persona-create-prompt"
-                        placeholder="设置分身的回复风格，如：用简洁专业的语气回复"
+                        placeholder={t("base.persona.edit.promptPlaceholder")}
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         rows={4}
@@ -439,7 +456,9 @@ function PersonaCreate(props: {
                             }
                         }}
                     >
-                        {submitting ? "创建中..." : "创建分身"}
+                        {submitting
+                            ? t("base.persona.create.creating")
+                            : t("base.persona.create.submit")}
                     </button>
                 </div>
             )}

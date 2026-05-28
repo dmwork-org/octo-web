@@ -3,6 +3,7 @@ import { Component, ReactNode, createRef } from "react";
 import ConversationContext from "../Conversation/context";
 import { Toast } from "@douyinfe/semi-ui";
 import IconClick from "../IconClick";
+import { t } from "../../i18n";
 
 import "./index.css";
 
@@ -87,7 +88,7 @@ export default class FileToolbar extends Component<FileToolbarProps> {
     );
     const hasDuplicate = files.some((f) => currentNames.has(f.name));
     if (hasDuplicate) {
-      Toast.warning("包含同名文件，已追加到待发送列表");
+      Toast.warning(t("base.fileToolbar.duplicateAdded"));
     }
 
     // 通过上传按钮选择的文件，标记为 'upload'

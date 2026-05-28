@@ -4,7 +4,7 @@ import '@octo/base/src/theme/tokens.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, WKApp } from '@octo/base';
+import  { BaseModule, I18nProvider, i18n, WKApp } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
@@ -12,6 +12,8 @@ import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
 import { AppBotModule } from '@dmwork/appbot';
 import { version as pkgVersion } from '../package.json';
+import appEnUS from './i18n/en-US.json';
+import appZhCN from './i18n/zh-CN.json';
 
 // VITE_API_URL 只填 origin（协议+域名+端口），不要带路径
 // 例如: https://api.example.com (而非 https://api.example.com/v1/)
@@ -49,6 +51,17 @@ WKApp.config.appVersion = import.meta.env.VITE_VERSION || pkgVersion
 WKApp.config.appName = "Octo"
 
 WKApp.loginInfo.load() // 加载登录信息
+i18n.registerNamespace("app", {
+  "zh-CN": appZhCN,
+  "en-US": appEnUS,
+})
+i18n.init()
+WKApp.config.locale = i18n.getLocale()
+i18n.subscribe((locale) => {
+  WKApp.config.locale = locale
+  WKApp.menus.refresh()
+  WKApp.shared.notifyListener()
+})
 
 WKApp.shared.registerModule(new BaseModule()); // 基础模块
 WKApp.shared.registerModule(new DataSourceModule()) // 数据源模块
@@ -67,8 +80,9 @@ const container = document.getElementById('root')!
 const root = createRoot(container)
 root.render(
   <React.StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </React.StrictMode>
 );
 reportWebVitals();
-

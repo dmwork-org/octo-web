@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import React from "react";
 import { X } from "lucide-react";
+import { useI18n } from "../../i18n";
 
 // 文件类型图标
 import defaultIcon from "../../assets/files/default.svg";
@@ -113,7 +114,9 @@ const AttachmentNodeView = ({
   deleteNode,
   selected,
 }: AttachmentNodeViewProps) => {
+  const { t } = useI18n();
   const { name, size, type, previewUrl } = node.attrs;
+  const displayName = name || t("base.messageInput.attachment.unnamedFile");
   const isImage = isImageType(type, name) && previewUrl;
 
   // 图片类型：直接渲染图片预览
@@ -169,8 +172,8 @@ const AttachmentNodeView = ({
         </div>
         <div className="wk-attachment-node-info">
           <div className="wk-attachment-node-name-row">
-            <div className="wk-attachment-node-name" title={name}>
-              {name}
+            <div className="wk-attachment-node-name" title={displayName}>
+              {displayName}
             </div>
             <button
               className="wk-attachment-node-remove"
@@ -180,7 +183,7 @@ const AttachmentNodeView = ({
                 deleteNode();
               }}
               type="button"
-              title="移除"
+              title={t("base.messageInput.attachment.remove")}
               contentEditable={false}
             >
               <X size={16} />
@@ -210,7 +213,7 @@ export const AttachmentNode = Node.create({
         default: null,
       },
       name: {
-        default: "未命名文件",
+        default: "",
       },
       size: {
         default: 0,
