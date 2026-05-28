@@ -88,11 +88,15 @@
   margin: 0 var(--wk-sp-3) var(--wk-sp-2);
   background: var(--wk-brand-tint-04);
   border-radius: var(--wk-r-full);
+  min-height: 44px;
+  box-sizing: border-box;
 }
 
 .wk-mp-page-sidebar__tab {
-  flex: 1;
-  padding: 2px var(--wk-sp-2);
+  flex: 1 1 0;
+  min-width: 0;
+  height: 36px;
+  padding: 2px var(--wk-sp-1);
   border: none;
   background: transparent;
   color: var(--wk-icon-muted);
@@ -101,10 +105,14 @@
   line-height: 16px;
   cursor: pointer;
   border-radius: var(--wk-r-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   transition:
     color var(--wk-dur-fast),
     background var(--wk-dur-fast);
+  white-space: normal;
 }
 
 .wk-mp-page-sidebar__tab:hover {
@@ -370,4 +378,3 @@
   position: relative;
   display: inline-flex;
 }
-

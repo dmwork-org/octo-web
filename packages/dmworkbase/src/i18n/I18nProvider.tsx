@@ -1,6 +1,8 @@
 import React, { createContext, ReactNode, useEffect, useMemo, useState } from "react";
+import { ConfigProvider, LocaleProvider } from "@douyinfe/semi-ui";
 import { createI18nFormatter } from "./format";
 import { i18n } from "./instance";
+import { getSemiDirection, getSemiLocale } from "./semiLocale";
 import { Locale } from "./types";
 
 export interface I18nContextValue {
@@ -32,10 +34,16 @@ export function I18nProvider({ children }: I18nProviderProps) {
     setLocale: (nextLocale) => i18n.setLocale(nextLocale),
     t: i18n.t.bind(i18n),
   }), [locale]);
+  const semiLocale = getSemiLocale(locale);
+  const semiDirection = getSemiDirection(locale);
 
   return (
-    <I18nContext.Provider value={value}>
-      {children}
-    </I18nContext.Provider>
+    <ConfigProvider locale={semiLocale} direction={semiDirection}>
+      <LocaleProvider locale={semiLocale}>
+        <I18nContext.Provider value={value}>
+          {children}
+        </I18nContext.Provider>
+      </LocaleProvider>
+    </ConfigProvider>
   );
 }

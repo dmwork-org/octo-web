@@ -110,6 +110,7 @@
   },
   "field": {
     "assignee": "负责人",
+    "deadline": "截止日期",
     "goal": "主要目标",
     "goalPlaceholder": "请输入主要目标",
     "title": "事项名称"
