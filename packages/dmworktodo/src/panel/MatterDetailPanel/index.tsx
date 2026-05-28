@@ -42,8 +42,6 @@ import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import { OutputsPanel } from "../../ui/OutputsPanel";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
-import { getExtension } from "@octo/base/src/Components/FilePreviewPanel/types";
-import { downloadFile } from "@octo/base/src/Utils/download";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp, i18n, useI18n, t as translate } from "@octo/base";
 import { downloadFile } from "@octo/base/src/Utils/download";
