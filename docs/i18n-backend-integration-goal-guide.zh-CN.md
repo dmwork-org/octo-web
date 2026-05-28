@@ -29,6 +29,17 @@
 - 已登录用户切换语言时调用 `PUT /v1/user/language`。
 - Axios 和内部 `fetch` 共用同一套语言 header 与错误解析逻辑。
 
+## 落地状态
+
+本分支已按该契约完成以下检查点：
+
+- 语言输入与持久化：`?lang=`、`?locale=`、`i18n_lang`、localStorage、navigator fallback。
+- 请求语言：`APIClient` 和 `apiFetch` 统一发送 `Accept-Language`，不发送 `X-Octo-Lang`。
+- 错误处理：统一 v2 + legacy normalizer，隐藏 internal/5xx raw 文案，按 code / semantic status 判断 auth、forbidden、rate limit。
+- Fetch 处理：内部 fetch 使用 `apiFetch` / `apiFetchJson`，文件资源、本地 probe、第三方 URL、unload beacon、OIDC 自定义客户端保留 raw fetch。
+- 登录语言：登录响应非空 `language` 立即应用到本地 locale、localStorage 和 `i18n_lang`；空字符串不覆盖本地选择。
+- 已登录语言同步：NavRail 切换先本地生效，再 best-effort 调 `PUT /v1/user/language`，失败不回滚 UI。
+
 ## 工作目录
 
 前端开发只在这个 worktree 内进行：

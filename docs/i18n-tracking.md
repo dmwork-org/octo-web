@@ -13,6 +13,12 @@
 - 已接入语言切换入口：
   - 登录后：NavRail 设置按钮上方。
   - 登录前：登录页右上角。
+- 已接入后端 i18n 契约：
+  - `?lang=`、`?locale=`、`i18n_lang` cookie。
+  - 内部 Axios / `apiFetch` 请求发送 `Accept-Language`。
+  - 后端 v2 error envelope 与 legacy `msg/status` fallback。
+  - 登录响应 `language` 应用到本地 locale 和 cookie。
+  - 已登录语言切换 best-effort 同步 `PUT /v1/user/language`。
 - 已接入 `pnpm i18n:scan`、`pnpm i18n:baseline`、`pnpm i18n:check`。
 - 已将 `pnpm i18n:check` 接入 CI 和 PR checklist。
 - 当前硬编码中文扫描：0 candidates。
@@ -23,6 +29,7 @@
 - 支持 React 组件、class component、VM、module 注册、Toast、菜单注册等不同调用场景。
 - 各业务包维护自己的语言包，避免巨型全局字典。
 - 支持运行时切换语言，并刷新菜单、页面和 Toast 文案。
+- 支持与后端语言协商、错误本地化和账号语言偏好的渐进式集成。
 - 日期、时间、相对时间、数字、货币等格式化能力统一收口。
 - 用扫描和 CI 防止新增裸中文 UI 文案。
 - 为后续 agent 和维护者提供标准工作指南。
@@ -30,7 +37,6 @@
 ## 非目标
 
 - 第一阶段不做 URL locale prefix，例如 `/en-US/summary`。
-- 第一阶段不做服务端用户 locale preference 持久化。
 - 第一阶段不做机器翻译用户内容、消息正文、总结正文、文件内容。
 - 第一阶段不重构路由系统、登录流程、邀请链接流程。
 - 第一阶段不新增第三种语言。
@@ -129,7 +135,9 @@ format.currency(value, "USD");
 
 ```txt
 explicit locale argument
+query ?lang=
 query ?locale=
+i18n_lang cookie
 localStorage octo:locale
 browser first preferred language: zh* -> zh-CN, otherwise en-US
 non-browser fallback: defaultLocale
@@ -137,9 +145,24 @@ non-browser fallback: defaultLocale
 
 说明：
 
-- 用户手动切换后写入 `localStorage.octo:locale`。
+- 用户手动切换后写入 `localStorage.octo:locale` 和 `i18n_lang` cookie。
 - 有手动切换记录时，不再跟随浏览器语言。
 - 没有手动切换记录时，中文浏览器展示中文，其他浏览器展示英文。
+
+### 决策 8：后端 i18n 契约接入
+
+内部 Octo API 请求通过 `APIClient`、`apiFetch`、`apiFetchJson` 统一发送 `Accept-Language`。Web 前端不发送 `X-Octo-Lang`，也默认不发送 `X-Octo-Error-Envelope`。
+
+后端错误统一使用 `normalizeApiError()` 解析：
+
+- v2 envelope 优先读取 `error.code`、`error.message`、`error.details`、`error.http_status`。
+- legacy fallback 读取 `msg`、`status` 和外层 HTTP status。
+- `err.shared.internal` 或 5xx 不透传后端 raw 文案。
+- auth/forbidden/rate-limit 语义按 code 或 normalized status 判断，不依赖本地化 message。
+
+内部独立 `fetch` 默认使用 `apiFetch` / `apiFetchJson`。以下场景保留 raw `fetch`：文件/blob/静态资源、预签名 URL、本地模型 probe、第三方 URL、unload beacon、OIDC bind 自定义 HTTP client。
+
+登录响应的非空 `language` 会立即调用 `i18n.setLocale(language)`，同步 localStorage 和 `i18n_lang` cookie。`language: ""` 表示无账号级偏好，不覆盖本地选择。已登录 NavRail 语言切换本地立即生效，并 best-effort 调用 `PUT /v1/user/language`；失败不回滚 UI。
 
 ## 当前实现范围
 
@@ -151,6 +174,11 @@ non-browser fallback: defaultLocale
 - `packages/dmworkbase/src/i18n/detectLocale.ts`
 - `packages/dmworkbase/src/i18n/format.ts`
 - `packages/dmworkbase/src/i18n/locales/`
+- `packages/dmworkbase/src/Service/apiError.ts`
+- `packages/dmworkbase/src/Service/apiFetch.ts`
+- `packages/dmworkbase/src/Service/apiLanguage.ts`
+- `packages/dmworkbase/src/Service/UserLanguageService.ts`
+- `packages/dmworklogin/src/loginSession.ts`
 
 ### App Shell
 
@@ -198,6 +226,9 @@ pnpm --filter @octo/web build
 ```bash
 pnpm exec vitest run packages/dmworkbase/src/i18n/__tests__/I18nService.test.ts
 pnpm exec vitest run packages/dmworkbase/src/i18n/__tests__/detectLocale.test.ts
+pnpm exec vitest run packages/dmworkbase/src/Service/__tests__/apiError.test.ts
+pnpm exec vitest run packages/dmworkbase/src/Service/__tests__/apiFetch.test.ts
+pnpm exec vitest run packages/dmworklogin/src/__tests__/loginSession.test.ts
 ```
 
 涉及业务包时运行对应 focused tests。
@@ -219,6 +250,7 @@ pnpm exec vitest run packages/dmworkbase/src/i18n/__tests__/detectLocale.test.ts
 - 非 UI 字典、协议 token、拼音/繁简转换表等例外必须写入 `.i18n/scan-config.json` 并说明原因。
 - 不要为了通过扫描添加宽泛 ignore。
 - 后端错误文案优先使用稳定 error code 映射；没有 code 的原始错误不应随意翻译。
+- 业务判断不要依赖后端 `error.message`，因为该字段会随语言变化。
 
 ## Agent 工作指南
 
@@ -254,8 +286,6 @@ chore(web): keep local proxy fallback resilient
 
 ## 后续待确认
 
-- 是否需要服务端保存用户 locale preference。
-- 服务端错误是否已有稳定 error code。
 - Electron/Tauri 是否需要读取系统语言作为更高优先级。
 - 是否需要在用户设置面板中补充二级语言偏好入口。
 - 新增第三种语言的产品时间点。

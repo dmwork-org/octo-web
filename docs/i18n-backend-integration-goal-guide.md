@@ -31,6 +31,17 @@ The final state should support:
 - Signed-in language preference sync through `PUT /v1/user/language`.
 - Shared error and language handling for both Axios and internal `fetch` calls.
 
+## Implementation Status
+
+This branch has implemented the backend contract integration through these checkpoints:
+
+- Locale inputs and persistence: `?lang=`, `?locale=`, `i18n_lang`, localStorage, navigator fallback.
+- API request language: `Accept-Language` through `APIClient` and `apiFetch`; no `X-Octo-Lang`.
+- Error handling: shared v2 + legacy normalizer, internal-error masking, auth/forbidden/rate-limit semantics.
+- Fetch handling: `apiFetch` / `apiFetchJson` for internal fetch calls, with raw fetch retained for resource/probe/custom-client paths.
+- Login language: non-empty login response `language` applies immediately; empty string does not override local choice.
+- Signed-in language sync: NavRail switch updates local UI immediately and best-effort calls `PUT /v1/user/language`.
+
 ## Working Directory
 
 Use this worktree for frontend changes:

@@ -22,6 +22,8 @@ git diff --check
 
 If layout may be affected by English copy length, also verify the touched screens in both `zh-CN` and `en-US`.
 
+For backend API language or error behavior, also read `docs/i18n-backend-integration-goal-guide.zh-CN.md`.
+
 ## Architecture Rules
 
 - Use `@octo/base` as the only application-facing i18n API.
@@ -77,6 +79,37 @@ format.relativeTime(updatedAt);
 ```
 
 Semi UI component chrome is also locale-sensitive. The app-level `I18nProvider` owns the Semi `ConfigProvider` / `LocaleProvider` bridge, so do not set Semi locale per DatePicker, Pagination, Modal, or Select unless a component has a specific product reason. Component props that are still product copy, such as labels, placeholders, tooltips, and aria labels, must continue to use `t()`.
+
+## Backend I18n Contract
+
+Frontend locale detection supports these inputs, in order:
+
+```txt
+explicit locale argument
+query ?lang=
+query ?locale=
+i18n_lang cookie
+localStorage octo:locale
+navigator.language
+defaultLocale
+```
+
+`i18n.setLocale()` persists both `localStorage.octo:locale` and `i18n_lang=<locale>; Path=/; Max-Age=31536000; SameSite=Lax` unless `persist: false` is passed. `i18n_lang` is not a credential; it remains frontend-readable so public pages and login flows can participate in backend language negotiation.
+
+Internal Octo API requests must send `Accept-Language` through `APIClient` or `apiFetch` / `apiFetchJson`. Do not send `X-Octo-Lang`; that header is reserved for trusted service-to-service propagation. Do not opt into `X-Octo-Error-Envelope` by default; the backend currently double-emits v2 and legacy fields.
+
+Use `normalizeApiError()` for backend errors. Business logic must branch on `error.code`, then `error.http_status`, then legacy status. Do not branch on localized `error.message`. Display policy:
+
+- `err.shared.internal` or 5xx: show the frontend generic error, not backend raw text.
+- auth-required/token errors or 401: treat as session expired.
+- `err.shared.auth.forbidden` or 403: show permission failure but do not logout.
+- `err.shared.rate.limited` or 429: show rate-limit copy or the safe backend message.
+- ordinary business errors: show backend-localized `error.message`.
+- legacy errors: show `msg`, with local fallback copy.
+
+Independent internal `fetch` calls should use `apiFetch` or `apiFetchJson` so they share `Accept-Language` and normalized error behavior. Keep raw `fetch` for file/blob/static resources, presigned URLs, local model probes, third-party URLs, unload beacons, and intentionally custom protocol clients such as OIDC bind HTTP.
+
+Login responses may include `language`. A non-empty supported value immediately calls `i18n.setLocale(language)` so localStorage and `i18n_lang` match the account preference. `language: ""` means no explicit account preference and must not overwrite the current local choice. Signed-in NavRail language changes update local UI immediately and best-effort `PUT /v1/user/language`; login-page language changes stay local only.
 
 ## Key Naming
 
