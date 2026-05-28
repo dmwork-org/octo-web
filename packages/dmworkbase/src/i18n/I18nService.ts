@@ -1,4 +1,5 @@
 import { detectLocale, localeStorageKey } from "./detectLocale";
+import { getTextDirection } from "./direction";
 import { createI18nFormatter, I18nFormatter } from "./format";
 import {
   defaultLocale,
@@ -10,7 +11,6 @@ import {
   NamespaceResources,
   normalizeLocale,
   supportedLocales,
-  TextDirection,
   TranslateOptions,
 } from "./types";
 
@@ -50,8 +50,6 @@ function interpolate(template: string, values?: TranslateOptions["values"]) {
   });
 }
 
-const rtlLocales = new Set<Locale>();
-
 function createEmptyMessages(): Record<Locale, FlatMessages> {
   return supportedLocales.reduce(
     (acc, locale) => {
@@ -62,14 +60,10 @@ function createEmptyMessages(): Record<Locale, FlatMessages> {
   );
 }
 
-function getDirection(locale: Locale): TextDirection {
-  return rtlLocales.has(locale) ? "rtl" : "ltr";
-}
-
 function applyDocumentLocale(locale: Locale) {
   if (typeof document === "undefined") return;
   document.documentElement.lang = locale;
-  document.documentElement.dir = getDirection(locale);
+  document.documentElement.dir = getTextDirection(locale);
 }
 
 export class I18nService {

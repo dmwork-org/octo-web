@@ -1,4 +1,5 @@
 export * from "./detectLocale";
+export * from "./direction";
 export * from "./format";
 export * from "./I18nProvider";
 export * from "./I18nService";
