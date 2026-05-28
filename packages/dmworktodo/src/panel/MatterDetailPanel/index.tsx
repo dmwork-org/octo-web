@@ -8,6 +8,7 @@ import type {
   TimelineEntry,
   TimelineReq,
   MatterActivity,
+  MatterOutput,
 } from "../../bridge/types";
 import {
   getMatter,
@@ -22,12 +23,14 @@ import {
   addAssignee,
   removeAssignee,
   listActivities,
+  listOutputs,
 } from "../../api/todoApi";
 import { getMessageByChannel } from "../../api/imMessageApi";
 import { Toast } from "../../utils/toast";
 import { toParentGroupNo, CHANNEL_TYPE_COMMUNITY_TOPIC } from "../../utils/channelId";
 import { buildLinkableChannels } from "../../utils/buildLinkableChannels";
 import type { GroupSaveListRow } from "../../utils/buildLinkableChannels";
+import { resolveAndGuardUrl } from "../../utils/fileUrl";
 import UserName from "../../ui/UserName";
 import LinkChannelsModal from "../../ui/LinkChannelsModal";
 import type {
@@ -36,7 +39,10 @@ import type {
 } from "../../ui/LinkChannelsModal";
 import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
+import { OutputsPanel } from "../../ui/OutputsPanel";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
+import { getExtension } from "@octo/base/src/Components/FilePreviewPanel/types";
+import { downloadFile } from "@octo/base/src/Utils/download";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp, i18n, useI18n, t as translate } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
@@ -70,7 +76,7 @@ export default function MatterDetailPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "channels" | "changelog"
+    "channels" | "outputs" | "changelog"
   >("channels");
 
   // Timeline
@@ -196,6 +202,203 @@ export default function MatterDetailPanel({
       WKApp.mittBus.off("wk:matter-updated", handler);
     };
   }, [matterId, loadActivities]);
+
+  // Outputs (产出文件): 去重后的文件列表, 来自 GET /matters/:id/outputs。
+  const [outputs, setOutputs] = useState<MatterOutput[]>([]);
+  const [outputsLoading, setOutputsLoading] = useState(false);
+  const [outputsHasMore, setOutputsHasMore] = useState(false);
+  const [outputsCursor, setOutputsCursor] = useState<string | undefined>();
+  const [outputsQuery, setOutputsQuery] = useState("");
+  const [outputsError, setOutputsError] = useState<string | null>(null);
+  // 单调递增请求序号 + matterId 快照: 双重防止 race condition。
+  //
+  // seq guard: 用户连续输入搜索词时, 旧请求可能后到, 用 seq 比对丢弃过期结果。
+  // matterId guard: matter 切换时, OutputsPanel 内部 pending 的 debounce
+  // setTimeout 可能在切换后才触发, 闭包持有的是上一个 matter 的
+  // loadOutputs。如果只用 seq, 那个旧请求会自增 seq 把自己变成 latest
+  // 然后用 Matter A 的数据覆盖 Matter B (review #97 round-5 Jerry-Xin
+  // blocking — stale debounced search). 这里用 matterId 快照 + 当前 ref
+  // 比对兜底, 跟 OutputsPanel 内部清 timer 形成两道防线。
+  const outputsReqSeqRef = useRef(0);
+  const currentMatterIdRef = useRef<string | undefined>(matterId);
+  useEffect(() => {
+    currentMatterIdRef.current = matterId;
+  }, [matterId]);
+
+  const loadOutputs = useCallback(
+    async (cursor?: string, query?: string) => {
+      if (!matterId) {
+        setOutputs([]);
+        return;
+      }
+      const requestMatterId = matterId;
+      const seq = ++outputsReqSeqRef.current;
+      setOutputsLoading(true);
+      if (!cursor) setOutputsError(null);
+      try {
+        const res = await listOutputs(matterId, {
+          limit: 50,
+          cursor,
+          q: query || undefined,
+        });
+        // 过期结果: 期间已有更新的请求发出, 或 matter 已切换, 直接丢弃。
+        if (
+          seq !== outputsReqSeqRef.current ||
+          currentMatterIdRef.current !== requestMatterId
+        ) {
+          return;
+        }
+        if (cursor) {
+          // Append for pagination
+          setOutputs((prev) => [...prev, ...(res.data || [])]);
+        } else {
+          setOutputs(res.data || []);
+        }
+        setOutputsHasMore(res.pagination?.has_more ?? false);
+        setOutputsCursor(res.pagination?.next_cursor);
+      } catch {
+        if (
+          seq !== outputsReqSeqRef.current ||
+          currentMatterIdRef.current !== requestMatterId
+        ) {
+          return;
+        }
+        if (!cursor) {
+          // 初次加载失败: 列表可能从空开始, 或上一次成功结果已经过期不可信,
+          // 清空所有相关状态 (rows / cursor / has_more) + 显示错误条 +
+          // 保留 retry 按钮。如果不清 cursor/has_more, 错误态下还会
+          // 渲染出"加载更多"按钮, 误导用户。
+          setOutputs([]);
+          setOutputsCursor(undefined);
+          setOutputsHasMore(false);
+          setOutputsError(t("todo.outputs.loadFailed"));
+        } else {
+          // 加载更多失败: 已展示的行还能用, 不清不闪, 给个 toast 让用户重试。
+          // (load-more 按钮会在 loading=false 后重新可点)
+          Toast.error(t("todo.outputs.loadMoreFailed"));
+        }
+      } finally {
+        if (
+          seq === outputsReqSeqRef.current &&
+          currentMatterIdRef.current === requestMatterId
+        ) {
+          setOutputsLoading(false);
+        }
+      }
+    },
+    [matterId, t],
+  );
+  useEffect(() => {
+    // matter 切换时立即清空 outputs, 避免 UI 短暂展示上一个 matter 的文件
+    // (正确性 + 数据泄露风险 — Jerry-Xin PR #97 round-6 blocking)。
+    // 然后重置搜索词 / 游标 / has_more, 触发新 matter 的初次加载。
+    setOutputs([]);
+    setOutputsQuery("");
+    setOutputsCursor(undefined);
+    setOutputsHasMore(false);
+    setOutputsError(null);
+    loadOutputs(undefined, "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadOutputs]);
+
+  // 订阅 wk:matter-updated: 关联群 link/unlink 后 matter.channels 会变,
+  // 后端 outputs 也可能因为 channel 变化产生新行 (LLM 路径) 或被遮罩
+  // (UI 层 channel-membership gate)。跟 activities 同样的处理: 收到事件
+  // 重拉 outputs 当前查询, 保证 tab 数据新鲜。
+  useEffect(() => {
+    if (!matterId) return;
+    const handler = (data: { matterId: string }) => {
+      if (data?.matterId === matterId) {
+        loadOutputs(undefined, outputsQuery);
+      }
+    };
+    WKApp.mittBus.on("wk:matter-updated", handler);
+    return () => {
+      WKApp.mittBus.off("wk:matter-updated", handler);
+    };
+    // 依赖 outputsQuery 让事件处理器拿到最新搜索词; loadOutputs 已经
+    // 是 useCallback 稳定引用 (依赖 matterId), 这里直接列出。
+  }, [matterId, loadOutputs, outputsQuery]);
+
+  const handleOutputsSearch = useCallback(
+    (q: string) => {
+      // 注: setOutputsCursor 不需要在这里清, loadOutputs 收到非 cursor 调用会
+      // 用响应里的 next_cursor 重新覆盖。但搜索词刚换时清 query 状态保证
+      // OutputsPanel 的可控 input value 跟 panel 同步。
+      setOutputsQuery(q);
+      loadOutputs(undefined, q);
+    },
+    [loadOutputs],
+  );
+
+  const handleOutputsLoadMore = useCallback(() => {
+    if (outputsCursor) {
+      loadOutputs(outputsCursor, outputsQuery);
+    }
+  }, [loadOutputs, outputsCursor, outputsQuery]);
+
+  const handleOutputsRetry = useCallback(() => {
+    loadOutputs(undefined, outputsQuery);
+  }, [loadOutputs, outputsQuery]);
+
+  // 文件预览: 只在事项详情嵌入会话侧边栏时启用 (showClose === true)。
+  // 触发同一个 mittBus 事件 "wk:file-preview", Chat 页面的 _onFilePreview
+  // 处理器接管, 关闭其它互斥面板并打开文件预览壳子。
+  //
+  // 安全: 跟 Messages/File 的 handlePreview 一致, 通过 resolveAndGuardUrl
+  // 一步走完 (getFileURL 解析相对路径 → isSafeUrl 拒绝危险协议)。后端
+  // outputs 接口返回的 file_url 不可信, 必须验证。
+  //
+  // sourceChannelId 解析: MatterOutput.source_channel_id 是 matter_channels.id
+  // (UUID), 但 wk:file-preview 的消费者 (Pages/Chat._onFilePreview, ThreadPanel)
+  // 期待的是 IM channel_id。从 matter.channels 反查拿到真实 IM channel_id +
+  // channel_type 再传给 mittBus, 避免 thread-handoff 路径误判。找不到对应行
+  // (channel 已解关联 / 数据漂移) 时省略 sourceChannelId, 让 _onFilePreview
+  // 走正常预览分支。
+  const handleOutputPreview = useCallback(
+    (item: MatterOutput) => {
+      const url = resolveAndGuardUrl(item.file_url);
+      if (!url) return;
+      const ext = getExtension("", item.file_name);
+      const matchedCh = (matter?.channels || []).find(
+        (ch) => ch.id === item.source_channel_id,
+      );
+      WKApp.mittBus.emit("wk:file-preview", {
+        url,
+        name: item.file_name || t("base.conversation.file.unknown"),
+        extension: ext,
+        size: item.file_size,
+        sourceChannelId: matchedCh?.channel_id,
+        sourceChannelType: matchedCh?.channel_type,
+      });
+    },
+    [matter?.channels, t],
+  );
+
+  // 文件下载: 跟 Messages/File 的 handleDownload 一致的两步,
+  // 复用同一个 resolveAndGuardUrl helper。注入给 OutputsPanel 后,
+  // 组件本身不再依赖 WKApp / dmworkbase 的 download utils, 保持
+  // ui/ 层纯展示 (review #97 Jerry-Xin nit, yujiawei P2 #3)。
+  const handleOutputDownload = useCallback((item: MatterOutput) => {
+    const url = resolveAndGuardUrl(item.file_url);
+    if (!url) return;
+    void downloadFile(url, item.file_name || "file");
+  }, []);
+
+  // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
+  // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
+  //
+  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是
+  // matter_channels.id (UUID), 不是 IM 的 channel_id。本侧已经从
+  // matter.channels 拿到 (matter_channels.id → channel_id, channel_type),
+  // 配合 useMyGroups 的 myGroupNos 就能按 matter_channels.id 反查成员关系。
+  //
+  // 注: 后端 access policy (Mininglamp-OSS/octo-matter#34) 已经把 outputs
+  // 限制成 creator/assignees/participants, channel-member-only 用户被拒。
+  // 这里只是在 UI 上多一层 "来源群名" 遮罩, 避免泄漏 "事项关联了哪些
+  // 我没加入的群" 这种二阶信息 (跟关联群聊 tab 一致的处理)。
+  // 注: 这个 useMemo 引用了 myGroupNos, 必须放在 useMyGroups() 调用之后,
+  // 实际定义在该 hook 调用后 (见下方)。
 
   // 每个 channel 的最新一条 timeline 条目 (用于 "最新进展" 展示)。
   // matter 加载后并发对每个关联 channel 调 listTimeline(limit=1),
@@ -429,6 +632,35 @@ export default function MatterDetailPanel({
   //   - 拉取失败时 failed=true, 保守处理成 "全部未加入" (宁可多遮)
   const { groupNos: myGroupNos, loading: myGroupsLoading, failed: myGroupsFailed } = useMyGroups();
 
+  // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
+  // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
+  //
+  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是
+  // matter_channels.id (UUID), 不是 IM 的 channel_id。从 matter.channels
+  // 拿到 (matter_channels.id → channel_id, channel_type), 配合 myGroupNos
+  // 就能按 matter_channels.id 反查成员关系。
+  const outputsChannelMembership = useMemo(() => {
+    const map = new Map<string, boolean>();
+    const chs = matter?.channels || [];
+    for (const ch of chs) {
+      const parentNo = toParentGroupNo(ch.channel_id, ch.channel_type);
+      const isMember = !myGroupsFailed && myGroupNos.has(parentNo);
+      map.set(ch.id, isMember);
+    }
+    return map;
+  }, [matter?.channels, myGroupNos, myGroupsFailed]);
+
+  const getOutputChannelMembership = useCallback(
+    (sourceChannelId?: string) => {
+      if (!sourceChannelId) return { isMember: true, loading: false };
+      if (myGroupsLoading) return { isMember: false, loading: true };
+      // 没在 map 里 = 该 channel 已被解关联 / 数据漂移, 保守当成不在群
+      const isMember = outputsChannelMembership.get(sourceChannelId) ?? false;
+      return { isMember, loading: false };
+    },
+    [outputsChannelMembership, myGroupsLoading],
+  );
+
   // ── UI/数据分离: 为 ui/ 组件提供 renderAvatar / renderUserName ──
   const renderAvatar = useCallback(
     (uid: string, size: number) => (
@@ -600,11 +832,12 @@ export default function MatterDetailPanel({
   })();
 
   const tabs: {
-    id: "channels" | "changelog";
+    id: "channels" | "outputs" | "changelog";
     label: string;
     count: number;
   }[] = [
     { id: "channels", label: t("todo.detail.linkedGroups"), count: channels.length },
+    { id: "outputs", label: t("todo.outputs.tabLabel"), count: outputs.length },
     { id: "changelog", label: t("todo.detail.changeLog"), count: activities.length },
   ];
 
@@ -918,6 +1151,28 @@ export default function MatterDetailPanel({
               })
             )}
           </div>
+        )}
+
+        {/* ── Tab: 产出文件 (outputs) ── */}
+        {/* 注: onPreview 用 showClose 作为 "嵌入会话侧边栏" 信号, 因为
+            wk:file-preview 事件目前只有 Pages/Chat 的 _onFilePreview 在监听。
+            如果以后别的宿主也想接管文件预览, 这条 gate 可能要改成显式
+            "embeddedInChatSidebar" 或类似的语义化 prop。 */}
+        {activeTab === "outputs" && (
+          <OutputsPanel
+            outputs={outputs}
+            loading={outputsLoading}
+            hasMore={outputsHasMore}
+            query={outputsQuery}
+            error={outputsError}
+            onLoadMore={handleOutputsLoadMore}
+            onSearch={handleOutputsSearch}
+            onRetry={handleOutputsRetry}
+            renderAvatar={renderAvatar}
+            onPreview={showClose ? handleOutputPreview : undefined}
+            onDownload={handleOutputDownload}
+            getChannelMembership={getOutputChannelMembership}
+          />
         )}
 
         {/* ── Tab: 变更记录 (activities) ── */}
