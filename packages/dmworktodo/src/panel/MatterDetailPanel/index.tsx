@@ -289,12 +289,14 @@ export default function MatterDetailPanel({
     [matterId],
   );
   useEffect(() => {
-    // matter 切换时重置搜索词 / 游标 / has_more, 避免上一个 matter 的过滤
-    // 条件 + load-more 状态影响新 matter 的初次加载 (跟 OutputsPanel
-    // 内部的 searchValue 同步, hasMore 重置见 review #97 yujiawei P2-1)。
+    // matter 切换时立即清空 outputs, 避免 UI 短暂展示上一个 matter 的文件
+    // (正确性 + 数据泄露风险 — Jerry-Xin PR #97 round-6 blocking)。
+    // 然后重置搜索词 / 游标 / has_more, 触发新 matter 的初次加载。
+    setOutputs([]);
     setOutputsQuery("");
     setOutputsCursor(undefined);
     setOutputsHasMore(false);
+    setOutputsError(null);
     loadOutputs(undefined, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadOutputs]);
