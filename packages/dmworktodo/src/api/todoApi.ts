@@ -17,6 +17,8 @@ import type {
   ListCommentsParams,
   MatterActivity,
   ListActivitiesParams,
+  MatterOutput,
+  ListOutputsParams,
 } from "../bridge/types";
 
 /**
@@ -304,6 +306,18 @@ export async function listActivities(
 ): Promise<PaginatedList<MatterActivity>> {
   return get<PaginatedList<MatterActivity>>(
     `/matters/${matterId}/activities`,
+    params as unknown as Record<string, unknown>,
+  );
+}
+
+// ─── Outputs (产出文件) ──────────────────────────────────
+
+export async function listOutputs(
+  matterId: string,
+  params?: ListOutputsParams,
+): Promise<PaginatedList<MatterOutput>> {
+  return get<PaginatedList<MatterOutput>>(
+    `/matters/${matterId}/outputs`,
     params as unknown as Record<string, unknown>,
   );
 }

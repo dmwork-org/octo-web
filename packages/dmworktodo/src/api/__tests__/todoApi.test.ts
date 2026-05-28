@@ -226,6 +226,54 @@ describe('matterApi', () => {
     });
   });
 
+  describe('listOutputs', () => {
+    it('sends GET to /matters/:id/outputs with limit/cursor/q params', async () => {
+      const mockResponse = {
+        data: {
+          data: [{ id: 'o1', file_url: 'https://cdn.example/file.pdf' }],
+          pagination: { has_more: true, next_cursor: 'next123' },
+        },
+      };
+      mockAxios.get.mockResolvedValueOnce(mockResponse);
+
+      const result = await matterApi.listOutputs('t1', {
+        limit: 50,
+        cursor: 'abc',
+        q: 'report',
+      });
+
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        '/matter/api/v1/matters/t1/outputs',
+        { params: { limit: '50', cursor: 'abc', q: 'report' } },
+      );
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('omits undefined params (no q on initial load)', async () => {
+      const mockResponse = { data: { data: [], pagination: { has_more: false } } };
+      mockAxios.get.mockResolvedValueOnce(mockResponse);
+
+      await matterApi.listOutputs('t1', { limit: 50 });
+
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        '/matter/api/v1/matters/t1/outputs',
+        { params: { limit: '50' } },
+      );
+    });
+
+    it('works without params (defaults applied server-side)', async () => {
+      const mockResponse = { data: { data: [], pagination: { has_more: false } } };
+      mockAxios.get.mockResolvedValueOnce(mockResponse);
+
+      await matterApi.listOutputs('t1');
+
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        '/matter/api/v1/matters/t1/outputs',
+        { params: {} },
+      );
+    });
+  });
+
   describe('MatterStatusBadge rendering', () => {
     it('renders correct labels and classNames for all statuses', async () => {
       const { MatterStatusBadge } = await import('../../ui/TodoStatusBadge');
