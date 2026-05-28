@@ -119,6 +119,68 @@
   color: var(--wk-icon-muted);
 }
 
+/* ─── 子区加载警告条 ─── */
+/* 列表上方 surface "X 个群的子区加载失败" + 重试。靠 --wk-color-warning
+   token (亮/暗模式都有) 给暖色, 不硬编码。 */
+.wk-lcm__warn {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin: 0 var(--wk-sp-4) var(--wk-sp-2);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  background: var(--wk-color-warning-bg);
+  border: 1px solid var(--wk-color-warning);
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  color: var(--wk-text-primary);
+}
+
+.wk-lcm__warn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-color-warning);
+  color: var(--wk-text-on-brand);
+  font-size: var(--wk-text-size-xs);
+  font-weight: var(--wk-font-semibold);
+  line-height: 1;
+}
+
+.wk-lcm__warn-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.wk-lcm__warn-retry {
+  flex: none;
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
+  border: 1px solid var(--wk-color-warning);
+  border-radius: var(--wk-r-xs);
+  background: transparent;
+  color: var(--wk-color-warning);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  line-height: 18px;
+  cursor: pointer;
+  transition: background var(--wk-dur-fast);
+}
+
+.wk-lcm__warn-retry:hover:not(:disabled) {
+  background: var(--wk-color-warning);
+  color: var(--wk-text-on-brand);
+}
+
+.wk-lcm__warn-retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ─── 列表 ─── */
 .wk-lcm__list {
   flex: 1;
@@ -207,6 +269,43 @@
   gap: var(--wk-sp-1);
   flex: 1;
   min-width: 0;
+}
+
+/* ─── 子区 (channel_type=5): 二级缩进 + #前缀 + 父群上下文 ─── */
+/*
+ * 视觉区分子区:
+ *   - 整行左缩进 var(--wk-sp-4) 显示层级
+ *   - 名字前面带 #  , 跟 chat 里 thread 的视觉一致
+ *   - 父群名作为副标题用 11px tertiary 文字, "在 #xxx" 形式
+ */
+.wk-lcm__item.is-thread {
+  padding-left: calc(var(--wk-sp-2) + var(--wk-sp-4));
+}
+
+.wk-lcm__item-thread-prefix {
+  display: inline-block;
+  margin-right: var(--wk-sp-0-5);
+  color: var(--wk-text-tertiary);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-lcm__item-context {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── 列表过长时的提示 ─── */
+.wk-lcm__overflow-hint {
+  padding: var(--wk-sp-2) var(--wk-sp-2);
+  margin-top: var(--wk-sp-1);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+  text-align: center;
+  border-top: 1px dashed var(--wk-border-default);
 }
 
 /* ─── 右栏 ─── */
