@@ -11,6 +11,7 @@ import { ChannelSettingVM } from "./vm";
 import RoutePage from "../RoutePage";
 import ConversationContext from "../Conversation/context";
 import { ChannelTypeCustomerService } from "../../Service/Const";
+import { I18nContext } from "../../i18n";
 
 export interface ChannelSettingProps {
     onClose?: () => void
@@ -19,6 +20,8 @@ export interface ChannelSettingProps {
 }
 
 export default class ChannelSetting extends Component<ChannelSettingProps> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
 
     subscribers(): Subscriber[] {
         return this.vm.subscribers;
@@ -51,7 +54,10 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
                 memberCount = channelInfo.orgData.member_count
             }
            
-            return <RoutePage title={ vm.channel.channelType === ChannelTypeCustomerService?"聊天信息":`聊天信息（${memberCount}）`} onClose={() => {
+            return <RoutePage title={ vm.channel.channelType === ChannelTypeCustomerService
+                ? this.context.t("base.channelSetting.title")
+                : this.context.t("base.channelSetting.titleWithCount", { values: { count: memberCount } })
+            } onClose={() => {
                 if (onClose) {
                     onClose()
                 }

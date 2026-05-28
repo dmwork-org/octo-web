@@ -11,6 +11,7 @@ import useSpaceFeedbackSetting, {
 import VoiceFeedbackNotice from '../MessageInput/VoiceFeedbackNotice';
 import WKApp from '../../App';
 import VoiceService from '../../Service/VoiceService';
+import { useI18n } from '../../i18n';
 
 interface VoiceSettingsPanelProps {
   onClose: () => void;
@@ -18,6 +19,7 @@ interface VoiceSettingsPanelProps {
 
 export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps) {
   const { spaceSetting, loaded, voiceConfig, apiAvailable, updateSetting } = useSpaceFeedbackSetting();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [showNotice, setShowNotice] = useState(false);
   const spaceIdRef = useRef<string>('');
@@ -81,12 +83,12 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
         await disableVoiceInput(spaceId);
       } catch {
         updateSetting({ voice_input_enabled: prevEnabled, voice_feedback_on: prevFeedback });
-        Toast.error('操作失败，请重试');
+        Toast.error(t('base.navRail.voiceSettings.operationFailed'));
       } finally {
         setLoading(false);
       }
     }
-  }, [loading, spaceSetting, updateSetting]);
+  }, [loading, spaceSetting, t, updateSetting]);
 
   const handleNoticeAccept = useCallback(async (feedbackOn: boolean) => {
     const spaceId = spaceIdRef.current;
@@ -96,11 +98,11 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       await acceptVoiceInput(spaceId, feedbackOn);
       setShowNotice(false);
     } catch {
-      Toast.error('操作失败，请重试');
+      Toast.error(t('base.navRail.voiceSettings.operationFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleFeedbackToggle = useCallback(async (checked: boolean) => {
     if (loading) return;
@@ -115,11 +117,11 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       await toggleVoiceFeedback(spaceId, newValue, voiceConfig?.feedback_url);
     } catch {
       updateSetting({ voice_feedback_on: prevValue });
-      Toast.error('操作失败，请重试');
+      Toast.error(t('base.navRail.voiceSettings.operationFailed'));
     } finally {
       setLoading(false);
     }
-  }, [loading, spaceSetting, voiceConfig, updateSetting]);
+  }, [loading, spaceSetting, t, voiceConfig, updateSetting]);
 
   const handleLocalToggle = useCallback(async (checked: boolean) => {
     if (localSaving) return;
@@ -134,11 +136,11 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       setSharedVoiceConfig(newConfig);
     } catch {
       setLocalEnabled(prevEnabled);
-      Toast.error('操作失败，请重试');
+      Toast.error(t('base.navRail.voiceSettings.operationFailed'));
     } finally {
       setLocalSaving(false);
     }
-  }, [localSaving, localEnabled]);
+  }, [localSaving, localEnabled, t]);
 
   const handleLocalConfigSave = useCallback(async () => {
     if (localSaving) return;
@@ -163,13 +165,13 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       const newConfig = await VoiceService.shared.getConfig();
       setSharedVoiceConfig(newConfig);
       setLocalDirty(false);
-      Toast.success('已保存');
+      Toast.success(t('base.navRail.voiceSettings.saved'));
     } catch {
-      Toast.error('保存失败，请重试');
+      Toast.error(t('base.navRail.voiceSettings.saveFailed'));
     } finally {
       setLocalSaving(false);
     }
-  }, [localSaving, localEnabled, localTimeoutMs, localProbeUrl, localTranscribeUrl]);
+  }, [localSaving, localEnabled, localTimeoutMs, localProbeUrl, localTranscribeUrl, t]);
 
   const handleLocalConfigReset = useCallback(async () => {
     if (localSaving) return;
@@ -186,13 +188,13 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       setLocalProbeUrl(cfg.probe_url ?? '');
       setLocalTranscribeUrl(cfg.transcribe_url ?? '');
       setLocalDirty(false);
-      Toast.success('已恢复默认设置');
+      Toast.success(t('base.navRail.voiceSettings.defaultsRestored'));
     } catch {
-      Toast.error('操作失败，请重试');
+      Toast.error(t('base.navRail.voiceSettings.operationFailed'));
     } finally {
       setLocalSaving(false);
     }
-  }, [localSaving]);
+  }, [localSaving, t]);
 
   const handleTestProbe = useCallback(async () => {
     if (!localProbeUrl.trim() || probeTestStatus === 'loading') return;
@@ -212,7 +214,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
   return (
     <WKModal
       visible
-      title="语音设置"
+      title={t('base.navRail.voiceSettings.title')}
       onCancel={onClose}
       options={{ closeOnEsc: true, maskClosable: true }}
       footer={null}
@@ -220,12 +222,12 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loaded && !apiAvailable && (
           <div style={{ color: 'var(--semi-color-warning)', fontSize: 13 }}>
-            当前服务不可用，无法修改语音设置
+            {t('base.navRail.voiceSettings.serviceUnavailable')}
           </div>
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>语音转写</span>
+          <span>{t('base.navRail.voiceSettings.transcription')}</span>
           <Switch
             size="small"
             checked={isVoiceEnabled}
@@ -237,8 +239,8 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
         {isVoiceEnabled && voiceConfig?.feedback_url && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              帮助改进语音识别服务
-              <Tooltip content="开启后，语音识别数据及修改后的文本将用于改善识别质量。">
+              {t('base.navRail.voiceSettings.feedback')}
+              <Tooltip content={t('base.navRail.voiceSettings.feedbackTooltip')}>
                 <IconHelpCircle size="small" style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
               </Tooltip>
             </span>
@@ -255,8 +257,8 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
           <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                本地语音识别
-                <Tooltip content="开启后，语音识别请求将优先尝试本地部署的 ASR 服务（需本地服务可达）。">
+                {t('base.navRail.voiceSettings.localTranscription')}
+                <Tooltip content={t('base.navRail.voiceSettings.localTranscriptionTooltip')}>
                   <IconHelpCircle size="small" style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
                 </Tooltip>
               </span>
@@ -277,7 +279,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
               }}>
                 <div>
                   <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)' }}>
-                    超时时间 (ms)
+                    {t('base.navRail.voiceSettings.localTimeoutMs')}
                   </div>
                   <input
                     type="number"
@@ -293,7 +295,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                 </div>
                 <div>
                   <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)' }}>
-                    探测地址
+                    {t('base.navRail.voiceSettings.localProbeUrl')}
                   </div>
                   <input
                     type="url"
@@ -311,15 +313,15 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                     disabled={probeTestStatus === 'loading' || !localProbeUrl.trim()}
                     style={{ marginLeft: 8, fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
                   >
-                    {probeTestStatus === 'idle' && '测试连接'}
-                    {probeTestStatus === 'loading' && '测试中...'}
-                    {probeTestStatus === 'success' && '✅ 连接成功'}
-                    {probeTestStatus === 'fail' && '❌ 连接失败'}
+                    {probeTestStatus === 'idle' && t('base.navRail.voiceSettings.testConnection')}
+                    {probeTestStatus === 'loading' && t('base.navRail.voiceSettings.testingConnection')}
+                    {probeTestStatus === 'success' && t('base.navRail.voiceSettings.connectionSuccess')}
+                    {probeTestStatus === 'fail' && t('base.navRail.voiceSettings.connectionFailed')}
                   </button>
                 </div>
                 <div>
                   <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)' }}>
-                    转写地址
+                    {t('base.navRail.voiceSettings.localTranscribeUrl')}
                   </div>
                   <input
                     type="url"
@@ -343,7 +345,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                       background: 'transparent', cursor: 'pointer',
                     }}
                   >
-                    恢复默认
+                    {t('base.navRail.voiceSettings.restoreDefaults')}
                   </button>
                   <button
                     onClick={handleLocalConfigSave}
@@ -355,7 +357,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                       cursor: localDirty ? 'pointer' : 'not-allowed',
                     }}
                   >
-                    保存
+                    {t('base.navRail.voiceSettings.save')}
                   </button>
                 </div>
               </div>
@@ -372,7 +374,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                 rel="noopener noreferrer"
                 style={{ color: 'var(--semi-color-link)', fontSize: 13 }}
               >
-                《Octo个人信息保护政策》
+                {t('base.navRail.voiceSettings.privacyPolicy')}
               </a>
             )}
             {agreementUrl && (
@@ -382,7 +384,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                 rel="noopener noreferrer"
                 style={{ color: 'var(--semi-color-link)', fontSize: 13 }}
               >
-                《Octo 用户服务协议》
+                {t('base.navRail.voiceSettings.userAgreement')}
               </a>
             )}
           </div>

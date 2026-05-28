@@ -12,6 +12,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { act } from 'react-dom/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { i18n } from '../../../i18n';
 
 const hoisted = vi.hoisted(() => {
   const updateSetting = vi.fn();
@@ -106,6 +107,7 @@ import VoiceSettingsPanel from '../VoiceSettingsPanel';
 let container: HTMLDivElement;
 
 beforeEach(() => {
+  i18n.setLocale('zh-CN', { notify: false, persist: false });
   resetHookReturn();
   hoisted.updateSetting.mockReset();
   hoisted.acceptVoiceInput.mockReset().mockResolvedValue(undefined);

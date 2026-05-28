@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import WKApp from "../App"
+import { t } from "../i18n"
 import SidebarService, { SidebarItem } from "../Service/SidebarService"
 
 export interface UseFollowSidebarResult {
@@ -71,7 +72,7 @@ export function useFollowSidebar(): UseFollowSidebarResult {
             setFollowVersion(v)
             versionRef.current = v
         } catch (e: any) {
-            setError(e?.message || "加载关注列表失败")
+            setError(e?.message || t("base.followSidebar.loadFailed"))
         } finally {
             setIsLoading(false)
         }

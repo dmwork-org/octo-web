@@ -8,6 +8,7 @@ import { subscriberDisplayName } from '../../Utils/displayName'
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
 import moment from 'moment'
 import { isMessageContinuation } from '../../Service/messageContinuity'
+import { t } from '../../i18n'
 
 export interface MessageRowSelectionState {
   /** 是否处于多选模式（来自 context.editOn()） */
@@ -340,7 +341,9 @@ function formatTimestamp(timestamp: number): string {
   
   // 昨天：显示 "昨天 HH:mm"
   if (diff < 86400 * 2000 && moment(ms).isSame(moment().subtract(1, 'day'), 'day')) {
-    return `昨天 ${moment(ms).format('HH:mm')}`
+    return t('base.time.yesterdayWithTime', {
+      values: { time: moment(ms).format('HH:mm') },
+    })
   }
   
   // 一周内：显示 "周X HH:mm"

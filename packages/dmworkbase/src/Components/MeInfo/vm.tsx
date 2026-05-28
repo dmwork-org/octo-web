@@ -18,6 +18,7 @@ import { Convert } from "../../Service/Convert";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
 import ExperimentalFeatures from "../ExperimentalFeatures";
+import { t } from "../../i18n";
 
 /**
  * 「实验性功能」入口在 MeInfo 默认隐藏 —— 通过连击「OCTO 号」行 5 次解锁
@@ -230,12 +231,12 @@ export class MeInfoVM extends ProviderListener {
                     // 理论上到这里时用户已经登录；空 provider 一般是 SID 存储格式历史遗留,
                     // 展示同 local 的提示即可,引导用户联系管理员。
                 case "local_account":
-                    Toast.error("当前账号不支持在线实名认证，请联系管理员")
+                    Toast.error(t("base.me.realname.unsupported"))
                     break
                 case "no_account_url":
                     // appconfig 没下发对应 provider 的 account_url：要么配置漏了,
                     // 要么用户登录用的 provider 已被后端下掉。兜底 Toast, 不跳 prod。
-                    Toast.error("当前环境未配置实名认证入口，请稍后再试或联系管理员")
+                    Toast.error(t("base.me.realname.notConfigured"))
                     break
             }
             return
@@ -260,7 +261,7 @@ export class MeInfoVM extends ProviderListener {
             // 弹窗被浏览器拦截:提示用户允许弹窗后重试,不自动替换当前 tab。
             // 即使用户不允许,当前 tab 的 MeInfo 状态保留,避免 "?verified=1 handler
             // 无法触发" 的二次事故。
-            Toast.warning("浏览器拦截了新窗口，请允许本站弹窗后重试「去认证」")
+            Toast.warning(t("base.me.realname.popupBlocked"))
             return
         }
         // 手动解除 opener,等价 noopener 安全隔离(防 IdP 通过 window.opener 反操作本页)。
@@ -341,17 +342,19 @@ export class MeInfoVM extends ProviderListener {
     private formatVerifiedAtLabel(): string {
         const ts = WKApp.loginInfo.realnameVerifiedAt
         if (!ts || typeof ts !== "number" || ts <= 0) {
-            return "已认证"
+            return t("base.me.realname.verified")
         }
         // 后端通常发秒级时间戳，兼容毫秒
         const ms = ts > 10_000_000_000 ? ts : ts * 1000
         const d = new Date(ms)
         if (Number.isNaN(d.getTime())) {
-            return "已认证"
+            return t("base.me.realname.verified")
         }
         const yyyy = d.getFullYear()
         const mm = String(d.getMonth() + 1).padStart(2, "0")
-        return `已认证 · ${yyyy}-${mm}`
+        return t("base.me.realname.verifiedWithDate", {
+            values: { year: yyyy, month: mm },
+        })
     }
 
     sections(context: RouteContext<any>) {
@@ -362,7 +365,7 @@ export class MeInfoVM extends ProviderListener {
                 new Row({
                     cell: ListItemAvatar,
                     properties: {
-                        title: `头像`,
+                        title: t("base.me.avatar"),
                         context: context,
                         avatar: <img style={{ "width": "24px", "height": "24px", "borderRadius": "50%" }} src={WKApp.shared.avatarUser(WKApp.loginInfo.uid || "")}></img>,
                         onFileUpload: async (f: File) => {
@@ -374,26 +377,28 @@ export class MeInfoVM extends ProviderListener {
                 new Row({
                     cell: ListItem,
                     properties: {
-                        title: "名字",
+                        title: t("base.me.name"),
                         subTitle: this.nameRowSubTitle(),
                         onClick: () => {
                             this.inputEditPush(context, WKApp.loginInfo.name || "", async (value) => {
                                 if (value.trim() === "") {
-                                    Toast.error("名字不能为空！")
+                                    Toast.error(t("base.me.nameRequired"))
                                     return
                                 }
                                 return this.updateMyInfo("name",value).then(()=>{
                                     WKApp.loginInfo.name = value
                                     WKApp.loginInfo.save()
                                 })
-                            }, "设置名字",20)
+                            }, t("base.me.setName"),20)
                         }
                     }
                 }),
                 new Row({
                     cell: ListItem,
                     properties: {
-                        title: `${WKApp.config.appName}号`,
+                        title: t("base.me.shortNo", {
+                            values: { appName: WKApp.config.appName },
+                        }),
                         subTitle: WKApp.loginInfo.shortNo,
                         onClick: () => {
                             this.handleShortNoTap()
@@ -403,7 +408,7 @@ export class MeInfoVM extends ProviderListener {
                 new Row({
                     cell: ListItemIcon,
                     properties: {
-                        title: `我的二维码`,
+                        title: t("base.me.qrCode"),
                         icon: <img style={{ "width": "24px", "height": "24px" }} src={require("./../../assets/icon_qrcode.png")}></img>,
                         onClick: () => {
                             context.push(<QRCodeMy disableHeader={true}></QRCodeMy>)
@@ -414,9 +419,9 @@ export class MeInfoVM extends ProviderListener {
         }))
 
         let sex = WKApp.loginInfo.sex === 0 ? Sex.Female : Sex.Male
-        let sexStr = "男"
+        let sexStr = t("base.me.male")
         if (sex === Sex.Female) {
-            sexStr = "女"
+            sexStr = t("base.me.female")
         }
 
         sections.push(new Section({
@@ -424,7 +429,7 @@ export class MeInfoVM extends ProviderListener {
                 new Row({
                     cell: ListItem,
                     properties: {
-                        title: "性别",
+                        title: t("base.me.gender"),
                         subTitle: sexStr,
                         onClick: () => {
                             context.push(<SexSelect sex={sex} onSelect={ async (sex) => {
@@ -443,15 +448,15 @@ export class MeInfoVM extends ProviderListener {
         // Phase 2a：未认证点击直跳 IdP 账户页。
         const verified = !!WKApp.loginInfo.realnameVerified
         sections.push(new Section({
-            title: "账号安全",
+            title: t("base.me.accountSecurity"),
             rows: [
                 new Row({
                     cell: ListItem,
                     properties: {
-                        title: "实名认证",
+                        title: t("base.me.realname.title"),
                         subTitle: verified
                             ? this.formatVerifiedAtLabel()
-                            : "去认证",
+                            : t("base.me.realname.verifyNow"),
                         onClick: () => {
                             if (verified) return
                             this.startRealnameVerify()
@@ -472,14 +477,14 @@ export class MeInfoVM extends ProviderListener {
             sections.push(new Section({
                 rows: [
                     new Row({
-                        cell: ListItem,
-                        properties: {
-                            title: "🧪 实验性功能",
+                    cell: ListItem,
+                    properties: {
+                            title: t("base.me.experimentalFeatures"),
                             subTitle: "",
                             onClick: () => {
                                 context.push(
                                     <ExperimentalFeatures routeContext={context} />,
-                                    new RouteContextConfig({ title: "实验性功能" }),
+                                    new RouteContextConfig({ title: t("base.me.experimentalFeatures") }),
                                 )
                             }
                         }
@@ -528,7 +533,7 @@ export class MeInfoVM extends ProviderListener {
             // 隐私模式 / 配额满 / 非浏览器宿主下静默降级 —— 不阻塞主流程。
             return
         }
-        Toast.success("已开启实验性功能 🧪")
+        Toast.success(t("base.me.labEnabled"))
         this.notifyListener()
     }
 

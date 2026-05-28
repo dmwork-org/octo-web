@@ -1,5 +1,6 @@
 import { Channel } from "wukongimjssdk"
 import APIClient, { extractErrorMsg } from "./APIClient"
+import { t } from "../i18n"
 
 /**
  * 上传前预检 file/upload/credentials。
@@ -36,13 +37,13 @@ export async function precheckUploadCredentials(
         const msg =
             extractErrorMsg(err) ||
             (err instanceof Error ? err.message : "") ||
-            "上传失败"
+            t("base.uploadCredentials.failed")
         throwWithMsg(msg)
     }
 
     // 200 但响应缺字段时单独抛, 不要再被一个 catch 吞掉重写 (#135 review by lml2468)。
     if (!result || typeof result.uploadUrl !== "string" || typeof result.downloadUrl !== "string") {
-        throwWithMsg("响应缺少凭证字段")
+        throwWithMsg(t("base.uploadCredentials.missingFields"))
     }
 }
 

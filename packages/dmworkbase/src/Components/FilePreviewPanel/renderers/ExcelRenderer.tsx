@@ -6,6 +6,7 @@ import { TooltipCell } from "./TooltipCell";
 import { RendererState } from "./RendererState";
 import { useFileContent } from "../hooks/useFileContent";
 import FileTooLarge from "./FileTooLarge";
+import { t, useI18n } from "../../../i18n";
 import "./ExcelRenderer.css";
 
 export interface ExcelRendererProps extends BaseRendererProps {}
@@ -137,6 +138,7 @@ function parseWorkbook(
  */
 function SheetTable({ sheetData }: { sheetData: SheetData }) {
   const { data, columns } = sheetData;
+  const { t } = useI18n();
 
   const renderCellContent = (value: unknown): string => {
     if (value === null || value === undefined) return "-";
@@ -147,7 +149,7 @@ function SheetTable({ sheetData }: { sheetData: SheetData }) {
   if (!data || data.length === 0) {
     return (
       <div className="wk-file-preview-excel-renderer--empty">
-        <span>暂无内容</span>
+        <span>{t("base.filePreview.empty")}</span>
       </div>
     );
   }
@@ -224,12 +226,14 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
         const parsedSheets = parseWorkbook(XLSX, new Uint8Array(data));
 
         if (parsedSheets.length === 0) {
-          throw new Error("工作表为空");
+          throw new Error(t("base.filePreview.excel.emptySheet"));
         }
 
         setSheets(parsedSheets);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "解析失败";
+        const message = err instanceof Error
+          ? err.message
+          : t("base.filePreview.excel.parseFailed");
         setParseError(message);
         onError?.(message);
       } finally {
@@ -272,7 +276,9 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
       {/* 底部信息栏：行数 + 工作表切换 */}
       <div className="wk-file-preview-excel-renderer__footer">
         <span className="wk-file-preview-excel-renderer__row-count">
-          共 {sheets[activeSheet]?.data.length ?? 0} 行
+          {t("base.filePreview.rowsCount", {
+            values: { count: sheets[activeSheet]?.data.length ?? 0 },
+          })}
         </span>
         {sheets.length > 1 && (
           <div className="wk-file-preview-excel-renderer__tabs">

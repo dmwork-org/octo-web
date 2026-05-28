@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 /**
  * 复制图片到剪贴板。
  *
@@ -10,7 +12,7 @@
  */
 export async function copyImageToClipboard(src: string): Promise<void> {
     if (!navigator.clipboard?.write) {
-        throw new Error('当前浏览器不支持复制图片，请长按图片另存')
+        throw new Error(t('base.clipboard.imageUnsupported'))
     }
 
     const pngBlob = await loadImageAndConvertToPng(src)
@@ -36,10 +38,10 @@ function drawImageToBlob(img: HTMLImageElement): Promise<Blob> {
     canvas.width = drawWidth
     canvas.height = drawHeight
     const ctx = canvas.getContext('2d')
-    if (!ctx) return Promise.reject(new Error('canvas 不可用'))
+    if (!ctx) return Promise.reject(new Error(t('base.clipboard.canvasUnavailable')))
     ctx.drawImage(img, 0, 0, drawWidth, drawHeight)
     return new Promise((resolve, reject) => {
-        canvas.toBlob(b => b ? resolve(b) : reject(new Error('图片转换失败')), 'image/png')
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error(t('base.clipboard.imageConvertFailed'))), 'image/png')
     })
 }
 
@@ -58,12 +60,12 @@ function loadImageAndConvertToPng(src: string): Promise<Blob> {
 
 async function fallbackFetchAndConvert(src: string): Promise<Blob> {
     const resp = await fetch(src, { mode: 'cors' })
-    if (!resp.ok) throw new Error('图片加载失败，请右键另存')
+    if (!resp.ok) throw new Error(t('base.clipboard.imageLoadFailed'))
     const blob = await resp.blob()
     // fallback 路径需将文件全量 fetch 到内存，额外限制 5MB 防止内存峰值
     // 主路径通过 <img> 加载无此限制（浏览器自行管理解码内存）
     if (blob.size > 5 * 1024 * 1024) {
-        throw new Error('图片超过 5MB，请右键下载后使用')
+        throw new Error(t('base.clipboard.imageTooLarge'))
     }
     return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(blob)
@@ -72,7 +74,7 @@ async function fallbackFetchAndConvert(src: string): Promise<Blob> {
             URL.revokeObjectURL(url)
             drawImageToBlob(img).then(resolve).catch(reject)
         }
-        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片解码失败')) }
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(t('base.clipboard.imageDecodeFailed'))) }
         img.src = url
     })
 }

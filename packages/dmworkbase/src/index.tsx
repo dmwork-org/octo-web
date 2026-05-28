@@ -1,6 +1,7 @@
 export { default as BaseModule } from "./module" 
 export { default as WKApp } from "./App"
 export * from "./App"
+export * from './i18n'
 export * from './Service/Const'
 export * from './Service/Thread'
 export * from './Service/Module'

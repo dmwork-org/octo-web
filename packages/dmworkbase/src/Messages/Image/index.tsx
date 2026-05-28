@@ -14,6 +14,7 @@ import SingleImage from "../../ui/message/ImageContent/SingleImage"
 import MultiImage from "../../ui/message/ImageContent/MultiImage"
 import type { ImageTransferState } from "../../ui/message/ImageContent/SingleImage"
 import { getImageMessageUI } from "../../bridge/message/useImageMessageUI"
+import { t } from "../../i18n"
 
 const SMALL_FILE_THRESHOLD = 1024 * 1024 // 1MB 以下不显示进度覆盖层
 
@@ -64,7 +65,7 @@ export class ImageContent extends MediaMessageContent {
         return MessageContentTypeConst.image
     }
     get conversationDigest() {
-        return "[图片]"
+        return t("base.message.digest.image")
     }
 }
 
@@ -207,7 +208,7 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
 
     private handleRetry = () => {
         if (!this._task) {
-            Toast.warning('上传任务已失效，请重新发送文件')
+            Toast.warning(t("base.message.uploadTaskExpired"))
             return
         }
         this._task.restart()
@@ -336,13 +337,13 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                         }} onClick={(e) => {
                             e.stopPropagation()
                             if (!this._task) {
-                                Toast.warning('上传任务已失效，请重新发送文件')
+                                Toast.warning(t("base.message.uploadTaskExpired"))
                                 return
                             }
                             this._task.restart()
                         }}>
                             <span style={{ color: "#fff", fontSize: 22 }}>⚠️</span>
-                            <span style={{ color: "#fff", fontSize: 11 }}>上传失败，点击重试</span>
+                            <span style={{ color: "#fff", fontSize: 11 }}>{t("base.message.uploadFailedRetry")}</span>
                         </div>
                     )}
                 </div>

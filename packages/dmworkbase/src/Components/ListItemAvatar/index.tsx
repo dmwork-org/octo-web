@@ -4,6 +4,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import { ListItemProps } from "../ListItem";
 import RouteContext, { FinishButtonContext, RouteContextConfig } from "../../Service/Context";
 import { WKAvatarEditor } from "../WKAvatarEditor";
+import { t } from "../../i18n";
 
 export interface ListItemAvatarProps extends ListItemProps {
     avatar?: JSX.Element
@@ -41,7 +42,7 @@ export class ListItemAvatar extends Component<ListItemAvatarProps>{
                     if(canvas) {
                         canvas.toBlob( async (bob: Blob | null)  => {
                             if (!bob) {
-                                Toast.error('图片处理失败，请重试');
+                                Toast.error(t("base.channelAvatar.imageProcessFailedRetry"));
                                 return;
                             }
                             const file = new File([bob], `profilePicture.png`, {

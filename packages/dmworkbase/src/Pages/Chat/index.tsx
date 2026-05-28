@@ -51,6 +51,7 @@ import FilePreviewPanel, {
 } from "../../Components/FilePreviewPanel";
 import { FollowSidebarProvider, useFollowSidebarContext } from "../../Hooks/useFollowSidebar";
 import { SidebarTargetType } from "../../Service/SidebarService";
+import { I18nContext, t } from "../../i18n";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
@@ -191,6 +192,9 @@ export class ChatContentPage extends Component<
   ChatContentPageProps,
   ChatContentPageState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   channelInfoListener!: ChannelInfoListener;
   conversationContext!: ConversationContext;
   private parentGroupChannel?: Channel;
@@ -653,7 +657,9 @@ export class ChatContentPage extends Component<
                 {selectionMode ? (
                   <div className="wk-chat-conversation-selection-header">
                     <div className="wk-chat-conversation-selection-title">
-                      已选择 {selectedCount} 条消息
+                      {t("base.chatPage.selectionCount", {
+                        values: { count: selectedCount },
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -757,7 +763,7 @@ export class ChatContentPage extends Component<
                       this.conversationContext?.setEditOn(false);
                     }}
                   >
-                    取消
+                    {t("base.common.cancel")}
                   </button>
                 ) : (
                   <>
@@ -798,7 +804,7 @@ export class ChatContentPage extends Component<
                               };
                             });
                           }}
-                          title="子区"
+                          title={t("base.chatPage.threadPanel")}
                         >
                           <ThreadIcon size={20} color="currentColor" />
                         </div>
@@ -832,7 +838,7 @@ export class ChatContentPage extends Component<
             </div>
           </div>
           <div className="wk-chat-conversation">
-            <ErrorBoundary moduleName="聊天">
+            <ErrorBoundary moduleName={t("base.chatPage.chatModuleName")}>
               <Conversation
                 initLocateMessageSeq={initLocateMessageSeq}
                 shouldShowHistorySplit={true}
@@ -878,7 +884,7 @@ export class ChatContentPage extends Component<
                 activePreviewMessageId={this.state.activePreviewMessageId}
                 inputNotice={
                   isThreadChannel && threadStatus === ThreadStatus.Archived
-                    ? "该子区已归档。发送消息后，子区会恢复为活跃状态。"
+                    ? t("base.chatPage.archivedThreadNotice")
                     : undefined
                 }
                 onMessageSent={this.handleConversationMessageSent}
@@ -888,7 +894,7 @@ export class ChatContentPage extends Component<
         </div>
 
         <div className={classNames("wk-chat-channelsetting")}>
-          <ErrorBoundary moduleName="频道设置">
+          <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
@@ -1017,6 +1023,9 @@ interface ChatPageState {
 }
 
 export default class ChatPage extends Component<any, ChatPageState> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   vm!: ChatVM;
   spaceListRef: SpaceList | null = null;
   openCreateCategoryRef: React.MutableRefObject<(() => void) | null> = {
@@ -1160,7 +1169,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                   <Columns2 size={16} strokeWidth={1.5} />
                                 </div>
                                 <div className="wk-chatmenuspopover-title">
-                                  创建分组
+                                  {t("base.chatPage.createCategory")}
                                 </div>
                               </div>
                             )}
@@ -1216,7 +1225,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                             marginBottom: 6,
                           }}
                         >
-                          还没有会话
+                          {t("base.chatPage.emptyTitle")}
                         </div>
                         <div
                           style={{
@@ -1225,7 +1234,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                             marginBottom: 24,
                           }}
                         >
-                          从通讯录选择联系人开始聊天
+                          {t("base.chatPage.emptyDescription")}
                         </div>
                         <div style={{ display: "flex", gap: 12 }}>
                           <button
@@ -1239,11 +1248,11 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                     );
                                   }
                                 },
-                                "找人聊天",
+                                t("base.chatPage.findContact"),
                               );
                             }}
                           >
-                            找人聊天
+                            {t("base.chatPage.findContact")}
                           </button>
                           <button
                             className="wk-chat-empty-guide-btn"
@@ -1255,12 +1264,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
                               if (groupMenu?.onClick) groupMenu.onClick();
                             }}
                           >
-                            创建群聊
+                            {t("base.chatPage.startGroup")}
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <ErrorBoundary moduleName="会话列表">
+                      <ErrorBoundary moduleName={t("base.chatPage.conversationListModuleName")}>
                         <ChatConversationList
                           conversations={vm.filteredConversations}
                           filter={filter}
@@ -1363,7 +1372,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 }}
               >
                 <div style={{ marginTop: "30px" }}>
-                  <ErrorBoundary moduleName="搜索">
+                  <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
                     <GlobalSearch
                       onClick={(item, type: string) => {
                         void handleGlobalSearchClick(item, type, () => {
@@ -1378,7 +1387,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
               {/* 附件未发送切换会话确认弹窗 */}
               <WKModal
                 visible={!!this.state.pendingConfirm}
-                title="有未发送的附件"
+                title={t("base.chatPage.unsentAttachmentTitle")}
                 footer={
                   <div
                     style={{
@@ -1391,7 +1400,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       variant="secondary"
                       onClick={() => this.setState({ pendingConfirm: null })}
                     >
-                      取消
+                      {t("base.common.cancel")}
                     </WKButton>
                     <WKButton
                       variant="primary"
@@ -1400,7 +1409,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         this.setState({ pendingConfirm: null });
                       }}
                     >
-                      继续切换
+                      {t("base.chatPage.continueSwitch")}
                     </WKButton>
                   </div>
                 }
@@ -1414,7 +1423,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     fontSize: "var(--wk-text-size-md)",
                   }}
                 >
-                  切换会话后，未发送的附件将被丢弃，是否继续？
+                  {t("base.chatPage.unsentAttachmentContent")}
                 </p>
               </WKModal>
             </div>

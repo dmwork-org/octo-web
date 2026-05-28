@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import AiBadge from '../AiBadge'
+import { useI18n } from '../../i18n'
 import './MentionList.css'
 
 interface MemberItem {
@@ -22,6 +23,7 @@ interface MentionListProps {
 }
 
 export default forwardRef((props: MentionListProps, ref) => {
+  const { t } = useI18n()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
@@ -115,7 +117,7 @@ export default forwardRef((props: MentionListProps, ref) => {
           </div>
         ))
       ) : (
-        <div className="mention-list-item">没有找到成员</div>
+        <div className="mention-list-item">{t("base.mentionList.noMembers")}</div>
       )}
     </div>
   )

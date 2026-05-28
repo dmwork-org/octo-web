@@ -9,6 +9,7 @@ import { VoiceMode } from "../../Service/VoiceService";
 import VoiceFeedbackNotice from "./VoiceFeedbackNotice";
 import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "./useSpaceFeedbackSetting";
 import WKApp from "../../App";
+import { useI18n } from "../../i18n";
 
 type ReplaceMode = "all" | "selection" | "insert";
 
@@ -43,10 +44,10 @@ const PREPARING_DELAY_MS = 300;
 const RECORDING_DELAY_MS = 500;
 
 // 模式配置 - 匹配 Figma 设计：语音输入 / 语音编辑
-const VOICE_MODES: { value: VoiceMode; label: string; description: string }[] =
+const VOICE_MODES: { value: VoiceMode; labelKey: string; description: string }[] =
   [
-    { value: "append_only", label: "语音输入", description: "" },
-    { value: "edit_only", label: "语音编辑", description: "" },
+    { value: "append_only", labelKey: "base.voiceInput.mode.input", description: "" },
+    { value: "edit_only", labelKey: "base.voiceInput.mode.edit", description: "" },
   ];
 
 export default function VoiceInputIndicator({
@@ -57,6 +58,7 @@ export default function VoiceInputIndicator({
   getChatContext,
   checkIsInputActive,
 }: VoiceInputIndicatorProps) {
+  const { t } = useI18n();
   // Voice mode menu state (不保存选中的模式，每次都是临时选择)
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
@@ -118,19 +120,19 @@ export default function VoiceInputIndicator({
         error.message.includes("Permission") ||
         error.message.includes("NotAllowedError")
       ) {
-        Toast.error("请允许麦克风访问权限");
+        Toast.error(t("base.voiceInput.error.allowMicrophone"));
       } else if (
         error.message.includes("NotFoundError") ||
         error.message.includes("NotReadableError")
       ) {
         // 设备不存在或不可用
-        Toast.error("麦克风不可用");
+        Toast.error(t("base.voiceInput.error.microphoneUnavailable"));
       } else if (
         !error.message.includes("file size") &&
         !error.message.includes("Transcription failed")
       ) {
         // 兜底：显示通用错误（排除已在 useVoiceInput 中 Toast 的错误）
-        Toast.error("语音输入失败");
+        Toast.error(t("base.voiceInput.error.genericFailure"));
       }
     },
     onRecordingFailed: () => {
@@ -274,7 +276,7 @@ export default function VoiceInputIndicator({
           e.preventDefault();
           // Check network status before starting
           if (!isOnlineRef.current && !localAvailableRef.current) {
-            Toast.warning("网络不可用，无法使用语音功能");
+            Toast.warning(t("base.voiceInput.error.networkUnavailable"));
             return;
           }
           const feedbackState = getSharedSpaceFeedbackState();
@@ -319,7 +321,7 @@ export default function VoiceInputIndicator({
             shiftTimerRef.current = null;
             // Check network status before starting
             if (!isOnlineRef.current && !localAvailableRef.current) {
-              Toast.warning("网络不可用，无法使用语音功能");
+              Toast.warning(t("base.voiceInput.error.networkUnavailable"));
               setIsPreparing(false);
               return;
             }
@@ -439,7 +441,7 @@ export default function VoiceInputIndicator({
       window.removeEventListener("blur", handleBlurWhilePreparing);
       clearShiftTimer();
     };
-  }, [isVoiceEnabled, getCurrentText, getSelectedText, cancelRecording]);
+  }, [isVoiceEnabled, getCurrentText, getSelectedText, cancelRecording, t]);
 
   // Window blur: auto-stop recording
   useEffect(() => {
@@ -489,7 +491,7 @@ export default function VoiceInputIndicator({
     setShowModeMenu(false);
 
     if (!canRecord) {
-      Toast.warning("网络不可用，无法使用语音功能");
+      Toast.warning(t("base.voiceInput.error.networkUnavailable"));
       return;
     }
     if (!loaded) {
@@ -542,7 +544,7 @@ export default function VoiceInputIndicator({
         <div className="wk-voice-button-group" ref={buttonGroupRef}>
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title="转写中..."
+            title={t("base.voiceInput.status.transcribingDots")}
           >
             <Mic size={18} color="currentColor" />
           </div>
@@ -551,7 +553,9 @@ export default function VoiceInputIndicator({
     }
 
     // 语音编辑模式显示「编辑中」，语音输入模式显示「转写中」
-    const statusText = currentMode === "edit_only" ? "编辑中" : "转写中";
+    const statusText = currentMode === "edit_only"
+      ? t("base.voiceInput.status.editing")
+      : t("base.voiceInput.status.transcribing");
 
     const transcribingIndicator = (
       <div
@@ -576,7 +580,9 @@ export default function VoiceInputIndicator({
         <div className="wk-voice-button-group" ref={buttonGroupRef}>
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title={currentMode === "edit_only" ? "编辑中..." : "转写中..."}
+            title={currentMode === "edit_only"
+              ? t("base.voiceInput.status.editingDots")
+              : t("base.voiceInput.status.transcribingDots")}
           >
             <Mic size={18} color="currentColor" />
             <svg
@@ -607,7 +613,7 @@ export default function VoiceInputIndicator({
         >
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title="点击停止录音"
+            title={t("base.voiceInput.action.stopRecording")}
             role="button"
             tabIndex={0}
           >
@@ -637,7 +643,9 @@ export default function VoiceInputIndicator({
       >
         <div className="wk-voice-floating-content">
           <span className="wk-voice-floating-text">
-            {currentMode === "edit_only" ? "语音编辑" : "语音输入"}
+            {currentMode === "edit_only"
+              ? t("base.voiceInput.mode.edit")
+              : t("base.voiceInput.mode.input")}
           </span>
         </div>
         <span className="wk-voice-floating-divider" />
@@ -661,7 +669,7 @@ export default function VoiceInputIndicator({
         >
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title="点击停止录音"
+            title={t("base.voiceInput.action.stopRecording")}
             role="button"
             tabIndex={0}
           >
@@ -686,7 +694,7 @@ export default function VoiceInputIndicator({
       <div className="wk-voice-button-group" ref={buttonGroupRef}>
         <div
           className="wk-voice-button wk-voice-button--preparing"
-          title="准备中..."
+          title={t("base.voiceInput.status.preparingDots")}
         >
           <Mic size={18} color="currentColor" />
           <svg
@@ -716,7 +724,7 @@ export default function VoiceInputIndicator({
           key={mode.value}
           onClick={() => handleModeSelect(mode.value)}
         >
-          {mode.label}
+          {t(mode.labelKey)}
         </Dropdown.Item>
       ))}
     </Dropdown.Menu>
@@ -752,7 +760,9 @@ export default function VoiceInputIndicator({
               ? "wk-voice-button--active"
               : ""
           }`}
-          title={canRecord ? "语音输入 (长按 Shift)" : "网络不可用"}
+          title={canRecord
+            ? t("base.voiceInput.title.inputLongPress")
+            : t("base.voiceInput.title.networkUnavailable")}
           role="button"
           tabIndex={canRecord ? 0 : -1}
         >
@@ -779,7 +789,7 @@ export default function VoiceInputIndicator({
               await acceptVoiceInput(spaceId, feedbackOn);
             }
           } catch {
-            Toast.error('操作失败，请重试');
+            Toast.error(t("base.voiceInput.error.operationFailed"));
             return;
           }
           const selectedText = getSelectedText?.();

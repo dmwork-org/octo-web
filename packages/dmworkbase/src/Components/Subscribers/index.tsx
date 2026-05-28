@@ -13,6 +13,7 @@ import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { GroupRole } from "../../Service/Const";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
+import { I18nContext } from "../../i18n";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -22,6 +23,9 @@ export interface SubscribersProps {
 }
 
 export class Subscribers extends Component<SubscribersProps> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   baseContext!: WKBaseContext;
 
   subscriberUI(subscriber: Subscriber) {
@@ -49,10 +53,10 @@ export class Subscribers extends Component<SubscribersProps> {
         <div className="wk-subscribers-item-avatar-wrap">
           <img src={WKApp.shared.avatarUser(subscriber.uid)} alt=""></img>
           {subscriber.role === GroupRole.owner && (
-            <span className="wk-subscribers-item-role-badge">群主</span>
+            <span className="wk-subscribers-item-role-badge">{this.context.t("base.subscribers.role.owner")}</span>
           )}
           {subscriber.role === GroupRole.manager && (
-            <span className="wk-subscribers-item-role-badge">管理员</span>
+            <span className="wk-subscribers-item-role-badge">{this.context.t("base.subscribers.role.manager")}</span>
           )}
         </div>
         <div className="wk-subscribers-item-name">
@@ -143,12 +147,12 @@ export class Subscribers extends Component<SubscribersProps> {
                       context.push(
                        <SubscriberList channel={channel} />,
                         new RouteContextConfig({
-                          title: "成员列表",
+                          title: this.context.t("base.subscribers.memberList"),
                         })
                       );
                     }}
                   >
-                    查看更多群成员
+                    {this.context.t("base.subscribers.viewMore")}
                   </div>
                 ) : undefined}
               </div>

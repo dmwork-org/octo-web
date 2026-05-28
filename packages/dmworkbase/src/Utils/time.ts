@@ -1,3 +1,5 @@
+import { i18n, t } from "../i18n";
+
 /**
 * 对Date的扩展，将 Date 转化为指定格式的String。
 *
@@ -26,6 +28,21 @@ const _formatDate = function (date:Date, fmt:string) {
         if (new RegExp("(" + k + ")").test(fmt)) fmt = fmt.replace(RegExp.$1, (RegExp.$1.length === 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
     return fmt;
 };
+
+function formatCalendarDate(date: Date) {
+    if (i18n.getLocale() === "zh-CN") {
+        return _formatDate(date, "yyyy/M/d");
+    }
+    return new Intl.DateTimeFormat(i18n.getLocale(), {
+        day: "numeric",
+        month: "numeric",
+        year: "numeric",
+    }).format(date);
+}
+
+function formatWeekday(date: Date) {
+    return new Intl.DateTimeFormat(i18n.getLocale(), { weekday: "long" }).format(date);
+}
 
 /**
 * 仿照微信中的消息时间显示逻辑，将时间戳（单位：毫秒）转换为友好的显示格式.
@@ -72,7 +89,7 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
         if (currentMonth === srcMonth && currentDateD === srcDateD) {
             // 时间相差60秒以内
             if (deltaTime < 60 * 1000)
-                ret = "刚刚";
+                ret = t("base.time.justNow");
             // 否则当天其它时间段的，直接显示“时:分”的形式
             else
                 ret = _formatDate(srcDate, "hh:mm");
@@ -91,38 +108,29 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
             // 的形式，是不准确的，比如：现在时刻是2019年02月22日1:00、而srcDate是2019年02月21日23:00，
             // 这两者间只相差2小时，直接用“deltaTime/(3600 * 1000)” > 24小时来判断是否昨天，就完全是扯蛋的逻辑了）
             if (srcMonth === (yesterdayDate.getMonth() + 1) && srcDateD === yesterdayDate.getDate())
-                ret = "昨天" + timeExtraStr;// -1d
+                ret = t("base.time.yesterday") + timeExtraStr;// -1d
             // “前天”判断逻辑同上
             else if (srcMonth === (beforeYesterdayDate.getMonth() + 1) && srcDateD === beforeYesterdayDate.getDate())
-                ret = "前天" + timeExtraStr;// -2d
+                ret = t("base.time.dayBeforeYesterday") + timeExtraStr;// -2d
             else {
                 // 跟当前时间相差的小时数
                 const deltaHour = (deltaTime / (3600 * 1000));
 
                 // 如果小于或等 7*24小时就显示星期几
                 if (deltaHour <= 7 * 24) {
-                    const weekday = new Array(7);
-                    weekday[0] = "星期日";
-                    weekday[1] = "星期一";
-                    weekday[2] = "星期二";
-                    weekday[3] = "星期三";
-                    weekday[4] = "星期四";
-                    weekday[5] = "星期五";
-                    weekday[6] = "星期六";
-
                     // 取出当前是星期几
-                    const weedayDesc = weekday[srcDate.getDay()];
+                    const weedayDesc = formatWeekday(srcDate);
                     ret = weedayDesc + timeExtraStr;
                 }
                 // 否则直接显示完整日期时间
                 else
-                    ret = _formatDate(srcDate, "yyyy/M/d") + timeExtraStr;
+                    ret = formatCalendarDate(srcDate) + timeExtraStr;
             }
         }
     }
     // 往年
     else {
-        ret = _formatDate(srcDate, "yyyy/M/d") + timeExtraStr;
+        ret = formatCalendarDate(srcDate) + timeExtraStr;
     }
 
     return ret;
@@ -142,9 +150,9 @@ export function formatRelativeTime(dateStr?: string): string {
     const hours = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
 
-    if (minutes < 1) return "刚刚"
-    if (minutes < 60) return `${minutes}分钟前`
-    if (hours < 24) return `${hours}小时前`
-    if (days < 7) return `${days}天前`
-    return date.toLocaleDateString()
+    if (minutes < 1) return t("base.time.justNow")
+    if (minutes < 60) return i18n.format.relativeTime(-minutes, "minute")
+    if (hours < 24) return i18n.format.relativeTime(-hours, "hour")
+    if (days < 7) return i18n.format.relativeTime(-days, "day")
+    return new Intl.DateTimeFormat(i18n.getLocale()).format(date)
 }

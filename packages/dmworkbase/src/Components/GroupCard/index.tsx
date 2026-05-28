@@ -3,6 +3,7 @@ import { Button, Spin } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
+import { I18nContext } from "../../i18n";
 import "./index.css";
 
 interface GroupCardProps {
@@ -21,6 +22,9 @@ interface GroupCardState {
 }
 
 export default class GroupCard extends Component<GroupCardProps, GroupCardState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     state: GroupCardState = {
         loading: true,
         name: "",
@@ -82,10 +86,12 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
                         <div className="wk-group-card-header">
                             <WKAvatar channel={new Channel(groupNo, ChannelTypeGroup)} />
                             <div className="wk-group-card-name">
-                                {name} <span className="wk-group-card-tag">{"\u7FA4"}</span>
+                                {name} <span className="wk-group-card-tag">{this.context.t("base.groupCard.groupTag")}</span>
                             </div>
                             {memberCount > 0 && (
-                                <div className="wk-group-card-meta">{memberCount} 位成员</div>
+                                <div className="wk-group-card-meta">
+                                    {this.context.t("base.groupCard.memberCount", { values: { count: memberCount } })}
+                                </div>
                             )}
                         </div>
                         <Button
@@ -95,7 +101,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
                             onClick={this.handleEnterChat}
                             style={{ marginTop: 8 }}
                         >
-                            进入群聊
+                            {this.context.t("base.groupCard.enter")}
                         </Button>
                     </div>
                 )}

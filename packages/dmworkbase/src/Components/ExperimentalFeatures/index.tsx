@@ -4,6 +4,7 @@ import { Row, Section } from "../../Service/Section"
 import Sections from "../Sections"
 import { ListItem } from "../ListItem"
 import PersonaSettings from "../PersonaSettings"
+import { I18nContext } from "../../i18n"
 import "./index.css"
 
 /**
@@ -25,21 +26,24 @@ interface ExperimentalFeaturesProps {
 }
 
 export default class ExperimentalFeatures extends Component<ExperimentalFeaturesProps> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
 
     private sections(): Section[] {
         const { routeContext } = this.props
+        const title = this.context.t("base.persona.title")
         return [
             new Section({
                 rows: [
                     new Row({
                         cell: ListItem,
                         properties: {
-                            title: "我的分身",
+                            title,
                             subTitle: "",
                             onClick: () => {
                                 routeContext.push(
                                     <PersonaSettings routeContext={routeContext} />,
-                                    new RouteContextConfig({ title: "我的分身" }),
+                                    new RouteContextConfig({ title }),
                                 )
                             }
                         }

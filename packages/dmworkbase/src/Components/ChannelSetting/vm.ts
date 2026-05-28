@@ -14,6 +14,7 @@ import {
     hasAnyActiveGrant,
     refreshActiveGrantCache,
 } from "../PersonaSettings/vm";
+import { t } from "../../i18n";
 
 
 export class ChannelSettingVM extends ProviderListener {
@@ -142,12 +143,12 @@ export class ChannelSettingVM extends ProviderListener {
             ? this._oboScope.enabled
             : this._activeGrantGlobalEnabled
         return new Section({
-            subtitle: "开启后，AI 分身会在此会话中以你的身份代答消息",
+            subtitle: t("base.channelSetting.personaReplySubtitle"),
             rows: [
                 new Row({
                     cell: ListItemSwitch,
                     properties: {
-                        title: "🤖 分身在此会话代答",
+                        title: t("base.channelSetting.personaReplyTitle"),
                         checked,
                         onCheck: (v: boolean, ctx?: ListItemSwitchContext) => {
                             if (this._oboScopeUpdating) return
@@ -226,8 +227,8 @@ export class ChannelSettingVM extends ProviderListener {
             await this.refreshOboScope()
         } catch (e: any) {
             if (this._disposed) return
-            const msg = (e && typeof e === "object" && "msg" in e) ? (e as any).msg : "切换失败"
-            Toast.error(typeof msg === "string" && msg.length > 0 ? msg : "切换失败")
+            const msg = (e && typeof e === "object" && "msg" in e) ? (e as any).msg : t("base.channelSetting.toggleFailed")
+            Toast.error(typeof msg === "string" && msg.length > 0 ? msg : t("base.channelSetting.toggleFailed"))
             // 重新拉一次保持服务端真值
             await this.refreshOboScope()
         }

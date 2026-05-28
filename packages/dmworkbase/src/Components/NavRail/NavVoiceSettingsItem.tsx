@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { ensureVoiceFeedbackLoaded } from '../MessageInput/useSpaceFeedbackSetting';
 import WKApp from '../../App';
 import VoiceSettingsPanel from './VoiceSettingsPanel';
+import { useI18n } from '../../i18n';
 
 export default function NavVoiceSettingsItem() {
   const [panelVisible, setPanelVisible] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     ensureVoiceFeedbackLoaded().catch(() => {});
@@ -23,7 +25,7 @@ export default function NavVoiceSettingsItem() {
         e.stopPropagation();
         setPanelVisible(true);
       }}>
-        语音设置
+        {t("base.navRail.settingsPanel.voiceSettings")}
       </li>
       {panelVisible && (
         <VoiceSettingsPanel onClose={() => setPanelVisible(false)} />

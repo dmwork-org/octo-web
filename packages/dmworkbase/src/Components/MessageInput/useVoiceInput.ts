@@ -9,6 +9,7 @@ import VoiceFeedback, { type AsrParams } from "../../Service/VoiceFeedback";
 import LocalModelService, { LocalModelConfig } from "../../Service/LocalModelService";
 import WKApp from "../../App";
 import { ChatContextResult } from "../Conversation/chatContext";
+import { t } from "../../i18n";
 import {
   fetchAndApplySpaceSetting,
   resetSharedSpaceSetting,
@@ -322,12 +323,12 @@ export default function useVoiceInput(
 
         const recordingDurationMs = Date.now() - capturedStartTime;
         if (recordingDurationMs < 1000) {
-          Toast.warning("未检测到语音");
+          Toast.warning(t("base.voiceInput.error.noSpeech"));
           return;
         }
 
         if (maxFileSizeRef.current > 0 && blob.size > maxFileSizeRef.current) {
-          Toast.error("录音文件过大");
+          Toast.error(t("base.voiceInput.error.fileTooLarge"));
           if (onError) onError(new Error("Recording file size exceeds limit"));
           return;
         }
@@ -411,7 +412,7 @@ export default function useVoiceInput(
             }
 
             if (!backendEnabledRef.current) {
-              Toast.error("本地转写失败");
+              Toast.error(t("base.voiceInput.error.localTranscriptionFailed"));
               if (onError) onError(new Error("Transcription failed"));
               return;
             }
@@ -450,7 +451,7 @@ export default function useVoiceInput(
           const chatContext = chatCtxResult.chatContext;
 
           if (!backendEnabledRef.current) {
-            Toast.error("语音功能不可用");
+            Toast.error(t("base.voiceInput.error.unavailable"));
             if (onError) onError(new Error("Transcription failed"));
             return;
           }
@@ -471,7 +472,7 @@ export default function useVoiceInput(
             if (onTranscribed) onTranscribed(result.text);
           }
         } catch (err) {
-          Toast.error("转写失败，请重试");
+          Toast.error(t("base.voiceInput.error.transcriptionFailedRetry"));
           if (onError) onError(new Error("Transcription failed"));
         } finally {
           setIsTranscribing(false);

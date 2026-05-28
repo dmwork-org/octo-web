@@ -8,6 +8,7 @@ import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
 import AgentCardService from "../../Service/AgentCardService";
+import { I18nContext, t } from "../../i18n";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -40,6 +41,9 @@ interface BotDetailModalState {
 }
 
 export default class BotDetailModal extends Component<BotDetailModalProps, BotDetailModalState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     private refreshTimer: ReturnType<typeof setTimeout> | null = null;
     private $fileInput: HTMLInputElement | null = null;
 
@@ -143,7 +147,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 loading: false,
                 name: data.name || requestedUid,
                 username: data.username || requestedUid,
-                description: data.bot_description || "暂无简介",
+                description: data.bot_description || "",
                 creatorName: data.bot_creator_name || "",
                 creatorUid: creatorUid,
                 botCommands: data.bot_commands || "",
@@ -167,7 +171,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                     loading: false,
                     name: channelInfo?.title || requestedUid,
                     username: requestedUid,
-                    description: channelInfo?.orgData?.bot_description || "暂无简介",
+                    description: channelInfo?.orgData?.bot_description || "",
                     creatorName: channelInfo?.orgData?.bot_creator_name || "",
                     creatorUid: creatorUid,
                     botCommands: channelInfo?.orgData?.bot_commands || "",
@@ -187,7 +191,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                     loading: false,
                     name: requestedUid,
                     username: requestedUid,
-                    description: "暂无简介",
+                    description: "",
                     creatorName: "",
                     creatorUid: "",
                     botCommands: "",
@@ -248,10 +252,10 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             WKApp.shared.changeChannelAvatarTag(new Channel(uid, ChannelTypePerson));
             // 触发 channelInfoListener，通知其他组件刷新头像
             WKSDK.shared().channelManager.fetchChannelInfo(new Channel(uid, ChannelTypePerson));
-            Toast.success("头像已更新");
+            Toast.success(t("base.botDetail.avatarUpdated"));
             this.forceUpdate();
         } catch (err) {
-            Toast.error("头像上传失败，请重试");
+            Toast.error(t("base.botDetail.avatarUploadFailed"));
         } finally {
             this.setState({ uploadingAvatar: false });
         }
@@ -261,7 +265,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
     handleStartEditDescription = () => {
         if (!this.isOwner()) return;
         const { description } = this.state;
-        const raw = description === "暂无简介" ? "" : description.replace(/\*\*/g, "");
+        const raw = description.replace(/\*\*/g, "");
         this.setState({ editingDescription: true, descriptionDraft: raw });
     };
 
@@ -277,14 +281,14 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             await WKApp.apiClient.put(`robot/${uid}/description`, {
                 description: descriptionDraft,
             });
-            Toast.success("简介已更新");
+            Toast.success(t("base.botDetail.descriptionUpdated"));
             this.setState({
-                description: descriptionDraft || "暂无简介",
+                description: descriptionDraft,
                 editingDescription: false,
                 descriptionDraft: "",
             });
         } catch {
-            Toast.error("简介更新失败");
+            Toast.error(t("base.botDetail.descriptionUpdateFailed"));
         } finally {
             this.setState({ savingDescription: false });
         }
@@ -300,7 +304,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         const { name } = this.state;
         this.setState({
             showApplyInput: true,
-            applyRemark: `我想使用${name.replace(/\*\*/g, '')}`,
+            applyRemark: t("base.botDetail.apply.defaultMessage", {
+                values: { name: name.replace(/\*\*/g, '') },
+            }),
         });
     };
 
@@ -315,11 +321,11 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 body.space_id = spaceId;
             }
             await WKApp.apiClient.post("friend/apply", body);
-            Toast.success("好友申请已发送");
+            Toast.success(t("base.botDetail.apply.sent"));
             this.setState({ showApplyInput: false });
             this.refreshTimer = setTimeout(() => this.loadBotInfo(), 500);
         } catch {
-            Toast.error("申请失败");
+            Toast.error(t("base.botDetail.apply.failed"));
         } finally {
             this.setState({ applying: false });
         }
@@ -351,6 +357,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             showClawInfo,
         } = this.state;
         const isOwner = this.isOwner();
+        const displayDescription = description
+            ? description.replace(/\*\*/g, '')
+            : t("base.botDetail.noDescription");
 
         let commands: { cmd: string; remark: string }[] = [];
         try {
@@ -379,11 +388,11 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                     onKeyDown={this.handleAvatarKeyDown}
                                     role="button"
                                     tabIndex={0}
-                                    aria-label="更换头像"
+                                    aria-label={t("base.botDetail.changeAvatar")}
                                 >
                                     <WKAvatar channel={new Channel(uid, ChannelTypePerson)} size={64} />
                                     <div className="wk-bot-detail-avatar-overlay">
-                                        <span role="img" aria-label="更换头像">📷</span>
+                                        <span role="img" aria-label={t("base.botDetail.changeAvatar")}>📷</span>
                                     </div>
                                     {uploadingAvatar && (
                                         <div className="wk-bot-detail-avatar-loading">
@@ -419,7 +428,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                         {reported ? "✅" : "🔌"}
                                     </span>
                                     <span className="wk-bot-detail-octopush-chip-text">
-                                        {reported ? "已上报 Agent 信息" : "未上报 Agent 信息"}
+                                        {reported
+                                            ? t("base.botDetail.reported")
+                                            : t("base.botDetail.notReported")}
                                     </span>
                                     {!reported && (
                                         <button
@@ -427,8 +438,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                             }}
-                                            title="请在 OctoPush 中打开该 Agent 的「上报机器信息」开关。"
-                                            aria-label="帮助"
+                                            title={t("base.botDetail.reportHelp")}
+                                            aria-label={t("base.botDetail.help")}
                                         >
                                             ?
                                         </button>
@@ -438,7 +449,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                         </div>
                         <div className="wk-bot-detail-desc">
                             <div className="wk-bot-detail-label">
-                                简介
+                                {t("base.botDetail.description")}
                                 {isOwner && !editingDescription && (
                                     <span
                                         className="wk-bot-detail-edit-icon"
@@ -446,7 +457,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                         onKeyDown={this.handleEditDescriptionKeyDown}
                                         role="button"
                                         tabIndex={0}
-                                        aria-label="编辑简介"
+                                        aria-label={t("base.botDetail.editDescription")}
                                     >
                                         ✏️
                                     </span>
@@ -457,7 +468,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                     <TextArea
                                         value={descriptionDraft}
                                         onChange={(v) => this.setState({ descriptionDraft: v })}
-                                        placeholder="请输入简介"
+                                        placeholder={t("base.botDetail.descriptionPlaceholder")}
                                         maxCount={200}
                                         autosize={{ minRows: 3, maxRows: 6 }}
                                         style={{ marginBottom: 8 }}
@@ -468,7 +479,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                             onClick={this.handleCancelEditDescription}
                                             disabled={savingDescription}
                                         >
-                                            取消
+                                            {t("base.common.cancel")}
                                         </Button>
                                         <Button
                                             size="small"
@@ -477,23 +488,23 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                             loading={savingDescription}
                                             onClick={this.handleSaveDescription}
                                         >
-                                            保存
+                                            {t("base.botDetail.save")}
                                         </Button>
                                     </div>
                                 </div>
                             ) : (
-                                <div>{description.replace(/\*\*/g, '')}</div>
+                                <div>{displayDescription}</div>
                             )}
                         </div>
                         {creatorName && (
                             <div className="wk-bot-detail-desc">
-                                <div className="wk-bot-detail-label">创建者</div>
+                                <div className="wk-bot-detail-label">{t("base.botDetail.creator")}</div>
                                 <div>{creatorName}</div>
                             </div>
                         )}
                         {commands.length > 0 && (
                             <div className="wk-bot-detail-commands">
-                                <div className="wk-bot-detail-label">命令</div>
+                                <div className="wk-bot-detail-label">{t("base.botDetail.commands")}</div>
                                 {commands.map((cmd, i) => (
                                     <div key={i} className="wk-bot-detail-cmd">
                                         <span className="wk-bot-detail-cmd-name">{cmd.cmd}</span>
@@ -509,10 +520,10 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 onClick={this.handleViewClawInfo}
                                 className={`wk-bot-detail-claw-btn${!reported ? " wk-bot-detail-claw-btn--disabled" : ""}`}
                                 style={{ marginTop: 16 }}
-                                aria-label={reported ? "查看龙虾信息" : undefined}
-                                data-tooltip={!reported ? "请在 OctoPush 中打开该 Agent 的「上报机器信息」开关。" : undefined}
+                                aria-label={reported ? t("base.botDetail.viewClawInfo") : undefined}
+                                data-tooltip={!reported ? t("base.botDetail.reportHelp") : undefined}
                             >
-                                🦞 查看龙虾信息
+                                {t("base.botDetail.viewClawInfoWithIcon")}
                             </Button>
                         )}
                         {isFriend ? (
@@ -523,15 +534,15 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 onClick={this.handleChat}
                                 style={{ marginTop: isOwner && reported !== null ? 10 : 16 }}
                             >
-                                发送消息
+                                {t("base.botDetail.sendMessage")}
                             </Button>
                         ) : showApplyInput ? (
                             <div style={{ marginTop: 16 }}>
-                                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>申请消息</div>
+                                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>{t("base.botDetail.apply.messageLabel")}</div>
                                 <Input
                                     value={applyRemark}
                                     onChange={(v) => this.setState({ applyRemark: v })}
-                                    placeholder="请输入申请消息"
+                                    placeholder={t("base.botDetail.apply.messagePlaceholder")}
                                     style={{ marginBottom: 12 }}
                                 />
                                 <Button
@@ -542,7 +553,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                     disabled={!applyRemark}
                                     onClick={this.handleSubmitApply}
                                 >
-                                    发送申请
+                                    {t("base.botDetail.apply.send")}
                                 </Button>
                             </div>
                         ) : (
@@ -553,7 +564,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 onClick={this.handleShowApply}
                                 style={{ marginTop: 16 }}
                             >
-                                添加好友
+                                {t("base.botDetail.addFriend")}
                             </Button>
                         )}
                     </div>

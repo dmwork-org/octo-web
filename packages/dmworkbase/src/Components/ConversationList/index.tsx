@@ -34,6 +34,7 @@ import { FlameMessageCell } from "../../Messages/Flame";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import ConversationVM from "../Conversation/vm";
+import { I18nContext, t, useI18n } from "../../i18n";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── CompactGroupItem：群聊 Tab 紧凑 item，支持拖拽 ──────────────────────
@@ -62,6 +63,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
   onToggleThreads,
   threadUnread = 0,
 }) => {
+  const { t } = useI18n();
   const totalUnread = conversationWrap.unread + threadUnread;
   const channelInfo = conversationWrap.channelInfo;
   // channelInfo 未加载时主动拉取，加载完触发 re-render
@@ -173,7 +175,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
         )}
       </span>
       {conversationWrap.isMentionMe && totalUnread > 0 && (
-        <span className="wk-mention-badge">@我</span>
+        <span className="wk-mention-badge">{t("base.conversationList.mentionMe")}</span>
       )}
       <span className="wk-conv-compact-name">
         {channelInfo?.orgData.displayName ? (
@@ -186,8 +188,8 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
       </span>
       {conversationWrap.channel.channelType === ChannelTypeGroup &&
         channelInfo?.orgData?.is_external_group === 1 && (
-          <span className="wk-conv-compact-external-badge" aria-label="外部群">
-            外部
+          <span className="wk-conv-compact-external-badge" aria-label={t("base.conversationList.externalGroup")}>
+            {t("base.conversationList.external")}
           </span>
         )}
       {effectiveMute && (
@@ -217,7 +219,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
       {hasThreads && (
         <span
           className="wk-conv-compact-thread-tag"
-          aria-label="展开/收起子区"
+          aria-label={t("base.conversationList.toggleThreads")}
           onClick={(e) => {
             e.stopPropagation();
             onToggleThreads?.(e);
@@ -270,6 +272,9 @@ export default class ConversationList extends Component<
   ConversationListProps,
   ConversationListState
 > {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   channelListener!: ChannelInfoListener;
   contextMenusContext!: ContextMenusContext;
   typingListener!: TypingListener;
@@ -362,7 +367,7 @@ export default class ConversationList extends Component<
         {conversationWrap.channel.channelType !== ChannelTypePerson
           ? typing?.fromName
           : ""}
-        正在输入
+        {t("base.conversationList.typing")}
       </div>
     );
   }
@@ -384,10 +389,15 @@ export default class ConversationList extends Component<
         <span className="wk-ai-collab-preview">
           <span className="wk-ai-collab-tag">
             <span className="wk-ai-collab-pulse" />
-            AI协作中
+            {t("base.conversationList.aiCollaborating")}
           </span>
           <span className="wk-ai-collab-text">
-            {foldPreview.participants.join(" × ")} · {foldPreview.count}条
+            {t("base.conversationList.aiCollabCount", {
+              values: {
+                participants: foldPreview.participants.join(" × "),
+                count: foldPreview.count,
+              },
+            })}
           </span>
         </span>
       );
@@ -429,9 +439,9 @@ export default class ConversationList extends Component<
     const nowTime = new Date().getTime() / 1000;
     const btwTime = nowTime - channelInfo.lastOffline;
     if (btwTime < 60) {
-      return "刚刚";
+      return t("base.conversationList.justNow");
     }
-    return `${(btwTime / 60).toFixed(0)}分钟`;
+    return t("base.conversationList.minutesAgoShort", { values: { count: (btwTime / 60).toFixed(0) } });
   }
 
   // 是否需要显示在线状态
@@ -618,7 +628,7 @@ export default class ConversationList extends Component<
                       color="purple"
                       className="wk-conversationlist-item-external-tag"
                     >
-                      外部
+                      {t("base.conversationList.external")}
                     </Tag>
                   )}
                 {channelInfo?.orgData?.robot === 1 && <AiBadge />}
@@ -632,7 +642,7 @@ export default class ConversationList extends Component<
                   ></img>
                 ) : undefined}
                 {effectiveMute && (
-                  <span className="wk-conv-mute-icon" aria-label="免打扰">
+                  <span className="wk-conv-mute-icon" aria-label={t("base.conversationList.doNotDisturb")}>
                     <svg
                       viewBox="0 0 1131 1024"
                       width="11"
@@ -666,7 +676,7 @@ export default class ConversationList extends Component<
                         : "none",
                     }}
                   >
-                    [草稿]
+                    {t("base.conversationList.draft")}
                   </label>
                 ) : undefined}
                 {conversationWrap.simpleReminders &&
@@ -685,7 +695,9 @@ export default class ConversationList extends Component<
                 {/* 静音 + 多条未读：预览前置 [N 条] 红字提示（design v3.1 低打扰） */}
                 {effectiveMute && totalUnread > 1 && !typing && (
                   <span className="wk-conv-count-hint">
-                    [{totalUnread > 99 ? "99+" : totalUnread} 条]
+                    {t("base.conversationList.unreadCountHint", {
+                      values: { count: totalUnread > 99 ? "99+" : totalUnread },
+                    })}
                   </span>
                 )}
                 {typing
@@ -693,7 +705,7 @@ export default class ConversationList extends Component<
                   : this.lastContent(conversationWrap)}
               </div>
               {conversationWrap.isMentionMe && totalUnread > 0 && !effectiveMute && (
-                <span className="wk-mention-badge">@我</span>
+                <span className="wk-mention-badge">{t("base.conversationList.mentionMe")}</span>
               )}
             </div>
           </div>
@@ -1065,7 +1077,7 @@ export default class ConversationList extends Component<
             // 1. 标为已读（有未读时显示）
             if (conv && conv.unread > 0) {
               menus.push({
-                title: "标为已读",
+                title: t("base.conversationList.context.markAsRead"),
                 icon: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
                 onClick: () => {
                   if (!channel) return;
@@ -1081,15 +1093,15 @@ export default class ConversationList extends Component<
             // 2. 关闭聊天窗口
             if (!this.props.hideCloseChat) {
               menus.push({
-                title: "关闭聊天窗口",
+                title: t("base.conversationList.context.closeChat"),
                 icon: "M18 6 6 18 M6 6l12 12",
                 onClick: () => {
                   if (!channel) return;
                   Modal.confirm({
-                    title: "确认关闭",
-                    content: "确定要关闭此聊天窗口吗？",
-                    okText: "确定",
-                    cancelText: "取消",
+                    title: t("base.conversationList.confirm.closeTitle"),
+                    content: t("base.conversationList.confirm.closeContent"),
+                    okText: t("base.common.ok"),
+                    cancelText: t("base.common.cancel"),
                     onOk: () => {
                       this.onCloseChat(channel);
                     },
@@ -1106,7 +1118,9 @@ export default class ConversationList extends Component<
             // 4. 置顶 / 取消置顶（子区不显示；关注 tab 用 hidePin 关闭）
             if (channel?.channelType !== ChannelTypeCommunityTopic && !this.props.hidePin) {
               menus.push({
-                title: channelInfo?.top ? "取消置顶" : "置顶聊天",
+                title: channelInfo?.top
+                  ? t("base.conversationList.context.unpin")
+                  : t("base.conversationList.context.pin"),
                 icon: channelInfo?.top
                   ? "M12 17v5 M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89 M2 2l20 20 M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"
                   : "M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z",
@@ -1134,7 +1148,9 @@ export default class ConversationList extends Component<
               ? menuRawMute != null ? menuRawMute === 1 : !!(menuParentChannelInfo?.mute)
               : !!(channelInfo?.mute)
             menus.push({
-              title: menuEffectiveMute ? "关闭免打扰" : "开启免打扰",
+              title: menuEffectiveMute
+                ? t("base.conversationList.context.unmute")
+                : t("base.conversationList.context.mute"),
               icon: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 0 1-3.46 0",
               onClick: () => {
                 if (channelInfo) this.onMuteWithValue(!menuEffectiveMute, channelInfo);
@@ -1150,7 +1166,9 @@ export default class ConversationList extends Component<
             ) {
               const isExpanded = expandedGroupIds.has(channel.channelID);
               menus.push({
-                title: isExpanded ? "收起子区" : "展开子区",
+                title: isExpanded
+                  ? t("base.conversationList.context.collapseThreads")
+                  : t("base.conversationList.context.expandThreads"),
                 icon: isExpanded ? "M19 9l-7 7-7-7" : "M5 15l7-7 7 7",
                 onClick: () => {
                   this._toggleGroupExpand(channel.channelID);
@@ -1168,15 +1186,15 @@ export default class ConversationList extends Component<
             // 显式「关闭聊天窗口」项，「更多 → 关闭窗口并清空」仍能让用户关掉关注的会话。
             const clearItems: ContextMenusData[] = [
               {
-                title: "清空聊天记录",
+                title: t("base.conversationList.context.clearMessages"),
                 danger: true,
                 onClick: () => {
                   if (!channel) return;
                   Modal.confirm({
-                    title: "确认清空",
-                    content: "确定要清空所有聊天记录吗？此操作不可撤销。",
-                    okText: "确定",
-                    cancelText: "取消",
+                    title: t("base.conversationList.confirm.clearTitle"),
+                    content: t("base.conversationList.confirm.clearContent"),
+                    okText: t("base.common.ok"),
+                    cancelText: t("base.common.cancel"),
                     onOk: () => {
                       this.onClearMessages(channel);
                     },
@@ -1186,16 +1204,16 @@ export default class ConversationList extends Component<
             ];
             if (!this.props.hideCloseChat) {
               clearItems.push({
-                title: "关闭窗口并清空记录",
+                title: t("base.conversationList.context.closeAndClear"),
                 danger: true,
                 onClick: () => {
                   if (!channel) return;
                   Modal.confirm({
-                    title: "确认关闭并清空",
+                    title: t("base.conversationList.confirm.closeAndClearTitle"),
                     content:
-                      "确定要关闭窗口并清空所有聊天记录吗？此操作不可撤销。",
-                    okText: "确定",
-                    cancelText: "取消",
+                      t("base.conversationList.confirm.closeAndClearContent"),
+                    okText: t("base.common.ok"),
+                    cancelText: t("base.common.cancel"),
                     onOk: () => {
                       this.onCloseChat(channel);
                       this.onClearMessages(channel);
@@ -1209,7 +1227,7 @@ export default class ConversationList extends Component<
               menus.push(...clearItems);
             } else {
               menus.push({
-                title: "更多",
+                title: t("base.conversationList.context.more"),
                 icon: "M12 12m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0 M12 5m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0 M12 19m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0",
                 children: clearItems,
               });

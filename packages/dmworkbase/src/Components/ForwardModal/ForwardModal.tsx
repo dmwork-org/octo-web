@@ -7,6 +7,7 @@ import Checkbox from "../Checkbox"
 import AiBadge from "../AiBadge"
 import WKAvatar from "../WKAvatar"
 import VisibilityTrigger from "../VisibilityTrigger"
+import { useI18n } from "../../i18n"
 import "./ForwardModal.css"
 
 export interface ForwardItem {
@@ -46,6 +47,7 @@ interface ItemRowProps {
 }
 
 function ItemRow({ item, selected, onToggle }: ItemRowProps) {
+  const { t } = useI18n()
   const channel = new Channel(item.channelID, item.channelType)
   return (
     <div
@@ -66,7 +68,7 @@ function ItemRow({ item, selected, onToggle }: ItemRowProps) {
           color="purple"
           className="wk-conversationlist-item-external-tag"
         >
-          外部
+          {t("base.forwardModal.external")}
         </Tag>
       )}
       {item.isAI && <AiBadge />}
@@ -82,6 +84,7 @@ interface SelectedRowProps {
 }
 
 function SelectedRow({ item, onRemove }: SelectedRowProps) {
+  const { t } = useI18n()
   const channel = new Channel(item.channelID, item.channelType)
   return (
     <div className="wk-fm-selected-item">
@@ -97,7 +100,7 @@ function SelectedRow({ item, onRemove }: SelectedRowProps) {
           e.stopPropagation()
           onRemove(item)
         }}
-        aria-label="移除"
+        aria-label={t("base.forwardModal.remove")}
       >
         <X size={14} strokeWidth={2} />
       </button>
@@ -108,7 +111,7 @@ function SelectedRow({ item, onRemove }: SelectedRowProps) {
 // ─── 主组件 ──────────────────────────────────────────────────────
 
 export function ForwardModal({
-  title = "转发",
+  title,
   items,
   allItems,
   selectedIDs,
@@ -120,9 +123,11 @@ export function ForwardModal({
   onCancel,
   onItemVisible,
 }: ForwardModalProps) {
+  const { t } = useI18n()
   const selectedSet = new Set(selectedIDs)
   const sourceForSelected = allItems ?? items
   const selectedItems = sourceForSelected.filter((i) => selectedSet.has(i.channelID))
+  const modalTitle = title ?? t("base.forwardModal.title")
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,7 +140,7 @@ export function ForwardModal({
     <div className="wk-fm">
       {/* Header */}
       <div className="wk-fm-header">
-        <span className="wk-fm-title">{title}</span>
+        <span className="wk-fm-title">{modalTitle}</span>
       </div>
 
       {/* 内容区：左右两列 */}
@@ -148,7 +153,7 @@ export function ForwardModal({
             <IconSearchStroked className="wk-fm-search-icon" />
             <input
               className="wk-fm-search-input"
-              placeholder="搜索"
+              placeholder={t("base.forwardModal.searchPlaceholder")}
               type="text"
               value={inputValue}
               onChange={handleInputChange}
@@ -158,9 +163,9 @@ export function ForwardModal({
           {/* 可选列表 */}
           <div className="wk-fm-list">
             {loading ? (
-              <div className="wk-fm-empty">加载中…</div>
+              <div className="wk-fm-empty">{t("base.forwardModal.loading")}</div>
             ) : items.length === 0 ? (
-              <div className="wk-fm-empty">暂无联系人</div>
+              <div className="wk-fm-empty">{t("base.forwardModal.noContacts")}</div>
             ) : (
               items.map((item) => {
                 const row = (
@@ -192,11 +197,11 @@ export function ForwardModal({
         {/* 右列：已选列表 */}
         <div className="wk-fm-right">
           {selectedItems.length === 0 ? (
-            <div className="wk-fm-empty wk-fm-empty--right">未选择</div>
+            <div className="wk-fm-empty wk-fm-empty--right">{t("base.forwardModal.noneSelected")}</div>
           ) : (
             <>
               <div className="wk-fm-selected-title">
-                已选 {selectedItems.length} 人
+                {t("base.forwardModal.selectedCount", { values: { count: selectedItems.length } })}
               </div>
               <div className="wk-fm-selected-list">
                 {selectedItems.map((item) => (
@@ -216,7 +221,7 @@ export function ForwardModal({
       <div className="wk-fm-footer">
         {onCancel && (
           <button className="wk-fm-btn wk-fm-btn--cancel" onClick={onCancel}>
-            取消
+            {t("base.common.cancel")}
           </button>
         )}
         <button
@@ -224,7 +229,9 @@ export function ForwardModal({
           onClick={onConfirm}
           disabled={selectedIDs.length === 0}
         >
-          {selectedIDs.length > 0 ? `确认(${selectedIDs.length})` : '确认'}
+          {selectedIDs.length > 0
+            ? t("base.forwardModal.confirmWithCount", { values: { count: selectedIDs.length } })
+            : t("base.forwardModal.confirm")}
         </button>
       </div>
     </div>
