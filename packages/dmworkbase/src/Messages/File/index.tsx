@@ -275,13 +275,23 @@ function FileTypeIcon({
 }
 
 function getExtension(extension: string, name?: string): string {
-  const ext = (extension || "").toLowerCase();
-  if (ext) return ext;
-  // fallback: extract from filename
+  // 优先从文件名后缀提取: 服务端返回的 extension 字段不可靠 (可能为空、
+  // 或是 "file" 等占位值, 见 issue #143), 用文件名后缀更稳妥。
+  //
+  // 边界:
+  //   - dot > 0       : 排除前导点的 dotfile (如 ".env" / ".bashrc"),
+  //                     这类文件按 POSIX 语义没有"扩展名", 该 fallback。
+  //   - dot < len-1   : 排除尾部点 (如 "report."), 提取出来是空串, 也该 fallback。
   if (name) {
     const dot = name.lastIndexOf(".");
-    if (dot >= 0) return name.substring(dot + 1).toLowerCase();
+    if (dot > 0 && dot < name.length - 1) {
+      return name.substring(dot + 1).toLowerCase();
+    }
   }
+  // fallback: 文件名无可用后缀 (Makefile / Dockerfile / .env / report.) 时
+  // 才用 extension
+  const ext = (extension || "").toLowerCase();
+  if (ext) return ext;
   return "";
 }
 
