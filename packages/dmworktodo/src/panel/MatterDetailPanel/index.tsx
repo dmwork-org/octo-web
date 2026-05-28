@@ -286,7 +286,7 @@ export default function MatterDetailPanel({
         }
       }
     },
-    [matterId],
+    [matterId, t],
   );
   useEffect(() => {
     // matter 切换时立即清空 outputs, 避免 UI 短暂展示上一个 matter 的文件
@@ -372,7 +372,7 @@ export default function MatterDetailPanel({
         sourceChannelType: matchedCh?.channel_type,
       });
     },
-    [matter?.channels],
+    [matter?.channels, t],
   );
 
   // 文件下载: 跟 Messages/File 的 handleDownload 一致的两步,
