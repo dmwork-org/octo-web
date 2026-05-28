@@ -1,6 +1,9 @@
 import { IconLanguage, IconTick } from "@douyinfe/semi-icons";
 import React from "react";
-import { Locale, useI18n } from "../../i18n";
+import WKApp from "../../App";
+import { updateUserLanguagePreference } from "../../Service/UserLanguageService";
+import { useI18n } from "../../i18n/useI18n";
+import { Locale } from "../../i18n/types";
 
 function getNextLocale(locale: Locale): Locale {
   return locale === "zh-CN" ? "en-US" : "zh-CN";
@@ -20,8 +23,17 @@ export default function NavLanguageSwitcher() {
   ];
 
   const handleSelect = (next: Locale) => {
+    if (next === locale) {
+      setOpen(false);
+      return;
+    }
     setLocale(next);
     setOpen(false);
+    if (WKApp.shared.isLogined()) {
+      updateUserLanguagePreference(next).catch((error) => {
+        console.warn("[i18n] failed to sync user language preference", error);
+      });
+    }
   };
 
   return (
