@@ -229,11 +229,9 @@ export interface ListCommentsParams {
  * 后端 GET /matters/:id/outputs 返回的去重文件列表。
  * 按 sent_at DESC, id DESC 排序; 同一 file_url 只保留最早的行。
  *
- * 注: 这里的 source_channel_id 跟其它 API 含义不同 — 是 matter_channels.id
- * 的 UUID, 不是 IM 的 channel_id。前端要做成员关系映射时, 必须先用 matter
- * 详情里的 matter.channels[].id 反查到对应的 channel_id + channel_type,
- * 再走 toParentGroupNo + myGroupNos 判断。详见 issue Mininglamp-OSS/octo-matter#34
- * 的 "Response" 章节。
+ * 注: source_channel_id 是 **IM 的 channel_id** (e.g. 32 字符 hex),
+ * 不是 matter_channels.id UUID。前端做 channel 反查时按
+ * matter.channels[].channel_id 匹配, 不要按 matter.channels[].id。
  */
 export interface MatterOutput {
   id: string;
@@ -250,7 +248,7 @@ export interface MatterOutput {
    * 上游 IM 偶尔可能给空。前端展示时建议用 ?? "" 兜底, 不要假设非空。
    */
   sender_uname: string;
-  /** matter_channels 行的 UUID, **不是** IM channel_id, 见上方说明。 */
+  /** IM 的 channel_id (跟 timeline_entries.source_channel_id 同源), 见上方说明。 */
   source_channel_id?: string;
   source_channel_name?: string;
   sent_at: string;

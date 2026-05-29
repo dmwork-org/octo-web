@@ -33,6 +33,12 @@ export type MittEvents = {
     fromUID?: string;
     /** 消息摘要（用于回复时显示） */
     conversationDigest?: string;
+    /**
+     * 来源事项 ID。从事项详情面板 (产出文件 tab / 时间线附件) 触发预览时传入。
+     * Chat 页面据此在关闭/返回预览时把事项详情面板拉回来 (而不是退化到子区列表),
+     * 让 "右上 X" 和 "左上 ←" 都能回到用户原来的事项详情, 跟"返回来源"的语义对齐。
+     */
+    originMatterId?: string;
   } | null;
   'wk:open-create-matter-modal': { channelId: string; channelType: number; channelName?: string; prefillTitle?: string; prefillAssigneeUids?: string[]; clearOnConfirm?: boolean };
   /** After matter created from toolbar/Alt+Enter, send editor content then clear */
