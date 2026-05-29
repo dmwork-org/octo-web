@@ -3,7 +3,6 @@
 This guide is the standard entry point for future agents handling multilingual UI work in Octo Web.
 
 For architecture decisions, rollout status, and governance rules, read `docs/i18n-tracking.md`.
-For backend i18n contract integration work, read `docs/i18n-backend-integration-goal-guide.zh-CN.md` before editing code. The English version is `docs/i18n-backend-integration-goal-guide.md`.
 
 ## Read First
 
@@ -21,8 +20,6 @@ git diff --check
 ```
 
 If layout may be affected by English copy length, also verify the touched screens in both `zh-CN` and `en-US`.
-
-For backend API language or error behavior, also read `docs/i18n-backend-integration-goal-guide.zh-CN.md`.
 
 ## Architecture Rules
 
@@ -80,36 +77,26 @@ format.relativeTime(updatedAt);
 
 Semi UI component chrome is also locale-sensitive. The app-level `I18nProvider` owns the Semi `ConfigProvider` / `LocaleProvider` bridge, so do not set Semi locale per DatePicker, Pagination, Modal, or Select unless a component has a specific product reason. Component props that are still product copy, such as labels, placeholders, tooltips, and aria labels, must continue to use `t()`.
 
-## Backend I18n Contract
+## Backend API I18n Rules
 
-Frontend locale detection supports these inputs, in order:
+Keep these backend-facing rules stable:
 
-```txt
-explicit locale argument
-query ?lang=
-query ?locale=
-i18n_lang cookie
-localStorage octo:locale
-navigator.language
-defaultLocale
+- Locale detection accepts `?lang=`, `?locale=`, `i18n_lang`, `localStorage.octo:locale`, then browser language fallback.
+- `i18n.setLocale()` persists both `localStorage.octo:locale` and the frontend-readable `i18n_lang` cookie.
+- Internal Octo API requests go through `APIClient`, `apiFetch`, or `apiFetchJson` so they send `Accept-Language`.
+- Web frontend code must not send `X-Octo-Lang`; it is reserved for trusted service-to-service propagation.
+- Do not branch on localized backend `error.message`; use `error.code`, `error.http_status`, then legacy `status`.
+- Hide raw backend text for `err.shared.internal` and 5xx errors.
+- Keep raw `fetch` only for file/blob/static resources, presigned URLs, local probes, third-party URLs, unload beacons, or intentionally custom clients such as OIDC bind HTTP.
+- Login response `language: ""` means no account preference. Non-empty supported values apply locally. Signed-in NavRail language changes best-effort sync `PUT /v1/user/language`; login-page changes stay local.
+
+When changing backend API language or error behavior, run the touched package tests plus:
+
+```bash
+pnpm exec vitest run packages/dmworkbase/src/Service/__tests__/apiError.test.ts packages/dmworkbase/src/Service/__tests__/apiFetch.test.ts
+pnpm i18n:check
+git diff --check
 ```
-
-`i18n.setLocale()` persists both `localStorage.octo:locale` and `i18n_lang=<locale>; Path=/; Max-Age=31536000; SameSite=Lax` unless `persist: false` is passed. `i18n_lang` is not a credential; it remains frontend-readable so public pages and login flows can participate in backend language negotiation.
-
-Internal Octo API requests must send `Accept-Language` through `APIClient` or `apiFetch` / `apiFetchJson`. Do not send `X-Octo-Lang`; that header is reserved for trusted service-to-service propagation. Do not opt into `X-Octo-Error-Envelope` by default; the backend currently double-emits v2 and legacy fields.
-
-Use `normalizeApiError()` for backend errors. Business logic must branch on `error.code`, then `error.http_status`, then legacy status. Do not branch on localized `error.message`. Display policy:
-
-- `err.shared.internal` or 5xx: show the frontend generic error, not backend raw text.
-- auth-required/token errors or 401: treat as session expired.
-- `err.shared.auth.forbidden` or 403: show permission failure but do not logout.
-- `err.shared.rate.limited` or 429: show rate-limit copy or the safe backend message.
-- ordinary business errors: show backend-localized `error.message`.
-- legacy errors: show `msg`, with local fallback copy.
-
-Independent internal `fetch` calls should use `apiFetch` or `apiFetchJson` so they share `Accept-Language` and normalized error behavior. Keep raw `fetch` for file/blob/static resources, presigned URLs, local model probes, third-party URLs, unload beacons, and intentionally custom protocol clients such as OIDC bind HTTP.
-
-Login responses may include `language`. A non-empty supported value immediately calls `i18n.setLocale(language)` so localStorage and `i18n_lang` match the account preference. `language: ""` means no explicit account preference and must not overwrite the current local choice. Signed-in NavRail language changes update local UI immediately and best-effort `PUT /v1/user/language`; login-page language changes stay local only.
 
 ## Key Naming
 
