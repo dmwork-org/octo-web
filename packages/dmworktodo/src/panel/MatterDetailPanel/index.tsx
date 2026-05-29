@@ -42,7 +42,8 @@ import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import { OutputsPanel } from "../../ui/OutputsPanel";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
-import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
+import WKSDK, { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
+import type { ChannelInfoListener } from "wukongimjssdk";
 import { WKApp, i18n, useI18n, t as translate } from "@octo/base";
 import { downloadFile } from "@octo/base/src/Utils/download";
 import {
@@ -355,30 +356,31 @@ export default function MatterDetailPanel({
   // 一步走完 (getFileURL 解析相对路径 → isSafeUrl 拒绝危险协议)。后端
   // outputs 接口返回的 file_url 不可信, 必须验证。
   //
-  // sourceChannelId 解析: MatterOutput.source_channel_id 是 matter_channels.id
-  // (UUID), 但 wk:file-preview 的消费者 (Pages/Chat._onFilePreview, ThreadPanel)
-  // 期待的是 IM channel_id。从 matter.channels 反查拿到真实 IM channel_id +
-  // channel_type 再传给 mittBus, 避免 thread-handoff 路径误判。找不到对应行
-  // (channel 已解关联 / 数据漂移) 时省略 sourceChannelId, 让 _onFilePreview
-  // 走正常预览分支。
+  // sourceChannelId: 后端返回的 MatterOutput.source_channel_id 已经是 IM
+  // channel_id 本身 (跟 timeline_entries 同源), 直接透传即可。还需要从
+  // matter.channels 里反查同 channel 的 channel_type 凑成对, 传给 mittBus
+  // 让下游 thread-handoff 路径判断正确。找不到对应行 (channel 已解关联 /
+  // 数据漂移) 时省略 sourceChannelType, 让 _onFilePreview 走默认分支。
   const handleOutputPreview = useCallback(
     (item: MatterOutput) => {
       const url = resolveAndGuardUrl(item.file_url);
       if (!url) return;
       const ext = getExtension("", item.file_name);
       const matchedCh = (matter?.channels || []).find(
-        (ch) => ch.id === item.source_channel_id,
+        (ch) => ch.channel_id === item.source_channel_id,
       );
       WKApp.mittBus.emit("wk:file-preview", {
         url,
         name: item.file_name || t("base.conversation.file.unknown"),
         extension: ext,
         size: item.file_size,
-        sourceChannelId: matchedCh?.channel_id,
+        sourceChannelId: item.source_channel_id,
         sourceChannelType: matchedCh?.channel_type,
+        // 让 Chat 页面在关闭/返回预览时回到本事项详情, 而不是退化到子区列表。
+        originMatterId: matter?.id,
       });
     },
-    [matter?.channels, t],
+    [matter?.id, matter?.channels, t],
   );
 
   // 文件下载: 跟 Messages/File 的 handleDownload 一致的两步,
@@ -391,20 +393,8 @@ export default function MatterDetailPanel({
     void downloadFile(url, item.file_name || "file");
   }, []);
 
-  // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
-  // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
-  //
-  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是
-  // matter_channels.id (UUID), 不是 IM 的 channel_id。本侧已经从
-  // matter.channels 拿到 (matter_channels.id → channel_id, channel_type),
-  // 配合 useMyGroups 的 myGroupNos 就能按 matter_channels.id 反查成员关系。
-  //
-  // 注: 后端 access policy (Mininglamp-OSS/octo-matter#34) 已经把 outputs
-  // 限制成 creator/assignees/participants, channel-member-only 用户被拒。
-  // 这里只是在 UI 上多一层 "来源群名" 遮罩, 避免泄漏 "事项关联了哪些
-  // 我没加入的群" 这种二阶信息 (跟关联群聊 tab 一致的处理)。
-  // 注: 这个 useMemo 引用了 myGroupNos, 必须放在 useMyGroups() 调用之后,
-  // 实际定义在该 hook 调用后 (见下方)。
+  // Outputs 来源群成员关系映射定义在 useMyGroups() 调用之后 (依赖 myGroupNos),
+  // 实际见下方 [[outputsChannelMembership]]。
 
   // 每个 channel 的最新一条 timeline 条目 (用于 "最新进展" 展示)。
   // matter 加载后并发对每个关联 channel 调 listTimeline(limit=1),
@@ -616,8 +606,8 @@ export default function MatterDetailPanel({
   //
   // payload 与 wk:file-preview 既有形状对齐 (dmworkbase/App.tsx 定义):
   //   - sourceChannelId 用 entry.source_channel_id, 这是真实 IM channel_id
-  //     (跟 timeline_entries.source_channel_id 同源), 不是 matter_channels.id,
-  //     跟 PR #97 Outputs tab 那边不一样, 这里不用做 matter.channels lookup。
+  //     (跟 timeline_entries.source_channel_id / MatterOutput.source_channel_id
+  //     同源, 都是 IM channel_id), 不用再做 matter.channels lookup。
   //   - sourceChannelType 优先用 entry.channel_type, 否则回查 matter.channels
   //     拿到与 sourceChannelId 配套的 channel_type。两者都缺时不传, 让
   //     Pages/Chat._onFilePreview 走默认分支 (不当作 thread)。这样可以避免
@@ -645,6 +635,8 @@ export default function MatterDetailPanel({
         size: att.file_size,
         sourceChannelId,
         sourceChannelType,
+        // 让 Chat 页面在关闭/返回预览时回到本事项详情, 而不是退化到子区列表。
+        originMatterId: matter?.id,
       });
     },
     [matter, t],
@@ -707,17 +699,17 @@ export default function MatterDetailPanel({
   // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
   // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
   //
-  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是
-  // matter_channels.id (UUID), 不是 IM 的 channel_id。从 matter.channels
-  // 拿到 (matter_channels.id → channel_id, channel_type), 配合 myGroupNos
-  // 就能按 matter_channels.id 反查成员关系。
+  // map 的 key 是 IM channel_id (跟 MatterOutput.source_channel_id 对齐),
+  // value 是当前用户是否在群。后端 access policy 已经把 outputs 限制成
+  // creator/assignees/participants, 这里只在 UI 上多一层遮罩, 避免泄漏
+  // "事项关联了哪些我没加入的群" 这种二阶信息。
   const outputsChannelMembership = useMemo(() => {
     const map = new Map<string, boolean>();
     const chs = matter?.channels || [];
     for (const ch of chs) {
       const parentNo = toParentGroupNo(ch.channel_id, ch.channel_type);
       const isMember = !myGroupsFailed && myGroupNos.has(parentNo);
-      map.set(ch.id, isMember);
+      map.set(ch.channel_id, isMember);
     }
     return map;
   }, [matter?.channels, myGroupNos, myGroupsFailed]);
@@ -731,6 +723,62 @@ export default function MatterDetailPanel({
       return { isMember, loading: false };
     },
     [outputsChannelMembership, myGroupsLoading],
+  );
+
+  // 来源群名反查: 后端 MatterOutput.source_channel_name 和 matter.channels[].channel_name
+  // 都是创建关联时的 snapshot, 偶尔为空 (历史数据 / 上游 IM 当时没回写群名)。
+  // 优先走 WKSDK 实时反查 (跟 [[ChannelNameLabel]] 同一套), 再退到后端 snapshot,
+  // 都没有再 "—" 占位。
+  //
+  // tick: WKSDK channelManager 拉到新的 channelInfo 时通过 listener 推, 这里
+  // 用一个递增计数器触发重算; useMemo 通过 dep 上的 tick 重跑, 拿最新缓存值。
+  const [channelNameTick, setChannelNameTick] = useState(0);
+  useEffect(() => {
+    const channels = matter?.channels || [];
+    if (channels.length === 0) return;
+    const listener: ChannelInfoListener = (info) => {
+      const matched = channels.some(
+        (c) =>
+          c.channel_id === info.channel.channelID &&
+          c.channel_type === info.channel.channelType,
+      );
+      if (matched) setChannelNameTick((t) => t + 1);
+    };
+    WKSDK.shared().channelManager.addListener(listener);
+    // 缓存没命中的群主动 fetch, 防止 listener 永远不触发
+    for (const c of channels) {
+      const ch = new Channel(c.channel_id, c.channel_type);
+      const cached = WKSDK.shared().channelManager.getChannelInfo(ch);
+      if (!cached?.title) {
+        WKSDK.shared().channelManager.fetchChannelInfo(ch).catch(() => {});
+      }
+    }
+    return () => {
+      WKSDK.shared().channelManager.removeListener(listener);
+    };
+  }, [matter?.channels]);
+
+  const outputsChannelNameMap = useMemo(() => {
+    // 引用 channelNameTick 让 listener 推送后能重算; eslint 不会报 unused
+    // 因为它在 dep 数组里, 但 jit 看不出来, 留个注释提醒读者。
+    void channelNameTick;
+    const map = new Map<string, string>();
+    for (const ch of matter?.channels || []) {
+      const live = WKSDK.shared().channelManager.getChannelInfo(
+        new Channel(ch.channel_id, ch.channel_type),
+      )?.title;
+      const name = live || ch.channel_name || "";
+      if (name) map.set(ch.channel_id, name);
+    }
+    return map;
+  }, [matter?.channels, channelNameTick]);
+
+  const resolveOutputChannelName = useCallback(
+    (sourceChannelId?: string) => {
+      if (!sourceChannelId) return undefined;
+      return outputsChannelNameMap.get(sourceChannelId);
+    },
+    [outputsChannelNameMap],
   );
 
   // ── UI/数据分离: 为 ui/ 组件提供 renderAvatar / renderUserName ──
@@ -1248,6 +1296,7 @@ export default function MatterDetailPanel({
             onPreview={showClose ? handleOutputPreview : undefined}
             onDownload={handleOutputDownload}
             getChannelMembership={getOutputChannelMembership}
+            resolveChannelName={resolveOutputChannelName}
           />
         )}
 

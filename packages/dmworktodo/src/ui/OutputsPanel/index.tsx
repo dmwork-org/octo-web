@@ -116,6 +116,14 @@ export interface OutputsPanelProps {
   getChannelMembership?: (
     sourceChannelId?: string,
   ) => OutputChannelMembership;
+  /**
+   * 反查来源群名。由调用方根据 matter.channels (channel_id → channel_name)
+   * 注入, key 跟 MatterOutput.source_channel_id 对齐 (都是 IM channel_id)。
+   * 后端 MatterOutput.source_channel_name 偶尔为空 (历史数据 / 上游 IM
+   * 没回写群名), 这里兜底反查保证 "来源群" 列不留空。
+   * 不传时直接用 item.source_channel_name 做兜底渲染 (老行为)。
+   */
+  resolveChannelName?: (sourceChannelId?: string) => string | undefined;
 }
 
 // ─── Component ──────────────────────────────────────────
@@ -133,6 +141,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
   onPreview,
   onDownload,
   getChannelMembership,
+  resolveChannelName,
 }) => {
   const { t } = useI18n();
   const [searchValue, setSearchValue] = useState(query);
@@ -353,6 +362,12 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                     const m = getChannelMembership?.(item.source_channel_id);
                     const loadingMembership = m?.loading ?? false;
                     const isMember = m?.isMember ?? true;
+                    // 优先用调用方反查 (matter.channels → channel_name),
+                    // 退回到后端 snapshot, 都没有再 "—" 占位。
+                    const resolvedName =
+                      resolveChannelName?.(item.source_channel_id) ||
+                      item.source_channel_name ||
+                      "";
                     if (loadingMembership) {
                       return (
                         <span
@@ -364,7 +379,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                         </span>
                       );
                     }
-                    if (!isMember && item.source_channel_name) {
+                    if (!isMember && resolvedName) {
                       return (
                         <span className="wk-outputs__channel-blocked">
                           <span
@@ -395,11 +410,9 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                     return (
                       <span
                         className="wk-outputs__channel-name"
-                        title={item.source_channel_name || ""}
+                        title={resolvedName}
                       >
-                        {item.source_channel_name
-                          ? `#${item.source_channel_name}`
-                          : "—"}
+                        {resolvedName ? `#${resolvedName}` : "—"}
                       </span>
                     );
                   })()}
