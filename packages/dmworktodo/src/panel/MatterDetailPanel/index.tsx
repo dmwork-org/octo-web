@@ -393,14 +393,8 @@ export default function MatterDetailPanel({
     void downloadFile(url, item.file_name || "file");
   }, []);
 
-  // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
-  // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
-  //
-  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是 IM channel_id
-  // 本身, 用 matter.channels[].channel_id 反查 (channel_id → channel_type),
-  // 配合 useMyGroups 的 myGroupNos 就能反查成员关系。
-  // 注: 这个 useMemo 引用了 myGroupNos, 必须放在 useMyGroups() 调用之后,
-  // 实际定义在该 hook 调用后 (见下方)。
+  // Outputs 来源群成员关系映射定义在 useMyGroups() 调用之后 (依赖 myGroupNos),
+  // 实际见下方 [[outputsChannelMembership]]。
 
   // 每个 channel 的最新一条 timeline 条目 (用于 "最新进展" 展示)。
   // matter 加载后并发对每个关联 channel 调 listTimeline(limit=1),
@@ -612,8 +606,8 @@ export default function MatterDetailPanel({
   //
   // payload 与 wk:file-preview 既有形状对齐 (dmworkbase/App.tsx 定义):
   //   - sourceChannelId 用 entry.source_channel_id, 这是真实 IM channel_id
-  //     (跟 timeline_entries.source_channel_id 同源), 不是 matter_channels.id,
-  //     跟 PR #97 Outputs tab 那边不一样, 这里不用做 matter.channels lookup。
+  //     (跟 timeline_entries.source_channel_id / MatterOutput.source_channel_id
+  //     同源, 都是 IM channel_id), 不用再做 matter.channels lookup。
   //   - sourceChannelType 优先用 entry.channel_type, 否则回查 matter.channels
   //     拿到与 sourceChannelId 配套的 channel_type。两者都缺时不传, 让
   //     Pages/Chat._onFilePreview 走默认分支 (不当作 thread)。这样可以避免
@@ -702,13 +696,6 @@ export default function MatterDetailPanel({
   //   - 拉取失败时 failed=true, 保守处理成 "全部未加入" (宁可多遮)
   const { groupNos: myGroupNos, loading: myGroupsLoading, failed: myGroupsFailed } = useMyGroups();
 
-  // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
-  // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
-  //
-  // 后端 GET /matters/:id/outputs 返回的 source_channel_id 是
-  // matter_channels.id (UUID), 不是 IM 的 channel_id。从 matter.channels
-  // 拿到 (matter_channels.id → channel_id, channel_type), 配合 myGroupNos
-  // 就能按 matter_channels.id 反查成员关系。
   // Outputs 来源群成员关系映射: 用于 "来源群" 列在用户不在群时遮罩群名,
   // 跟关联群聊 tab 同样的隐私防御 (defense-in-depth)。
   //

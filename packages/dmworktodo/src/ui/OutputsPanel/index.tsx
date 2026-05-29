@@ -117,9 +117,10 @@ export interface OutputsPanelProps {
     sourceChannelId?: string,
   ) => OutputChannelMembership;
   /**
-   * 反查来源群名。由调用方根据 matter.channels (matter_channels.id → channel_name)
-   * 注入。后端 MatterOutput.source_channel_name 偶尔为空 (历史数据 / 上游
-   * IM 没回写群名), 这里兜底反查保证 "来源群" 列不留空。
+   * 反查来源群名。由调用方根据 matter.channels (channel_id → channel_name)
+   * 注入, key 跟 MatterOutput.source_channel_id 对齐 (都是 IM channel_id)。
+   * 后端 MatterOutput.source_channel_name 偶尔为空 (历史数据 / 上游 IM
+   * 没回写群名), 这里兜底反查保证 "来源群" 列不留空。
    * 不传时直接用 item.source_channel_name 做兜底渲染 (老行为)。
    */
   resolveChannelName?: (sourceChannelId?: string) => string | undefined;

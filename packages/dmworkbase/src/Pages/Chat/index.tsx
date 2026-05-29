@@ -280,8 +280,6 @@ export class ChatContentPage extends Component<
     // 改成 display:none 暂时隐藏 (见 render), 关掉预览后 unhide 时
     // 内部 state (tab / 展开的时间线 / 选中的 matter) 全部保留, 用户感受
     // 上跟 "回到事项详情" 一致, 且不会闪一下重新拉数据。
-    // previewReturnMatterId 不再用于 "重新挂载并选中" 的兜底, 现在只是
-    // "标记本次预览来自事项, 关闭时 unhide 而不是关整个右侧" 的开关。
     const fromMatter = !!file.originMatterId;
     this.setState({
       previewFile: file,
@@ -301,37 +299,23 @@ export class ChatContentPage extends Component<
   };
 
   /**
-   * 关闭文件预览 (X 或 ←)。
-   *   - 来源 = 事项详情 (previewReturnMatterId 非空): 仅清预览相关状态,
-   *     事项面板 (showMatterPanel) 自始至终没被卸 (只是 display:none),
-   *     unhide 后内部 state 全部保留, 用户回到关闭前的样子。
-   *   - 来源 = 其他 (子区附件、合并转发等): 沿用原行为, 完全关闭预览容器。
-   *
-   * resetThreadShell: 子区频道/私聊路径下需要把 showThreadPanel 也归 false
-   * (移除 wk-chat-threadpanel-open 类); 群聊路径不需要。
+   * 关闭文件预览 (X 或 ←) 的统一收尾。
+   *   - 来源 = 事项详情 (previewReturnMatterId 非空): 事项面板被 display:none
+   *     隐藏着 (见 render), 这里只清预览相关 state, unhide 后内部 state
+   *     (tab / 展开的时间线 / 选中的 matter) 全部保留。但必须把 showThreadPanel
+   *     复位, 否则 ThreadPanel 会留下退化成子区列表遮住事项。
+   *   - 来源 = 其他: resetThreadShell 控制是否同时关掉子区壳 (群聊路径下
+   *     X 全关传 true; 子区频道/私聊路径下 X / ← 也传 true)。
    */
   private _closePreviewAndMaybeRestoreMatter = (resetThreadShell: boolean) => {
-    const { previewReturnMatterId } = this.state;
-    if (previewReturnMatterId) {
-      this.setState({
-        previewFile: null,
-        activePreviewMessageId: null,
-        previewReturnMatterId: null,
-        previewHadThreadShell: false,
-        // _onFilePreview 强制把 showThreadPanel 设了 true 让 ThreadPanel
-        // 渲染出预览壳; 关掉预览时必须复位, 否则 ThreadPanel 会留下来
-        // 退化成子区列表, 遮住事项面板。
-        showThreadPanel: false,
-        activeThread: null,
-      });
-      return;
-    }
+    const fromMatter = !!this.state.previewReturnMatterId;
+    const shouldResetThread = fromMatter || resetThreadShell;
     this.setState({
       previewFile: null,
       activePreviewMessageId: null,
       previewReturnMatterId: null,
       previewHadThreadShell: false,
-      ...(resetThreadShell ? { showThreadPanel: false, activeThread: null } : {}),
+      ...(shouldResetThread ? { showThreadPanel: false, activeThread: null } : {}),
     });
   };
 
