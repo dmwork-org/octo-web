@@ -154,6 +154,14 @@ export class WKRemoteConfig {
   threadOn: boolean = false; // 子区功能开关，默认关闭
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
+   * 是否关闭 Web 登录页的前端临时迁移提示。
+   *
+   * 后端字段 suppress_login_migration_notice 为 true 时表示后端/其他端已接管提示，
+   * Web 端不再展示这套 Aegis 迁移说明。字段缺失或 false 时默认展示，是本轮
+   * Octo -> Aegis 迁移期的产品决策。
+   */
+  suppressLoginMigrationNotice: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -249,16 +257,25 @@ export class WKRemoteConfig {
     return WKApp.apiClient.get("common/appconfig").then((result) => {
       const wasSuccessful = this.requestSuccess;
       const previousDisableUserCreateSpace = this.disableUserCreateSpace;
+      const previousSuppressLoginMigrationNotice =
+        this.suppressLoginMigrationNotice;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
       this.disableUserCreateSpace = parseRemoteBool(
         result["disable_user_create_space"]
       );
+      this.suppressLoginMigrationNotice = parseRemoteBool(
+        result["suppress_login_migration_notice"]
+      );
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
-      if (previousDisableUserCreateSpace !== this.disableUserCreateSpace) {
+      if (
+        previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
+        previousSuppressLoginMigrationNotice !==
+          this.suppressLoginMigrationNotice
+      ) {
         this.notifyConfigChangeListeners();
       }
     });
