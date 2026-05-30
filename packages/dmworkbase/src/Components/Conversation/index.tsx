@@ -68,10 +68,10 @@ import {
   formatFileSize,
   getFileIconInfo,
   getExtension,
+  resolveSafeFileUrl,
 } from "../../Messages/File";
 import { ImageContent } from "../../Messages/Image";
 import { downloadFile } from "../../Utils/download";
-import { isSafeUrl } from "../../Utils/security";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
@@ -1203,20 +1203,12 @@ export class Conversation
     if (message.contentType === MessageContentTypeConst.file) {
       const content = message.content as FileContent;
       const iconInfo = getFileIconInfo(content.extension, content.name);
-      const resolveFileUrl = () => {
-        const rawUrl = content.url || content.remoteUrl || "";
-        if (!rawUrl) return "";
-        const fileUrl =
-          WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
-        if (!fileUrl || !isSafeUrl(fileUrl)) return "";
-        return fileUrl;
-      };
       return (
         <div
           className="wk-fold-file"
           title={t("base.messageFile.preview")}
           onClick={() => {
-            const fileUrl = resolveFileUrl();
+            const fileUrl = resolveSafeFileUrl(content);
             if (!fileUrl) return;
             WKApp.mittBus.emit("wk:file-preview", {
               url: fileUrl,
@@ -1251,7 +1243,7 @@ export class Conversation
             title={t("base.conversation.file.download")}
             onClick={async (e) => {
               e.stopPropagation();
-              const fileUrl = resolveFileUrl();
+              const fileUrl = resolveSafeFileUrl(content);
               if (!fileUrl) return;
               await downloadFile(fileUrl, content.name || "file");
             }}
