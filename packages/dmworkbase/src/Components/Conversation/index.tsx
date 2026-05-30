@@ -67,6 +67,8 @@ import {
   FileContent,
   formatFileSize,
   getFileIconInfo,
+  getExtension,
+  resolveSafeFileUrl,
 } from "../../Messages/File";
 import { ImageContent } from "../../Messages/Image";
 import { downloadFile } from "../../Utils/download";
@@ -1204,13 +1206,22 @@ export class Conversation
       return (
         <div
           className="wk-fold-file"
-          onClick={async () => {
-            const rawUrl = content.url || content.remoteUrl || "";
-            if (!rawUrl) return;
-            const fileUrl =
-              WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+          title={t("base.messageFile.preview")}
+          onClick={() => {
+            const fileUrl = resolveSafeFileUrl(content);
             if (!fileUrl) return;
-            await downloadFile(fileUrl, content.name || "file");
+            WKApp.mittBus.emit("wk:file-preview", {
+              url: fileUrl,
+              name: content.name || t("base.messageFile.unknownFile"),
+              extension: getExtension(content.extension, content.name),
+              size: content.size,
+              sourceChannelId: message.channel.channelID,
+              sourceChannelType: message.channel.channelType,
+              messageId: message.messageID,
+              messageSeq: message.messageSeq,
+              fromUID: message.fromUID,
+              conversationDigest: content.conversationDigest,
+            });
           }}
         >
           <div
@@ -1227,7 +1238,16 @@ export class Conversation
               {formatFileSize(content.size)}
             </div>
           </div>
-          <div className="wk-fold-file-dl" title={t("base.conversation.file.download")}>
+          <div
+            className="wk-fold-file-dl"
+            title={t("base.conversation.file.download")}
+            onClick={async (e) => {
+              e.stopPropagation();
+              const fileUrl = resolveSafeFileUrl(content);
+              if (!fileUrl) return;
+              await downloadFile(fileUrl, content.name || "file");
+            }}
+          >
             <svg
               viewBox="0 0 24 24"
               width="14"

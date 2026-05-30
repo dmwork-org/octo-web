@@ -275,7 +275,7 @@ function FileTypeIcon({
   );
 }
 
-function getExtension(extension: string, name?: string): string {
+export function getExtension(extension: string, name?: string): string {
   // 优先从文件名后缀提取: 服务端返回的 extension 字段不可靠 (可能为空、
   // 或是 "file" 等占位值, 见 issue #143), 用文件名后缀更稳妥。
   //
@@ -294,6 +294,20 @@ function getExtension(extension: string, name?: string): string {
   const ext = (extension || "").toLowerCase();
   if (ext) return ext;
   return "";
+}
+
+// 解析 FileContent 的可用下载 URL: 拼接 baseURL + 相对路径绝对化 + 安全校验。
+// 任一环节失败返回 ""，方便调用方一次性判断。生产环境 apiURL 是 /api/v1/，
+// 直接喂给 isSafeUrl 会被 new URL() 拒掉，必须先绝对化。
+export function resolveSafeFileUrl(content: FileContent): string {
+  const rawUrl = content.url || content.remoteUrl || "";
+  if (!rawUrl) return "";
+  let fileUrl = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+  if (!fileUrl) return "";
+  if (!fileUrl.startsWith("http")) {
+    fileUrl = window.location.origin + "/" + fileUrl.replace(/^\//, "");
+  }
+  return isSafeUrl(fileUrl) ? fileUrl : "";
 }
 
 function isPreviewable(extension: string, name?: string): boolean {
