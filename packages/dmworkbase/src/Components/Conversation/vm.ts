@@ -422,7 +422,6 @@ export default class ConversationVM extends ProviderListener {
                 lastItem.session.typing = typingMessage
                 lastItem.session.expandedMessages = getFoldSessionExpandedMessages({
                     messages: lastItem.session.messages,
-                    typing: typingMessage,
                 })
             } else {
                 renderItems.push({ type: "message", message: typingMessage })
