@@ -80,6 +80,15 @@ export interface ThreadPanelProps {
   }) => void;
   /** 切换预览文件的回调（从文件列表选择其他文件时触发） */
   onFilePreviewChange?: (file: FilePreviewInfo) => void;
+  /**
+   * 文件预览模式下是否显示左上角的返回箭头 (←)。
+   * 仅当预览之前确实有子区面板上下文 (用户先打开了子区列表 / 子区详情)
+   * 时传 true, ← 表示"回到子区"; 否则 (从消息附件、事项详情等其他来源
+   * 触发预览) 不应该让 ← 把用户带到子区列表 — 整段子区上下文不存在,
+   * ← 显得突兀。Chat 页面据 _onFilePreview 触发时 showThreadPanel 的
+   * 状态判断, 不传 / false 隐藏箭头。
+   */
+  showBackButton?: boolean;
 }
 
 interface ThreadPanelComponentState {
@@ -931,8 +940,12 @@ export default class ThreadPanel extends Component<
 
     // 文件预览模式：使用 FilePreviewHeader 组件
     if (filePreview) {
-      // 判断是否有子区可返回（groupNo 存在表示是从群聊的子区面板进入的）
-      const canReturnToThread = !!this.props.groupNo;
+      // 判断是否有子区可返回: 需要 groupNo (群聊上下文) 且调用方显式传
+      // showBackButton=true (预览开始前确实有子区面板)。仅 groupNo 不够,
+      // 否则任何群聊里的消息附件预览都会冒出 ← 把用户带到子区列表 — 没
+      // 来过子区的人会被 ← 误导。
+      const canReturnToThread =
+        !!this.props.groupNo && this.props.showBackButton === true;
 
       // 判断是否需要显示视图切换（代码/HTML 等类型）
       const ext = getExtension(filePreview.extension, filePreview.name);
