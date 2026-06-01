@@ -486,10 +486,32 @@ export class OrganizationalGroupNew extends Component<
     // 添加联系人
     if (this.props.action === OrganizationalGroupNewAction.AddMember) {
       try {
-        await WKApp.dataSource.channelDataSource.addSubscribers(
-          channel,
-          getOptPersonnelData
-        );
+        if (this.props.channel.channelType === ChannelTypePerson) {
+          // 从私聊入口发起群聊：当前 channelID 是对方 UID，不是 group_no。
+          // 这里必须先 createChannel 建群，再跳到新群，而不能直接 addSubscribers。
+          const uids = Array.from(
+            new Set([
+              WKApp.loginInfo.uid || "",
+              this.props.channel.channelID,
+              ...getOptPersonnelData,
+            ].filter(Boolean))
+          );
+          const result = await WKApp.dataSource.channelDataSource.createChannel(
+            uids,
+            { categoryId: this.props.defaultCategoryId }
+          );
+          if (result?.group_no) {
+            WKApp.endpoints.showConversation(
+              new Channel(result.group_no, ChannelTypeGroup),
+              this.props.keepSidebarTab ? { fromSidebarList: true } : undefined,
+            );
+          }
+        } else {
+          await WKApp.dataSource.channelDataSource.addSubscribers(
+            channel,
+            getOptPersonnelData
+          );
+        }
       } catch (error: any) {
         Toast.error(error.msg);
         return
