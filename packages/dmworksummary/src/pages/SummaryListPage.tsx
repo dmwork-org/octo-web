@@ -102,7 +102,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
             const resp = await api.listSummaries(params);
             this.setState({ items: resp.items, total: resp.total, loading: false }, () => {
                 this.maybeStartBatchPoll();
-                this.emitBadgeUpdate(resp.items);
+                this.emitBadgeUpdate();
             });
         } catch (err: any) {
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
@@ -165,7 +165,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
             if (changed) {
                 this.setState({ items: newItems }, () => {
                     this.maybeStartBatchPoll();
-                    this.emitBadgeUpdate(newItems);
+                    this.emitBadgeUpdate();
                 });
                 window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
             }
@@ -188,11 +188,11 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
      * (summary ready, waiting for user to confirm).
      * Uses a separate unfiltered query so badge is independent of list filter.
      */
-    private emitBadgeUpdate(_items: SummaryListItem[]) {
+    private emitBadgeUpdate() {
         // Fire-and-forget: fetch total WAITING_CONFIRM count unfiltered
         api.listSummaries({ status: TaskStatus.WAITING_CONFIRM, page_size: 1 })
             .then(resp => {
-                window.dispatchEvent(new CustomEvent("summary-badge-update", { detail: { count: resp.total } }));
+                WKApp.mittBus.emit("summary-badge-update" as any, { count: resp.total });
             })
             .catch(() => { /* ignore */ });
     }

@@ -112,10 +112,10 @@ export class SummaryModule implements IModule {
         );
 
         // Listen for badge count updates from SummaryListPage
-        window.addEventListener("summary-badge-update", ((e: CustomEvent) => {
-            _badgeCount = e.detail?.count ?? 0;
+        WKApp.mittBus.on("summary-badge-update" as any, (payload: { count: number }) => {
+            _badgeCount = payload?.count ?? 0;
             WKApp.menus.refresh();
-        }) as EventListener);
+        });
     }
 }
 
