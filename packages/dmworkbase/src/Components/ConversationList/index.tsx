@@ -922,7 +922,7 @@ export default class ConversationList extends Component<
         };
     let grouped: GroupedItem[];
     let threadsByParent: Map<string, ConversationWrap[]>;
-    if (compact) {
+    if (compact && !this.props.disablePinSplit) {
       const r = this.groupThreadsWithParent(filtered);
       grouped = r.items;
       threadsByParent = r.threadsByParent;
