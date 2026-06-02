@@ -4,7 +4,6 @@ import { shouldClearDraftAfterSend } from "../draftLifecycle"
 describe("shouldClearDraftAfterSend", () => {
     it("clears the draft snapshot that belonged to the sent message", () => {
         expect(shouldClearDraftAfterSend({
-            sentDraftSnapshot: "hello",
             remoteDraft: "hello",
             remoteDraftAtSend: "hello",
             draftSavedAfterSend: false,
@@ -13,7 +12,6 @@ describe("shouldClearDraftAfterSend", () => {
 
     it("does not clear a live draft typed while the send is pending", () => {
         expect(shouldClearDraftAfterSend({
-            sentDraftSnapshot: "hello",
             liveDraft: "new draft",
             remoteDraft: "hello",
             remoteDraftAtSend: "hello",
@@ -23,7 +21,6 @@ describe("shouldClearDraftAfterSend", () => {
 
     it("does not clear a newer draft saved while the send is pending", () => {
         expect(shouldClearDraftAfterSend({
-            sentDraftSnapshot: "hello",
             remoteDraft: "hello",
             remoteDraftAtSend: "hello",
             draftSavedAfterSend: true,
@@ -33,7 +30,6 @@ describe("shouldClearDraftAfterSend", () => {
 
     it("allows the clear when the only later save is an empty editor", () => {
         expect(shouldClearDraftAfterSend({
-            sentDraftSnapshot: "hello",
             remoteDraft: "hello",
             remoteDraftAtSend: "hello",
             draftSavedAfterSend: true,
@@ -43,7 +39,6 @@ describe("shouldClearDraftAfterSend", () => {
 
     it("clears an edited restored draft after it is sent", () => {
         expect(shouldClearDraftAfterSend({
-            sentDraftSnapshot: "hello!",
             remoteDraft: "hello",
             remoteDraftAtSend: "hello",
             liveDraft: "",
@@ -53,7 +48,6 @@ describe("shouldClearDraftAfterSend", () => {
 
     it("does not clear a remote draft updated while the send is pending", () => {
         expect(shouldClearDraftAfterSend({
-            sentDraftSnapshot: "hello",
             remoteDraft: "remote new draft",
             remoteDraftAtSend: "hello",
             liveDraft: "",

@@ -1,5 +1,4 @@
 export interface ShouldClearDraftAfterSendOptions {
-    sentDraftSnapshot: string
     liveDraft?: string
     remoteDraft?: string
     remoteDraftAtSend?: string

@@ -76,6 +76,10 @@ import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import { shouldClearDraftAfterSend } from "../../Utils/draftLifecycle";
+import {
+  isSuccessfulSendAck,
+  messageStatusWaitResult,
+} from "../../Utils/sendWaitResult";
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
@@ -455,29 +459,30 @@ export class Conversation
   private async sendMediaAndWait(
     content: MessageContent,
     channel?: Channel,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // 非媒体消息（或无文件需上传）无需等待上传，直接发送并等 ack
     if (
       !(content instanceof MediaMessageContent) ||
       !(content as MediaMessageContent).file
     ) {
-      await this.sendTextAndWaitAck(content, channel);
-      return;
+      return this.sendTextAndWaitAck(content, channel);
     }
 
     const TIMEOUT = 30_000;
     let settled = false;
     let clientSeq: number | null = null;
+    let ackSucceeded = false;
+    let uploadSucceeded = false;
 
     const { promise, resolve } = (() => {
-      let res: () => void;
-      const p = new Promise<void>((r) => {
+      let res: (sent: boolean) => void;
+      const p = new Promise<boolean>((r) => {
         res = r;
       });
       return { promise: p, resolve: res! };
     })();
 
-    const done = () => {
+    const done = (sent: boolean) => {
       if (settled) return;
       settled = true;
       pendingAcks = []; // 释放暂存引用
@@ -486,10 +491,10 @@ export class Conversation
         WKSDK.shared().chatManager.removeMessageStatusListener(ackListener);
       });
       clearTimeout(timer);
-      resolve();
+      resolve(sent);
     };
 
-    const timer = setTimeout(done, TIMEOUT);
+    const timer = setTimeout(() => done(false), TIMEOUT);
 
     // ── 所有 listener 在 sendMessage 之前注册，避免快速完成时错过事件 ──
 
@@ -501,12 +506,14 @@ export class Conversation
         task.message.clientSeq === clientSeq &&
         (task.status === TaskStatus.success || task.status === TaskStatus.fail)
       ) {
-        // 上传完成（成功或失败）：ack 应很快到达，由 ackListener 触发 done()。
-        // 但如果 ack 已经在 pendingAcks 中或 message.status 已更新，直接 done()。
         if (task.status === TaskStatus.fail) {
-          done();
+          done(false);
+          return;
         }
-        // success: 不立即 done()，让 ackListener 来，确保 messageSeq 已写入 order
+        uploadSucceeded = true;
+        if (ackSucceeded) {
+          done(true);
+        }
       }
     };
     WKSDK.shared().taskManager.addListener(taskListener);
@@ -519,7 +526,14 @@ export class Conversation
         return;
       }
       if (ackPacket.clientSeq === clientSeq) {
-        done();
+        if (!isSuccessfulSendAck(ackPacket)) {
+          done(false);
+          return;
+        }
+        ackSucceeded = true;
+        if (uploadSucceeded) {
+          done(true);
+        }
       }
     };
     WKSDK.shared().chatManager.addMessageStatusListener(ackListener);
@@ -529,7 +543,7 @@ export class Conversation
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
-      done();
+      done(false);
       throw err;
     }
     clientSeq = message.clientSeq;
@@ -538,21 +552,36 @@ export class Conversation
     if (!settled) {
       // 检查暂存的 ack（ack 在 clientSeq 赋值前到达的情况）
       const found = pendingAcks.some((p) => p.clientSeq === clientSeq);
+      const matchedAck = pendingAcks.find((p) => p.clientSeq === clientSeq);
       pendingAcks = []; // 立即释放无关 ack 引用
       if (found) {
-        done();
+        if (!isSuccessfulSendAck(matchedAck)) {
+          done(false);
+        } else {
+          ackSucceeded = true;
+          if (uploadSucceeded) {
+            done(true);
+          }
+        }
       }
       // 最终 fallback：检查 message.status（VM 可能已经处理了 ack）
-      if (
-        !settled &&
-        (message.status === MessageStatus.Normal ||
-          message.status === MessageStatus.Fail)
-      ) {
-        done();
+      const statusResult = messageStatusWaitResult(
+        message.status,
+        MessageStatus.Normal,
+        MessageStatus.Fail,
+      );
+      if (!settled && statusResult === false) {
+        done(false);
+      }
+      if (!settled && statusResult === true) {
+        ackSucceeded = true;
+        if (uploadSucceeded) {
+          done(true);
+        }
       }
     }
 
-    await promise;
+    return promise;
   }
 
   /**
@@ -564,20 +593,20 @@ export class Conversation
   private async sendTextAndWaitAck(
     content: MessageContent,
     channel?: Channel,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const TIMEOUT = 10_000;
     let settled = false;
     let clientSeq: number | null = null;
 
     const { promise, resolve } = (() => {
-      let res: () => void;
-      const p = new Promise<void>((r) => {
+      let res: (sent: boolean) => void;
+      const p = new Promise<boolean>((r) => {
         res = r;
       });
       return { promise: p, resolve: res! };
     })();
 
-    const done = () => {
+    const done = (sent: boolean) => {
       if (settled) return;
       settled = true;
       pendingAcks = []; // 释放暂存引用
@@ -585,10 +614,10 @@ export class Conversation
         WKSDK.shared().chatManager.removeMessageStatusListener(statusListener);
       });
       clearTimeout(timer);
-      resolve();
+      resolve(sent);
     };
 
-    const timer = setTimeout(done, TIMEOUT);
+    const timer = setTimeout(() => done(false), TIMEOUT);
 
     // 在 sendMessage 之前注册 listener，避免快速 ack 竞态
     let pendingAcks: any[] = [];
@@ -599,7 +628,7 @@ export class Conversation
         return;
       }
       if (ackPacket.clientSeq === clientSeq) {
-        done();
+        done(isSuccessfulSendAck(ackPacket));
       }
     };
     WKSDK.shared().chatManager.addMessageStatusListener(statusListener);
@@ -608,7 +637,7 @@ export class Conversation
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
-      done();
+      done(false);
       throw err;
     }
     clientSeq = message.clientSeq;
@@ -616,20 +645,22 @@ export class Conversation
     // fallback：检查暂存的 ack 或已处理的 status
     if (!settled) {
       const found = pendingAcks.some((p) => p.clientSeq === clientSeq);
+      const matchedAck = pendingAcks.find((p) => p.clientSeq === clientSeq);
       pendingAcks = []; // 立即释放无关 ack 引用
       if (found) {
-        done();
+        done(isSuccessfulSendAck(matchedAck));
       }
-      if (
-        !settled &&
-        (message.status === MessageStatus.Normal ||
-          message.status === MessageStatus.Fail)
-      ) {
-        done();
+      const statusResult = messageStatusWaitResult(
+        message.status,
+        MessageStatus.Normal,
+        MessageStatus.Fail,
+      );
+      if (!settled && statusResult !== undefined) {
+        done(statusResult);
       }
     }
 
-    await promise;
+    return promise;
   }
 
   scrollToBottom(animate?: boolean): void {
@@ -1060,13 +1091,11 @@ export class Conversation
   }
 
   async clearDraftAfterSend(
-    sentDraftSnapshot: string,
     sendDraftGeneration: number,
     remoteDraftAtSend: string,
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
     if (!shouldClearDraftAfterSend({
-      sentDraftSnapshot,
       liveDraft: this.messageInputContext()?.text() || "",
       remoteDraft: remoteExtra?.draft || "",
       remoteDraftAtSend,
@@ -2400,7 +2429,6 @@ export class Conversation
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
-                        draftSnapshot?: string,
                       ) => {
                         const sendDraftGeneration = this.draftSaveGeneration;
                         const remoteDraftAtSend =
@@ -2490,10 +2518,9 @@ export class Conversation
                               resolve({ width: 0, height: 0 });
                             img.src = previewUrl;
                           });
-                          await this.sendMediaAndWait(
+                          return this.sendMediaAndWait(
                             new ImageContent(file, previewUrl, width, height),
                           );
-                          return true;
                         };
 
                         // ── 辅助：发送单个非图片文件 ──────────────
@@ -2512,10 +2539,9 @@ export class Conversation
                             }));
                             return false;
                           }
-                          await this.sendMediaAndWait(
+                          return this.sendMediaAndWait(
                             new FileContent(file, name, ext, file.size),
                           );
-                          return true;
                         };
 
                         // ── 辅助：构建带 mention 的文本 MessageContent ──────────────
@@ -2635,8 +2661,9 @@ export class Conversation
                                   reply = undefined;
                                 }
                                 isFirstTextBlock = false;
-                                await this.sendTextAndWaitAck(msgContent);
-                                anyMessageSent = true;
+                                if (await this.sendTextAndWaitAck(msgContent)) {
+                                  anyMessageSent = true;
+                                }
                               } else if (block.type === "image") {
                                 if (await sendImageFile(block.file)) {
                                   anyMessageSent = true;
@@ -2669,8 +2696,9 @@ export class Conversation
                             if (reply) {
                               msgContent.reply = reply;
                             }
-                            await this.sendTextAndWaitAck(msgContent);
-                            anyMessageSent = true;
+                            if (await this.sendTextAndWaitAck(msgContent)) {
+                              anyMessageSent = true;
+                            }
                           } else if (reply && anyMessageSent) {
                             // 同上: 顶部附件全部被预检拒绝时不要补空回复
                             const emptyContent = new MessageText("");
@@ -2680,7 +2708,6 @@ export class Conversation
                         }
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
-                            draftSnapshot || "",
                             sendDraftGeneration,
                             remoteDraftAtSend,
                           );
