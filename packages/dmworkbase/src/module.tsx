@@ -85,6 +85,7 @@ import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
 import { patchSdkDecodeForExternalFields } from "./Service/Convert";
+import { isMessageSelectable } from "./Service/messageSelection";
 import ConversationVM from "./Components/Conversation/vm";
 import { ChannelAvatar } from "./Components/ChannelAvatar";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
@@ -723,6 +724,9 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.muli",
       (message, context) => {
+        if (!isMessageSelectable(message)) {
+          return null;
+        }
         return {
           title: t("base.module.contextMenus.multiSelect"),
           onClick: () => {
@@ -872,6 +876,13 @@ export default class BaseModule implements IModule {
                   );
                   Toast.success(t("base.module.createThread.success"));
                   if (resp && resp.channel_id) {
+                    WKApp.mittBus.emit("wk:thread-created", {
+                      groupNo: message.channel.channelID,
+                      shortId:
+                        resp.short_id ||
+                        parseThreadChannelId(resp.channel_id)?.shortId,
+                      threadChannelId: resp.channel_id,
+                    });
                     const channel = new Channel(
                       resp.channel_id,
                       ChannelTypeCommunityTopic

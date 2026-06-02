@@ -224,7 +224,14 @@ export class ChannelDataSource implements IChannelDataSource {
             body.source_message_id = sourceMessageId
         }
         const resp = await WKApp.apiClient.post(`groups/${groupNo}/threads`, body)
-        return this.toThread(resp, groupNo)
+        const thread = this.toThread(resp, groupNo)
+        WKApp.mittBus.emit("wk:thread-created", {
+            groupNo,
+            shortId: thread.short_id,
+            threadChannelId: thread.channel_id,
+            thread,
+        })
+        return thread
     }
 
     async threadGet(groupNo: string, shortId: string): Promise<Thread> {
