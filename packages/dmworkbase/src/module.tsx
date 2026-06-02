@@ -168,15 +168,10 @@ function warmRevokeTargetRole(channel: Channel, uid: string) {
 
   pendingRevokeRoleFetches.add(requestKey);
   WKApp.dataSource.channelDataSource
-    .subscribers(channel, {
-      keyword: uid,
-      limit: 20,
-      page: 1,
-    })
-    .then((subscribers) => {
-      const matched = subscribers?.find((subscriber) => subscriber.uid === uid);
-      if (matched) {
-        mergeSubscriberIntoCache(channel, matched);
+    .subscriber(channel, uid)
+    .then((subscriber) => {
+      if (subscriber) {
+        mergeSubscriberIntoCache(channel, subscriber);
       }
     })
     .catch(() => {
