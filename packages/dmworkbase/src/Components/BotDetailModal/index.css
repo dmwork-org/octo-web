@@ -67,6 +67,21 @@
 .wk-bot-detail-avatar--owner {
     cursor: pointer;
 }
+.wk-bot-detail-avatar--preview {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--wk-r-sm, 8px);
+    overflow: hidden;
+    cursor: zoom-in;
+}
+.wk-bot-detail-avatar--preview .semi-image,
+.wk-bot-detail-avatar--preview .semi-image-img,
+.wk-bot-detail-avatar--preview img {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--wk-r-sm, 8px);
+    object-fit: cover;
+}
 .wk-bot-detail-avatar-overlay {
     position: absolute;
     inset: 0;
@@ -98,6 +113,11 @@
     background: rgba(255, 255, 255, 0.6);
     display: flex;
     align-items: center;
+    justify-content: center;
+}
+
+.wk-bot-avatar-crop-editor {
+    display: flex;
     justify-content: center;
 }
 
