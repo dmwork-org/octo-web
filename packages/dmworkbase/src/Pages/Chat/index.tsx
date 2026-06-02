@@ -1464,41 +1464,18 @@ export default class ChatPage extends Component<any, ChatPageState> {
               <WKModal
                 visible={!!this.state.pendingConfirm}
                 title={t("base.chatPage.unsentAttachmentTitle")}
-                footer={
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: "var(--wk-sp-2)",
-                    }}
-                  >
-                    <WKButton
-                      variant="secondary"
-                      onClick={() => this.setState({ pendingConfirm: null })}
-                    >
-                      {t("base.common.cancel")}
-                    </WKButton>
-                    <WKButton
-                      variant="primary"
-                      onClick={() => {
-                        this.state.pendingConfirm?.onOk();
-                        this.setState({ pendingConfirm: null });
-                      }}
-                    >
-                      {t("base.chatPage.continueSwitch")}
-                    </WKButton>
-                  </div>
-                }
+                footerConfig={{
+                  cancelText: t("base.common.cancel"),
+                  okText: t("base.chatPage.continueSwitch"),
+                  onOk: () => {
+                    this.state.pendingConfirm?.onOk();
+                    this.setState({ pendingConfirm: null });
+                  },
+                }}
                 onCancel={() => this.setState({ pendingConfirm: null })}
                 options={{ closable: false }}
               >
-                <p
-                  style={{
-                    margin: 0,
-                    color: "var(--wk-text-secondary)",
-                    fontSize: "var(--wk-text-size-md)",
-                  }}
-                >
+                <p className="wk-modal-confirm-text">
                   {t("base.chatPage.unsentAttachmentContent")}
                 </p>
               </WKModal>
