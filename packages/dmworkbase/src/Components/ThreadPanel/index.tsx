@@ -458,12 +458,14 @@ export default class ThreadPanel extends Component<
     }
   };
 
-  private async loadThreads() {
+  private async loadThreads(silent?: boolean) {
     const { groupNo } = this.props;
     // 纯文件预览模式时跳过
     if (!groupNo) return;
 
-    this.setState({ threadsLoading: true });
+    if (!silent) {
+      this.setState({ threadsLoading: true });
+    }
     try {
       // 并行拉取子区列表 + 关注状态（用 recent tab，含 is_followed 字段）
       const [threads, sidebarResp] = await Promise.all([
@@ -1274,7 +1276,7 @@ export default class ThreadPanel extends Component<
         Toast.success(t("base.threadList.followed"));
       }
       WKApp.mittBus.emit("sidebar-reload" as any);
-      this.loadThreads();
+      this.loadThreads(true);
     } catch (err: any) {
       this.setState((prev) => ({
         threads: prev.threads.map((t) =>

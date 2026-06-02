@@ -72,4 +72,4 @@ package-lock.json
 docs/superpowers/plans/
 # Review output files
 /cc-*.json
-grp_out.txt  
+grp_out.txt
