@@ -14,6 +14,10 @@ import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { isSafeUrl } from "../../Utils/security";
 import { I18nContext } from "../../i18n";
+import {
+  getFileIcon,
+  defaultIcon,
+} from "../../Components/MessageInput/AttachmentNode";
 
 export { FileContent } from "./FileContent";
 
@@ -74,206 +78,20 @@ export function getFileIconInfo(
   }
 }
 
-/** 文件类型图标，对齐 Figma 设计稿 */
+/** 文件类型图标，使用与附件输入框一致的 SVG 图标 */
 function FileTypeIcon({
   extension,
   name,
+  mimeType,
 }: {
   extension: string;
   name?: string;
+  mimeType?: string;
 }) {
-  const ext = getExtension(extension, name);
-
-  // PDF
-  if (ext === "pdf") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#FEE2E2" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#EF4444"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#FCA5A5" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="7"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          PDF
-        </text>
-      </svg>
-    );
-  }
-
-  // DOC/DOCX
-  if (ext === "doc" || ext === "docx") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#DBEAFE" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#3B82F6"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#93C5FD" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          DOC
-        </text>
-      </svg>
-    );
-  }
-
-  // XLS/XLSX
-  if (ext === "xls" || ext === "xlsx") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#DCFCE7" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#22C55E"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#86EFAC" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          XLS
-        </text>
-      </svg>
-    );
-  }
-
-  // PPT/PPTX
-  if (ext === "ppt" || ext === "pptx") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#FFEDD5" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#F97316"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#FDba74" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          PPT
-        </text>
-      </svg>
-    );
-  }
-
-  // ZIP/压缩包
-  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#FEF9C3" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#EAB308"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#FDE047" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          ZIP
-        </text>
-      </svg>
-    );
-  }
-
-  // 通用文件
-  return (
-    <svg
-      width="40"
-      height="40"
-      viewBox="0 0 40 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect width="40" height="40" rx="8" fill="#F3F4F6" />
-      <path
-        d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-        fill="#9CA3AF"
-      />
-      <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#D1D5DB" />
-      <line
-        x1="16"
-        y1="20"
-        x2="26"
-        y2="20"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <line
-        x1="16"
-        y1="24"
-        x2="22"
-        y2="24"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  const icon = name || extension
+    ? getFileIcon(name || "", mimeType || "")
+    : defaultIcon;
+  return <img src={icon} alt="" width="40" height="40" />;
 }
 
 export function getExtension(extension: string, name?: string): string {
