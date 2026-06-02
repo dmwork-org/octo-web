@@ -22,6 +22,7 @@ import WKApp from "../../App";
 import { formatRelativeTime } from "../../Utils/time";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
+import CategoryService from "../../Service/CategoryService";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
 import { getExtension } from "../FilePreviewPanel/types";
@@ -1272,6 +1273,7 @@ export default class ThreadPanel extends Component<
         await FollowService.unfollowThread(threadChannelId);
         Toast.success(t("base.threadList.unfollowed"));
       } else {
+        await this.ensureParentGroupInFollowSet(thread.group_no);
         await FollowService.followThread({ thread_channel_id: threadChannelId });
         Toast.success(t("base.threadList.followed"));
       }
@@ -1286,6 +1288,44 @@ export default class ThreadPanel extends Component<
       Toast.error(err?.msg || err?.message || t(wasFollowed ? "base.threadList.unfollowFailed" : "base.threadList.followFailed"));
     }
   };
+  /**
+   * 确保父群已进入关注集合（有关联的 category）。
+   * 子区关注依赖父群在 sidebar follow tab 的 follow set 里，
+   * 否则 mergeThreadEntries 会将子区过滤掉。
+   * 这里静默操作：父群已在某分组则跳过，否则移入默认分组。
+   * 如果用户之前手动取消关注了父群，这里会将其重新关注 —— 这是子区关注的前提条件。
+   */
+  private async ensureParentGroupInFollowSet(parentGroupNo: string) {
+    const spaceId = WKApp.shared.currentSpaceId;
+    if (!spaceId) return;
+
+    try {
+      // 清除父群取消关注标记（幂等，已关注则无操作）
+      await FollowService.refollowChannel({ group_no: parentGroupNo });
+    } catch (err) {
+      console.warn("[ThreadPanel] refollowChannel failed for parent group", parentGroupNo, err);
+    }
+
+    try {
+      const categories = await CategoryService.list(spaceId);
+      const alreadyInCategory = categories.some((cat) =>
+        cat.groups?.some((g) => g.group_no === parentGroupNo)
+      );
+      if (alreadyInCategory) return;
+
+      const targetCategory =
+        categories.find((cat) => cat.is_default && cat.category_id) ||
+        categories.find((cat) => cat.category_id);
+      if (targetCategory?.category_id) {
+        await CategoryService.moveGroupToCategory(parentGroupNo, {
+          category_id: targetCategory.category_id,
+        });
+      }
+    } catch (err) {
+      console.warn("[ThreadPanel] ensureParentGroupInFollowSet category failed", parentGroupNo, err);
+    }
+  }
+
   private renderThreadItem(thread: Thread) {
     const hasUnread = (thread.unread_count ?? 0) > 0;
     const creatorName = this.getCreatorName(thread);
