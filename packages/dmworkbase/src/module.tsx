@@ -872,6 +872,13 @@ export default class BaseModule implements IModule {
                   );
                   Toast.success(t("base.module.createThread.success"));
                   if (resp && resp.channel_id) {
+                    WKApp.mittBus.emit("wk:thread-created", {
+                      groupNo: message.channel.channelID,
+                      shortId:
+                        resp.short_id ||
+                        parseThreadChannelId(resp.channel_id)?.shortId,
+                      threadChannelId: resp.channel_id,
+                    });
                     const channel = new Channel(
                       resp.channel_id,
                       ChannelTypeCommunityTopic
