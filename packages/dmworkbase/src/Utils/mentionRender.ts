@@ -142,6 +142,8 @@ export interface MentionDropdownItem {
  * dropdown shows only matching members, so `MentionList`'s default
  * `selectedIndex = 0` correctly lands on the first member match and
  * Enter inserts the typed member instead of broadcasting to everyone.
+ * Callers can set `includeBroadcastMentions=false` for direct chats,
+ * where broadcasting to everyone or all AIs does not make sense.
  *
  * `iconResolver` and `externalResolver` are injected so callers can
  * pass the production avatar lookup / external-space resolver, while
@@ -168,12 +170,20 @@ export function buildMentionDropdownItems<
     sourceSpaceName: string;
   };
   stickyIcon: string;
+  includeBroadcastMentions?: boolean;
 }): MentionDropdownItem[] {
-  const { query, members, iconResolver, externalResolver, stickyIcon } = args;
+  const {
+    query,
+    members,
+    iconResolver,
+    externalResolver,
+    stickyIcon,
+    includeBroadcastMentions = true,
+  } = args;
 
   const trimmedQuery = (query ?? "").trim();
   const stickyTop: MentionDropdownItem[] =
-    trimmedQuery.length === 0
+    includeBroadcastMentions && trimmedQuery.length === 0
       ? [
           {
             uid: MENTION_UID_HUMANS,

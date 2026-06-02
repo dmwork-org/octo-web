@@ -237,6 +237,13 @@ export interface IChannelDataSource {
     }): Promise<Subscriber[]>
 
     /**
+     * 按 UID 精确获取单个订阅者
+     * @param channel
+     * @param uid 订阅者 UID
+     */
+    subscriber(channel: Channel, uid: string): Promise<Subscriber | undefined>
+
+    /**
      * 更新频道设置
      * @param setting 
      * @param channel 

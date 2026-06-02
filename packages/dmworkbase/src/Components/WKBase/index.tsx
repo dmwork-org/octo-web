@@ -367,7 +367,8 @@ export default class WKBase
         <WKModal
           className="wk-base-modal wk-base-modal-forward"
           visible={showConversationSelect}
-          options={{ mask: false, width: 625 }}
+          width={625}
+          options={{ mask: false }}
           onCancel={() => {
             this.setState({
               showConversationSelect: false,
@@ -405,7 +406,7 @@ export default class WKBase
             },
           }}
         >
-          {alertContent}
+          <p className="wk-modal-confirm-text">{alertContent}</p>
         </WKModal>
         <Modal
           closable={this.state.globalModalOptions?.closable}

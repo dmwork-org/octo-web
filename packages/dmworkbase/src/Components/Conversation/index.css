@@ -891,14 +891,3 @@ body[theme-mode="dark"] .wk-conversationpositionview-item {
     background-color: transparent;
   }
 }
-
-/* 删除确认弹窗 — 清除 Semi body 默认 padding，内容自己控制间距 */
-.wk-delete-confirm-modal .semi-modal-body {
-  padding: 0 !important;
-}
-.wk-delete-confirm-modal .semi-modal-body-wrapper {
-  margin: 0 !important;
-}
-.wk-delete-confirm-modal .semi-modal-content {
-  padding: 0 !important;
-}
