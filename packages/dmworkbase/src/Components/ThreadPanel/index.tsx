@@ -1278,7 +1278,6 @@ export default class ThreadPanel extends Component<
         Toast.success(t("base.threadList.followed"));
       }
       WKApp.mittBus.emit("sidebar-reload" as any);
-      this.loadThreads(true);
     } catch (err: any) {
       this.setState((prev) => ({
         threads: prev.threads.map((t) =>
