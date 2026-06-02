@@ -388,6 +388,20 @@ export class Conversation
       this.reply(messageWrap.message, 1);
     }
   }
+
+  private addReplyMention(fromUID: string): void {
+    if (
+      this.props.channel.channelType === ChannelTypePerson ||
+      fromUID === WKApp.loginInfo.uid
+    ) {
+      return;
+    }
+    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      new Channel(fromUID, ChannelTypePerson),
+    );
+    this._messageInputContext?.addMention(fromUID, channelInfo?.title || "");
+  }
+
   replyToFileMessage(info: {
     messageId: string;
     messageSeq: number;
@@ -418,17 +432,7 @@ export class Conversation
     fakeMessage.channel = channel;
     fakeMessage.content = new MessageText(info.conversationDigest);
 
-    // 添加 @提及（如果不是自己发的消息）
-    if (info.fromUID !== WKApp.loginInfo.uid) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-        new Channel(info.fromUID, ChannelTypePerson),
-      );
-      let name = "";
-      if (channelInfo) {
-        name = channelInfo.title;
-      }
-      this._messageInputContext?.addMention(info.fromUID, name);
-    }
+    this.addReplyMention(info.fromUID);
 
     // 设置回复状态
     this.vm.currentHandlerType = 1;
@@ -752,16 +756,7 @@ export class Conversation
 
   // 回复消息
   reply(message: Message, handlerType: number): void {
-    if (message.fromUID !== WKApp.loginInfo.uid) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-        new Channel(message.fromUID, ChannelTypePerson),
-      );
-      let name = "";
-      if (channelInfo) {
-        name = channelInfo.title;
-      }
-      this._messageInputContext?.addMention(message.fromUID, name);
-    }
+    this.addReplyMention(message.fromUID);
     if (handlerType === 2) {
       let content = message.remoteExtra?.isEdit
         ? message.remoteExtra?.contentEdit?.conversationDigest
