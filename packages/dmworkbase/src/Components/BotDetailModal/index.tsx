@@ -5,10 +5,14 @@ import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
+import { WKAvatarEditor } from "../WKAvatarEditor";
+import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
+import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
 import AiBadge from "../AiBadge";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
 import AgentCardService from "../../Service/AgentCardService";
 import { I18nContext, t } from "../../i18n";
+import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -38,6 +42,8 @@ interface BotDetailModalState {
     reported: boolean | null;
     reportStatusLoading: boolean;
     showClawInfo: boolean;
+    avatarCropFile: File | null;
+    avatarPreviewFile: File | null;
 }
 
 export default class BotDetailModal extends Component<BotDetailModalProps, BotDetailModalState> {
@@ -46,6 +52,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
     private refreshTimer: ReturnType<typeof setTimeout> | null = null;
     private $fileInput: HTMLInputElement | null = null;
+    private avatarEdit: WKAvatarEditor | null = null;
 
     state: BotDetailModalState = {
         loading: true,
@@ -66,6 +73,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         reported: null,
         reportStatusLoading: false,
         showClawInfo: false,
+        avatarCropFile: null,
+        avatarPreviewFile: null,
     };
 
     componentDidMount() {
@@ -77,6 +86,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
     componentDidUpdate(prevProps: BotDetailModalProps) {
         if (prevProps.uid !== this.props.uid && this.props.uid) {
             this.loadBotInfo();
+        }
+        if (prevProps.visible && !this.props.visible) {
+            this.setState({ avatarCropFile: null, avatarPreviewFile: null });
         }
     }
 
@@ -134,6 +146,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             editingDescription: false,
             descriptionDraft: "",
             savingDescription: false,
+            avatarCropFile: null,
+            avatarPreviewFile: null,
         });
 
         const isStale = () => this.props.uid !== requestedUid;
@@ -209,6 +223,11 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         onClose();
     };
 
+    handleClose = () => {
+        this.setState({ avatarCropFile: null, avatarPreviewFile: null });
+        this.props.onClose();
+    };
+
     // === Owner 头像编辑 ===
     handleAvatarClick = () => {
         if (!this.isOwner() || this.state.uploadingAvatar) return;
@@ -234,10 +253,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         (event.target as HTMLInputElement).value = "";
     };
 
-    handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const files = event.target.files;
-        if (!files || files.length === 0) return;
-        const file = files[0];
+    uploadBotAvatar = async (file: File): Promise<boolean> => {
         const { uid } = this.props;
         const param = new FormData();
         param.append("file", file);
@@ -254,10 +270,62 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             WKSDK.shared().channelManager.fetchChannelInfo(new Channel(uid, ChannelTypePerson));
             Toast.success(t("base.botDetail.avatarUpdated"));
             this.forceUpdate();
+            return true;
         } catch (err) {
             Toast.error(t("base.botDetail.avatarUploadFailed"));
+            return false;
         } finally {
             this.setState({ uploadingAvatar: false });
+        }
+    };
+
+    handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        if (isAvatarFileTooLarge(file)) {
+            Toast.error(t("base.channelAvatar.fileTooLarge"));
+            return;
+        }
+        if (isGifImageFile(file)) {
+            this.setState({ avatarPreviewFile: file });
+            return;
+        }
+        this.setState({ avatarCropFile: file });
+    };
+
+    handleAvatarCropCancel = () => {
+        if (this.state.uploadingAvatar) return;
+        this.setState({ avatarCropFile: null });
+    };
+
+    handleAvatarPreviewCancel = () => {
+        if (this.state.uploadingAvatar) return;
+        this.setState({ avatarPreviewFile: null });
+    };
+
+    handleAvatarPreviewSave = async () => {
+        const { avatarPreviewFile } = this.state;
+        if (!avatarPreviewFile) return;
+        const uploaded = await this.uploadBotAvatar(avatarPreviewFile);
+        if (uploaded) {
+            this.setState({ avatarPreviewFile: null });
+        }
+    };
+
+    handleAvatarCropSave = async () => {
+        const canvas = this.avatarEdit?.getImageScaledToCanvas();
+        if (!canvas) return;
+        let file: File;
+        try {
+            file = await canvasToPngFile(canvas, "botAvatarPicture.png");
+        } catch {
+            Toast.error(t("base.botDetail.imageProcessFailedRetry"));
+            return;
+        }
+        const uploaded = await this.uploadBotAvatar(file);
+        if (uploaded) {
+            this.setState({ avatarCropFile: null });
         }
     };
 
@@ -336,7 +404,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
     };
 
     render() {
-        const { visible, onClose, uid } = this.props;
+        const { visible, uid } = this.props;
         const {
             loading,
             name,
@@ -355,6 +423,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             reported,
             reportStatusLoading,
             showClawInfo,
+            avatarCropFile,
+            avatarPreviewFile,
         } = this.state;
         const isOwner = this.isOwner();
         const displayDescription = description
@@ -371,7 +441,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             <WKModal
                 title={null}
                 visible={visible}
-                onCancel={onClose}
+                onCancel={this.handleClose}
                 className="wk-bot-detail-modal"
             >
                 {loading ? (
@@ -410,7 +480,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                     />
                                 </div>
                             ) : (
-                                <WKAvatar channel={new Channel(uid, ChannelTypePerson)} size={64} />
+                                <div className="wk-bot-detail-avatar wk-bot-detail-avatar--preview">
+                                    <WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />
+                                </div>
                             )}
                             <div className="wk-bot-detail-name">
                                 {name.replace(/\*\*/g, '')} <AiBadge />
@@ -576,6 +648,55 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 visible={showClawInfo}
                 onClose={() => this.setState({ showClawInfo: false })}
             />
+            <WKModal
+                title={t("base.botDetail.previewAvatar")}
+                visible={visible && !!avatarPreviewFile}
+                onCancel={this.handleAvatarPreviewCancel}
+                width={460}
+                className="wk-bot-avatar-preview-modal"
+                footerConfig={{
+                    okText: t("base.botDetail.save"),
+                    cancelText: t("base.common.cancel"),
+                    isOkLoading: uploadingAvatar,
+                    onOk: this.handleAvatarPreviewSave,
+                }}
+                options={{
+                    maskClosable: !uploadingAvatar,
+                    closeOnEsc: !uploadingAvatar,
+                }}
+            >
+                {avatarPreviewFile && (
+                    <WKAvatarUploadPreview file={avatarPreviewFile} shape="bot" />
+                )}
+            </WKModal>
+            <WKModal
+                title={t("base.botDetail.cropAvatar")}
+                visible={visible && !!avatarCropFile}
+                onCancel={this.handleAvatarCropCancel}
+                width={460}
+                className="wk-bot-avatar-crop-modal"
+                footerConfig={{
+                    okText: t("base.botDetail.save"),
+                    cancelText: t("base.common.cancel"),
+                    isOkLoading: uploadingAvatar,
+                    onOk: this.handleAvatarCropSave,
+                }}
+                options={{
+                    maskClosable: !uploadingAvatar,
+                    closeOnEsc: !uploadingAvatar,
+                }}
+            >
+                {avatarCropFile && (
+                    <div className="wk-bot-avatar-crop-editor">
+                        <WKAvatarEditor
+                            ref={(ref) => {
+                                this.avatarEdit = ref;
+                            }}
+                            file={avatarCropFile}
+                        />
+                    </div>
+                )}
+            </WKModal>
         </>
         );
     }
