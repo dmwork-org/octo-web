@@ -36,4 +36,13 @@ describe("shouldClearDraftAfterSend", () => {
             latestSavedDraft: "",
         })).toBe(true)
     })
+
+    it("clears an edited restored draft after it is sent", () => {
+        expect(shouldClearDraftAfterSend({
+            sentDraftSnapshot: "hello!",
+            remoteDraft: "hello",
+            liveDraft: "",
+            draftSavedAfterSend: false,
+        })).toBe(true)
+    })
 })

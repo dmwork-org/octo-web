@@ -7,15 +7,12 @@ export interface ShouldClearDraftAfterSendOptions {
 }
 
 export function shouldClearDraftAfterSend({
-    sentDraftSnapshot,
     liveDraft,
-    remoteDraft,
     draftSavedAfterSend,
     latestSavedDraft,
 }: ShouldClearDraftAfterSendOptions): boolean {
     if (liveDraft) return false
     if (draftSavedAfterSend && latestSavedDraft) return false
 
-    const currentRemoteDraft = remoteDraft || ""
-    return currentRemoteDraft === "" || currentRemoteDraft === sentDraftSnapshot
+    return true
 }
