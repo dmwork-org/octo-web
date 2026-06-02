@@ -1,5 +1,5 @@
-.wk-bot-detail-modal .semi-modal-body {
-    padding: 0 !important;
+.wk-bot-detail-modal .wk-modal-shell {
+    padding: 0;
 }
 .wk-bot-detail-content {
     padding: 24px;

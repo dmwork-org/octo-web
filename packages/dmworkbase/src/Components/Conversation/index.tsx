@@ -50,7 +50,7 @@ import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import { IconClose, IconEdit, IconReply } from "@douyinfe/semi-icons";
 import { Toast, Spin } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
+import { wkConfirm } from "../WKModal";
 import { FlameMessageCell } from "../../Messages/Flame";
 import FoldSessionCard, { FoldSessionCardParticipant } from "./FoldSessionCard";
 import { BeatLoader } from "react-spinners";
@@ -85,6 +85,7 @@ import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
 import { precheckUploadCredentials } from "../../Service/UploadCredentials";
+import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext, t } from "../../i18n";
 
 /**
@@ -288,7 +289,6 @@ const ConversationSelectionStateBridge: React.FC<{
 
 interface ConversationState {
   inputExpanded: boolean;
-  showDeleteConfirm: boolean;
   contextMenuMessageID: string | null;
 }
 
@@ -336,7 +336,6 @@ export class Conversation
     super(props);
     this.state = {
       inputExpanded: false,
-      showDeleteConfirm: false,
       contextMenuMessageID: null as string | null,
     };
     this.onOpenThreadPanel = props.onOpenThreadPanel;
@@ -395,6 +394,20 @@ export class Conversation
       this.reply(messageWrap.message, 1);
     }
   }
+
+  private addReplyMention(fromUID: string): void {
+    if (
+      this.props.channel.channelType === ChannelTypePerson ||
+      fromUID === WKApp.loginInfo.uid
+    ) {
+      return;
+    }
+    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      new Channel(fromUID, ChannelTypePerson),
+    );
+    this._messageInputContext?.addMention(fromUID, channelInfo?.title || "");
+  }
+
   replyToFileMessage(info: {
     messageId: string;
     messageSeq: number;
@@ -425,17 +438,7 @@ export class Conversation
     fakeMessage.channel = channel;
     fakeMessage.content = new MessageText(info.conversationDigest);
 
-    // 添加 @提及（如果不是自己发的消息）
-    if (info.fromUID !== WKApp.loginInfo.uid) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-        new Channel(info.fromUID, ChannelTypePerson),
-      );
-      let name = "";
-      if (channelInfo) {
-        name = channelInfo.title;
-      }
-      this._messageInputContext?.addMention(info.fromUID, name);
-    }
+    this.addReplyMention(info.fromUID);
 
     // 设置回复状态
     this.vm.currentHandlerType = 1;
@@ -709,7 +712,7 @@ export class Conversation
   }
   setEditOn(edit: boolean): void {
     this.vm.editOn = edit;
-    if (this.vm.selectMessage && edit) {
+    if (this.vm.selectMessage && edit && isMessageSelectable(this.vm.selectMessage)) {
       this.vm.checkedMessage(this.vm.selectMessage, true);
     }
   }
@@ -804,16 +807,7 @@ export class Conversation
 
   // 回复消息
   reply(message: Message, handlerType: number): void {
-    if (message.fromUID !== WKApp.loginInfo.uid) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-        new Channel(message.fromUID, ChannelTypePerson),
-      );
-      let name = "";
-      if (channelInfo) {
-        name = channelInfo.title;
-      }
-      this._messageInputContext?.addMention(message.fromUID, name);
-    }
+    this.addReplyMention(message.fromUID);
     if (handlerType === 2) {
       let content = message.remoteExtra?.isEdit
         ? message.remoteExtra?.contentEdit?.conversationDigest
@@ -1403,8 +1397,7 @@ export class Conversation
     const { showSummary, summaryId, summaryMessage } =
       getFoldSessionSummaryState(session);
     const summarySelectable =
-      showSummary &&
-      summaryMessage.contentType !== MessageContentTypeConst.typing;
+      showSummary && isMessageSelectable(summaryMessage);
     const typingSender =
       summaryMessage.contentType === MessageContentTypeConst.typing
         ? (summaryMessage.content as { fromName?: string })?.fromName
@@ -2116,7 +2109,28 @@ export class Conversation
                         Toast.error(t("base.conversation.selection.selectMessageFirst"));
                         return;
                       }
-                      this.setState({ showDeleteConfirm: true });
+                      wkConfirm({
+                        title: t("base.conversation.deleteConfirm.title"),
+                        content: t("base.conversation.deleteConfirm.content"),
+                        okText: t("base.conversation.deleteConfirm.confirm"),
+                        cancelText: t("base.common.cancel"),
+                        okType: "danger",
+                        onOk: async () => {
+                          const checkedMessagewraps = vm.getCheckedMessages();
+                          const messages = checkedMessagewraps
+                            .map((m) => m.message)
+                            .filter(Boolean);
+                          if (messages.length === 0) return;
+                          try {
+                            await vm.deleteMessages(messages);
+                            vm.editOn = false;
+                            vm.unCheckAllMessages();
+                          } catch (e) {
+                            Toast.error(t("base.conversation.deleteConfirm.failed"));
+                            throw e;
+                          }
+                        },
+                      });
                     }}
                     onAddToMatter={(anchor) => {
                       const checkedMsgs = vm.getCheckedMessages();
@@ -2170,145 +2184,6 @@ export class Conversation
                     }}
                   ></MultiplePanel>
 
-                  <WKModal
-                    visible={!!this.state.showDeleteConfirm}
-                    footer={null}
-                    options={{ closable: false }}
-                    className="wk-delete-confirm-modal"
-                    onCancel={() => this.setState({ showDeleteConfirm: false })}
-                  >
-                    {/* 整体自定义，对齐 Figma 387-63814 */}
-                    <div style={{ padding: "24px 24px 20px" }}>
-                      {/* Header */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginBottom: 12,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          <svg
-                            width="22"
-                            height="22"
-                            viewBox="0 0 22 22"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M11 2L20.66 18H1.34L11 2Z"
-                              fill="#FF8C00"
-                            />
-                            <path
-                              d="M11 9V13"
-                              stroke="white"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                            />
-                            <circle cx="11" cy="15.5" r="0.85" fill="white" />
-                          </svg>
-                          <span
-                            style={{
-                              fontSize: 16,
-                              fontWeight: 600,
-                              color: "#1C1C23",
-                            }}
-                          >
-                            {t("base.conversation.deleteConfirm.title")}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() =>
-                            this.setState({ showDeleteConfirm: false })
-                          }
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: 4,
-                            color: "rgba(28,28,35,0.4)",
-                            fontSize: 18,
-                            lineHeight: 1,
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                      {/* Content */}
-                      <p
-                        style={{
-                          margin: "0 0 24px",
-                          color: "rgba(28,28,35,0.6)",
-                          fontSize: 14,
-                          lineHeight: "22px",
-                        }}
-                      >
-                        {t("base.conversation.deleteConfirm.content")}
-                      </p>
-                      {/* Footer */}
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          gap: 8,
-                        }}
-                      >
-                        <button
-                          onClick={() =>
-                            this.setState({ showDeleteConfirm: false })
-                          }
-                          style={{
-                            padding: "7px 20px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(28,28,35,0.15)",
-                            background: "#fff",
-                            color: "rgba(28,28,35,0.8)",
-                            fontSize: 14,
-                            cursor: "pointer",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {t("base.common.cancel")}
-                        </button>
-                        <button
-                          onClick={async () => {
-                            const checkedMessagewraps = vm.getCheckedMessages();
-                            const messages = checkedMessagewraps
-                              .map((m) => m.message)
-                              .filter(Boolean);
-                            this.setState({ showDeleteConfirm: false });
-                            if (messages.length === 0) return;
-                            try {
-                              await vm.deleteMessages(messages);
-                              vm.editOn = false;
-                              vm.unCheckAllMessages();
-                            } catch (e) {
-                              Toast.error(t("base.conversation.deleteConfirm.failed"));
-                            }
-                          }}
-                          style={{
-                            padding: "7px 20px",
-                            borderRadius: 999,
-                            border: "none",
-                            background: "#FF4D4F",
-                            color: "#fff",
-                            fontSize: 14,
-                            cursor: "pointer",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {t("base.conversation.deleteConfirm.confirm")}
-                        </button>
-                      </div>
-                    </div>
-                  </WKModal>
                 </div>
                 <div
                   className="wk-conversation-footer"

@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Button, Spin, Tag, Modal, Toast } from "@douyinfe/semi-ui";
+import { Button, Spin, Tag, Toast } from "@douyinfe/semi-ui";
 import { Channel, Subscriber } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
@@ -7,6 +7,7 @@ import { SubscriberList } from "../Subscribers/list";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
 import { I18nContext, t } from "../../i18n";
+import { wkConfirm } from "../WKModal";
 import "./index.css";
 
 export interface GroupManagementProps {
@@ -75,7 +76,7 @@ export class GroupManagement extends Component<
 
   handleRemoveManager = (subscriber: Subscriber) => {
     const { channel } = this.props;
-    Modal.confirm({
+    wkConfirm({
       title: t("base.groupManagement.removeManagerTitle"),
       content: t("base.groupManagement.removeManagerContent", {
         values: { name: subscriber.remark || subscriber.name },
@@ -98,7 +99,7 @@ export class GroupManagement extends Component<
 
   handleRemoveBotAdmin = (subscriber: Subscriber) => {
     const { channel } = this.props;
-    Modal.confirm({
+    wkConfirm({
       title: t("base.groupManagement.removeBotAdminTitle"),
       content: t("base.groupManagement.removeBotAdminContent", {
         values: { name: subscriber.remark || subscriber.name },

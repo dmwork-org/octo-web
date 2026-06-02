@@ -9,7 +9,7 @@ import {
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
 import React, { Component } from "react";
-import { Modal, Tag } from "@douyinfe/semi-ui";
+import { Tag } from "@douyinfe/semi-ui";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
 import { getTimeStringAutoShort2 } from "../../Utils/time";
 import classNames from "classnames";
@@ -36,6 +36,7 @@ import AiBadge from "../AiBadge";
 import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
+import { wkConfirm } from "../WKModal";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── CompactGroupItem：群聊 Tab 紧凑 item，支持拖拽 ──────────────────────
@@ -923,7 +924,7 @@ export default class ConversationList extends Component<
         };
     let grouped: GroupedItem[];
     let threadsByParent: Map<string, ConversationWrap[]>;
-    if (compact) {
+    if (compact && !this.props.disablePinSplit) {
       const r = this.groupThreadsWithParent(filtered);
       grouped = r.items;
       threadsByParent = r.threadsByParent;
@@ -1098,7 +1099,7 @@ export default class ConversationList extends Component<
                 icon: "M18 6 6 18 M6 6l12 12",
                 onClick: () => {
                   if (!channel) return;
-                  Modal.confirm({
+                  wkConfirm({
                     title: t("base.conversationList.confirm.closeTitle"),
                     content: t("base.conversationList.confirm.closeContent"),
                     okText: t("base.common.ok"),
@@ -1191,7 +1192,7 @@ export default class ConversationList extends Component<
                 danger: true,
                 onClick: () => {
                   if (!channel) return;
-                  Modal.confirm({
+                  wkConfirm({
                     title: t("base.conversationList.confirm.clearTitle"),
                     content: t("base.conversationList.confirm.clearContent"),
                     okText: t("base.common.ok"),
@@ -1209,7 +1210,7 @@ export default class ConversationList extends Component<
                 danger: true,
                 onClick: () => {
                   if (!channel) return;
-                  Modal.confirm({
+                  wkConfirm({
                     title: t("base.conversationList.confirm.closeAndClearTitle"),
                     content:
                       t("base.conversationList.confirm.closeAndClearContent"),

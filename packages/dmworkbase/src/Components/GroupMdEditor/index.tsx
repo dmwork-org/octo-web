@@ -1,11 +1,12 @@
 import React, { Component } from "react";
-import { Button, TextArea, Spin, Modal } from "@douyinfe/semi-ui";
+import { Button, TextArea, Spin } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
 import { I18nContext } from "../../i18n";
+import { wkConfirm } from "../WKModal";
 import "./index.css";
 
 export interface GroupMdEditorProps {
@@ -130,7 +131,7 @@ export class GroupMdEditor extends Component<
   };
 
   handleDelete = () => {
-    Modal.confirm({
+    wkConfirm({
       title: this.context.t("base.groupMd.deleteTitle"),
       content: this.context.t("base.groupMd.deleteContent"),
       onOk: async () => {

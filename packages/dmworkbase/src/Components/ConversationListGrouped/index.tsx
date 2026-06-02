@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from "react"
-import { Modal } from "@douyinfe/semi-ui"
 import { flushSync } from "react-dom"
 import WKSDK, { ChannelTypeGroup, ChannelTypePerson, Channel, Conversation } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
@@ -33,6 +32,7 @@ import {
     type ValidCategoryItem,
 } from "./categoriesFallback"
 import { useI18n } from "../../i18n"
+import { wkConfirm } from "../WKModal"
 
 // 兜底相关 helper 迁移至 ./categoriesFallback 独立模块，便于无依赖地单元测试。
 // 这里保留 re-export 以保持对外 API 不变（ConversationList.tsx / storybook 可直接从本模块引用）。
@@ -655,7 +655,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 icon: "M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",
                 danger: true,
                 onClick: () => {
-                    Modal.confirm({
+                    wkConfirm({
                         title: t("base.chatSidebar.confirm.deleteCategoryTitle"),
                         content: t("base.chatSidebar.confirm.deleteCategoryContent", {
                             values: { name: cat.name },

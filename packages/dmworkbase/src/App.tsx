@@ -9,6 +9,12 @@ export type MittEvents = {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;
   };
+  "wk:thread-created": {
+    groupNo: string;
+    threadChannelId: string;
+    shortId?: string;
+    thread?: import("./Service/Thread").Thread;
+  };
   "wk:close-thread-panel": undefined;
   "wk:toggle-matter-panel": { channelId: string; channelType: number };
   /** v0.7 Matter 详情面板切换（跟子区/文件预览/任务列表可并存） */
@@ -101,6 +107,16 @@ import { ConnectStatus } from "wukongimjssdk";
 import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
+import { TypingManager } from "./Service/TypingManager";
+import {
+  clearAuthStorage,
+  consumeOidcPostLogoutCleanup,
+  isOidcLoginProvider,
+  markOidcPostLogoutCleanup,
+  overridePostLogoutRedirectUri,
+  requestOidcLogout,
+  safeEndSessionUrl,
+} from "./Service/oidcLogout";
 
 export enum ThemeMode {
   light,
@@ -418,6 +434,10 @@ export class LoginInfo {
    * load 加载登录信息
    */
   public load() {
+    if (consumeOidcPostLogoutCleanup()) {
+      this.logout();
+      clearAuthStorage();
+    }
     this.uid = this.getStorageItemForSID("uid") || "";
     this.shortNo = this.getStorageItemForSID("short_no") || "";
     this.token = this.getStorageItemForSID("token") || "";
@@ -475,6 +495,11 @@ export class LoginInfo {
     this.token = undefined;
     this.appID = "";
     this.role = "";
+    this.uid = "";
+    this.shortNo = "";
+    this.name = "";
+    this.isWork = false;
+    this.sex = 0;
     this.loginProvider = undefined;
     this.removeStorageItemForSID("token");
     this.removeStorageItemForSID("app_id");
@@ -630,6 +655,9 @@ export default class WKApp extends ProviderListener {
 
   // app启动
   startup() {
+    if (consumeOidcPostLogoutCleanup()) {
+      this.clearLocalLoginState();
+    }
     WKApp.loginInfo.load(); // 加载登录信息
 
     // 是否是PC端
@@ -673,6 +701,12 @@ export default class WKApp extends ProviderListener {
         } else if (reasonCode === 2) {
           // 认证失败！
           WKApp.shared.logout();
+        } else if (status === ConnectStatus.Connected) {
+          // 第二层防御：重连成功后清除所有残留 typing。
+          // SDK 重连只 reSubscribe，不补拉离线消息/CMD，断连期间 bot 回复经
+          // HTTP sync 落库不触发清除路径 → typing 永不清。放全局单例 listener
+          // （生命周期最长），不放 Chat/vm.ts（随页面卸载注销）。
+          TypingManager.shared.resetAll();
         } else if (status === ConnectStatus.Disconnect) {
           if (this.addrUsed && this.wsaddrs.length > 1) {
             const oldwsAddr = this.wsaddrs[0];
@@ -712,7 +746,11 @@ export default class WKApp extends ProviderListener {
       this.refreshRemoteConfigOnForeground();
     };
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refresh();
+      if (!document.hidden) {
+        refresh();
+        // 第一层防御：回前台清除所有残留 typing，对齐 iOS appDidBecomeActive。
+        TypingManager.shared.resetAll();
+      }
     });
     window.addEventListener("focus", refresh);
   }
@@ -834,15 +872,46 @@ export default class WKApp extends ProviderListener {
   isLogined() {
     return WKApp.loginInfo.isLogined();
   }
-  // 登出
-  logout() {
+  private clearLocalLoginState() {
     WKApp.loginInfo.logout();
-    localStorage.removeItem("currentSpaceId");
+    clearAuthStorage();
     this.currentSpaceId = "";
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
+  }
+
+  // 登出
+  logout() {
+    this.clearLocalLoginState();
     window.location.reload();
+  }
+
+  async logoutUserInitiated() {
+    const providerId = WKApp.loginInfo.loginProvider;
+    const token = WKApp.loginInfo.token || "";
+    if (isOidcLoginProvider(providerId) && token) {
+      try {
+        const resp = await requestOidcLogout(providerId, token);
+        const rawEndSessionUrl = safeEndSessionUrl(resp.end_session_url);
+        const endSessionUrl =
+          rawEndSessionUrl && import.meta.env.DEV
+            ? overridePostLogoutRedirectUri(
+                rawEndSessionUrl,
+                import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
+              )
+            : rawEndSessionUrl;
+        if (endSessionUrl) {
+          this.clearLocalLoginState();
+          markOidcPostLogoutCleanup();
+          window.location.href = endSessionUrl;
+          return;
+        }
+      } catch (e) {
+        console.warn("OIDC logout failed, falling back to local logout", e);
+      }
+    }
+    this.logout();
   }
 
   avatarChannel(channel: Channel) {

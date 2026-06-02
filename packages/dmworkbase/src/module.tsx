@@ -74,17 +74,19 @@ import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { LocationCell, LocationContent } from "./Messages/Location";
-import { Toast, Modal, Tag } from "@douyinfe/semi-ui";
+import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
 import { DefaultEmojiService } from "./Service/EmojiService";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
+import { wkConfirm } from "./Components/WKModal";
 import { UserInfoRouteData } from "./Components/UserInfo/vm";
 import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
 import { patchSdkDecodeForExternalFields } from "./Service/Convert";
+import { isMessageSelectable } from "./Service/messageSelection";
 import ConversationVM from "./Components/Conversation/vm";
 import { ChannelAvatar } from "./Components/ChannelAvatar";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
@@ -108,6 +110,7 @@ import {
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
+import { canShowRevokeMenu } from "./Service/revokePermission";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
 function fallbackCopy(text: string) {
@@ -122,6 +125,62 @@ function fallbackCopy(text: string) {
   } finally {
     document.body.removeChild(textarea);
   }
+}
+
+const pendingRevokeRoleFetches = new Set<string>();
+
+function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
+  const subscribers = WKSDK.shared().channelManager.getSubscribes(channel) as
+    | Subscriber[]
+    | null
+    | undefined;
+  return subscribers?.find((subscriber) => subscriber && subscriber.uid === uid);
+}
+
+function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
+  const channelManager = WKSDK.shared().channelManager;
+  const cached = (channelManager.getSubscribes(channel) || []) as Subscriber[];
+  const nextSubscribers = [...cached];
+  const index = nextSubscribers.findIndex((item) => item.uid === subscriber.uid);
+  subscriber.channel = channel;
+
+  if (index >= 0) {
+    nextSubscribers[index] = {
+      ...nextSubscribers[index],
+      ...subscriber,
+    };
+  } else {
+    nextSubscribers.push(subscriber);
+  }
+
+  channelManager.subscribeCacheMap.set(channel.getChannelKey(), nextSubscribers);
+  channelManager.notifySubscribeChangeListeners(channel);
+}
+
+function warmRevokeTargetRole(channel: Channel, uid: string) {
+  if (findSubscriber(channel, uid)) {
+    return;
+  }
+
+  const requestKey = `${channel.getChannelKey()}:${uid}`;
+  if (pendingRevokeRoleFetches.has(requestKey)) {
+    return;
+  }
+
+  pendingRevokeRoleFetches.add(requestKey);
+  WKApp.dataSource.channelDataSource
+    .subscriber(channel, uid)
+    .then((subscriber) => {
+      if (subscriber) {
+        mergeSubscriberIntoCache(channel, subscriber);
+      }
+    })
+    .catch(() => {
+      // Permission remains fail-closed when the sender role cannot be resolved.
+    })
+    .finally(() => {
+      pendingRevokeRoleFetches.delete(requestKey);
+    });
 }
 
 export default class BaseModule implements IModule {
@@ -723,6 +782,9 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.muli",
       (message, context) => {
+        if (!isMessageSelectable(message)) {
+          return null;
+        }
         return {
           title: t("base.module.contextMenus.multiSelect"),
           onClick: () => {
@@ -735,22 +797,14 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.revoke",
       (message, context) => {
-        if (message.messageID === "") {
-          return null;
-        }
-
-        let isManager = false;
-        if (message.channel.channelType === ChannelTypeGroup) {
-          const sub = WKSDK.shared().channelManager.getSubscribeOfMe(
-            message.channel
-          );
-          if (
-            sub?.role === GroupRole.manager ||
-            sub?.role === GroupRole.owner
-          ) {
-            isManager = true;
-          }
-        }
+        const makeRevokeAction = () => ({
+          title: t("base.module.contextMenus.revoke"),
+          onClick: () => {
+            context.revokeMessage(message).catch((err) => {
+              Toast.error(err.msg);
+            });
+          },
+        });
 
         // Bot 创建者可撤回自己创建的 Bot 发送的消息（与群管理员同等待遇，
         // 不受 message.send 和 24h 时间窗口限制，与后端行为一致）
@@ -765,27 +819,52 @@ export default class BaseModule implements IModule {
           }
         }
 
-        if (!isManager && !isBotOwner) {
-          if (!message.send) {
-            return null;
-          }
-          let revokeSecond = WKApp.remoteConfig.revokeSecond;
-          if (revokeSecond > 0) {
-            const messageTime = new Date().getTime() / 1000 - message.timestamp;
-            if (messageTime > revokeSecond) {
-              //  超过两分钟则不显示撤回
-              return null;
+        // 群聊和子区的撤回权限判断
+        const channelType = message.channel.channelType;
+        const isGroup = channelType === ChannelTypeGroup;
+        const isThread = channelType === ChannelTypeCommunityTopic;
+        const threadInfo = isThread
+          ? parseThreadChannelId(message.channel.channelID)
+          : null;
+        const roleChannel =
+          isThread && threadInfo
+            ? new Channel(threadInfo.groupNo, ChannelTypeGroup)
+            : message.channel;
+        let myRole: number | undefined;
+        let targetRole: number | undefined;
+
+        if (isGroup || isThread) {
+          // 获取当前用户在群/子区父群中的角色
+          const sub =
+            WKSDK.shared().channelManager.getSubscribeOfMe(roleChannel);
+          myRole = sub?.role;
+
+          // 管理员撤回别人消息时必须确认发送者不是群主/管理员；角色未知时默认隐藏。
+          if (myRole === GroupRole.manager && !message.send) {
+            const targetMember = findSubscriber(roleChannel, message.fromUID);
+            targetRole = targetMember?.role;
+            if (targetRole == null) {
+              warmRevokeTargetRole(roleChannel, message.fromUID);
             }
           }
         }
-        return {
-          title: t("base.module.contextMenus.revoke"),
-          onClick: () => {
-            context.revokeMessage(message).catch((err) => {
-              Toast.error(err.msg);
-            });
-          },
-        };
+
+        const canShow = canShowRevokeMenu({
+          messageID: message.messageID,
+          channelType,
+          messageSend: message.send,
+          messageTimestamp: message.timestamp,
+          revokeSecond: WKApp.remoteConfig.revokeSecond,
+          isBotOwner,
+          myRole,
+          targetRole,
+        });
+
+        if (!canShow) {
+          return null;
+        }
+
+        return makeRevokeAction();
       },
       4000
     );
@@ -814,9 +893,8 @@ export default class BaseModule implements IModule {
               message.content?.conversationDigest || ""
             ).slice(0, 20);
             let threadName = defaultName;
-            Modal.confirm({
+            wkConfirm({
               title: t("base.module.createThread.title"),
-              icon: null,
               okText: t("base.module.createThread.ok"),
               cancelText: t("base.common.cancel"),
               content: (
@@ -872,6 +950,13 @@ export default class BaseModule implements IModule {
                   );
                   Toast.success(t("base.module.createThread.success"));
                   if (resp && resp.channel_id) {
+                    WKApp.mittBus.emit("wk:thread-created", {
+                      groupNo: message.channel.channelID,
+                      shortId:
+                        resp.short_id ||
+                        parseThreadChannelId(resp.channel_id)?.shortId,
+                      threadChannelId: resp.channel_id,
+                    });
                     const channel = new Channel(
                       resp.channel_id,
                       ChannelTypeCommunityTopic
@@ -2107,11 +2192,10 @@ export default class BaseModule implements IModule {
                 type: ListItemButtonType.default,
                 onClick: () => {
                   const threadDisplayName = thread?.name || data.channelInfo?.title || t("base.module.thread.fallbackName");
-                  Modal.confirm({
+                  wkConfirm({
                     title: isArchived
                       ? t("base.module.thread.unarchiveConfirmTitle", { values: { name: threadDisplayName } })
                       : t("base.module.thread.archiveConfirmTitle", { values: { name: threadDisplayName } }),
-                    icon: null,
                     okText: isArchived
                       ? t("base.module.thread.unarchive")
                       : t("base.module.thread.archiveOk"),

@@ -609,6 +609,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   }, [props.members]);
 
   const localMembersRef = useRef(props.members);
+  const isDirectChannelRef = useRef(
+    props.context.channel().channelType === ChannelTypePerson,
+  );
   const sendRef = useRef<(() => void) | null>(null);
   const mentionActiveRef = useRef(false);
   const botCommandsRef = useRef(props.botCommands);
@@ -619,6 +622,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
   // 更新模块级别的 membersRef
   membersRef = localMembersRef;
+  isDirectChannelRef.current =
+    props.context.channel().channelType === ChannelTypePerson;
 
   // 更新 membersRef
   useEffect(() => {
@@ -674,6 +679,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                   sourceSpaceNameLegacy: member.orgData?.source_space_name,
                 }),
               stickyIcon: mentionAllIcon,
+              includeBroadcastMentions: !isDirectChannelRef.current,
             });
           },
           (active) => {

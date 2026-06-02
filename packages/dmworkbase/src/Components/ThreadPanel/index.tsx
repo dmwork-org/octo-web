@@ -5,14 +5,14 @@ import {
   ChannelTypeGroup,
   WKSDK,
 } from "wukongimjssdk";
-import { Modal, Toast, Spin, Popover } from "@douyinfe/semi-ui";
+import { Toast, Spin, Popover } from "@douyinfe/semi-ui";
 import {
   Thread,
   ThreadStatus,
   buildThreadChannelId,
 } from "../../Service/Thread";
 import { ThreadPanelVM, ThreadPanelState } from "./vm";
-import { X, Plus, ChevronDown, ArrowLeft, MoreHorizontal } from "lucide-react";
+import { X, Plus, ChevronDown, ArrowLeft, MoreHorizontal, Star } from "lucide-react";
 import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
@@ -20,6 +20,9 @@ import { ChannelTypeCommunityTopic, GroupRole } from "../../Service/Const";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
 import { formatRelativeTime } from "../../Utils/time";
+import FollowService from "../../Service/FollowService";
+import SidebarService from "../../Service/SidebarService";
+import CategoryService from "../../Service/CategoryService";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
 import { getExtension } from "../FilePreviewPanel/types";
@@ -31,6 +34,7 @@ import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
 import { I18nContext, t } from "../../i18n";
+import { wkConfirm } from "../WKModal";
 import {
   SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
@@ -456,29 +460,52 @@ export default class ThreadPanel extends Component<
     }
   };
 
-  private async loadThreads() {
+  private async loadThreads(silent?: boolean) {
     const { groupNo } = this.props;
     // 纯文件预览模式时跳过
     if (!groupNo) return;
 
-    this.setState({ threadsLoading: true });
+    if (!silent) {
+      this.setState({ threadsLoading: true });
+    }
     try {
-      const threads = await WKApp.dataSource.channelDataSource.threadList(
-        groupNo,
-        {
+      // 并行拉取子区列表 + 关注状态（用 recent tab，含 is_followed 字段）
+      const [threads, sidebarResp] = await Promise.all([
+        WKApp.dataSource.channelDataSource.threadList(groupNo, {
           page_index: 1,
           page_size: 100,
           status: "all",
+        }),
+        SidebarService.sync({
+          tab: "follow",
+          device_uuid: WKApp.shared.deviceId,
+        }).catch(() => null),
+      ]);
+
+      // 建立已关注子区的 channel_id 集合（target_type=5，is_followed=true）
+      const followedChannelIds = new Set<string>();
+      if (sidebarResp?.items) {
+        for (const item of sidebarResp.items) {
+          if (item.target_type === ChannelTypeCommunityTopic && item.is_followed) {
+            followedChannelIds.add(item.target_id);
+          }
         }
-      );
-      threads.sort((a, b) => this.threadSortTime(b) - this.threadSortTime(a));
+      }
+
+      // 合并 is_followed 状态
+      const threadsWithFollow = threads.map((t) => ({
+        ...t,
+        is_followed: followedChannelIds.has(t.channel_id),
+      }));
+
+      threadsWithFollow.sort((a, b) => this.threadSortTime(b) - this.threadSortTime(a));
       this.setState((prevState) => {
         const currentThread = prevState.vmState.thread;
         const refreshedCurrentThread = currentThread
-          ? threads.find((item) => item.short_id === currentThread.short_id)
+          ? threadsWithFollow.find((item) => item.short_id === currentThread.short_id)
           : undefined;
         return {
-          threads,
+          threads: threadsWithFollow,
           threadsLoading: false,
           vmState: currentThread && refreshedCurrentThread
             ? {
@@ -574,9 +601,8 @@ export default class ThreadPanel extends Component<
     // 延迟弹窗，等 Popover 完全关闭后再触发，避免 Modal 被 Popover 关闭事件误关
     setTimeout(() => {
       let newName = thread.name;
-      Modal.confirm({
+      wkConfirm({
         title: t("base.threadPanel.editNameTitle"),
-        icon: null,
         okText: t("base.threadPanel.save"),
         cancelText: t("base.common.cancel"),
         content: (
@@ -650,11 +676,10 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      Modal.confirm({
+      wkConfirm({
         title: archiving
           ? t("base.module.thread.archiveConfirmTitle", { values: { name: thread.name } })
           : t("base.module.thread.unarchiveConfirmTitle", { values: { name: thread.name } }),
-        icon: null,
         okText: archiving ? t("base.module.thread.archiveOk") : t("base.module.thread.unarchive"),
         cancelText: t("base.common.cancel"),
         content: archiving
@@ -808,9 +833,8 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      Modal.confirm({
+      wkConfirm({
         title: t("base.threadPanel.deleteConfirmTitle", { values: { name: thread.name } }),
-        icon: null,
         okText: t("base.threadPanel.delete"),
         okType: "danger",
         cancelText: t("base.common.cancel"),
@@ -840,9 +864,8 @@ export default class ThreadPanel extends Component<
     if (!groupNo) return;
 
     let threadName = "";
-    Modal.confirm({
+    wkConfirm({
       title: t("base.module.createThread.title"),
-      icon: null,
       okText: t("base.module.createThread.ok"),
       cancelText: t("base.common.cancel"),
       content: (
@@ -1230,6 +1253,75 @@ export default class ThreadPanel extends Component<
     return t("base.common.unknown");
   }
 
+  private handleFollow = async (thread: Thread, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const threadChannelId = thread.channel_id;
+    const wasFollowed = thread.is_followed;
+
+    // 乐观更新
+    this.setState((prev) => ({
+      threads: prev.threads.map((t) =>
+        t.short_id === thread.short_id ? { ...t, is_followed: !wasFollowed } : t
+      ),
+    }));
+
+    try {
+      if (wasFollowed) {
+        await FollowService.unfollowThread(threadChannelId);
+        Toast.success(t("base.threadList.unfollowed"));
+      } else {
+        await this.ensureParentGroupInFollowSet(thread.group_no);
+        await FollowService.followThread({ thread_channel_id: threadChannelId });
+        Toast.success(t("base.threadList.followed"));
+      }
+      WKApp.mittBus.emit("sidebar-reload" as any);
+    } catch (err: any) {
+      this.setState((prev) => ({
+        threads: prev.threads.map((t) =>
+          t.short_id === thread.short_id ? { ...t, is_followed: wasFollowed } : t
+        ),
+      }));
+      Toast.error(err?.msg || err?.message || t(wasFollowed ? "base.threadList.unfollowFailed" : "base.threadList.followFailed"));
+    }
+  };
+  /**
+   * 确保父群已进入关注集合（有关联的 category）。
+   * 子区关注依赖父群在 sidebar follow tab 的 follow set 里，
+   * 否则 mergeThreadEntries 会将子区过滤掉。
+   * 这里静默操作：父群已在某分组则跳过，否则移入默认分组。
+   * 如果用户之前手动取消关注了父群，这里会将其重新关注 —— 这是子区关注的前提条件。
+   */
+  private async ensureParentGroupInFollowSet(parentGroupNo: string) {
+    const spaceId = WKApp.shared.currentSpaceId;
+    if (!spaceId) return;
+
+    try {
+      // 清除父群取消关注标记（幂等，已关注则无操作）
+      await FollowService.refollowChannel({ group_no: parentGroupNo });
+    } catch (err) {
+      console.warn("[ThreadPanel] refollowChannel failed for parent group", parentGroupNo, err);
+    }
+
+    try {
+      const categories = await CategoryService.list(spaceId);
+      const alreadyInCategory = categories.some((cat) =>
+        cat.groups?.some((g) => g.group_no === parentGroupNo)
+      );
+      if (alreadyInCategory) return;
+
+      const targetCategory =
+        categories.find((cat) => cat.is_default && cat.category_id) ||
+        categories.find((cat) => cat.category_id);
+      if (targetCategory?.category_id) {
+        await CategoryService.moveGroupToCategory(parentGroupNo, {
+          category_id: targetCategory.category_id,
+        });
+      }
+    } catch (err) {
+      console.warn("[ThreadPanel] ensureParentGroupInFollowSet category failed", parentGroupNo, err);
+    }
+  }
+
   private renderThreadItem(thread: Thread) {
     const hasUnread = (thread.unread_count ?? 0) > 0;
     const creatorName = this.getCreatorName(thread);
@@ -1245,9 +1337,25 @@ export default class ThreadPanel extends Component<
             {hasUnread && <span className="wk-thread-panel-item-unread" />}
             <span className="wk-thread-panel-item-name">{thread.name}</span>
           </div>
-          <span className="wk-thread-panel-item-time">
-            {formatRelativeTime(thread.updated_at)}
-          </span>
+          <div className="wk-thread-panel-item-header-right">
+            <button
+              type="button"
+              className="wk-thread-panel-item-follow-btn"
+              data-followed={thread.is_followed ? "true" : "false"}
+              title={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
+              aria-label={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
+              onClick={(e) => this.handleFollow(thread, e)}
+            >
+              <Star
+                size={15}
+                fill={thread.is_followed ? "var(--semi-color-warning)" : "none"}
+                color={thread.is_followed ? "var(--semi-color-warning)" : "var(--semi-color-text-2)"}
+              />
+            </button>
+            <span className="wk-thread-panel-item-time">
+              {formatRelativeTime(thread.updated_at)}
+            </span>
+          </div>
         </div>
         <div className="wk-thread-panel-item-meta">
           {t("base.threadPanel.itemMeta", {

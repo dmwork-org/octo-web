@@ -4,6 +4,38 @@ import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Messa
 const MAX_GROUP_LIST_LIMIT = 100000;
 const MAX_FAVORITES_PAGE_SIZE = 10000;
 
+interface GroupMemberMap {
+    uid: string;
+    name?: string;
+    remark?: string;
+    role?: number;
+    version?: number;
+    is_deleted?: number;
+    status?: number;
+    bot_admin?: number;
+    [key: string]: unknown;
+}
+
+interface GroupMemberLookupResp {
+    exists?: boolean;
+    member?: GroupMemberMap;
+}
+
+function toSubscriber(memberMap: GroupMemberMap): Subscriber {
+    const member = new Subscriber();
+    member.uid = memberMap.uid;
+    member.name = memberMap.name;
+    member.remark = memberMap.remark;
+    member.role = memberMap.role;
+    member.version = memberMap.version;
+    member.isDeleted = memberMap.is_deleted;
+    member.status = memberMap.status;
+    member.orgData = memberMap
+    member.orgData.bot_admin = memberMap.bot_admin || 0;
+    member.avatar = WKApp.shared.avatarUser(member.uid)
+    return member
+}
+
 export class ChannelDataSource implements IChannelDataSource {
 
     async exitChannel(channel: Channel): Promise<void> {
@@ -94,21 +126,19 @@ export class ChannelDataSource implements IChannelDataSource {
         if (resp) {
             for (let i = 0; i < resp.length; i++) {
                 let memberMap = resp[i];
-                let member = new Subscriber();
-                member.uid = memberMap.uid;
-                member.name = memberMap.name;
-                member.remark = memberMap.remark;
-                member.role = memberMap.role;
-                member.version = memberMap.version;
-                member.isDeleted = memberMap.is_deleted;
-                member.status = memberMap.status;
-                member.orgData = memberMap
-                member.orgData.bot_admin = memberMap.bot_admin || 0;
-                member.avatar = WKApp.shared.avatarUser(member.uid)
-                members.push(member);
+                members.push(toSubscriber(memberMap));
             }
         }
         return members
+    }
+
+    async subscriber(channel: Channel, uid: string): Promise<Subscriber | undefined> {
+        const resp: GroupMemberLookupResp | undefined = await WKApp.apiClient.get(`groups/${channel.channelID}/members/${uid}`)
+        const memberMap = resp?.member
+        if (!resp?.exists || !memberMap) {
+            return undefined
+        }
+        return toSubscriber(memberMap)
     }
 
     updateField(channel: Channel, field: string, value: string): Promise<void> {
@@ -224,7 +254,14 @@ export class ChannelDataSource implements IChannelDataSource {
             body.source_message_id = sourceMessageId
         }
         const resp = await WKApp.apiClient.post(`groups/${groupNo}/threads`, body)
-        return this.toThread(resp, groupNo)
+        const thread = this.toThread(resp, groupNo)
+        WKApp.mittBus.emit("wk:thread-created", {
+            groupNo,
+            shortId: thread.short_id,
+            threadChannelId: thread.channel_id,
+            thread,
+        })
+        return thread
     }
 
     async threadGet(groupNo: string, shortId: string): Promise<Thread> {
