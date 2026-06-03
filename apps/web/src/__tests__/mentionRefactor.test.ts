@@ -680,7 +680,7 @@ describe('end-to-end: formatMentionTextV2 -> parseMentionWithEntities', () => {
 // Mirrors the production logic in:
 //   - packages/dmworkbase/src/Components/Conversation/index.tsx
 //     ::getMessageMentions  (synthesizes @所有人 / @所有AI MentionInfo entries
-//     so MarkdownContent applies the existing mention-highlight class)
+//     so MarkdownContent applies the existing member mention pill style)
 //
 // Matrix:
 //   humans=1                       → highlight @所有人
@@ -735,8 +735,8 @@ describe('render matrix: three-state mention highlight (GH#58)', () => {
         const names = mentions.map((m) => m.name)
         expect(names).toContain('@所有人')
         expect(names).not.toContain('@所有AI')
-        // All synthesized highlights reuse the existing "@member" highlight
-        // pathway by setting uid='all' (mention-highlight class).
+        // All synthesized highlights reuse the existing "@member" visual
+        // pathway by setting uid='all' while staying non-clickable.
         expect(mentions.every((m) => m.uid === 'all')).toBe(true)
         // sanity: the literal "@所有人" text exists in the message body so
         // MarkdownContent will actually match it.

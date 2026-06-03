@@ -33,8 +33,8 @@ export interface MentionRenderFlags {
  * Build the render-time MentionInfo[] for a message: combine ordinary
  * `@member` parts with synthetic `@所有人` / `@所有AI` entries derived
  * from the three-state mention flags. Synthetic entries reuse the
- * `uid: "all"` sentinel so MarkdownContent applies the same
- * `mention-highlight` class.
+ * `uid: "all"` sentinel so MarkdownContent can keep them non-clickable
+ * while applying the same visual style as ordinary member mentions.
  *
  * Dedup is by visible name — if the conversation already contains a
  * literal `@所有人` member part (rare; admins can rename members), the
