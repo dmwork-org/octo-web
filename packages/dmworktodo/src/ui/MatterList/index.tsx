@@ -583,14 +583,9 @@ export default function MatterList({
         blank
         onClose={() => setShowCreateModal(false)}
         onConfirm={async (req) => {
-          try {
-            await createMatter(req);
-            Toast.success(t("todo.toast.created"));
-            reload();
-          } catch {
-            Toast.error(t("todo.toast.createFailed"));
-            throw new Error("create failed"); // rethrow 让 modal 知道失败了
-          }
+          await createMatter(req);
+          Toast.success(t("todo.toast.created"));
+          reload();
         }}
       />
     </div>

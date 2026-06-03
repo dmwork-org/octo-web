@@ -164,8 +164,10 @@ export default function SmartCreateModal({
         source_msgs: sourceMsgs,
       });
       (onConfirmSuccess ?? onClose)();
-    } catch {
-      // 错误 toast 由调用方的 onConfirm 自行处理，这里不再重复弹出
+    } catch (err) {
+      // 如果调用方 onConfirm 内部已处理（显示 toast 并 rethrow），这里做 fallback
+      // 避免用户完全看不到错误反馈
+      Toast.error(t("todo.toast.operationFailed"));
     } finally {
       setSubmitting(false);
     }
