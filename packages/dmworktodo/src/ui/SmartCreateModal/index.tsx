@@ -164,11 +164,8 @@ export default function SmartCreateModal({
         source_msgs: sourceMsgs,
       });
       (onConfirmSuccess ?? onClose)();
-    } catch (e: unknown) {
-      const msg = (e as Error)?.message === "assignee reconciliation failed"
-        ? undefined
-        : t("todo.toast.operationFailed");
-      if (msg) Toast.error(msg);
+    } catch {
+      // 错误 toast 由调用方的 onConfirm 自行处理，这里不再重复弹出
     } finally {
       setSubmitting(false);
     }

@@ -11,7 +11,7 @@ import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
 import type { MatterListParams } from "../../bridge/types";
-import { createMatter, listMatters } from "../../api/todoApi";
+import { createMatter } from "../../api/todoApi";
 import { useMatterList } from "../../hooks/useTodoList";
 import MatterDetailPanel from "../../panel/MatterDetailPanel";
 import SmartCreateModal from "../SmartCreateModal";
@@ -36,16 +36,7 @@ import "../../pages/MatterPage.css";
 
 export type NavTab = "mine" | "created" | "all";
 
-type TabCountSummary = {
-  total: number;
-  archived: number;
-};
 
-const EMPTY_TAB_COUNTS: Record<NavTab, TabCountSummary> = {
-  mine: { total: 0, archived: 0 },
-  created: { total: 0, archived: 0 },
-  all: { total: 0, archived: 0 },
-};
 
 export interface MatterListProps {
   /**
@@ -96,23 +87,7 @@ function buildParams(
   return {};
 }
 
-async function countMatters(
-  params: MatterListParams,
-  signal: AbortSignal,
-): Promise<number> {
-  const pageSize = 100;
-  let cursor: string | undefined;
-  let count = 0;
 
-  do {
-    const res = await listMatters({ ...params, limit: pageSize, cursor }, signal);
-    count += res.data.length;
-    cursor = res.pagination.next_cursor;
-    if (!res.pagination.has_more) break;
-  } while (cursor);
-
-  return count;
-}
 
 export default function MatterList({
   mode,
@@ -121,10 +96,10 @@ export default function MatterList({
   onClose,
   showSplitter = mode === "channel",
   showCloseButton = mode === "channel",
-  // 新建按钮 / 加载更多原本只有 page 模式有；归档折叠两种模式共享。
+  // 新建按钮原本只有 page 模式有；归档折叠和加载更多两种模式共享。
   showCreateButton = mode === "page",
   showArchivedSection = true,
-  showLoadMore = mode === "page",
+  showLoadMore = true,
   // Tab 数量：channel 模式用当前全量数据实时算；page 模式预拉各 tab 首屏计数。
   showTabCounts = true,
 }: MatterListProps) {
@@ -139,9 +114,6 @@ export default function MatterList({
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   // 未归档分组默认展开，可折叠（与已归档对称）。
   const [activeExpanded, setActiveExpanded] = useState(true);
-  const [tabCounts, setTabCounts] =
-    useState<Record<NavTab, TabCountSummary>>(EMPTY_TAB_COUNTS);
-  const [tabCountVersion, setTabCountVersion] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const myUid = WKApp.loginInfo.uid ?? "";
@@ -217,77 +189,35 @@ export default function MatterList({
     [displayMatters],
   );
 
-  // Tab 数量
-  //   - channel 模式：数据一次全拉到（前端筛选），可同时算出三个 tab 的数字，
-  //     全部展示（比 page 模式信息更全）。
-  //   - page 模式：每个 tab 是独立后端请求，只能在切到某 tab 时更新它的数字，
-  //     保持原 MatterPage 行为。
-  const channelTabCounts = useMemo<Record<NavTab, TabCountSummary>>(() => {
-    if (mode !== "channel") return EMPTY_TAB_COUNTS;
-    const mine = matters.filter((m) =>
-      m.assignees?.some((a) => a.user_id === myUid),
-    );
-    const created = matters.filter((m) => m.creator_id === myUid);
+  // Tab 数量：
+  //   - channel 模式：数据一次拉到前端，可同时算三个 tab 的数字
+  //   - page 模式：只显示当前 tab 的数字（从已加载的 matters 计算，不额外请求）
+  //
+  // 改进说明：原 page 模式用 countMatters() 发 6 次分页请求算全量数字，
+  // 但这导致数字与实际显示的卡片不一致（数字是全量，卡片是分页）。
+  // 现在改成跟原 TodoPage 一样，只显示已加载数据的数字，保持一致性。
+  const tabCounts = useMemo<Record<NavTab, number>>(() => {
+    if (mode === "channel") {
+      // channel 模式：从全量 matters 算三个 tab
+      return {
+        mine: matters.filter((m) =>
+          m.assignees?.some((a) => a.user_id === myUid),
+        ).length,
+        created: matters.filter((m) => m.creator_id === myUid).length,
+        all: matters.length,
+      };
+    }
+    // page 模式：只有当前 tab 有数字
     return {
-      mine: {
-        total: mine.length,
-        archived: mine.filter((m) => m.status === "archived").length,
-      },
-      created: {
-        total: created.length,
-        archived: created.filter((m) => m.status === "archived").length,
-      },
-      all: {
-        total: matters.length,
-        archived: matters.filter((m) => m.status === "archived").length,
-      },
+      mine: activeTab === "mine" ? displayMatters.length : 0,
+      created: activeTab === "created" ? displayMatters.length : 0,
+      all: activeTab === "all" ? displayMatters.length : 0,
     };
-  }, [mode, matters, myUid]);
+  }, [mode, matters, displayMatters, activeTab, myUid]);
 
-  useEffect(() => {
-    if (mode !== "page" || !showTabCounts) return;
-    const ctrl = new AbortController();
-
-    const loadCounts = async () => {
-      const nextCounts = await Promise.all(
-        (["mine", "created", "all"] as NavTab[]).map(async (tab) => {
-          const params = buildParams(mode, tab, myUid);
-          const [total, archived] = await Promise.all([
-            countMatters(params, ctrl.signal),
-            countMatters({ ...params, status: "archived" }, ctrl.signal),
-          ]);
-          return [tab, { total, archived }] as const;
-        }),
-      );
-      if (ctrl.signal.aborted) return;
-      setTabCounts((prev) => ({
-        ...prev,
-        ...Object.fromEntries(nextCounts),
-      }));
-    };
-
-    void loadCounts().catch((err: unknown) => {
-      if ((err as Error)?.name !== "AbortError") {
-        Toast.error(t("todo.toast.loadFailed"));
-      }
-    });
-
-    return () => ctrl.abort();
-  }, [mode, showTabCounts, myUid, tabCountVersion, t]);
-
-  // 最终用于渲染的数字：channel 用实时计算，page 用累积 state
-  const effectiveTabCounts =
-    mode === "channel" ? channelTabCounts : tabCounts;
-  const shouldShowTabCount = useCallback(
-    (tabId: NavTab) =>
-      showTabCounts && effectiveTabCounts[tabId].total > 0,
-    [showTabCounts, effectiveTabCounts],
-  );
-  const activeCount = Math.max(
-    effectiveTabCounts[activeTab].total - effectiveTabCounts[activeTab].archived,
-    0,
-  );
-  const archivedCount = effectiveTabCounts[activeTab].archived;
+  // 当前 tab 的活跃/归档数量（从已加载数据计算）
+  const activeCount = activeMatters.length;
+  const archivedCount = archivedMatters.length;
 
   // ── 滚动位置恢复 ──
   const listRef = useRef<HTMLDivElement>(null);
@@ -298,7 +228,6 @@ export default function MatterList({
       if (listRef.current) {
         pendingScrollRestoreRef.current = listRef.current.scrollTop;
       }
-      setTabCountVersion((prev) => prev + 1);
       reload();
     };
     WKApp.mittBus.on("wk:matter-updated", reloader);
@@ -323,7 +252,6 @@ export default function MatterList({
     // NavRail 激活时刷新
     const handler = (data: { menuId: string }) => {
       if (data?.menuId === "matter") reload();
-      if (data?.menuId === "matter") setTabCountVersion((prev) => prev + 1);
     };
     WKApp.mittBus.on("wk:nav-menu-activated", handler);
     return () => {
@@ -337,7 +265,6 @@ export default function MatterList({
     const handler = () => {
       setActiveTab("mine");
       setSelectedMatterId(null);
-      setTabCountVersion((prev) => prev + 1);
     };
     WKApp.mittBus.on("space-changed", handler);
     return () => {
@@ -528,9 +455,9 @@ export default function MatterList({
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
-            {shouldShowTabCount(tab.id) && (
+            {showTabCounts && tabCounts[tab.id] > 0 && (
               <span className="wk-mp-page-sidebar__tab-count">
-                {effectiveTabCounts[tab.id].total}
+                {tabCounts[tab.id]}
               </span>
             )}
           </button>
@@ -656,10 +583,14 @@ export default function MatterList({
         blank
         onClose={() => setShowCreateModal(false)}
         onConfirm={async (req) => {
-          await createMatter(req);
-          Toast.success(t("todo.toast.created"));
-          setTabCountVersion((prev) => prev + 1);
-          reload();
+          try {
+            await createMatter(req);
+            Toast.success(t("todo.toast.created"));
+            reload();
+          } catch {
+            Toast.error(t("todo.toast.createFailed"));
+            throw new Error("create failed"); // rethrow 让 modal 知道失败了
+          }
         }}
       />
     </div>
