@@ -91,7 +91,7 @@ function findOpeningTags(text, tagName) {
 }
 
 function extractWKModalClasses(files) {
-  const classNames = new Set();
+  const classNames = new Set(["wk-modal"]);
 
   for (const file of files) {
     if (!sourceExtensions.has(path.extname(file))) continue;
