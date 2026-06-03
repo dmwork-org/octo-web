@@ -1156,8 +1156,8 @@ export class Conversation
   getMessageMentions(message: MessageWrap): MentionInfo[] {
     // ── 三态 mention 高亮（render matrix） ───────────────────────────
     // 在普通 @member 的 Parts 之外，额外注入以下三个虚拟 highlight token，
-    // 让 MarkdownContent 用现有 @member 高亮样式（uid='all' → mention-highlight）
-    // 标亮文本中的 "@所有人" / "@所有AI":
+    // 让 MarkdownContent 用现有 @member 胶囊样式标亮文本中的
+    // "@所有人" / "@所有AI"（uid='all' 仍表示不可点击）:
     //   - mention.humans=1  → "@所有人"
     //   - mention.ais=1     → "@所有AI"
     //   - mention.humans=1 + mention.ais=1 → 两者都高亮

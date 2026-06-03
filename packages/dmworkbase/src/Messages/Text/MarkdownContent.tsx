@@ -16,6 +16,7 @@ import WKApp from "../../App";
 import { isSafeUrl } from "../../Utils/security";
 import { downloadFile } from "../../Utils/download";
 import { t } from "../../i18n";
+import { getMentionRenderState } from "./mentionRenderState";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -340,20 +341,15 @@ function processTextChildren(
       if (segments.length === 1 && segments[0].type === "text") return child;
       return segments.map((seg, i) => {
         if (seg.type === "mention") {
-          // 根据 uid 判断 mention 等级
-          let mentionClass = "mention-fallback"; // 默认降级态
-          if (seg.uid === "all" || seg.uid === "channel") {
-            mentionClass = "mention-highlight"; // @所有人/@频道
-          } else if (seg.uid && seg.uid !== "") {
-            mentionClass = "mention-entity"; // 普通用户
-          }
-          const isAll = seg.uid === "all" || seg.uid === "channel";
+          const mentionState = getMentionRenderState(seg.uid);
           return (
             <span
               key={i}
-              className={mentionClass}
+              className={mentionState.className}
               onClick={
-                isAll ? undefined : () => seg.uid && onMentionClick?.(seg.uid)
+                mentionState.interactive
+                  ? () => seg.uid && onMentionClick?.(seg.uid)
+                  : undefined
               }
             >
               {seg.name}
