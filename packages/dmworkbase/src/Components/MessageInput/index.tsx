@@ -33,6 +33,7 @@ import {
   videoPlayIcon,
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
+import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -174,6 +175,19 @@ export interface AttachmentFile {
 
 interface MessageInputProps {
   context: ConversationContext;
+  /**
+   * 发送回调。返回值决定是否清空编辑器/附件：
+   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 发送成功，清空编辑器
+   *     草稿与全部本次附件；
+   *   - resolve `false` → 发送失败/未发送，保留编辑器内容、附件引用与预览 URL；
+   *   - resolve `{ editorConsumed, consumedTopIds }` → 部分成功：可表达「顶部
+   *     附件已发出但编辑器混排失败需保留」，仅清掉已消费的 top 附件，避免重试
+   *     重复发送 (octo-web#227 Jerry-Xin non-blocking)。
+   * 必须在 send 内被 `await`，否则同步清理会先于异步发送结果丢掉混排草稿。
+   * 注意 (第二轮 octo-web#227)：清理是 snapshot-aware 的——onSend 返回成功后，
+   * 仅当编辑器内容仍等于发送时的快照才会清空；用户在 await 期间输入的新草稿
+   * 不会被旧 send 误删。
+   */
   onSend?: (
     text: string,
     mention?: MentionModel,
@@ -182,7 +196,7 @@ interface MessageInputProps {
     topFiles?: AttachmentFile[],
     /** 编辑器中按文档顺序排列的内容块（文本段和粘贴图片交替） */
     editorBlocks?: EditorContentBlock[]
-  ) => void;
+  ) => void | boolean | SendResultDetail | Promise<void | boolean | SendResultDetail>;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -612,7 +626,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const isDirectChannelRef = useRef(
     props.context.channel().channelType === ChannelTypePerson,
   );
-  const sendRef = useRef<(() => void) | null>(null);
+  const sendRef = useRef<(() => void | Promise<void>) | null>(null);
+  // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
+  const sendingRef = useRef(false);
   const mentionActiveRef = useRef(false);
   const botCommandsRef = useRef(props.botCommands);
   // editorHandleKeyDownRef 持有最新的键盘处理函数，通过 useEffect 更新
@@ -1011,8 +1027,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     [editor]
   );
 
-  const send = useCallback(() => {
+  const send = useCallback(async () => {
     if (!editor) return;
+    // 重入保护：onSend 现在被 await，发送期间可能再次触发 Enter/快捷键，
+    // 避免同一份草稿被发送两次 (octo-web#227)。
+    if (sendingRef.current) return;
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
@@ -1046,45 +1065,85 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const hasText = text.trim() !== "";
     const hasAttachments = allAttachments.length > 0;
 
-    if (props.onSend && (hasText || hasAttachments)) {
-      // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
-      const formattedText = extractMentionsFromEditor(editor);
-      const { content, mention } = formatMentionTextV2(formattedText);
-
-      // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
-      const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
-
-      props.onSend(
-        content,
-        mention,
-        allAttachments.length > 0 ? allAttachments : undefined,
-        topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
-        orderedBlocks.length > 0 ? orderedBlocks : undefined
-      );
+    // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
+    if (!props.onSend || (!hasText && !hasAttachments)) {
+      return;
     }
 
-    // 清理编辑器附件文件引用和图片预览 URL
-    attachmentAttrs.forEach((attr) => {
-      attachmentFilesRef.current.delete(attr.id);
-      // 释放图片预览 URL，避免内存泄漏
-      if (attr.previewUrl) {
-        URL.revokeObjectURL(attr.previewUrl);
-      }
-    });
+    // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
+    const formattedText = extractMentionsFromEditor(editor);
+    const { content, mention } = formatMentionTextV2(formattedText);
 
-    // 清理顶部附件区
-    topAttachments.forEach((item) => {
-      if (item.previewUrl) {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-    });
-    setTopAttachments([]);
+    // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
+    const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
 
-    editor.commands.clearContent();
-
-    if (expanded) {
-      setExpanded(false);
-      props.onExpandChange?.(false);
+    // ⚠️ 关键修复 (octo-web#227, Jerry-Xin P1 第二轮)：
+    // round 1 已把同步清理改成「await onSend、仅成功才清」，避免混排上传失败
+    // 丢整条草稿。但 await 期间编辑器仍可编辑，onSend 可能耗时数秒（上传图片 +
+    // 等 ack），用户趁发送 pending 时打的下一条草稿，会被上一条 send 成功后的
+    // 清理误删。本轮改为 snapshot-aware：
+    //   • 发送前对编辑器文档拍 JSON 快照 (editorSnapshot)；成功回来时只有当
+    //     编辑器内容仍 === 快照（用户没开始新草稿）才 clearContent，否则保留。
+    //   • 顶部附件按本次实际消费的 id 精确移除，绝不 setTopAttachments([])
+    //     全清，等待期间新加的附件因此不丢。
+    //   • onSend 可返回 { editorConsumed, consumedTopIds } 表达「顶部附件已发、
+    //     但编辑器混排失败」，让已发文件不被重试重复 (Jerry-Xin non-blocking)。
+    // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
+    const editorSnapshot = JSON.stringify(editor.getJSON());
+    const consumedAttachmentAttrs = attachmentAttrs;
+    const topItemsAtSend = topAttachments;
+    const allTopIds = topItemsAtSend.map((item) => item.id);
+    sendingRef.current = true;
+    try {
+      await runSendWithCleanup(
+        () =>
+          props.onSend!(
+            content,
+            mention,
+            allAttachments.length > 0 ? allAttachments : undefined,
+            topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
+            orderedBlocks.length > 0 ? orderedBlocks : undefined
+          ),
+        allTopIds,
+        {
+          isEditorUnchanged: () =>
+            JSON.stringify(editor.getJSON()) === editorSnapshot,
+          deleteEditorAttachmentRefs: () => {
+            consumedAttachmentAttrs.forEach((attr) => {
+              attachmentFilesRef.current.delete(attr.id);
+            });
+          },
+          revokeEditorPreviewUrls: () => {
+            consumedAttachmentAttrs.forEach((attr) => {
+              if (attr.previewUrl) {
+                URL.revokeObjectURL(attr.previewUrl);
+              }
+            });
+          },
+          clearEditor: () => editor.commands.clearContent(),
+          removeTopAttachments: (ids: string[]) => {
+            const idSet = new Set(ids);
+            // 先 revoke 被消费项的预览 URL（避免内存泄漏），用拍快照时的列表
+            // 取 previewUrl，再按 id 过滤当前 state——保留等待期间新加的附件。
+            topItemsAtSend.forEach((item: TopAttachmentItem) => {
+              if (idSet.has(item.id) && item.previewUrl) {
+                URL.revokeObjectURL(item.previewUrl);
+              }
+            });
+            setTopAttachments((prev: TopAttachmentItem[]) =>
+              prev.filter((a: TopAttachmentItem) => !idSet.has(a.id))
+            );
+          },
+          collapseExpanded: () => {
+            if (expanded) {
+              setExpanded(false);
+              props.onExpandChange?.(false);
+            }
+          },
+        }
+      );
+    } finally {
+      sendingRef.current = false;
     }
   }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
 

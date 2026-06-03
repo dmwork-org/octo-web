@@ -43,6 +43,7 @@ import MessageInput, {
   MessageInputContext,
   EditorContentBlock,
 } from "../MessageInput";
+import { SendResultDetail } from "../MessageInput/sendFlow";
 import { BotCommand } from "../SlashCommandMenu";
 import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
@@ -71,6 +72,13 @@ import {
   resolveSafeFileUrl,
 } from "../../Messages/File";
 import { ImageContent } from "../../Messages/Image";
+import {
+  RichTextBlock,
+  createRichTextContent,
+  makeTextBlock,
+  makeImageBlock,
+} from "../../Messages/RichText/RichTextContent";
+import { isSafeUrl } from "../../Utils/security";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -84,7 +92,7 @@ import {
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
-import { precheckUploadCredentials } from "../../Service/UploadCredentials";
+import { precheckUploadCredentials, uploadChatMedia } from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext, t } from "../../i18n";
 
@@ -180,6 +188,35 @@ function guessFileNameFromUrl(url: string, fallback: string): string {
     // ignore
   }
   return fallback;
+}
+
+/**
+ * 从本地图片文件读取像素尺寸（用 FileReader → Image，绝不依赖远端 URL）。
+ *
+ * Why: RichText image block 的 width/height 是 schema 必填>0（供端上占位排版）。
+ * 若从刚上传的 downloadUrl 读尺寸，CDN read-after-write 延迟可能让 Image 读到 0×0，
+ * 注入非法块。纯图片发送路径(sendImageFile)本就从本地文件量尺寸，这里保持一致。
+ */
+function readLocalImageSize(
+  file: File,
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      if (!dataUrl) {
+        resolve({ width: 0, height: 0 });
+        return;
+      }
+      const img = new Image();
+      img.onload = () =>
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => resolve({ width: 0, height: 0 });
+      img.src = dataUrl;
+    };
+    reader.onerror = () => resolve({ width: 0, height: 0 });
+    reader.readAsDataURL(file);
+  });
 }
 
 /**
@@ -683,6 +720,123 @@ export class Conversation
     }
 
     return promise;
+  }
+
+  /**
+   * 图文混排发送：把编辑器里穿插的 text / image 块聚合成单条 RichText(=14) 消息。
+   *
+   * 仅在「同时含文本和图片、且无非图片文件块」时触发（见 onSend）。纯文本仍走
+   * 文本消息(type=1)、纯图片仍走 ImageContent(type=2)，避免回退已落地的发送路径。
+   *
+   * - blocks schema 复用 #218 接收侧 RichTextContent 同一份定义（makeTextBlock /
+   *   makeImageBlock），wire-format 与 octo-lib 权威 schema byte-match。
+   * - 原子性：单条 RichText 是一个整体，任一图片上传失败 / URL 不安全 / 本地尺寸读取
+   *   失败 → 整条消息发送中止（抛错），调用方不清草稿、用户可重试，绝不静默丢图。
+   * - 图片尺寸取**本地文件**（与纯图片路径一致），不依赖刚上传的 downloadUrl，避免
+   *   CDN read-after-write 延迟导致 width/height=0 违反 image schema 必填>0。
+   * - 上传成功后图片 URL 走 isSafeUrl(http/https only)（与接收侧对称，防 javascript:/
+   *   data:/file: 注入）。
+   * - plain 由 createRichTextContent 本地占位，server #232 Finalize 重算覆盖。
+   * - mention：合并各文本块的 all/uids/humans/ais 到顶层，保证群里 @人/@所有AI 通知不丢
+   *   （vm.sendMessage 读 content.mention.humans/ais 注入）。
+   *
+   * 返回 true 表示消息已入队；任一图片块准备失败则抛错（已 Toast 具体原因）。
+   */
+  private async sendRichTextMixed(
+    editorBlocks: EditorContentBlock[],
+    reply?: Reply,
+  ): Promise<boolean> {
+    const channel = this.channel();
+    const contentBlocks: RichTextBlock[] = [];
+
+    // 合并 mention（跨多个文本块）。
+    let mentionAll = false;
+    const mentionUids = new Set<string>();
+    let mentionHumans = false;
+    let mentionAis = false;
+
+    // 单张图片准备失败 → Toast 具体原因后抛错，让整条消息原子失败（草稿保留可重试）。
+    const failImage = (file: File, message: string): never => {
+      Toast.error(
+        t("base.conversation.upload.imageFailed", {
+          values: { name: file.name, message },
+        }),
+      );
+      const e = new Error(
+        `richtext mixed image prepare failed: ${file.name}`,
+      ) as Error & { toasted?: boolean };
+      // 标记已 Toast，调用方 catch 不再重复弹通用错误。
+      e.toasted = true;
+      throw e;
+    };
+
+    for (const block of editorBlocks) {
+      if (block.type === "text") {
+        if (block.text) {
+          contentBlocks.push(makeTextBlock(block.text));
+        }
+        const m = block.mention;
+        if (m) {
+          if (m.all) mentionAll = true;
+          if (m.humans) mentionHumans = true;
+          if (m.ais) mentionAis = true;
+          m.uids?.forEach((uid) => mentionUids.add(uid));
+        }
+      } else if (block.type === "image") {
+        const file = block.file;
+        // 1. 先从本地文件读尺寸（schema 必填>0，且不受 CDN 延迟影响）。
+        const { width, height } = await readLocalImageSize(file);
+        if (width <= 0 || height <= 0) {
+          failImage(file, t("base.conversation.upload.imageReadFailed", {
+            values: { name: file.name },
+          }));
+        }
+        // 2. 上传拿 downloadUrl。
+        const dot = (file.name || "").lastIndexOf(".");
+        const ext = dot > 0 ? file.name.substring(dot + 1) : "";
+        let url: string;
+        try {
+          url = await uploadChatMedia(file, channel, ext);
+        } catch (err) {
+          const msg =
+            (err as { msg?: string })?.msg ||
+            t("base.conversation.upload.failed");
+          failImage(file, msg);
+        }
+        // 3. 安全：发送前图片 URL 走 isSafeUrl(http/https only)，与接收侧对称。
+        if (!isSafeUrl(url!)) {
+          failImage(file, t("base.conversation.upload.failed"));
+        }
+        contentBlocks.push(
+          makeImageBlock({
+            url: url!,
+            width,
+            height,
+            size: file.size,
+            name: file.name || undefined,
+          }),
+        );
+      }
+      // file 块在 onSend 已被排除在图文混排路径之外
+    }
+
+    if (contentBlocks.length === 0) {
+      return false;
+    }
+
+    const content = createRichTextContent(contentBlocks);
+    if (reply) {
+      content.reply = reply;
+    }
+    if (mentionAll || mentionUids.size > 0 || mentionHumans || mentionAis) {
+      const mn = new Mention();
+      mn.all = mentionAll;
+      if (mentionUids.size > 0) mn.uids = Array.from(mentionUids);
+      if (mentionHumans) (mn as any).humans = 1;
+      if (mentionAis) (mn as any).ais = 1;
+      content.mention = mn;
+    }
+    return this.sendTextAndWaitAck(content);
   }
 
   scrollToBottom(animate?: boolean): void {
@@ -2323,7 +2477,12 @@ export class Conversation
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
-                      ) => {
+                      ): Promise<boolean | SendResultDetail> => {
+                        // 返回值告诉 MessageInput 是否清空编辑器/附件：
+                        //   true  → 发送成功(或已消费)，清空草稿+附件；
+                        //   false → 发送失败，保留编辑器内容+图片引用供重试。
+                        // 关键：混排 (text+image) 上传失败时必须返回 false，否则
+                        // 用户整条消息会被同步清空丢失 (octo-web#227 Jerry-Xin P1)。
                         const sendDraftGeneration = this.draftSaveGeneration;
                         const remoteDraftAtSend =
                           this.vm.currentConversation?.remoteExtra?.draft || "";
@@ -2345,7 +2504,8 @@ export class Conversation
                               JSON.stringify(json),
                             );
                             vm.currentReplyMessage = undefined;
-                            return;
+                            // 编辑消息已提交，编辑器应清空。
+                            return true;
                           }
                           reply = new Reply();
                           reply.messageID = vm.currentReplyMessage.messageID;
@@ -2522,8 +2682,12 @@ export class Conversation
                         // 若所有顶部附件 + 编辑器内容块都被预检拒绝,且没有文本块,
                         // 则不应再补发空回复消息 (octo-web#119 review by Jerry-Xin)。
                         let anyMessageSent = false;
+                        // 记录实际发出的顶部附件 id：失败时让 MessageInput 仅
+                        // 清掉这些已发文件、保留编辑器草稿，重试不会重复发送
+                        // (octo-web#227 Jerry-Xin non-blocking)。
+                        const consumedTopIds: string[] = [];
                         const topFilesToSend = topFiles || [];
-                        for (const { file } of topFilesToSend) {
+                        for (const { id, file } of topFilesToSend) {
                           try {
                             let sent = false;
                             if (file.type && file.type.startsWith("image/")) {
@@ -2531,7 +2695,10 @@ export class Conversation
                             } else {
                               sent = await sendFileAttachment(file);
                             }
-                            if (sent) anyMessageSent = true;
+                            if (sent) {
+                              anyMessageSent = true;
+                              consumedTopIds.push(id);
+                            }
                           } catch (err) {
                             Toast.error(t("base.conversation.upload.fileSendFailed", {
                               values: { name: file.name },
@@ -2541,6 +2708,60 @@ export class Conversation
 
                         // ── 第二阶段：按编辑器文档顺序发送内容块（文本段和粘贴图片交替） ──
                         if (editorBlocks && editorBlocks.length > 0) {
+                          // 图文混排：同时含文本和图片、且无非图片文件块时，聚合成单条
+                          // RichText(=14) 消息（而非拆成多条独立消息）。含 file 块或
+                          // 纯文本/纯图片时仍走下方逐块发送路径，不回退已落地逻辑。
+                          const hasText = editorBlocks.some(
+                            (b) => b.type === "text" && b.text.trim() !== "",
+                          );
+                          const hasImage = editorBlocks.some(
+                            (b) => b.type === "image",
+                          );
+                          const hasFile = editorBlocks.some(
+                            (b) => b.type === "file",
+                          );
+                          if (hasText && hasImage && !hasFile) {
+                            // 单独跟踪图文混排是否成功：图片准备失败时 sendRichTextMixed
+                            // 抛错，此时即便此前顶部附件已发(anyMessageSent=true)，也不能
+                            // 清空编辑器草稿——草稿里的文本+图片整条都没发出，须保留可重试。
+                            let mixedSent = false;
+                            try {
+                              if (await this.sendRichTextMixed(editorBlocks, reply)) {
+                                mixedSent = true;
+                                anyMessageSent = true;
+                              }
+                              reply = undefined;
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] richtext mixed send failed:",
+                                err,
+                              );
+                              // 图片准备失败已在 sendRichTextMixed 内 Toast 具体原因，
+                              // 不再重复弹通用错误。
+                              if (!(err as { toasted?: boolean })?.toasted) {
+                                Toast.error(t("base.conversation.message.sendFailed"));
+                              }
+                            }
+                            // 仅当图文混排本身发出时才清草稿；失败则保留编辑器内容可重试。
+                            if (mixedSent) {
+                              await this.clearDraftAfterSend(
+                                sendDraftGeneration,
+                                remoteDraftAtSend,
+                              );
+                            }
+                            this.props.onMessageSent?.();
+                            // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
+                            // 第二轮)：
+                            //   • editorConsumed=mixedSent：混排失败时保留编辑器
+                            //     文本+图片，用户可整条重试；
+                            //   • consumedTopIds：本次已发出的顶部附件 id。即使
+                            //     混排失败，这些文件也已发出，让 MessageInput 只
+                            //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
+                            return {
+                              editorConsumed: mixedSent,
+                              consumedTopIds,
+                            };
+                          }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
                             try {
@@ -2607,6 +2828,10 @@ export class Conversation
                           );
                         }
                         this.props.onMessageSent?.();
+                        // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
+                        // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
+                        // 保留草稿可重试。
+                        return anyMessageSent;
                       }}
                     ></MessageInput>
                   </div>
