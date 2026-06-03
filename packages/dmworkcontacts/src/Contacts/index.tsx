@@ -830,7 +830,8 @@ export default class ContactsList extends Component<any, ContactsState> {
                         title={null}
                         visible={this.state.userInfoVisible}
                         onCancel={() => this.setState({ userInfoVisible: false })}
-                        className="wk-base-modal-userinfo wk-base-modal"
+                        edgeToEdge
+                        bodyHeight={500}
                         options={{ closable: false }}
                     >
                         {this.state.userInfoUid && (

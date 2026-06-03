@@ -590,7 +590,8 @@ export class OrganizationalGroupNew extends Component<
 
         <WKModal
           size="lg"
-          className="wk-main-modal-organizational-group-new"
+          edgeToEdge
+          bodyStyle={{ height: 500, display: 'flex' }}
           visible={showModal}
           options={{ closable: false, maskClosable: false }}
           onCancel={() => {

@@ -54,6 +54,15 @@ export interface WKModalProps {
   header?: React.ReactNode
   className?: string
   children?: React.ReactNode
+  /**
+   * 边缘到边缘模式：shell padding 置 0，内容自己管理内边距。
+   * 用于个人信息、转发选择、群名片等全出血布局，替代外层 wk-base-modal className 补丁。
+   */
+  edgeToEdge?: boolean
+  /**
+   * 固定 body 高度（px 或任意 CSS 值），替代外层 CSS 覆盖 .wk-modal-body { height }。
+   */
+  bodyHeight?: number | string
 }
 
 const SIZE_MAP: Record<WKModalSize, number | string> = {
@@ -110,6 +119,8 @@ const WKModal: React.FC<WKModalProps> = ({
   header: customHeader,
   className,
   children,
+  edgeToEdge,
+  bodyHeight,
 }) => {
   const closable = options?.closable ?? true
   const maskClosable = options?.maskClosable ?? true
@@ -117,6 +128,12 @@ const WKModal: React.FC<WKModalProps> = ({
   const closeOnEsc = options?.closeOnEsc ?? true
   const width = customWidth ?? SIZE_MAP[size as WKModalSize]
   const resolvedFooter = resolveFooter(footer, footerConfig, onCancel)
+
+  const shellStyle: React.CSSProperties | undefined = edgeToEdge ? { padding: 0 } : undefined
+  const resolvedBodyStyle: React.CSSProperties | undefined =
+    bodyHeight !== undefined
+      ? { height: typeof bodyHeight === 'number' ? `${bodyHeight}px` : bodyHeight, ...bodyStyle }
+      : bodyStyle
 
   const cls = ['wk-modal', className].filter(Boolean).join(' ')
 
@@ -137,7 +154,7 @@ const WKModal: React.FC<WKModalProps> = ({
       modalContentClass="wk-modal-content"
       style={style}
     >
-      <div className="wk-modal-shell">
+      <div className="wk-modal-shell" style={shellStyle}>
         {closable && (
           <button
             className="wk-modal-custom-close-btn"
@@ -151,7 +168,7 @@ const WKModal: React.FC<WKModalProps> = ({
         {!customHeader && title !== null && title !== undefined && (
           <div className="wk-modal-title">{title}</div>
         )}
-        <div className="wk-modal-body" style={bodyStyle}>{children}</div>
+        <div className="wk-modal-body" style={resolvedBodyStyle}>{children}</div>
         {resolvedFooter}
       </div>
     </Modal>

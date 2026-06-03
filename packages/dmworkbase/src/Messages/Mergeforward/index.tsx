@@ -334,11 +334,12 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             />
           </MessageRow>
           <WKModal
-            className="wk-base-modal wk-mergeforward-modal"
+            className="wk-mergeforward-modal"
             width="var(--mf-modal-width)"
             visible={showList}
             onCancel={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
             footer={null}
+            edgeToEdge
             options={{ closable: false }}
             bodyStyle={{ padding: 0, maxHeight: 'var(--mf-modal-body-max-height)', overflowY: 'auto' }}
             style={{ maxHeight: 'var(--mf-modal-max-height)', overflow: 'hidden' }}
@@ -413,12 +414,13 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
           </div>
         </div>
         <WKModal
-          className="wk-base-modal wk-mergeforward-modal"
+          className="wk-mergeforward-modal"
           width="var(--mf-modal-width)"
           visible={showList}
           onCancel={() => {
             this.setState({ showList: false, canGoBack: false, navTitle: "" });
           }}
+          edgeToEdge
           options={{ closable: false }}
           bodyStyle={{ padding: 0, maxHeight: 'var(--mf-modal-body-max-height)', overflowY: 'auto' }}
           style={{ maxHeight: 'var(--mf-modal-max-height)', overflow: 'hidden' }}

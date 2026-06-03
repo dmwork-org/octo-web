@@ -3,27 +3,6 @@
   height: 100%;
 }
 
-.wk-base-modal .wk-modal-shell {
-  padding: 0;
-}
-
-.wk-base-modal-userinfo .wk-modal-body {
-  height: 500px;
-}
-
-/* 加入组织 */
-.wk-base-modal-join-org .wk-modal-shell {
-  padding: var(--wk-sp-3);
-}
-.wk-base-modal-join-org .wk-modal-body {
-  height: 420px;
-}
-
-.wk-base-modal-forward .wk-modal-body {
-  height: 560px;
-  overflow: hidden;
-}
-
 .semi-button.semi-button-primary:focus-visible, .semi-button.semi-button-secondary:focus-visible, .semi-button.semi-button-tertiary:focus-visible, .semi-button.semi-button-warning:focus-visible, .semi-button.semi-button-danger:focus-visible {
   outline: none;
 }

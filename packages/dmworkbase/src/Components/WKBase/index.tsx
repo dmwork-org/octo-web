@@ -318,8 +318,9 @@ export default class WKBase
       <div className="wk-base">
         {this.props.children}
         <WKModal
-          className="wk-base-modal-userinfo wk-base-modal"
           visible={showUserInfo}
+          edgeToEdge
+          bodyHeight={500}
           options={{ mask: false, closable: false }}
           onCancel={() => {
             this.setState({
@@ -365,8 +366,10 @@ export default class WKBase
         />
 
         <WKModal
-          className="wk-base-modal wk-base-modal-forward"
           visible={showConversationSelect}
+          edgeToEdge
+          bodyHeight={560}
+          bodyStyle={{ overflow: 'hidden' }}
           width={625}
           options={{ mask: false }}
           onCancel={() => {
@@ -422,7 +425,8 @@ export default class WKBase
         <WKModal
           visible={showJoinOrgInfo}
           title={this.context.t("base.wkBase.joinOrganization")}
-          className="wk-base-modal-join-org"
+          style={{ padding: 'var(--wk-sp-3)' }}
+          bodyHeight={420}
           options={{ mask: false }}
           onCancel={() => {
             this.setState({

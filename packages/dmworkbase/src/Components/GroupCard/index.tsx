@@ -75,7 +75,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
                 title={null}
                 visible={visible}
                 onCancel={onClose}
-                className="wk-group-card-modal"
+                edgeToEdge
             >
                 {loading ? (
                     <div style={{ textAlign: "center", padding: 40 }}>
