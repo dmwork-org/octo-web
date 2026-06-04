@@ -33,6 +33,8 @@
 }
 
 .wk-msg-mixed-file-icon {
+  --wk-msg-mixed-file-icon-bg: var(--wk-brand-primary);
+
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
@@ -40,10 +42,40 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--wk-r-sm);
-  background: var(--wk-brand-primary);
+  background: var(--wk-msg-mixed-file-icon-bg);
   color: var(--wk-text-on-brand);
   font: var(--wk-text-tiny);
   letter-spacing: 0;
+}
+
+.wk-msg-mixed-file-icon-pdf {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-error);
+}
+
+.wk-msg-mixed-file-icon-doc {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-info);
+}
+
+.wk-msg-mixed-file-icon-sheet {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-success);
+}
+
+.wk-msg-mixed-file-icon-slide,
+.wk-msg-mixed-file-icon-archive {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-warning);
+}
+
+.wk-msg-mixed-file-icon-audio,
+.wk-msg-mixed-file-icon-video {
+  --wk-msg-mixed-file-icon-bg: var(--wk-text-accent);
+}
+
+.wk-msg-mixed-file-icon-image {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-info);
+}
+
+.wk-msg-mixed-file-icon-text {
+  --wk-msg-mixed-file-icon-bg: var(--wk-text-tertiary);
 }
 
 .wk-msg-mixed-file-info {

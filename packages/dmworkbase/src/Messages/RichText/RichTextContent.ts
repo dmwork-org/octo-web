@@ -119,7 +119,6 @@ export function createRichTextContent(
 export class RichTextContent extends MessageContent {
   content: RichTextBlock[] = [];
   plain = "";
-  reply?: any;
 
   decodeJSON(content: any) {
     const raw = content?.content;

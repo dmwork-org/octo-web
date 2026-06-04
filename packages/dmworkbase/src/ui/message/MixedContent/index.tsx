@@ -5,6 +5,18 @@ import MarkdownContent, {
 } from "../../../Messages/Text/MarkdownContent";
 import "./index.css";
 
+export type MixedContentFileTone =
+  | "default"
+  | "pdf"
+  | "doc"
+  | "sheet"
+  | "slide"
+  | "archive"
+  | "audio"
+  | "video"
+  | "image"
+  | "text";
+
 export type MixedContentBlock =
   | {
       type: "text";
@@ -23,7 +35,7 @@ export type MixedContentBlock =
       name: string;
       size: string;
       extension: string;
-      iconColor?: string;
+      iconTone?: MixedContentFileTone;
       iconLabel: string;
       url?: string;
       caption?: string;
@@ -53,15 +65,11 @@ export default function MixedContent({
 
         if (block.type === "file") {
           const canDownload = !!block.url && !!onFileDownload;
+          const iconTone = block.iconTone || "default";
           return (
             <div key={block.id} className="wk-msg-mixed-file">
               <div
-                className="wk-msg-mixed-file-icon"
-                style={
-                  block.iconColor
-                    ? { backgroundColor: block.iconColor }
-                    : undefined
-                }
+                className={`wk-msg-mixed-file-icon wk-msg-mixed-file-icon-${iconTone}`}
                 aria-hidden="true"
               >
                 {block.iconLabel}
