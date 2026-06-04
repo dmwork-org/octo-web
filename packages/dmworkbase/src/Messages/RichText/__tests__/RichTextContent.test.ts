@@ -24,6 +24,7 @@ vi.mock("../../../i18n", () => ({
 import {
   RichTextContent,
   buildRichTextPlain,
+  RichTextFilePlaceholder,
   RichTextImagePlaceholder,
   makeTextBlock,
   makeImageBlock,
@@ -40,12 +41,22 @@ describe("buildRichTextPlain", () => {
     expect(plain).toBe(`看图：${RichTextImagePlaceholder} 完成`);
   });
 
+  it("file block 前向兼容：plain 注入文件占位符和文件名", () => {
+    const plain = buildRichTextPlain([
+      { type: "text", text: "参考：" },
+      {
+        type: "file",
+        name: "需求说明.pdf",
+        url: "https://x/a.pdf",
+        size: 1024,
+      },
+    ]);
+    expect(plain).toBe(`参考：${RichTextFilePlaceholder} 需求说明.pdf`);
+  });
+
   it("未知 type 有 text 则取 text，否则跳过", () => {
     expect(
-      buildRichTextPlain([
-        { type: "future", text: "hi" },
-        { type: "future" },
-      ])
+      buildRichTextPlain([{ type: "future", text: "hi" }, { type: "future" }])
     ).toBe("hi");
   });
 });
@@ -80,6 +91,36 @@ describe("RichTextContent.decodeJSON", () => {
     expect(c.conversationDigest).toBe(`a${RichTextImagePlaceholder}`);
   });
 
+  it("前向兼容：解析 file block 需要的展示字段", () => {
+    const c = new RichTextContent();
+    c.decodeJSON({
+      type: 14,
+      content: [
+        {
+          type: "file",
+          url: "https://x/a.pdf",
+          name: "需求说明.pdf",
+          extension: "pdf",
+          size: 2048,
+          mime: "application/pdf",
+          caption: "正文里的文件",
+        },
+      ],
+    });
+    expect(c.content[0]).toMatchObject({
+      type: "file",
+      url: "https://x/a.pdf",
+      name: "需求说明.pdf",
+      extension: "pdf",
+      size: 2048,
+      mime: "application/pdf",
+      caption: "正文里的文件",
+    });
+    expect(c.conversationDigest).toBe(
+      `${RichTextFilePlaceholder} 需求说明.pdf`
+    );
+  });
+
   it("向后兼容：content 为纯字符串归一为单个 text block", () => {
     const c = new RichTextContent();
     c.decodeJSON({ type: 14, content: "legacy text" });
@@ -102,7 +143,7 @@ describe("发送侧 block 构造（与接收侧 schema 对称）", () => {
 
   it("makeImageBlock 必填 url/width/height，size/name 仅在有值时带上", () => {
     expect(
-      makeImageBlock({ url: "https://x/a.png", width: 10, height: 20 }),
+      makeImageBlock({ url: "https://x/a.png", width: 10, height: 20 })
     ).toEqual({ type: "image", url: "https://x/a.png", width: 10, height: 20 });
 
     expect(
@@ -112,7 +153,7 @@ describe("发送侧 block 构造（与接收侧 schema 对称）", () => {
         height: 20,
         size: 123,
         name: "a.png",
-      }),
+      })
     ).toEqual({
       type: "image",
       url: "https://x/a.png",
@@ -124,7 +165,7 @@ describe("发送侧 block 构造（与接收侧 schema 对称）", () => {
 
     // size=0 不应注入 wire（防 byte-match 污染）
     expect(
-      makeImageBlock({ url: "https://x/a.png", width: 1, height: 1, size: 0 }),
+      makeImageBlock({ url: "https://x/a.png", width: 1, height: 1, size: 0 })
     ).not.toHaveProperty("size");
   });
 
