@@ -8,7 +8,7 @@ const meta: Meta<typeof MixedContent> = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: "720px", padding: "20px" }}>
+      <div style={{ maxWidth: "720px", padding: "var(--wk-sp-5)" }}>
         <Story />
       </div>
     ),
