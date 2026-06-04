@@ -286,6 +286,8 @@ export class ChatVM extends ProviderListener {
                         this.keepPosition(conversationY)
                     }
                 })
+                // 会话未读数变化后刷新 sidebar 快照，保证关注 tab 角标与最新状态同步（#203）
+                WKApp.mittBus.emit("sidebar-reload" as any)
             } else if (action === ConversationAction.remove) {
                 this.removeConversation(conversation.channel)
             }
