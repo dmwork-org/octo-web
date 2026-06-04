@@ -119,9 +119,10 @@ export function useFollowSidebar(): UseFollowSidebarResult {
         load()
     }, [load])
 
-    // 外部触发重载（如 ThreadPanel 关注子区后）
+    // 外部触发重载（如 ThreadPanel 关注子区后、会话未读数变化后 #203）
+    // 使用 silent 模式：不翻转 isLoading，避免关注 tab 列表 remount 闪烁 / 丢失滚动位置
     useEffect(() => {
-        const handler = () => load()
+        const handler = () => load({ silent: true })
         WKApp.mittBus.on("sidebar-reload" as any, handler)
         return () => { WKApp.mittBus.off("sidebar-reload" as any, handler) }
     }, [load])
