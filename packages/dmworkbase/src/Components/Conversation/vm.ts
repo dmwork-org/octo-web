@@ -1407,7 +1407,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
     // 刷新新消息数量
-    refreshNewMsgCount() {
+    async refreshNewMsgCount() {
 
         const oldUnreadCount = this.unreadCount
         if (this.browseToMessageSeq == 0) {
