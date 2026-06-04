@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => {
     const state = {
         listener: undefined as undefined | ((conversation: any, action: any) => void),
         threadCreatedListener: undefined as undefined | ((event: any) => void),
+        sidebarReloadListener: undefined as undefined | ((event: any) => void),
     }
     const sync = vi.fn()
     const addConversationListener = vi.fn((listener: (conversation: any, action: any) => void) => {
@@ -37,11 +38,15 @@ const hoisted = vi.hoisted(() => {
                 on: vi.fn((event: string, listener: (event: any) => void) => {
                     if (event === "wk:thread-created") {
                         state.threadCreatedListener = listener
+                    } else if (event === "sidebar-reload") {
+                        state.sidebarReloadListener = listener
                     }
                 }),
                 off: vi.fn((event: string, listener: (event: any) => void) => {
                     if (event === "wk:thread-created" && state.threadCreatedListener === listener) {
                         state.threadCreatedListener = undefined
+                    } else if (event === "sidebar-reload" && state.sidebarReloadListener === listener) {
+                        state.sidebarReloadListener = undefined
                     }
                 }),
             },
@@ -118,6 +123,7 @@ describe("useFollowSidebar", () => {
         vi.useFakeTimers()
         hoisted.state.listener = undefined
         hoisted.state.threadCreatedListener = undefined
+        hoisted.state.sidebarReloadListener = undefined
         hoisted.sync.mockReset()
         hoisted.addConversationListener.mockClear()
         hoisted.removeConversationListener.mockClear()
@@ -207,5 +213,39 @@ describe("useFollowSidebar", () => {
 
         expect(hoisted.sync).toHaveBeenCalledTimes(2)
         expect(latest?.followedKeys.has("5::group-a____thread-1")).toBe(true)
+    })
+
+    it("refreshes the followed sidebar snapshot silently on sidebar-reload (unread badge sync, #203)", async () => {
+        let latest: ReturnType<typeof useFollowSidebar> | undefined
+        const groupItemUnread = { ...groupItem, unread: 1 }
+        const groupItemRead = { ...groupItem, unread: 0 }
+        hoisted.sync
+            .mockResolvedValueOnce({ items: [groupItemUnread], follow_version: 1, version: 1 })
+            .mockResolvedValueOnce({ items: [groupItemRead], follow_version: 2, version: 2 })
+
+        await act(async () => {
+            ReactDOM.render(<Probe onValue={(value) => { latest = value }} />, container)
+            await flushMicrotasks()
+        })
+
+        // 初次加载后拿到的是带未读的快照
+        expect(hoisted.sync).toHaveBeenCalledTimes(1)
+        expect(latest?.items.find((it) => it.target_id === "group-a")?.unread).toBe(1)
+        expect(hoisted.fakeWKApp.mittBus.on).toHaveBeenCalledWith(
+            "sidebar-reload",
+            expect.any(Function)
+        )
+
+        // 触发 sidebar-reload：应静默重新 /sidebar/sync，且不进入 loading 态（不闪烁）
+        await act(async () => {
+            hoisted.state.sidebarReloadListener?.(undefined)
+            await flushMicrotasks()
+        })
+
+        expect(hoisted.sync).toHaveBeenCalledTimes(2)
+        // reload 全程 isLoading 保持 false（silent 模式），避免关注 tab 列表 remount
+        expect(latest?.isLoading).toBe(false)
+        // 拿到最新已读快照，关注 tab 角标可归零
+        expect(latest?.items.find((it) => it.target_id === "group-a")?.unread).toBe(0)
     })
 })

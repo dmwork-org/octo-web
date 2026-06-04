@@ -1407,7 +1407,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
     // 刷新新消息数量
-    refreshNewMsgCount() {
+    async refreshNewMsgCount() {
 
         const oldUnreadCount = this.unreadCount
         if (this.browseToMessageSeq == 0) {
@@ -1428,11 +1428,29 @@ export default class ConversationVM extends ProviderListener {
             const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
             if (conversation) {
                 conversation.unread = this.unreadCount
+            }
+            // 未读清零时：先持久化到服务端，成功后再通知监听者 + 刷新 sidebar 快照（#203）。
+            // markConversationUnread 是异步 HTTP PUT，必须 await 确保 /sidebar/sync 读到
+            // 的是已持久化的状态，而不是旧快照。
+            let shouldClear = this.unreadCount === 0 && oldUnreadCount > 0
+            // 先通知本地监听者：conversation.unread 已归零，让会话列表 UI 立即反映，
+            // 不等待网络请求。sidebar-reload 才需要等服务端确认后再触发（#203）。
+            if (conversation) {
                 WKSDK.shared().conversationManager.notifyConversationListeners(conversation, ConversationAction.update)
             }
-            // 未读数变为0时立即同步到服务端，防止会话列表同步时拿到旧的未读数
-            if (this.unreadCount === 0 && oldUnreadCount > 0) {
-                WKApp.conversationProvider.markConversationUnread(this.channel, 0)
+            if (shouldClear) {
+                try {
+                    await WKApp.conversationProvider.markConversationUnread(this.channel, 0)
+                } catch (_e) {
+                    // 清未读失败时跳过 sidebar 刷新——服务端还是旧状态，
+                    // sync 拉回来的快照仍是旧值，刷新没有意义。
+                    shouldClear = false
+                }
+            }
+            // 仅未读清零且服务端确认后刷新 sidebar：按 schema sidebar/sync 拿到最新 follow 快照，
+            // 关注 tab 中 sidebar-only 项的角标才能归零。
+            if (shouldClear) {
+                WKApp.mittBus.emit("sidebar-reload" as any)
             }
         }
 
