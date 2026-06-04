@@ -262,6 +262,8 @@ export class ChatVM extends ProviderListener {
                 }
                 if (shouldSkipPersonConversationForSpace(conversation)) return
                 const existConversation = this.findConversation(conversation.channel)
+                // 捕获更新前的未读数，用于判断未读是否真正发生变化（#203）
+                const prevUnread = existConversation?.conversation.unread ?? 0
                 if (existConversation) {
                     existConversation.conversation = conversation
                     // WS 更新后有条件清除 spaceLastMessage (#783)
@@ -286,8 +288,12 @@ export class ChatVM extends ProviderListener {
                         this.keepPosition(conversationY)
                     }
                 })
-                // 会话未读数变化后刷新 sidebar 快照，保证关注 tab 角标与最新状态同步（#203）
-                WKApp.mittBus.emit("sidebar-reload" as any)
+                // 仅在未读数真正变化时刷新 sidebar 快照，保证关注 tab 中「不在 IM 缓存里」的
+                // sidebar-only 关注项角标也能同步归零（#203）。非未读变化（新消息预览、撤回、
+                // 草稿清除等）不触发，避免活跃会话每条消息都打一次 /sidebar/sync。
+                if (conversation.unread !== prevUnread) {
+                    WKApp.mittBus.emit("sidebar-reload" as any)
+                }
             } else if (action === ConversationAction.remove) {
                 this.removeConversation(conversation.channel)
             }

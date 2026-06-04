@@ -1428,11 +1428,16 @@ export default class ConversationVM extends ProviderListener {
             const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
             if (conversation) {
                 conversation.unread = this.unreadCount
-                WKSDK.shared().conversationManager.notifyConversationListeners(conversation, ConversationAction.update)
             }
-            // 未读数变为0时立即同步到服务端，防止会话列表同步时拿到旧的未读数
+            // 先同步未读清零到服务端，再通知监听者（#203）。
+            // 顺序很重要：会话列表 / 关注 tab 的 sidebar-reload 由 ConversationAction.update
+            // 触发并立即拉 /sidebar/sync，若先 notify 后 mark，sidebar 同步可能跑在
+            // 清未读持久化之前，拿到旧的未读快照。
             if (this.unreadCount === 0 && oldUnreadCount > 0) {
                 WKApp.conversationProvider.markConversationUnread(this.channel, 0)
+            }
+            if (conversation) {
+                WKSDK.shared().conversationManager.notifyConversationListeners(conversation, ConversationAction.update)
             }
         }
 
