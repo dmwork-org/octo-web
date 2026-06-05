@@ -262,12 +262,18 @@ export interface ConversationListProps {
    *  pin 与拖拽语义冲突（pin 会强制顶到分组顶端覆盖手动顺序），所以在关注 tab 移除 pin 入口。
    *  最近 tab 仍保留 pin。 */
   hidePin?: boolean;
+  /** 递增 token：变化时滚到第一条 shouldScrollToUnreadTarget 命中的会话 */
+  scrollToUnreadToken?: number;
+  /** 外部提供导航目标口径，避免列表层重复理解具体业务规则 */
+  shouldScrollToUnreadTarget?: (conversation: ConversationWrap) => boolean;
 }
 
 export interface ConversationListState {
   selectConversationWrap?: ConversationWrap;
   /** compact 模式：已展开全部子区的父群聊 ID 集合（点击 +N 后加入） */
   expandedGroupIds: Set<string>;
+  locatingUnreadKey?: string;
+  locatingUnreadPulse: number;
 }
 
 export default class ConversationList extends Component<
@@ -280,6 +286,11 @@ export default class ConversationList extends Component<
   channelListener!: ChannelInfoListener;
   contextMenusContext!: ContextMenusContext;
   typingListener!: TypingListener;
+  private listRef = React.createRef<HTMLDivElement>();
+  private itemRefs = new Map<string, HTMLDivElement>();
+  private lastRenderableItems: ConversationWrap[] = [];
+  private scrollFrame: number | null = null;
+  private unreadNudgeTimer: number | null = null;
   private _storageKey(): string {
     const uid = WKApp.loginInfo?.uid || 'unknown';
     const spaceId = WKApp.shared?.currentSpaceId || 'default';
@@ -298,7 +309,11 @@ export default class ConversationList extends Component<
     } catch {
       restoredIds = new Set();
     }
-    this.state = { expandedGroupIds: restoredIds };
+    this.state = {
+      expandedGroupIds: restoredIds,
+      locatingUnreadKey: undefined,
+      locatingUnreadPulse: 0,
+    };
   }
 
   componentDidMount() {
@@ -313,9 +328,119 @@ export default class ConversationList extends Component<
     TypingManager.shared.addTypingListener(this.typingListener);
   }
 
+  componentDidUpdate(prevProps: ConversationListProps) {
+    if (
+      this.props.scrollToUnreadToken !== undefined &&
+      this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken
+    ) {
+      this.scheduleScrollToFirstUnreadTarget();
+    }
+  }
+
   componentWillUnmount() {
+    if (
+      this.scrollFrame !== null &&
+      typeof window !== "undefined" &&
+      typeof window.cancelAnimationFrame === "function"
+    ) {
+      window.cancelAnimationFrame(this.scrollFrame);
+      this.scrollFrame = null;
+    }
+    if (
+      this.unreadNudgeTimer !== null &&
+      typeof window !== "undefined" &&
+      typeof window.clearTimeout === "function"
+    ) {
+      window.clearTimeout(this.unreadNudgeTimer);
+      this.unreadNudgeTimer = null;
+    }
     WKSDK.shared().channelManager.removeListener(this.channelListener);
     TypingManager.shared.removeTypingListener(this.typingListener);
+  }
+
+  private setConversationItemRef(
+    conversationWrap: ConversationWrap,
+    node: HTMLDivElement | null
+  ) {
+    const key = conversationWrap.channel.getChannelKey();
+    if (node) {
+      this.itemRefs.set(key, node);
+    } else {
+      this.itemRefs.delete(key);
+    }
+  }
+
+  private scheduleScrollToFirstUnreadTarget() {
+    if (
+      typeof window === "undefined" ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      this.scrollToFirstUnreadTarget();
+      return;
+    }
+
+    if (this.scrollFrame !== null) {
+      window.cancelAnimationFrame(this.scrollFrame);
+    }
+    this.scrollFrame = window.requestAnimationFrame(() => {
+      this.scrollFrame = null;
+      this.scrollToFirstUnreadTarget();
+    });
+  }
+
+  private scrollToFirstUnreadTarget() {
+    const root = this.listRef.current;
+    const shouldTarget = this.props.shouldScrollToUnreadTarget;
+    if (!root || !shouldTarget) return;
+
+    const target = this.lastRenderableItems.find((conv) => shouldTarget(conv));
+    if (!target) return;
+
+    const node = this.itemRefs.get(target.channel.getChannelKey());
+    if (!node) return;
+
+    const rootRect = root.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const targetTop = Math.max(0, root.scrollTop + nodeRect.top - rootRect.top);
+
+    if (typeof root.scrollTo === "function") {
+      root.scrollTo({
+        top: targetTop,
+        behavior: "smooth",
+      });
+    } else {
+      root.scrollTop = targetTop;
+    }
+
+    this.nudgeUnreadBadge(target.channel.getChannelKey());
+  }
+
+  private nudgeUnreadBadge(channelKey: string) {
+    if (
+      this.unreadNudgeTimer !== null &&
+      typeof window !== "undefined" &&
+      typeof window.clearTimeout === "function"
+    ) {
+      window.clearTimeout(this.unreadNudgeTimer);
+      this.unreadNudgeTimer = null;
+    }
+
+    this.setState((state) => ({
+      locatingUnreadKey: channelKey,
+      locatingUnreadPulse: state.locatingUnreadPulse + 1,
+    }));
+
+    if (
+      typeof window === "undefined" ||
+      typeof window.setTimeout !== "function"
+    ) {
+      return;
+    }
+
+    this.unreadNudgeTimer = window.setTimeout(() => {
+      this.unreadNudgeTimer = null;
+      this.setState({ locatingUnreadKey: undefined });
+    }, 700);
   }
 
   _handleScroll = () => {
@@ -537,6 +662,7 @@ export default class ConversationList extends Component<
     }
 
     const { select, onClick } = this.props;
+    const { locatingUnreadKey, locatingUnreadPulse } = this.state;
     const typing = TypingManager.shared.getTyping(conversationWrap.channel);
     const selected = select && select.isEqual(conversationWrap.channel);
     // 父群下的子区折叠到 thread-overflow（默认不展开），父群 badge 必须把
@@ -556,8 +682,15 @@ export default class ConversationList extends Component<
     // 不再套 .wk-conversationlist-item-thread（避免缩进 + 树形连接线视觉嵌套）。
     const avatarChannel = isThread && parentChannel ? parentChannel : conversationWrap.channel;
     const isDM = avatarChannel.channelType === ChannelTypePerson;
+    const unreadNudgeClass =
+      locatingUnreadKey === conversationWrap.channel.getChannelKey()
+        ? locatingUnreadPulse % 2 === 0
+          ? "wk-conv-unread-num--nudge-a"
+          : "wk-conv-unread-num--nudge-b"
+        : undefined;
     return (
       <div
+        ref={(node) => this.setConversationItemRef(conversationWrap, node)}
         key={conversationWrap.channel.getChannelKey()}
         onClick={() => {
           if (onClick) {
@@ -596,7 +729,12 @@ export default class ConversationList extends Component<
                 ></OnlineStatusBadge>
               ) : undefined}
               {totalUnread > 0 && !effectiveMute && (
-                <span className="wk-conv-unread-num">
+                <span
+                  className={classNames(
+                    "wk-conv-unread-num",
+                    unreadNudgeClass
+                  )}
+                >
                   {totalUnread > 99 ? "99+" : totalUnread}
                 </span>
               )}
@@ -984,6 +1122,9 @@ export default class ConversationList extends Component<
 
     const { onThreadOverflowClick } = this.props;
     const { expandedGroupIds } = this.state;
+    this.lastRenderableItems = [...finalPinned, ...finalRecent].filter(
+      (item): item is ConversationWrap => !("type" in item)
+    );
 
     const renderItem = (
       item:
@@ -1055,6 +1196,7 @@ export default class ConversationList extends Component<
 
     return (
       <div
+        ref={this.listRef}
         id="wk-conversationlist"
         className="wk-conversationlist"
         onScroll={this._handleScroll}
