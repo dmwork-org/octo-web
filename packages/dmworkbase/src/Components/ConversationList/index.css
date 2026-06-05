@@ -219,6 +219,59 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   box-sizing: border-box;
 }
 
+.wk-conv-unread-num--nudge-a {
+  animation: wk-conv-unread-num-nudge-a 560ms ease;
+}
+
+.wk-conv-unread-num--nudge-b {
+  animation: wk-conv-unread-num-nudge-b 560ms ease;
+}
+
+@keyframes wk-conv-unread-num-nudge-a {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-2px);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+  60% {
+    transform: translateX(-1px);
+  }
+  80% {
+    transform: translateX(1px);
+  }
+}
+
+@keyframes wk-conv-unread-num-nudge-b {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-2px);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+  60% {
+    transform: translateX(-1px);
+  }
+  80% {
+    transform: translateX(1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-conv-unread-num--nudge-a,
+  .wk-conv-unread-num--nudge-b {
+    animation: none;
+  }
+}
+
 /* 头像右上角小红点（静音 + 有未读，低打扰提示） */
 .wk-conv-unread-dot {
   position: absolute;
