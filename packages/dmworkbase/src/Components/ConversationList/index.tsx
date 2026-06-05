@@ -272,6 +272,8 @@ export interface ConversationListState {
   selectConversationWrap?: ConversationWrap;
   /** compact 模式：已展开全部子区的父群聊 ID 集合（点击 +N 后加入） */
   expandedGroupIds: Set<string>;
+  locatingUnreadKey?: string;
+  locatingUnreadPulse: number;
 }
 
 export default class ConversationList extends Component<
@@ -288,6 +290,7 @@ export default class ConversationList extends Component<
   private itemRefs = new Map<string, HTMLDivElement>();
   private lastRenderableItems: ConversationWrap[] = [];
   private scrollFrame: number | null = null;
+  private unreadNudgeTimer: number | null = null;
   private _storageKey(): string {
     const uid = WKApp.loginInfo?.uid || 'unknown';
     const spaceId = WKApp.shared?.currentSpaceId || 'default';
@@ -306,7 +309,11 @@ export default class ConversationList extends Component<
     } catch {
       restoredIds = new Set();
     }
-    this.state = { expandedGroupIds: restoredIds };
+    this.state = {
+      expandedGroupIds: restoredIds,
+      locatingUnreadKey: undefined,
+      locatingUnreadPulse: 0,
+    };
   }
 
   componentDidMount() {
@@ -338,6 +345,14 @@ export default class ConversationList extends Component<
     ) {
       window.cancelAnimationFrame(this.scrollFrame);
       this.scrollFrame = null;
+    }
+    if (
+      this.unreadNudgeTimer !== null &&
+      typeof window !== "undefined" &&
+      typeof window.clearTimeout === "function"
+    ) {
+      window.clearTimeout(this.unreadNudgeTimer);
+      this.unreadNudgeTimer = null;
     }
     WKSDK.shared().channelManager.removeListener(this.channelListener);
     TypingManager.shared.removeTypingListener(this.typingListener);
@@ -396,6 +411,36 @@ export default class ConversationList extends Component<
     } else {
       root.scrollTop = targetTop;
     }
+
+    this.nudgeUnreadBadge(target.channel.getChannelKey());
+  }
+
+  private nudgeUnreadBadge(channelKey: string) {
+    if (
+      this.unreadNudgeTimer !== null &&
+      typeof window !== "undefined" &&
+      typeof window.clearTimeout === "function"
+    ) {
+      window.clearTimeout(this.unreadNudgeTimer);
+      this.unreadNudgeTimer = null;
+    }
+
+    this.setState((state) => ({
+      locatingUnreadKey: channelKey,
+      locatingUnreadPulse: state.locatingUnreadPulse + 1,
+    }));
+
+    if (
+      typeof window === "undefined" ||
+      typeof window.setTimeout !== "function"
+    ) {
+      return;
+    }
+
+    this.unreadNudgeTimer = window.setTimeout(() => {
+      this.unreadNudgeTimer = null;
+      this.setState({ locatingUnreadKey: undefined });
+    }, 700);
   }
 
   _handleScroll = () => {
@@ -617,6 +662,7 @@ export default class ConversationList extends Component<
     }
 
     const { select, onClick } = this.props;
+    const { locatingUnreadKey, locatingUnreadPulse } = this.state;
     const typing = TypingManager.shared.getTyping(conversationWrap.channel);
     const selected = select && select.isEqual(conversationWrap.channel);
     // 父群下的子区折叠到 thread-overflow（默认不展开），父群 badge 必须把
@@ -636,6 +682,12 @@ export default class ConversationList extends Component<
     // 不再套 .wk-conversationlist-item-thread（避免缩进 + 树形连接线视觉嵌套）。
     const avatarChannel = isThread && parentChannel ? parentChannel : conversationWrap.channel;
     const isDM = avatarChannel.channelType === ChannelTypePerson;
+    const unreadNudgeClass =
+      locatingUnreadKey === conversationWrap.channel.getChannelKey()
+        ? locatingUnreadPulse % 2 === 0
+          ? "wk-conv-unread-num--nudge-a"
+          : "wk-conv-unread-num--nudge-b"
+        : undefined;
     return (
       <div
         ref={(node) => this.setConversationItemRef(conversationWrap, node)}
@@ -677,7 +729,12 @@ export default class ConversationList extends Component<
                 ></OnlineStatusBadge>
               ) : undefined}
               {totalUnread > 0 && !effectiveMute && (
-                <span className="wk-conv-unread-num">
+                <span
+                  className={classNames(
+                    "wk-conv-unread-num",
+                    unreadNudgeClass
+                  )}
+                >
                   {totalUnread > 99 ? "99+" : totalUnread}
                 </span>
               )}
