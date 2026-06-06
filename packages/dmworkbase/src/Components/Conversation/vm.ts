@@ -502,6 +502,16 @@ export default class ConversationVM extends ProviderListener {
         }
     }
 
+    foldSessionMessageElementId(message: MessageWrap | Message): string {
+        return `fold-session-message-${message.clientMsgNo}`
+    }
+
+    private messageSeqElement(messageSeq: number): HTMLElement | null {
+        return document.querySelector<HTMLElement>(
+            `[data-locate-message-row="true"][data-message-seq="${messageSeq}"]`,
+        )
+    }
+
     setFoldSessionExpanded(sessionId: string, expanded: boolean, userToggled: boolean = false, stateCallback?: () => void) {
         const state = this.foldSessionState.get(sessionId) || {}
         state.expanded = expanded
@@ -1925,18 +1935,51 @@ export default class ConversationVM extends ProviderListener {
         }
     }
     private messageScrollElement(message: MessageWrap): HTMLElement | null {
+        const foldSession = message.messageSeq && message.messageSeq > 0
+            ? this.findFoldSessionByMessageSeq(message.messageSeq)
+            : undefined
+        if (foldSession?.isExpanded) {
+            const expandedElement = document.getElementById(this.foldSessionMessageElementId(message))
+            if (expandedElement) {
+                return expandedElement
+            }
+        }
+        if (!foldSession && message.messageSeq && message.messageSeq > 0) {
+            const seqElement = this.messageSeqElement(message.messageSeq)
+            if (seqElement) {
+                return seqElement
+            }
+        }
         const element = document.getElementById(message.clientMsgNo)
         if (element) {
             return element
         }
-        if (!message.messageSeq || message.messageSeq <= 0) {
-            return null
-        }
-        const foldSession = this.findFoldSessionByMessageSeq(message.messageSeq)
         if (!foldSession) {
             return null
         }
         return document.getElementById(foldSession.anchorId)
+    }
+
+    private scrollTopForElement(viewport: HTMLElement, element: HTMLElement, keepOffsetY: number): number {
+        const viewportRect = viewport.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        const hasRectLayout = viewportRect.height > 0
+            || elementRect.height > 0
+            || viewportRect.top !== 0
+            || elementRect.top !== 0
+
+        if (hasRectLayout) {
+            const anchorOffsetTop = viewport.scrollTop + elementRect.top - viewportRect.top
+            return getRestoredAnchorScrollTop({
+                anchorOffsetTop,
+                keepOffsetY,
+            })
+        }
+
+        return getRestoredAnchorScrollTop({
+            anchorOffsetTop: element.offsetTop,
+            keepOffsetY,
+        })
     }
 
     // 滚动到指定的消息
@@ -1945,10 +1988,7 @@ export default class ConversationVM extends ProviderListener {
         const element = this.messageScrollElement(message)
         const keepOffsetY = Number.isFinite(offsetY) ? Math.max(0, offsetY) : 0
         if (viewport && element) {
-            viewport.scrollTop = getRestoredAnchorScrollTop({
-                anchorOffsetTop: element.offsetTop,
-                keepOffsetY,
-            })
+            viewport.scrollTop = this.scrollTopForElement(viewport, element, keepOffsetY)
             return
         }
         scroller.scrollTo(message.clientMsgNo, {
