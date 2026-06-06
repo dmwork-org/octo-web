@@ -2,6 +2,10 @@ import React, { useRef, useEffect } from "react"
 import { useI18n } from "../../i18n"
 import "./index.css"
 
+export interface DragHandleProps extends React.HTMLAttributes<HTMLSpanElement> {
+    ref?: React.Ref<HTMLSpanElement>
+}
+
 export interface CategoryHeaderProps {
     name: string
     groupCount?: number
@@ -17,8 +21,8 @@ export interface CategoryHeaderProps {
     isEditing?: boolean
     onRenameConfirm?: (newName: string) => void
     onRenameCancel?: () => void
-    // 拖拽 handle props（由 useSortable 传入）
-    dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>
+    // 拖拽 handle props（由 useSortable 传入，包含 ref）
+    dragHandleProps?: DragHandleProps
 }
 
 const CategoryHeader: React.FC<CategoryHeaderProps> = ({
@@ -126,10 +130,11 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
             onClick={onToggle}
             onContextMenu={onContextMenu}
         >
-            {/* 拖拽 handle（由父组件传入 useSortable listeners） */}
+            {/* 拖拽 handle（由父组件传入 useSortable ref + listeners） */}
             {dragHandleProps && (
                 <span
                     className="wk-category-header__drag-handle"
+                    ref={dragHandleProps.ref}
                     {...dragHandleProps}
                     onClick={e => e.stopPropagation()}
                 >

@@ -26,6 +26,10 @@ export interface CategorySectionProps {
     draggable?: boolean
 }
 
+export interface DragHandleProps extends React.HTMLAttributes<HTMLSpanElement> {
+    ref?: React.Ref<HTMLSpanElement>
+}
+
 const CategorySectionInner: React.FC<CategorySectionProps> = ({
     category,
     isCollapsed,
@@ -39,6 +43,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
 }) => {
     const { t } = useI18n()
     // useSortable：分组整体排序（同时作为 droppable，接受 group item 的 drop）
+    // 注意：setNodeRef 移到拖拽 handle 上，避免整个 section 拦截 pointer 事件导致折叠点击失效
     const {
         attributes,
         listeners,
@@ -57,11 +62,17 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
 
     const isEmpty = category.isEmpty ?? (!children || (Array.isArray(children) && children.length === 0))
 
+    // 把 setNodeRef 和 listeners 都绑到拖拽 handle 上，header 其他区域可正常响应点击
+    const dragHandleProps: DragHandleProps = {
+        ref: setNodeRef,
+        ...attributes,
+        ...listeners,
+    }
+
     return (
         <div
-            ref={setNodeRef}
             style={style}
-            className={`wk-category-section${isOver ? ' wk-category-section--drop-over' : ''}`}
+            className={`wk-category-section${isOver ? ' wk-category-section--drop-over' : ''}${isDragging ? ' wk-category-section--dragging' : ''}`}
         >
             <CategoryHeader
                 name={category.name}
@@ -76,7 +87,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
                 isEditing={isEditing}
                 onRenameConfirm={onRenameConfirm}
                 onRenameCancel={onRenameCancel}
-                dragHandleProps={{ ...attributes, ...listeners }}
+                dragHandleProps={dragHandleProps}
             />
             <div
                 className={`wk-category-section__content ${
