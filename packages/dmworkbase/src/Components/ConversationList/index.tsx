@@ -297,8 +297,6 @@ export default class ConversationList extends Component<
   private lastRenderableItems: ConversationWrap[] = [];
   private scrollFrame: number | null = null;
   private unreadNudgeTimer: number | null = null;
-  private _lastThreadsByParent: Map<string, ConversationWrap[]> | null = null;
-  private _autoExpandedParentIds: Set<string> = new Set();
   private _storageKey(): string {
     const uid = WKApp.loginInfo?.uid || 'unknown';
     const spaceId = WKApp.shared?.currentSpaceId || 'default';
@@ -342,23 +340,6 @@ export default class ConversationList extends Component<
       this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken
     ) {
       this.scheduleScrollToFirstUnreadTarget();
-    }
-    // 关注 tab：首次出现父群时自动展开（PR #208），之后允许用户手动折叠
-    if (this.props.disablePinSplit && this._lastThreadsByParent) {
-      const next = new Set(this.state.expandedGroupIds);
-      let changed = false;
-      for (const parentId of this._lastThreadsByParent.keys()) {
-        if (!this._autoExpandedParentIds.has(parentId)) {
-          this._autoExpandedParentIds.add(parentId);
-          if (!next.has(parentId)) {
-            next.add(parentId);
-            changed = true;
-          }
-        }
-      }
-      if (changed) {
-        this.setState({ expandedGroupIds: next });
-      }
     }
   }
 
@@ -467,6 +448,14 @@ export default class ConversationList extends Component<
       this.setState({ locatingUnreadKey: undefined });
     }, 700);
   }
+
+  // 子区是否展开。
+  // - 关注 tab（disablePinSplit）：默认展开，expandedGroupIds 记录"被用户折叠的"（反转语义）
+  // - 其他 tab：默认折叠，expandedGroupIds 记录"被用户展开的"
+  _isThreadExpanded = (parentGroupId: string): boolean => {
+    const inSet = this.state.expandedGroupIds.has(parentGroupId);
+    return this.props.disablePinSplit ? !inSet : inSet;
+  };
 
   _handleScroll = () => {
     this.contextMenusContext.hide();
@@ -1014,9 +1003,26 @@ export default class ConversationList extends Component<
     > = [];
     const usedThreads = new Set<string>();
 
+    // 预计算列表中存在的群组 ID（用于判断子区是否孤儿）
+    const groupIdsInList = new Set(
+      convs
+        .filter((c) => c.channel.channelType === ChannelTypeGroup)
+        .map((c) => c.channel.channelID)
+    );
+
     for (const conv of convs) {
       if (conv.channel.channelType === ChannelTypeCommunityTopic) {
-        // 子区会在父群组后面添加，这里跳过
+        // 子区：父群在列表中 → 跳过（在父群后面统一添加）；
+        // 孤儿子区（父群不在列表）+ 关注 tab → 在原位保留为独立条目（保持 follow_sort 顺序）
+        if (usedThreads.has(conv.channel.channelID)) continue;
+        const parentGroupNo =
+          conv.channelInfo?.orgData?.parentGroupNo ||
+          parseThreadChannelId(conv.channel.channelID)?.groupNo;
+        const parentInList = !!parentGroupNo && groupIdsInList.has(parentGroupNo);
+        if (!parentInList && keepOrphanThreads) {
+          result.push(conv);
+          usedThreads.add(conv.channel.channelID);
+        }
         continue;
       }
       result.push(conv);
@@ -1054,28 +1060,16 @@ export default class ConversationList extends Component<
       }
     }
 
-    // 收集列表中存在的群组 ID
-    const groupIdsInList = new Set(
-      convs
-        .filter((c) => c.channel.channelType === ChannelTypeGroup)
-        .map((c) => c.channel.channelID)
-    );
-
-    // 孤儿子区：父群组在列表中但未被分组的先显示，父群组不在列表中的隐藏
-    // 但关注 tab（maxVisibleThreads 足够大）保留孤儿子区作为独立条目（PR #208 行为）
+    // 父群在列表但子区未被分组的兜底（理论上不应出现）
     for (const thread of threads) {
       if (!usedThreads.has(thread.channel.channelID)) {
         const parentGroupNo =
           thread.channelInfo?.orgData?.parentGroupNo ||
           parseThreadChannelId(thread.channel.channelID)?.groupNo;
         if (parentGroupNo && groupIdsInList.has(parentGroupNo)) {
-          // 父群组在列表中但子区未被分组（理论上不应该出现）
-          result.push(thread);
-        } else if (keepOrphanThreads) {
-          // 关注 tab：父群不在列表但子区独立关注 → 作为独立条目显示（PR #208）
           result.push(thread);
         }
-        // 其他 tab：父群组不在列表中（已退出等）→ 隐藏
+        // 孤儿子区已在主循环原位处理；其他 tab 父群不在列表 → 隐藏
       }
     }
 
@@ -1114,8 +1108,6 @@ export default class ConversationList extends Component<
       grouped = filtered;
       threadsByParent = this.buildThreadsByParent(filtered);
     }
-    // 缓存供 componentDidUpdate 自动展开关注 tab 父群
-    this._lastThreadsByParent = threadsByParent;
     const groupedPinned = grouped.filter((item) => {
       if ("type" in item) return false;
       return (item as ConversationWrap).channelInfo?.top;
@@ -1184,7 +1176,7 @@ export default class ConversationList extends Component<
     ) => {
       if ("type" in item && item.type === "thread-overflow") {
         // 展开/收起由双击群组行触发，不显示「+N 个子区」控件
-        const isExpanded = expandedGroupIds.has(item.parentGroupId);
+        const isExpanded = this._isThreadExpanded(item.parentGroupId);
         if (!isExpanded) return null;
         const extraThreads = threadsByParent.get(item.parentGroupId) ?? [];
         return (
@@ -1223,7 +1215,7 @@ export default class ConversationList extends Component<
         threadsByParent.has(conv.channel.channelID);
       const threadUnread = (() => {
         if (!hasThreads) return 0;
-        if (expandedGroupIds.has(conv.channel.channelID)) return 0;
+        if (this._isThreadExpanded(conv.channel.channelID)) return 0;
         const threads = threadsByParent.get(conv.channel.channelID) ?? [];
         // 子区有独立免打扰设置，汇总时过滤掉已开启免打扰的子区未读
         return threads.reduce((sum, t) => {
@@ -1353,7 +1345,7 @@ export default class ConversationList extends Component<
               channel.channelType === ChannelTypeGroup &&
               threadsByParent.has(channel.channelID)
             ) {
-              const isExpanded = expandedGroupIds.has(channel.channelID);
+              const isExpanded = this._isThreadExpanded(channel.channelID);
               menus.push({
                 title: isExpanded
                   ? t("base.conversationList.context.collapseThreads")
