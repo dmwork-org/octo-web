@@ -106,7 +106,7 @@ export async function imageBlockToPasteFile(
   try {
     const response = await fetch(src, {
       mode: "cors",
-      credentials: "include",
+      credentials: "omit",
     });
     if (!response.ok) return null;
     const blob = await response.blob();

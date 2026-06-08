@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("wukongimjssdk", () => ({
   MessageContent: class {
@@ -29,6 +29,7 @@ vi.mock("../../../App", () => ({
 
 import {
   buildInlineContentForRichTextPaste,
+  imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
 } from "../richTextPaste";
 
@@ -47,6 +48,10 @@ function fakeEditor() {
 }
 
 describe("richTextPaste", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("builds inline content with mention nodes and hard breaks", () => {
     expect(
       buildInlineContentForRichTextPaste("hi @Alice\nnext", [
@@ -88,5 +93,30 @@ describe("richTextPaste", () => {
     expect(insertContent).toHaveBeenNthCalledWith(2, [
       { type: "text", text: "after" },
     ]);
+  });
+
+  it("fetches pasted images without credentials for wildcard CORS CDNs", async () => {
+    const blob = new Blob(["image"], { type: "image/png" });
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(blob),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const file = await imageBlockToPasteFile(
+      {
+        type: "image",
+        url: "https://cdn.example.com/a.png",
+        name: "a.png",
+      },
+      (url) => url
+    );
+
+    expect(fetch).toHaveBeenCalledWith("https://cdn.example.com/a.png", {
+      mode: "cors",
+      credentials: "omit",
+    });
+    expect(file?.name).toBe("a.png");
+    expect(file?.type).toBe("image/png");
   });
 });
