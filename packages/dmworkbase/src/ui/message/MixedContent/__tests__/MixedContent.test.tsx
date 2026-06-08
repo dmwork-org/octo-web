@@ -115,7 +115,7 @@ describe("MixedContent", () => {
     );
   });
 
-  it("文本块透传 mention、emoji 和点击回调", () => {
+  it("文本块关闭 markdown 解析但保留 mention、emoji 和点击回调", () => {
     const onMentionClick = vi.fn();
     const root = renderMixed(
       <MixedContent
@@ -135,7 +135,7 @@ describe("MixedContent", () => {
     const text = root.querySelector(".wk-msg-mixed-text span");
     expect(text?.getAttribute("data-mentions")).toContain("alice");
     expect(text?.getAttribute("data-emojis")).toContain("emoji://ok");
-    expect(text?.getAttribute("data-enable-markdown")).toBe("true");
+    expect(text?.getAttribute("data-enable-markdown")).toBe("false");
     act(() => {
       text?.dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true })

@@ -122,7 +122,7 @@ export default function MixedContent({
               mentions={block.mentions || []}
               emojis={block.emojis || []}
               onMentionClick={onMentionClick}
-              enableMarkdown={true}
+              enableMarkdown={false}
             />
           </div>
         );
