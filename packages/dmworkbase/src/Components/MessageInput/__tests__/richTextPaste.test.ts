@@ -120,7 +120,7 @@ describe("richTextPaste", () => {
     expect(file?.type).toBe("image/png");
   });
 
-  it("keeps same-origin credentials for pasted images on same-origin deployments", async () => {
+  it("omits credentials for same-origin pasted images by default", async () => {
     const blob = new Blob(["image"], { type: "image/png" });
     const fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -140,7 +140,7 @@ describe("richTextPaste", () => {
 
     expect(fetch).toHaveBeenCalledWith(url, {
       mode: "cors",
-      credentials: "same-origin",
+      credentials: "omit",
     });
   });
 });
