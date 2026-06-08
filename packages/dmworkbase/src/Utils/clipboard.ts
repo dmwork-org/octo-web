@@ -79,16 +79,72 @@ function buildRichTextHtml(content: RichTextContent): string {
   return `<div ${OCTO_RICHTEXT_CLIPBOARD_ATTR}="${payload}">${body}</div>`;
 }
 
+function copyHtmlToClipboard(html: string, plain: string): boolean {
+  if (
+    typeof document === "undefined" ||
+    typeof document.execCommand !== "function"
+  ) {
+    return false;
+  }
+
+  let container: HTMLDivElement | null = null;
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  const previousRanges: Range[] = [];
+  if (selection) {
+    for (let i = 0; i < selection.rangeCount; i += 1) {
+      previousRanges.push(selection.getRangeAt(i).cloneRange());
+    }
+  }
+
+  const handleCopy = (event: ClipboardEvent) => {
+    if (!event.clipboardData) return;
+    event.preventDefault();
+    event.clipboardData.setData("text/html", html);
+    event.clipboardData.setData("text/plain", plain);
+  };
+
+  try {
+    container = document.createElement("div");
+    container.setAttribute("aria-hidden", "true");
+    container.style.position = "fixed";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.opacity = "0";
+    container.style.pointerEvents = "none";
+    container.contentEditable = "true";
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    const range = document.createRange();
+    range.selectNodeContents(container);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    document.addEventListener("copy", handleCopy);
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.removeEventListener("copy", handleCopy);
+    selection?.removeAllRanges();
+    previousRanges.forEach((range) => selection?.addRange(range));
+    if (container && container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+  }
+}
+
 export async function copyRichTextToClipboard(
   content: RichTextContent
 ): Promise<boolean> {
   const plain = content.plain || buildRichTextPlain(content.content || []);
+  const html = buildRichTextHtml(content);
   const canWriteRich =
     !!navigator.clipboard?.write && typeof ClipboardItem !== "undefined";
 
   if (canWriteRich) {
     try {
-      const html = buildRichTextHtml(content);
       await navigator.clipboard.write([
         new ClipboardItem({
           "text/html": new Blob([html], { type: "text/html" }),
@@ -99,6 +155,10 @@ export async function copyRichTextToClipboard(
     } catch {
       // fall through to plain-text fallback
     }
+  }
+
+  if (copyHtmlToClipboard(html, plain)) {
+    return true;
   }
 
   return copyToClipboard(plain);
