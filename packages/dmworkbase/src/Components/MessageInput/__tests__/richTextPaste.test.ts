@@ -30,6 +30,7 @@ vi.mock("../../../App", () => ({
 import {
   buildInlineContentForRichTextPaste,
   imageBlockToPasteFile,
+  MAX_PASTE_IMAGE_BYTES,
   restoreOctoRichTextClipboardToEditor,
 } from "../richTextPaste";
 
@@ -44,6 +45,17 @@ function fakeEditor() {
         }),
       }),
     },
+  };
+}
+
+function mockImageResponse(blob: Blob, headers: Record<string, string> = {}) {
+  return {
+    ok: true,
+    headers: new Headers({
+      "Content-Type": blob.type || "image/png",
+      ...headers,
+    }),
+    blob: vi.fn().mockResolvedValue(blob),
   };
 }
 
@@ -95,12 +107,32 @@ describe("richTextPaste", () => {
     ]);
   });
 
+  it("falls back to the image placeholder when the validated attachment path rejects the file", async () => {
+    const { editor, insertContent } = fakeEditor();
+    const imageFile = new File(["image"], "a.png", { type: "image/png" });
+    const addAttachment = vi.fn().mockResolvedValue(false);
+
+    await restoreOctoRichTextClipboardToEditor(
+      {
+        version: 1,
+        blocks: [{ type: "image", url: "https://cdn.example.com/a.png" }],
+      },
+      editor,
+      addAttachment,
+      {
+        imageBlockToFile: vi.fn().mockResolvedValue(imageFile),
+      }
+    );
+
+    expect(addAttachment).toHaveBeenCalledWith([imageFile], "paste");
+    expect(insertContent).toHaveBeenCalledWith([
+      { type: "text", text: "[图片]" },
+    ]);
+  });
+
   it("fetches pasted images without credentials for wildcard CORS CDNs", async () => {
     const blob = new Blob(["image"], { type: "image/png" });
-    const fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(blob),
-    });
+    const fetch = vi.fn().mockResolvedValue(mockImageResponse(blob));
     vi.stubGlobal("fetch", fetch);
 
     const file = await imageBlockToPasteFile(
@@ -122,10 +154,7 @@ describe("richTextPaste", () => {
 
   it("omits credentials for same-origin pasted images by default", async () => {
     const blob = new Blob(["image"], { type: "image/png" });
-    const fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(blob),
-    });
+    const fetch = vi.fn().mockResolvedValue(mockImageResponse(blob));
     vi.stubGlobal("fetch", fetch);
 
     const url = `${window.location.origin}/assets/a.png`;
@@ -142,5 +171,60 @@ describe("richTextPaste", () => {
       mode: "cors",
       credentials: "omit",
     });
+  });
+
+  it("rejects pasted images whose Content-Length exceeds the fetch cap", async () => {
+    const blob = new Blob(["image"], { type: "image/png" });
+    const response = mockImageResponse(blob, {
+      "Content-Length": String(MAX_PASTE_IMAGE_BYTES + 1),
+    });
+    const fetch = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal("fetch", fetch);
+
+    const file = await imageBlockToPasteFile(
+      {
+        type: "image",
+        url: "https://cdn.example.com/huge.png",
+        name: "huge.png",
+      },
+      (url) => url
+    );
+
+    expect(file).toBeNull();
+    expect(response.blob).not.toHaveBeenCalled();
+  });
+
+  it("rejects pasted images whose blob size exceeds the fetch cap", async () => {
+    const blob = { size: MAX_PASTE_IMAGE_BYTES + 1, type: "image/png" } as Blob;
+    const fetch = vi.fn().mockResolvedValue(mockImageResponse(blob));
+    vi.stubGlobal("fetch", fetch);
+
+    const file = await imageBlockToPasteFile(
+      {
+        type: "image",
+        url: "https://cdn.example.com/huge.png",
+        name: "huge.png",
+      },
+      (url) => url
+    );
+
+    expect(file).toBeNull();
+  });
+
+  it("rejects fetched clipboard blobs that are not images", async () => {
+    const blob = new Blob(["html"], { type: "text/html" });
+    const fetch = vi.fn().mockResolvedValue(mockImageResponse(blob));
+    vi.stubGlobal("fetch", fetch);
+
+    const file = await imageBlockToPasteFile(
+      {
+        type: "image",
+        url: "https://cdn.example.com/not-image",
+        name: "not-image.html",
+      },
+      (url) => url
+    );
+
+    expect(file).toBeNull();
   });
 });

@@ -282,12 +282,20 @@ export function decodeOctoRichTextClipboardPayload(
   }
 }
 
+const octoRichTextAttrPattern =
+  /(?:^|[\s<])data-octo-richtext\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
+const base64UrlPattern = /^[A-Za-z0-9_-]+$/;
+
+function extractOctoRichTextMarker(html: string): string {
+  const match = html.match(octoRichTextAttrPattern);
+  const encoded = match?.[1] || match?.[2] || match?.[3] || "";
+  if (!encoded || !base64UrlPattern.test(encoded)) return "";
+  return encoded;
+}
+
 export function extractOctoRichTextClipboardPayloadFromHtml(
   html: string
 ): OctoRichTextClipboardPayload | null {
-  if (!html || typeof DOMParser === "undefined") return null;
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const marker = doc.querySelector(`[${OCTO_RICHTEXT_CLIPBOARD_ATTR}]`);
-  const encoded = marker?.getAttribute(OCTO_RICHTEXT_CLIPBOARD_ATTR) || "";
-  return decodeOctoRichTextClipboardPayload(encoded);
+  if (!html) return null;
+  return decodeOctoRichTextClipboardPayload(extractOctoRichTextMarker(html));
 }

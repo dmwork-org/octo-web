@@ -6,7 +6,10 @@ import {
   RichTextContent,
   RichTextImagePlaceholder,
 } from "../../Messages/RichText/RichTextContent";
-import { extractOctoRichTextClipboardPayloadFromHtml } from "../richTextClipboard";
+import {
+  encodeOctoRichTextClipboardPayload,
+  extractOctoRichTextClipboardPayloadFromHtml,
+} from "../richTextClipboard";
 
 vi.mock("wukongimjssdk", () => ({
   MessageContent: class {
@@ -165,5 +168,42 @@ describe("copyRichTextToClipboard", () => {
       },
       { type: "text", text: "after" },
     ]);
+  });
+
+  it("extracts the marker without parsing clipboard html as DOM", () => {
+    const encoded = encodeOctoRichTextClipboardPayload({
+      version: 1,
+      blocks: [{ type: "text", text: "safe" }],
+      plain: "safe",
+    });
+    const originalDOMParser = (globalThis as any).DOMParser;
+    Object.defineProperty(globalThis, "DOMParser", {
+      configurable: true,
+      value: class {
+        parseFromString() {
+          throw new Error("should not parse clipboard html");
+        }
+      },
+    });
+
+    try {
+      const payload = extractOctoRichTextClipboardPayloadFromHtml(
+        `<img src=x onerror=alert(1)><span data-octo-richtext="${encoded}"></span>`
+      );
+      expect(payload?.blocks).toEqual([{ type: "text", text: "safe" }]);
+    } finally {
+      Object.defineProperty(globalThis, "DOMParser", {
+        configurable: true,
+        value: originalDOMParser,
+      });
+    }
+  });
+
+  it("rejects non-base64url marker attributes", () => {
+    expect(
+      extractOctoRichTextClipboardPayloadFromHtml(
+        `<span data-octo-richtext="<img src=x onerror=alert(1)>"></span>`
+      )
+    ).toBeNull();
   });
 });

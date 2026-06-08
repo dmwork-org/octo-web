@@ -19,11 +19,16 @@ type EditorLike = {
   };
 };
 
-type AddAttachment = (files: File[], source: "paste") => void | Promise<void>;
+type AddAttachment = (
+  files: File[],
+  source: "paste"
+) => boolean | void | Promise<boolean | void>;
 type GetImageUrl = (
   url: string,
   opts?: { width: number; height: number }
 ) => string;
+
+export const MAX_PASTE_IMAGE_BYTES = 20 * 1024 * 1024;
 
 export interface RestoreOctoRichTextPasteDeps {
   imageBlockToFile?: (
@@ -93,6 +98,57 @@ function safeImageFileName(name?: string, mime?: string): string {
   return raw || fallback;
 }
 
+function parseContentLength(value: string | null): number | null {
+  if (!value) return null;
+  const size = Number(value);
+  return Number.isFinite(size) && size >= 0 ? size : null;
+}
+
+function normalizeMime(value: string | null | undefined): string {
+  return (value || "").split(";")[0].trim().toLowerCase();
+}
+
+async function responseToCappedImageBlob(
+  response: Response
+): Promise<Blob | null> {
+  const contentLength = parseContentLength(
+    response.headers.get("Content-Length")
+  );
+  if (contentLength !== null && contentLength > MAX_PASTE_IMAGE_BYTES) {
+    return null;
+  }
+
+  const contentType = normalizeMime(response.headers.get("Content-Type"));
+
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        received += value.byteLength;
+        if (received > MAX_PASTE_IMAGE_BYTES) {
+          await reader.cancel();
+          return null;
+        }
+        chunks.push(value);
+      }
+    } catch {
+      return null;
+    }
+    return new Blob(chunks, { type: contentType });
+  }
+
+  const blob = await response.blob();
+  if (blob.size > MAX_PASTE_IMAGE_BYTES) {
+    return null;
+  }
+  return blob;
+}
+
 export async function imageBlockToPasteFile(
   block: Extract<OctoRichTextClipboardBlock, { type: "image" }>,
   getImageURL: GetImageUrl
@@ -112,8 +168,12 @@ export async function imageBlockToPasteFile(
       credentials: "omit",
     });
     if (!response.ok) return null;
-    const blob = await response.blob();
-    const type = blob.type || block.mime || "image/png";
+    const blob = await responseToCappedImageBlob(response);
+    if (!blob) return null;
+    const type = normalizeMime(
+      blob.type || response.headers.get("Content-Type")
+    );
+    if (!type.startsWith("image/")) return null;
     return new File([blob], safeImageFileName(block.name, type), {
       type,
       lastModified: Date.now(),
@@ -144,7 +204,11 @@ export async function restoreOctoRichTextClipboardToEditor(
     if (block.type === "image") {
       const file = await resolveImageFile(block);
       if (file) {
-        await addAttachment([file], "paste");
+        const accepted = await addAttachment([file], "paste");
+        if (accepted !== false) continue;
+        insertInlineContent(editor, [
+          { type: "text", text: RichTextImagePlaceholder },
+        ]);
       } else {
         insertInlineContent(editor, [
           { type: "text", text: RichTextImagePlaceholder },

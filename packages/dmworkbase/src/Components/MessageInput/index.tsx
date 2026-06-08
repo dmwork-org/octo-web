@@ -209,6 +209,10 @@ interface MessageInputProps {
   onAddAttachment?: (
     fnc: (files: File[], source?: "paste" | "upload") => void
   ) => void;
+  onAddPendingAttachments?: (
+    files: File[],
+    source?: "paste" | "upload"
+  ) => boolean | Promise<boolean>;
   hideMention?: boolean;
   toolbar?: JSX.Element;
   /** Extra action nodes rendered inside the actionbox, before voice input */
@@ -897,15 +901,22 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
       event.preventDefault();
       const beforePasteContent = JSON.stringify(editor.getJSON());
-      restoreOctoRichTextClipboardToEditor(payload, editor, addAttachment, {
-        imageBlockToFile: (block) =>
-          imageBlockToPasteFile(
-            block,
-            WKApp.dataSource.commonDataSource.getImageURL.bind(
-              WKApp.dataSource.commonDataSource
-            )
-          ),
-      }).catch(() => {
+      const addRichTextPasteAttachment =
+        props.onAddPendingAttachments || addAttachment;
+      restoreOctoRichTextClipboardToEditor(
+        payload,
+        editor,
+        addRichTextPasteAttachment,
+        {
+          imageBlockToFile: (block) =>
+            imageBlockToPasteFile(
+              block,
+              WKApp.dataSource.commonDataSource.getImageURL.bind(
+                WKApp.dataSource.commonDataSource
+              )
+            ),
+        }
+      ).catch(() => {
         if (
           payload.plain &&
           JSON.stringify(editor.getJSON()) === beforePasteContent
@@ -915,7 +926,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       });
       return true;
     };
-  }, [addAttachment, editor]);
+  }, [addAttachment, editor, props.onAddPendingAttachments]);
 
   // 移除顶部附件区的附件
   const removeTopAttachment = useCallback((id: string) => {

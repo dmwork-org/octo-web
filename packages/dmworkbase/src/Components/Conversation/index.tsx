@@ -2566,9 +2566,22 @@ export class Conversation
                     )}
                     <MessageInput
                       botCommands={botCommands}
-                      onAddAttachment={(addFn: (files: File[]) => void) => {
+                      onAddAttachment={(
+                        addFn: (
+                          files: File[],
+                          source?: "paste" | "upload"
+                        ) => void
+                      ) => {
                         // 存储 addAttachment 方法，供外部调用
                         this._addAttachmentFn = addFn;
+                      }}
+                      onAddPendingAttachments={(files, source) => {
+                        const err = this.addPendingAttachments(files, source);
+                        if (err) {
+                          Toast.error(err);
+                          return false;
+                        }
+                        return true;
                       }}
                       members={this.vm.subscribers.filter(
                         (s) => s.uid !== WKApp.loginInfo.uid
