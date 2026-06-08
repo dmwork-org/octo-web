@@ -19,7 +19,6 @@ import {
 } from "wukongimjssdk";
 import React, { Component, HTMLProps } from "react";
 
-import moment from "moment";
 import Provider from "../../Service/Provider";
 import ConversationVM from "./vm";
 import "./index.css";
@@ -80,6 +79,7 @@ import {
   makeTextBlock,
   makeImageBlock,
 } from "../../Messages/RichText/RichTextContent";
+import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
@@ -1751,7 +1751,7 @@ export class Conversation
                 <span className="wk-fold-session-tag">{tagLabel}</span>
               </div>
               <span className="wk-fold-session-time">
-                {moment(session.lastMessage.timestamp * 1000).format("HH:mm")}
+                {formatMessageTimestamp(session.lastMessage.timestamp)}
               </span>
               <button
                 type="button"
@@ -1811,9 +1811,7 @@ export class Conversation
               highlightSummary={session.highlightSummary}
               summaryId={summaryId}
               summarySender={summarySender}
-              summaryTime={moment(summaryMessage.timestamp * 1000).format(
-                "HH:mm"
-              )}
+              summaryTime={formatMessageTimestamp(summaryMessage.timestamp)}
               summaryContent={this.renderFoldSessionSummary(summaryMessage)}
               expandedContent={this.renderFoldSessionExpandedList(
                 session.expandedMessages
