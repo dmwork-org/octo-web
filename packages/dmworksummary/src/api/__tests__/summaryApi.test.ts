@@ -163,4 +163,30 @@ describe('summaryApi', () => {
             ).rejects.toThrow('Network Error');
         });
     });
+
+    // 后端 is_active 返回 number(0/1)，前端多处用 `=== false` / `!== false` 严格判断。
+    // 如果不归一，`0 === false` 为 false，会导致关闭后刷新仍被当作「定时生效」。
+    describe('is_active normalization (number -> boolean)', () => {
+        it('getSchedule maps numeric 0 to false and 1 to true', async () => {
+            const { getSchedule } = await import('../summaryApi');
+
+            mockGet.mockResolvedValueOnce({ data: { schedule_id: 1, is_active: 0 } });
+            const off = await getSchedule(1);
+            expect(off.is_active).toBe(false);
+
+            mockGet.mockResolvedValueOnce({ data: { schedule_id: 2, is_active: 1 } });
+            const on = await getSchedule(2);
+            expect(on.is_active).toBe(true);
+        });
+
+        it('listSchedules normalizes every item', async () => {
+            const { listSchedules } = await import('../summaryApi');
+            mockGet.mockResolvedValueOnce({ data: [
+                { schedule_id: 1, is_active: 0 },
+                { schedule_id: 2, is_active: 1 },
+            ] });
+            const items = await listSchedules();
+            expect(items.map((i) => i.is_active)).toEqual([false, true]);
+        });
+    });
 });

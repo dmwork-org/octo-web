@@ -111,7 +111,11 @@
       "thu": "周四",
       "fri": "周五",
       "sat": "周六"
-    }
+    },
+    "biweekly": "每两周",
+    "everyNDays": "每 {{days}} 天{{at}}",
+    "everyNWeeks": "每 {{weeks}} 周{{at}}",
+    "everyNMonths": "每 {{months}} 个月{{at}}"
   },
   "list": {
     "title": "智能总结",
@@ -139,6 +143,8 @@
     "scheduleDaily": "按天 {{time}}",
     "scheduleWeekly": "每{{day}} {{time}}",
     "scheduleMonthly": "每月{{day}}日 {{time}}",
+    "scheduleBindFailed": "总结已创建，但定时绑定失败，已撤销该定时，请到详情页重试",
+    "scheduleBindFailedOrphan": "总结已创建，但定时绑定失败且撤销未成功，可能残留未绑定定时，请到定时列表检查清理",
     "archivedNotice": "默认总结活跃子区，不含已归档子区"
   },
   "chatSummary": {
@@ -218,7 +224,39 @@
       "time": "时间",
       "daily": "按天更新",
       "weekly": "按周更新",
-      "monthly": "按月更新"
+      "monthly": "按月更新",
+      "biweekly": "按两周更新",
+      "everyPrefix": "每",
+      "atPrefix": "在",
+      "unitDay": "天",
+      "unitWeek": "周",
+      "unitMonth": "月",
+      "everyMin": "数量必须为不小于 1 的整数",
+      "everyMaxDays": "间隔过大，按天换算不能超过 {{max}} 天",
+      "everyMaxMonths": "间隔过大，最多 {{max}} 个月",
+      "onWeekdayPrefix": "周",
+      "onDayOfMonthPrefix": "每月",
+      "weekdayLabel": "周几",
+      "dayOfMonthFieldLabel": "几号",
+      "weekdayPlaceholder": "选择周几",
+      "dayOfMonthPlaceholder": "选择日期",
+      "dayOfMonthLabel": "{{day}} 号",
+      "dayOfMonthHint": "选 29/30/31 号时，遇到小月会自动顺延到当月最后一天",
+      "legacyCronWarning": "此定时为旧版自定义周期，新版表单不支持精确回填。保存将把它转换为上方所选的间隔（天/周/月）模式，请确认周期设置无误。",
+      "weekday": {
+        "mon": "周一",
+        "tue": "周二",
+        "wed": "周三",
+        "thu": "周四",
+        "fri": "周五",
+        "sat": "周六",
+        "sun": "周日"
+      }
+    },
+    "summary": {
+      "everyNDays": "每 {{days}} 天",
+      "everyNWeeks": "每 {{weeks}} 周",
+      "everyNMonths": "每 {{months}} 个月"
     }
   },
   "confirmPage": {
@@ -276,7 +314,17 @@
     "cancelledDesc": "此总结任务已被取消，不会继续执行",
     "waitingConfirmTitle": "等待参与者确认中",
     "waitingConfirmDesc": "需要所有参与者确认后才能开始生成",
-    "viewConfirmStatus": "查看确认状态"
+    "viewConfirmStatus": "查看确认状态",
+    "scheduleBindFailed": "定时创建但绑定到该总结失败，已撤销，请重试",
+    "scheduleBindFailedOrphan": "定时绑定失败且自动撤销未成功，可能残留未绑定的定时，请到定时列表检查清理",
+    "setSchedule": "设置定时更新",
+    "editSchedule": "修改定时更新",
+    "disableSchedule": "关闭定时",
+    "scheduleDisabled": "定时已关闭",
+    "scheduleDisabledHint": "定时已关闭",
+    "scheduleActiveLabel": "已开启定时",
+    "schedulePrefix": "定时：",
+    "scheduleNextRun": "下次 {{time}}"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",

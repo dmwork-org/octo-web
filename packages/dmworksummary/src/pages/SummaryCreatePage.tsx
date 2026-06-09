@@ -6,7 +6,7 @@ import {
     Tag,
     Avatar,
 } from "@douyinfe/semi-ui";
-import { IconPlus } from "@douyinfe/semi-icons";
+import { IconPlus, IconClock } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -28,7 +28,7 @@ import type {
     TopicTemplate,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { getWeekdayName, scheduleToCron } from "../utils/summaryHelpers";
+import { describeSchedule, scheduleToParams } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from "../utils/templateResolver";
 
 const { Text } = Typography;
@@ -126,17 +126,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     getScheduleLabel(cfg: ScheduleConfig): string {
-        if (cfg.period === "daily") {
-            return t("summary.create.scheduleDaily", { values: { time: cfg.time } });
-        }
-        if (cfg.period === "weekly") {
-            return t("summary.create.scheduleWeekly", {
-                values: { day: getWeekdayName(cfg.dayOfWeek ?? 1), time: cfg.time },
-            });
-        }
-        return t("summary.create.scheduleMonthly", {
-            values: { day: cfg.dayOfMonth ?? 1, time: cfg.time },
-        });
+        const { cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month } = scheduleToParams(cfg);
+        return describeSchedule(cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month);
     }
 
     canSubmit(): boolean {
@@ -190,21 +181,31 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             const result = await api.createSummary(params);
 
-            // If schedule is configured, create schedule too
+            // If schedule is configured, create it in ONE step bound to the new task.
+            // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
+            //   校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
+            // 不再需要第二步 update 绑定，也不会产生游离定时，所以去掉 B2 回滚。
             if (scheduleConfig !== null) {
-                const cronExpr = scheduleToCron(scheduleConfig);
+                const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
                 try {
                     await api.createSchedule({
                         title: topic.trim(),
                         summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
-                        cron_expr: cronExpr,
+                        cron_expr,
+                        interval_days,
+                        interval_months,
+                        day_of_week,
+                        day_of_month,
+                        run_time,
                         time_range_type: 2,
                         sources: params.sources || [],
                         participants: params.participants,
+                        scope: 'task',
+                        task_id: result.task_id,
                     });
-                } catch {
-                    // non-fatal: schedule creation failed
-                    Toast.warning(t("summary.create.scheduleFailed"));
+                } catch (scheduleErr: any) {
+                    // 总结本身已创建成功；定时创建失败仅提示（后端返回中文 message）。
+                    Toast.error(scheduleErr.message || t("summary.create.scheduleFailed"));
                 }
             }
 
@@ -307,6 +308,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
                                     : translate("summary.create.selectChat")}
                             </Button>
+                            <Button
+                                theme="borderless"
+                                icon={<IconClock />}
+                                size="small"
+                                onClick={() => this.setState({ showScheduleConfig: true })}
+                                style={{ color: scheduleConfig ? "var(--semi-color-primary)" : undefined }}
+                            >
+                                {scheduleConfig
+                                    ? this.getScheduleLabel(scheduleConfig)
+                                    : translate("summary.schedule.config.title")}
+                            </Button>
                             <span style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
                                 {translate("summary.create.archivedNotice")}
                             </span>
@@ -383,7 +395,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 />
                 <ScheduleConfigModal
                     visible={showScheduleConfig}
-                    value={scheduleConfig ?? { period: "daily", time: "09:00" }}
+                    value={scheduleConfig ?? { unit: "week", every: 1, time: "09:00" }}
                     onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                 />

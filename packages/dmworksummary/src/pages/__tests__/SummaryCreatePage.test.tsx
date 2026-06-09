@@ -17,6 +17,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
 
 vi.mock('@douyinfe/semi-icons', () => ({
     IconPlus: () => <span data-testid="icon-plus" />,
+    IconClock: () => <span data-testid="icon-clock" />,
 }));
 
 vi.mock('../../api/summaryApi', () => ({
