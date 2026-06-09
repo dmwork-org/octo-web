@@ -16,6 +16,8 @@ interface FoldSessionExpandedListProps {
     message: Message,
     event: React.MouseEvent<HTMLDivElement>
   ) => void;
+  getMessageElementId?: (message: MessageWrap) => string;
+  onLocateAnimationEnd?: (message: MessageWrap) => void;
 }
 
 const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
@@ -25,6 +27,8 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
   renderMessageContent,
   onToggleSelect,
   onMessageContextMenu,
+  getMessageElementId,
+  onLocateAnimationEnd,
 }) => {
   return (
     <>
@@ -35,12 +39,24 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
         return (
           <div
             key={message.clientMsgNo}
+            id={getMessageElementId?.(message)}
+            data-locate-message-row="true"
+            data-message-seq={message.messageSeq > 0 ? message.messageSeq : undefined}
             className={classNames(
               "wk-fold-msg",
               editMode && "wk-fold-msg-check-open",
-              selectable && message.checked && "wk-fold-msg-selected"
+              selectable && message.checked && "wk-fold-msg-selected",
+              message.locateRemind && "wk-message-item-reminder"
             )}
             data-testid={`fold-msg-${message.clientMsgNo}`}
+            onAnimationEnd={(event) => {
+              if (
+                event.target === event.currentTarget &&
+                message.locateRemind
+              ) {
+                onLocateAnimationEnd?.(message);
+              }
+            }}
             onClick={
               editMode
                 ? () => {

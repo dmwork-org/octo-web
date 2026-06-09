@@ -972,6 +972,12 @@ export class Conversation
 
   // 定位消息
   locateMessage(messageSeq: number) {
+    const highlightAndScroll = (messageWrap: MessageWrap) => {
+      messageWrap.locateRemind = true;
+      this.vm.notifyListener(() => {
+        this.vm.scrollToMessage(messageWrap);
+      });
+    };
     const messageWrap = this.vm.findMessageWithMessageSeq(messageSeq);
     if (messageWrap) {
       const foldSession = this.vm.findFoldSessionByMessageSeq(messageSeq);
@@ -986,21 +992,21 @@ export class Conversation
           });
           return;
         }
+        if (foldSession.isExpanded) {
+          highlightAndScroll(messageWrap);
+          return;
+        }
         this.vm.setFoldSessionExpanded(
           foldSession.sessionId,
           true,
           false,
           () => {
-            messageWrap.locateRemind = true;
-            this.vm.scrollToMessage(messageWrap);
-            this.vm.notifyListener();
-          }
+            highlightAndScroll(messageWrap);
+          },
         );
         return;
       }
-      this.vm.scrollToMessage(messageWrap);
-      messageWrap.locateRemind = true;
-      this.vm.notifyListener();
+      highlightAndScroll(messageWrap);
       return;
     }
     this.vm.requestMessagesOfFirstPage(messageSeq, () => {
@@ -1403,14 +1409,22 @@ export class Conversation
   }
 
   getMessageElement(message: Message | MessageWrap) {
+    const foldSession =
+      message.messageSeq && message.messageSeq > 0
+        ? this.vm.findFoldSessionByMessageSeq(message.messageSeq)
+        : undefined;
+    if (foldSession?.isExpanded) {
+      const expandedElement = document.getElementById(
+        this.vm.foldSessionMessageElementId(message),
+      );
+      if (expandedElement) {
+        return expandedElement;
+      }
+    }
     const element = document.getElementById(message.clientMsgNo);
     if (element) {
       return element;
     }
-    if (!message.messageSeq || message.messageSeq <= 0) {
-      return null;
-    }
-    const foldSession = this.vm.findFoldSessionByMessageSeq(message.messageSeq);
     if (!foldSession) {
       return null;
     }
@@ -1525,6 +1539,13 @@ export class Conversation
         }}
         onMessageContextMenu={(message, event) => {
           this.showContextMenus(message, event);
+        }}
+        getMessageElementId={(message) =>
+          this.vm.foldSessionMessageElementId(message)
+        }
+        onLocateAnimationEnd={(message) => {
+          message.locateRemind = false;
+          this.setState({});
         }}
       />
     );
@@ -1889,6 +1910,8 @@ export class Conversation
         id={`${
           message.contentType === MessageContentTypeConst.time ? "time-" : ""
         }${message.clientMsgNo}`}
+        data-locate-message-row="true"
+        data-message-seq={message.messageSeq > 0 ? message.messageSeq : undefined}
         className={classNames(
           "wk-message-item",
           extraClassName,
