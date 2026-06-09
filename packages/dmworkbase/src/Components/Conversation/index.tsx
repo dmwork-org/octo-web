@@ -19,7 +19,6 @@ import {
 } from "wukongimjssdk";
 import React, { Component, HTMLProps } from "react";
 
-import moment from "moment";
 import Provider from "../../Service/Provider";
 import ConversationVM from "./vm";
 import "./index.css";
@@ -56,7 +55,10 @@ import { FlameMessageCell } from "../../Messages/Flame";
 import FoldSessionCard, { FoldSessionCardParticipant } from "./FoldSessionCard";
 import { BeatLoader } from "react-spinners";
 import { ConversationRenderItem, FoldSessionViewModel } from "./vm";
-import { getFoldSessionSummaryState } from "./foldSessionSummary";
+import {
+  getFoldSessionSummaryState,
+  isFoldSessionSummaryMessage,
+} from "./foldSessionSummary";
 import {
   getScrollAnchorOffsetY,
   shouldPulldownOnWheel,
@@ -72,10 +74,12 @@ import {
 import { ImageContent } from "../../Messages/Image";
 import {
   RichTextBlock,
+  RichTextImagePlaceholder,
   createRichTextContent,
   makeTextBlock,
   makeImageBlock,
 } from "../../Messages/RichText/RichTextContent";
+import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
@@ -90,9 +94,16 @@ import {
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
-import { precheckUploadCredentials, uploadChatMedia } from "../../Service/UploadCredentials";
+import {
+  precheckUploadCredentials,
+  uploadChatMedia,
+} from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext, t } from "../../i18n";
+import {
+  buildRichTextMixedCandidate,
+  isImageFileForRichTextMixed,
+} from "./richTextMixedSend";
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -120,12 +131,13 @@ function getEffectiveContent(message: Message): MessageContent {
  * (后端 json binding 接受空数组)。
  */
 function extractMessageAttachments(
-  m: Message | undefined | null,
+  m: Message | undefined | null
 ): { file_name: string; file_url: string }[] {
   if (!m || !m.content) return [];
   const contentType = (m.content as { contentType?: number }).contentType;
   const anyContent = m.content as Record<string, unknown>;
-  const url = typeof anyContent.url === "string" ? (anyContent.url as string) : "";
+  const url =
+    typeof anyContent.url === "string" ? (anyContent.url as string) : "";
   // remoteUrl 是 MediaMessageContent 在 decode 后设置的真实 CDN URL, 优先用
   const remoteUrl =
     typeof anyContent.remoteUrl === "string"
@@ -151,7 +163,8 @@ function extractMessageAttachments(
       // 图片一般没 name, 用 URL 末尾的文件名, 失败就合成 image.jpg
       return [
         {
-          file_name: explicitName || guessFileNameFromUrl(effectiveUrl, "image.jpg"),
+          file_name:
+            explicitName || guessFileNameFromUrl(effectiveUrl, "image.jpg"),
           file_url: effectiveUrl,
         },
       ];
@@ -196,7 +209,7 @@ function guessFileNameFromUrl(url: string, fallback: string): string {
  * 注入非法块。纯图片发送路径(sendImageFile)本就从本地文件量尺寸，这里保持一致。
  */
 function readLocalImageSize(
-  file: File,
+  file: File
 ): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -215,6 +228,28 @@ function readLocalImageSize(
     reader.onerror = () => resolve({ width: 0, height: 0 });
     reader.readAsDataURL(file);
   });
+}
+
+function offsetMentionEntities(
+  entities: Array<{ uid: string; offset: number; length: number }> | undefined,
+  baseOffset: number
+): Array<{ uid: string; offset: number; length: number }> {
+  if (!Array.isArray(entities)) return [];
+  return entities
+    .filter(
+      (entity) =>
+        entity &&
+        typeof entity.uid === "string" &&
+        Number.isFinite(entity.offset) &&
+        Number.isFinite(entity.length) &&
+        entity.offset >= 0 &&
+        entity.length > 0
+    )
+    .map((entity) => ({
+      uid: entity.uid,
+      offset: baseOffset + entity.offset,
+      length: entity.length,
+    }));
 }
 
 /**
@@ -242,7 +277,12 @@ function resolveFromUName(m: Message | undefined | null): string {
     const ch = m.channel;
     if (ch && ch.channelType === ChannelTypeGroup) {
       const subs = WKSDK.shared().channelManager.getSubscribes(ch) as
-        | { uid?: string; name?: string; remark?: string; orgData?: Record<string, unknown> }[]
+        | {
+            uid?: string;
+            name?: string;
+            remark?: string;
+            orgData?: Record<string, unknown>;
+          }[]
         | null
         | undefined;
       const member = subs?.find((s) => s && s.uid === fromUID);
@@ -257,8 +297,9 @@ function resolveFromUName(m: Message | undefined | null): string {
 
   // 2. Person channelInfo 兜底
   try {
-    const info = WKSDK.shared()
-      .channelManager.getChannelInfo(new Channel(fromUID, ChannelTypePerson));
+    const info = WKSDK.shared().channelManager.getChannelInfo(
+      new Channel(fromUID, ChannelTypePerson)
+    );
     if (info?.title) return info.title;
   } catch {
     // ignore
@@ -269,7 +310,7 @@ function resolveFromUName(m: Message | undefined | null): string {
 
 const foldSessionAvatarIcon = new URL(
   "./fold-session-avatar.svg",
-  import.meta.url,
+  import.meta.url
 ).href;
 
 const FoldImage: React.FC<{ src: string }> = ({ src }) => {
@@ -360,11 +401,11 @@ export class Conversation
   private latestSavedDraft = "";
   private _addAttachmentFn?: (
     files: File[],
-    source?: "paste" | "upload",
+    source?: "paste" | "upload"
   ) => void;
   private onOpenThreadPanel?: (
     threadChannelId: string,
-    threadName: string,
+    threadName: string
   ) => void;
 
   constructor(props: any) {
@@ -398,7 +439,7 @@ export class Conversation
 
   async sendMessage(
     content: MessageContent,
-    channel?: Channel,
+    channel?: Channel
   ): Promise<Message> {
     // const { channel } = this.props
     let c = channel;
@@ -438,7 +479,7 @@ export class Conversation
       return;
     }
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-      new Channel(fromUID, ChannelTypePerson),
+      new Channel(fromUID, ChannelTypePerson)
     );
     this._messageInputContext?.addMention(fromUID, channelInfo?.title || "");
   }
@@ -485,7 +526,7 @@ export class Conversation
     await this.vm.deleteMessagesFromLocal([message]);
     const newMessage = await this.vm.sendMessage(
       message.content,
-      message.channel,
+      message.channel
     );
     return newMessage;
   }
@@ -497,7 +538,7 @@ export class Conversation
    */
   private async sendMediaAndWait(
     content: MessageContent,
-    channel?: Channel,
+    channel?: Channel
   ): Promise<boolean> {
     // 非媒体消息（或无文件需上传）无需等待上传，直接发送并等 ack
     if (
@@ -600,7 +641,7 @@ export class Conversation
       const taskResult = taskStatusWaitResult(
         task?.status,
         TaskStatus.success,
-        TaskStatus.fail,
+        TaskStatus.fail
       );
       if (taskResult === false) {
         done(false);
@@ -627,7 +668,7 @@ export class Conversation
       const statusResult = messageStatusWaitResult(
         message.status,
         MessageStatus.Normal,
-        MessageStatus.Fail,
+        MessageStatus.Fail
       );
       if (!settled && statusResult === false) {
         done(false);
@@ -649,7 +690,7 @@ export class Conversation
    */
   private async sendTextAndWaitAck(
     content: MessageContent,
-    channel?: Channel,
+    channel?: Channel
   ): Promise<boolean> {
     const TIMEOUT = 10_000;
     let settled = false;
@@ -710,7 +751,7 @@ export class Conversation
       const statusResult = messageStatusWaitResult(
         message.status,
         MessageStatus.Normal,
-        MessageStatus.Fail,
+        MessageStatus.Fail
       );
       if (!settled && statusResult !== undefined) {
         done(statusResult);
@@ -735,16 +776,15 @@ export class Conversation
    * - 上传成功后图片 URL 走 isSafeUrl(http/https only)（与接收侧对称，防 javascript:/
    *   data:/file: 注入）。
    * - plain 由 createRichTextContent 本地占位，server #232 Finalize 重算覆盖。
-   * - mention：合并各文本块的 all/uids/humans/ais 到顶层，保证群里 @人/@所有AI 通知不丢
-   *   （vm.sendMessage 读 content.mention.humans/ais 注入）。这里不合并
-   *   entities：富文本发送的是 blocks，entity offset 需要映射到最终 plain 文本，
-   *   当前由接收侧 ais legacy fail-closed 兜底，避免 routing UID 误绑裸 @text。
+   * - mention：合并各文本块的 all/uids/humans/ais/entities 到顶层。entities
+   *   的 offset 映射到最终 plain 文本（image block 计为 "[图片]"），让接收端
+   *   RichText 文本块可以复用普通文本的 mention 高亮/点击逻辑。
    *
    * 返回 true 表示消息已入队；任一图片块准备失败则抛错（已 Toast 具体原因）。
    */
   private async sendRichTextMixed(
     editorBlocks: EditorContentBlock[],
-    reply?: Reply,
+    reply?: Reply
   ): Promise<boolean> {
     const channel = this.channel();
     const contentBlocks: RichTextBlock[] = [];
@@ -754,16 +794,22 @@ export class Conversation
     const mentionUids = new Set<string>();
     let mentionHumans = false;
     let mentionAis = false;
+    const mentionEntities: Array<{
+      uid: string;
+      offset: number;
+      length: number;
+    }> = [];
+    let plainOffset = 0;
 
     // 单张图片准备失败 → Toast 具体原因后抛错，让整条消息原子失败（草稿保留可重试）。
     const failImage = (file: File, message: string): never => {
       Toast.error(
         t("base.conversation.upload.imageFailed", {
           values: { name: file.name, message },
-        }),
+        })
       );
       const e = new Error(
-        `richtext mixed image prepare failed: ${file.name}`,
+        `richtext mixed image prepare failed: ${file.name}`
       ) as Error & { toasted?: boolean };
       // 标记已 Toast，调用方 catch 不再重复弹通用错误。
       e.toasted = true;
@@ -781,15 +827,22 @@ export class Conversation
           if (m.humans) mentionHumans = true;
           if (m.ais) mentionAis = true;
           m.uids?.forEach((uid) => mentionUids.add(uid));
+          mentionEntities.push(
+            ...offsetMentionEntities(m.entities, plainOffset)
+          );
         }
+        plainOffset += block.text.length;
       } else if (block.type === "image") {
         const file = block.file;
         // 1. 先从本地文件读尺寸（schema 必填>0，且不受 CDN 延迟影响）。
         const { width, height } = await readLocalImageSize(file);
         if (width <= 0 || height <= 0) {
-          failImage(file, t("base.conversation.upload.imageReadFailed", {
-            values: { name: file.name },
-          }));
+          failImage(
+            file,
+            t("base.conversation.upload.imageReadFailed", {
+              values: { name: file.name },
+            })
+          );
         }
         // 2. 上传拿 downloadUrl。
         const dot = (file.name || "").lastIndexOf(".");
@@ -814,8 +867,9 @@ export class Conversation
             height,
             size: file.size,
             name: file.name || undefined,
-          }),
+          })
         );
+        plainOffset += RichTextImagePlaceholder.length;
       }
       // file 块在 onSend 已被排除在图文混排路径之外
     }
@@ -828,12 +882,19 @@ export class Conversation
     if (reply) {
       content.reply = reply;
     }
-    if (mentionAll || mentionUids.size > 0 || mentionHumans || mentionAis) {
+    if (
+      mentionAll ||
+      mentionUids.size > 0 ||
+      mentionHumans ||
+      mentionAis ||
+      mentionEntities.length > 0
+    ) {
       const mn = new Mention();
       mn.all = mentionAll;
       if (mentionUids.size > 0) mn.uids = Array.from(mentionUids);
       if (mentionHumans) (mn as any).humans = 1;
       if (mentionAis) (mn as any).ais = 1;
+      if (mentionEntities.length > 0) (mn as any).entities = mentionEntities;
       content.mention = mn;
     }
     return this.sendTextAndWaitAck(content);
@@ -866,7 +927,11 @@ export class Conversation
   }
   setEditOn(edit: boolean): void {
     this.vm.editOn = edit;
-    if (this.vm.selectMessage && edit && isMessageSelectable(this.vm.selectMessage)) {
+    if (
+      this.vm.selectMessage &&
+      edit &&
+      isMessageSelectable(this.vm.selectMessage)
+    ) {
       this.vm.checkedMessage(this.vm.selectMessage, true);
     }
   }
@@ -890,14 +955,14 @@ export class Conversation
     messageSeq: number,
     channelID: String,
     channelType: number,
-    content: String,
+    content: String
   ): Promise<void> {
     return this.vm.editMessage(
       messageID,
       messageSeq,
       channelID,
       channelType,
-      content,
+      content
     );
   }
   onTapAvatar(uid: string, event: React.MouseEvent<Element, MouseEvent>): void {
@@ -917,6 +982,16 @@ export class Conversation
     if (messageWrap) {
       const foldSession = this.vm.findFoldSessionByMessageSeq(messageSeq);
       if (foldSession) {
+        const isSummaryMessage = isFoldSessionSummaryMessage(
+          foldSession,
+          messageSeq
+        );
+        if (isSummaryMessage) {
+          this.vm.highlightFoldSessionSummary(foldSession.sessionId, () => {
+            this.vm.scrollToFoldSession(foldSession.sessionId);
+          });
+          return;
+        }
         if (foldSession.isExpanded) {
           highlightAndScroll(messageWrap);
           return;
@@ -983,7 +1058,7 @@ export class Conversation
 
   addPendingAttachments(
     files: File[],
-    source: "paste" | "upload" = "upload",
+    source: "paste" | "upload" = "upload"
   ): string | null {
     const BLOCKED_EXTENSIONS = [
       "exe",
@@ -1111,8 +1186,7 @@ export class Conversation
         : undefined;
     if (foldSession?.isExpanded) {
       return foldSession.expandedMessages.some(
-        (expandedMessage) =>
-          expandedMessage.clientMsgNo === message.clientMsgNo,
+        (expandedMessage) => expandedMessage.clientMsgNo === message.clientMsgNo
       );
     }
     for (const item of this.vm.renderItems) {
@@ -1122,7 +1196,7 @@ export class Conversation
       if (
         item.session.expandedMessages.some(
           (expandedMessage) =>
-            expandedMessage.clientMsgNo === message.clientMsgNo,
+            expandedMessage.clientMsgNo === message.clientMsgNo
         )
       ) {
         return true;
@@ -1170,7 +1244,7 @@ export class Conversation
     };
     WKApp.mittBus.on(
       "wk:matter-created-from-input",
-      this._matterSendMessageHandler,
+      this._matterSendMessageHandler
     );
 
     this._exitMultipleModeHandler = () => {
@@ -1195,7 +1269,7 @@ export class Conversation
     if (this._matterSendMessageHandler) {
       WKApp.mittBus.off(
         "wk:matter-created-from-input",
-        this._matterSendMessageHandler,
+        this._matterSendMessageHandler
       );
       this._matterSendMessageHandler = undefined;
     }
@@ -1265,7 +1339,7 @@ export class Conversation
     } else {
       const firstVisiableMessage = this.visiblePersistentMessage(
         viewport,
-        false,
+        false
       );
       const firstVisibleElement = firstVisiableMessage
         ? this.getMessageElement(firstVisiableMessage)
@@ -1299,16 +1373,18 @@ export class Conversation
 
   async clearDraftAfterSend(
     sendDraftGeneration: number,
-    remoteDraftAtSend: string,
+    remoteDraftAtSend: string
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
-    if (!shouldClearDraftAfterSend({
-      liveDraft: this.messageInputContext()?.text() || "",
-      remoteDraft: remoteExtra?.draft || "",
-      remoteDraftAtSend,
-      draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
-      latestSavedDraft: this.latestSavedDraft,
-    })) {
+    if (
+      !shouldClearDraftAfterSend({
+        liveDraft: this.messageInputContext()?.text() || "",
+        remoteDraft: remoteExtra?.draft || "",
+        remoteDraftAtSend,
+        draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
+        latestSavedDraft: this.latestSavedDraft,
+      })
+    ) {
       return;
     }
 
@@ -1323,7 +1399,7 @@ export class Conversation
     if (this.vm.currentConversation) {
       WKSDK.shared().conversationManager.notifyConversationListeners(
         this.vm.currentConversation,
-        ConversationAction.update,
+        ConversationAction.update
       );
     }
   }
@@ -1383,7 +1459,7 @@ export class Conversation
     return buildMentionRenderInfo(
       message.parts as any,
       flags,
-      PartType.mention as unknown as number,
+      PartType.mention as unknown as number
     ) as MentionInfo[];
   }
 
@@ -1601,7 +1677,7 @@ export class Conversation
             style={{ width: "100%", height: "100%" }}
           />
         ),
-      }),
+      })
     );
     const { showSummary, summaryId, summaryMessage } =
       getFoldSessionSummaryState(session);
@@ -1627,9 +1703,12 @@ export class Conversation
     let participantNameDisplay: React.ReactNode;
     if (shouldCollapse) {
       // 折叠模式: 显示第一个名字 + "等X人"
-      const collapsedText = t("base.conversation.foldSession.collapsedParticipants", {
-        values: { name: participants[0].name, count: participants.length },
-      });
+      const collapsedText = t(
+        "base.conversation.foldSession.collapsedParticipants",
+        {
+          values: { name: participants[0].name, count: participants.length },
+        }
+      );
       participantNameDisplay = (
         <span className="wk-fold-session-participants-collapsed">
           <span className="wk-fold-session-participant-name wk-fold-session-participant-name-ai">
@@ -1671,7 +1750,7 @@ export class Conversation
         className={classNames(
           "wk-message-item",
           "wk-message-item-fold-session",
-          last ? "wk-message-item-last" : undefined,
+          last ? "wk-message-item-last" : undefined
         )}
       >
         <div className="wk-message-item-fold-session-shell">
@@ -1693,7 +1772,7 @@ export class Conversation
                 <span className="wk-fold-session-tag">{tagLabel}</span>
               </div>
               <span className="wk-fold-session-time">
-                {moment(session.lastMessage.timestamp * 1000).format("HH:mm")}
+                {formatMessageTimestamp(session.lastMessage.timestamp)}
               </span>
               <button
                 type="button"
@@ -1753,12 +1832,10 @@ export class Conversation
               highlightSummary={session.highlightSummary}
               summaryId={summaryId}
               summarySender={summarySender}
-              summaryTime={moment(summaryMessage.timestamp * 1000).format(
-                "HH:mm",
-              )}
+              summaryTime={formatMessageTimestamp(summaryMessage.timestamp)}
               summaryContent={this.renderFoldSessionSummary(summaryMessage)}
               expandedContent={this.renderFoldSessionExpandedList(
-                session.expandedMessages,
+                session.expandedMessages
               )}
               onToggle={() => {
                 this.vm.toggleFoldSession(session.sessionId);
@@ -1840,7 +1917,7 @@ export class Conversation
           extraClassName,
           last ? "wk-message-item-last" : undefined,
           message.locateRemind ? "wk-message-item-reminder" : undefined,
-          isSystemMessage ? "wk-message-item-system" : undefined,
+          isSystemMessage ? "wk-message-item-system" : undefined
         )}
       >
         {MessageCell ? (
@@ -1883,7 +1960,7 @@ export class Conversation
     }
     if (this.vm.lastMessage) {
       this.vm.lastLocalMessageElement = this.getMessageElement(
-        this.vm.lastMessage,
+        this.vm.lastMessage
       ); // 最新消息
       if (this.vm.lastLocalMessageElement) {
         // 如果有最新消息的dom则判断是否在可见范围内
@@ -1913,7 +1990,7 @@ export class Conversation
       shouldPulldownOnWheel(
         e.deltaY,
         viewport.scrollTop,
-        this.isFullScreen(viewport),
+        this.isFullScreen(viewport)
       )
     ) {
       this.vm.pulldownMessages();
@@ -1949,7 +2026,7 @@ export class Conversation
       }
       WKSDK.shared().receiptManager.addReceiptMessages(
         this.channel(),
-        unreadMessages,
+        unreadMessages
       );
     }
   }
@@ -2074,10 +2151,7 @@ export class Conversation
     }
   }
 
-  private visiblePersistentMessage(
-    vp: HTMLElement | null,
-    fromEnd: boolean,
-  ) {
+  private visiblePersistentMessage(vp: HTMLElement | null, fromEnd: boolean) {
     if (!this.vm.messages || this.vm.messages.length === 0) {
       return;
     }
@@ -2267,7 +2341,7 @@ export class Conversation
                   vm.fileDragEnter ? "wk-conversation-dragover" : undefined,
                   vm.currentReplyMessage
                     ? "wk-conversation-hasreply"
-                    : undefined,
+                    : undefined
                 )}
                 style={{
                   background: chatBg
@@ -2318,7 +2392,7 @@ export class Conversation
                       showScrollToBottom={vm.showScrollToBottomBtn || false}
                       unreadCount={vm.unreadCount}
                       reminders={vm.currentConversation?.reminders?.filter(
-                        (r) => !r.done,
+                        (r) => !r.done
                       )}
                     ></ConversationPositionView>
                   </div>
@@ -2340,9 +2414,7 @@ export class Conversation
                 <div
                   className={classNames(
                     "wk-conversation-multiplepanel",
-                    vm.editOn
-                      ? "wk-conversation-multiplepanel-show"
-                      : undefined,
+                    vm.editOn ? "wk-conversation-multiplepanel-show" : undefined
                   )}
                 >
                   <MultiplePanel
@@ -2353,14 +2425,16 @@ export class Conversation
                     onForward={() => {
                       const messages = vm.getCheckedMessages();
                       if (!messages || messages.length === 0) {
-                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
+                        Toast.error(
+                          t("base.conversation.selection.selectMessageFirst")
+                        );
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
                         (channels: Channel[]) => {
                           for (const message of messages) {
                             const cloneContent = getEffectiveContent(
-                              message.message,
+                              message.message
                             );
                             for (const channel of channels) {
                               this.sendMessage(cloneContent, channel);
@@ -2368,13 +2442,15 @@ export class Conversation
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
-                        },
+                        }
                       );
                     }}
                     onMergeForward={() => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
+                        Toast.error(
+                          t("base.conversation.selection.selectMessageFirst")
+                        );
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
@@ -2382,13 +2458,15 @@ export class Conversation
                           vm.sendMergeforward(channels);
                           vm.editOn = false;
                           vm.unCheckAllMessages();
-                        },
+                        }
                       );
                     }}
                     onDelete={() => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
+                        Toast.error(
+                          t("base.conversation.selection.selectMessageFirst")
+                        );
                         return;
                       }
                       wkConfirm({
@@ -2408,7 +2486,9 @@ export class Conversation
                             vm.editOn = false;
                             vm.unCheckAllMessages();
                           } catch (e) {
-                            Toast.error(t("base.conversation.deleteConfirm.failed"));
+                            Toast.error(
+                              t("base.conversation.deleteConfirm.failed")
+                            );
                             throw e;
                           }
                         },
@@ -2417,7 +2497,9 @@ export class Conversation
                     onAddToMatter={(anchor) => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
+                        Toast.error(
+                          t("base.conversation.selection.selectMessageFirst")
+                        );
                         return;
                       }
                       // 传 channel 信息给 MatterLinkMenu，用于按 channel 查询关联的 Matter
@@ -2443,7 +2525,9 @@ export class Conversation
                     onCreateMatter={() => {
                       const checkedMsgs = vm.getCheckedMessages();
                       if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(t("base.conversation.selection.selectMessageFirst"));
+                        Toast.error(
+                          t("base.conversation.selection.selectMessageFirst")
+                        );
                         return;
                       }
                       const ch = this.props.channel;
@@ -2465,7 +2549,6 @@ export class Conversation
                       });
                     }}
                   ></MultiplePanel>
-
                 </div>
                 <div
                   className="wk-conversation-footer"
@@ -2473,13 +2556,13 @@ export class Conversation
                     vm.editOn
                       ? { display: "none" }
                       : this.state.inputExpanded
-                        ? {
-                            flex: 1,
-                            minHeight: 0,
-                            overflow: "hidden",
-                            paddingTop: "var(--wk-sp-2)",
-                          }
-                        : undefined
+                      ? {
+                          flex: 1,
+                          minHeight: 0,
+                          overflow: "hidden",
+                          paddingTop: "var(--wk-sp-2)",
+                        }
+                      : undefined
                   }
                 >
                   <div
@@ -2504,12 +2587,25 @@ export class Conversation
                     )}
                     <MessageInput
                       botCommands={botCommands}
-                      onAddAttachment={(addFn: (files: File[]) => void) => {
+                      onAddAttachment={(
+                        addFn: (
+                          files: File[],
+                          source?: "paste" | "upload"
+                        ) => void
+                      ) => {
                         // 存储 addAttachment 方法，供外部调用
                         this._addAttachmentFn = addFn;
                       }}
+                      onAddPendingAttachments={(files, source) => {
+                        const err = this.addPendingAttachments(files, source);
+                        if (err) {
+                          Toast.error(err);
+                          return false;
+                        }
+                        return true;
+                      }}
                       members={this.vm.subscribers.filter(
-                        (s) => s.uid !== WKApp.loginInfo.uid,
+                        (s) => s.uid !== WKApp.loginInfo.uid
                       )}
                       topView={
                         vm.currentReplyMessage ? (
@@ -2567,17 +2663,21 @@ export class Conversation
                         const { channel } = this.props;
                         await this.vm.ensureSubscribersLoaded();
 
-                        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+                        const channelInfo =
+                          WKSDK.shared().channelManager.getChannelInfo(channel);
                         let groupName: string | undefined;
                         let threadName: string | undefined;
 
                         if (channel.channelType === ChannelTypeCommunityTopic) {
                           threadName = channelInfo?.title;
-                          const parsed = parseThreadChannelId(channel.channelID);
+                          const parsed = parseThreadChannelId(
+                            channel.channelID
+                          );
                           if (parsed) {
-                            const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
-                              new Channel(parsed.groupNo, ChannelTypeGroup)
-                            );
+                            const parentInfo =
+                              WKSDK.shared().channelManager.getChannelInfo(
+                                new Channel(parsed.groupNo, ChannelTypeGroup)
+                              );
                             groupName = parentInfo?.title;
                           }
                         } else if (channel.channelType === ChannelTypeGroup) {
@@ -2592,7 +2692,7 @@ export class Conversation
                           channelInfo:
                             channel.channelType === ChannelTypePerson
                               ? (WKSDK.shared().channelManager.getChannelInfo(
-                                  channel,
+                                  channel
                                 ) as ChatContextChannelInfo | null)
                               : undefined,
                           groupName,
@@ -2604,7 +2704,7 @@ export class Conversation
                         mention?: MentionModel,
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
-                        editorBlocks?: EditorContentBlock[],
+                        editorBlocks?: EditorContentBlock[]
                       ): Promise<boolean | SendResultDetail> => {
                         // 返回值告诉 MessageInput 是否清空编辑器/附件：
                         //   true  → 发送成功(或已消费)，清空草稿+附件；
@@ -2629,7 +2729,7 @@ export class Conversation
                               vm.currentReplyMessage.messageSeq,
                               vm.currentReplyMessage.channel.channelID,
                               vm.currentReplyMessage.channel.channelType,
-                              JSON.stringify(json),
+                              JSON.stringify(json)
                             );
                             vm.currentReplyMessage = undefined;
                             // 编辑消息已提交，编辑器应清空。
@@ -2643,8 +2743,8 @@ export class Conversation
                             WKSDK.shared().channelManager.getChannelInfo(
                               new Channel(
                                 vm.currentReplyMessage.fromUID,
-                                ChannelTypePerson,
-                              ),
+                                ChannelTypePerson
+                              )
                             );
                           if (channelInfo) {
                             reply.fromName = channelInfo.title;
@@ -2657,18 +2757,29 @@ export class Conversation
                         // 返回 true 表示消息已入队 / 发送; false 表示被预检拒绝、
                         // 调用方应据此决定是否继续后续流程 (例如不要再补一条
                         // 空回复消息: octo-web#119 review by Jerry-Xin)。
-                        const sendImageFile = async (file: File): Promise<boolean> => {
+                        const sendImageFile = async (
+                          file: File
+                        ): Promise<boolean> => {
                           // 上传前预检：后端会对文件大小/类型做校验,失败时直接 Toast,
                           // 不要让本地气泡先进聊天框再显示失败 (octo-web#119)。
                           try {
                             const dot = (file.name || "").lastIndexOf(".");
-                            const ext = dot > 0 ? file.name.substring(dot + 1) : "";
-                            await precheckUploadCredentials(file, this.channel(), ext);
+                            const ext =
+                              dot > 0 ? file.name.substring(dot + 1) : "";
+                            await precheckUploadCredentials(
+                              file,
+                              this.channel(),
+                              ext
+                            );
                           } catch (err) {
-                            const msg = (err as { msg?: string })?.msg || t("base.conversation.upload.failed");
-                            Toast.error(t("base.conversation.upload.imageFailed", {
-                              values: { name: file.name, message: msg },
-                            }));
+                            const msg =
+                              (err as { msg?: string })?.msg ||
+                              t("base.conversation.upload.failed");
+                            Toast.error(
+                              t("base.conversation.upload.imageFailed", {
+                                values: { name: file.name, message: msg },
+                              })
+                            );
                             return false;
                           }
                           const reader = new FileReader();
@@ -2678,12 +2789,14 @@ export class Conversation
                                 resolve(reader.result as string);
                               reader.onerror = () => resolve("");
                               reader.readAsDataURL(file);
-                            },
+                            }
                           );
                           if (!previewUrl) {
-                            Toast.error(t("base.conversation.upload.imageReadFailed", {
-                              values: { name: file.name },
-                            }));
+                            Toast.error(
+                              t("base.conversation.upload.imageReadFailed", {
+                                values: { name: file.name },
+                              })
+                            );
                             return false;
                           }
                           const { width, height } = await new Promise<{
@@ -2701,35 +2814,45 @@ export class Conversation
                             img.src = previewUrl;
                           });
                           return this.sendMediaAndWait(
-                            new ImageContent(file, previewUrl, width, height),
+                            new ImageContent(file, previewUrl, width, height)
                           );
                         };
 
                         // ── 辅助：发送单个非图片文件 ──────────────
-                        const sendFileAttachment = async (file: File): Promise<boolean> => {
+                        const sendFileAttachment = async (
+                          file: File
+                        ): Promise<boolean> => {
                           const name = file.name || "unknown";
                           const dotIndex = name.lastIndexOf(".");
                           const ext =
                             dotIndex > 0 ? name.substring(dotIndex + 1) : "";
                           // 上传前预检 (octo-web#119)。
                           try {
-                            await precheckUploadCredentials(file, this.channel(), ext);
+                            await precheckUploadCredentials(
+                              file,
+                              this.channel(),
+                              ext
+                            );
                           } catch (err) {
-                            const msg = (err as { msg?: string })?.msg || t("base.conversation.upload.failed");
-                            Toast.error(t("base.conversation.upload.fileFailed", {
-                              values: { name, message: msg },
-                            }));
+                            const msg =
+                              (err as { msg?: string })?.msg ||
+                              t("base.conversation.upload.failed");
+                            Toast.error(
+                              t("base.conversation.upload.fileFailed", {
+                                values: { name, message: msg },
+                              })
+                            );
                             return false;
                           }
                           return this.sendMediaAndWait(
-                            new FileContent(file, name, ext, file.size),
+                            new FileContent(file, name, ext, file.size)
                           );
                         };
 
                         // ── 辅助：构建带 mention 的文本 MessageContent ──────────────
                         const buildTextContent = (
                           blockText: string,
-                          blockMention?: MentionModel,
+                          blockMention?: MentionModel
                         ) => {
                           const msgContent = new MessageText(blockText);
                           if (blockMention) {
@@ -2751,8 +2874,9 @@ export class Conversation
                             const hasEntities =
                               blockMention.entities &&
                               blockMention.entities.length > 0;
-                            const hasThreeState =
-                              !!(blockMention.humans || blockMention.ais);
+                            const hasThreeState = !!(
+                              blockMention.humans || blockMention.ais
+                            );
 
                             if (hasEntities || hasThreeState) {
                               const entities = blockMention.entities;
@@ -2790,12 +2914,12 @@ export class Conversation
                                     obj.mention.ais = blockMention.ais;
                                   }
                                   return new TextEncoder().encode(
-                                    JSON.stringify(obj),
+                                    JSON.stringify(obj)
                                   );
                                 } catch (e) {
                                   console.warn(
                                     "[Mention] encode override failed",
-                                    e,
+                                    e
                                   );
                                   return originalEncode();
                                 }
@@ -2815,10 +2939,54 @@ export class Conversation
                         // (octo-web#227 Jerry-Xin non-blocking)。
                         const consumedTopIds: string[] = [];
                         const topFilesToSend = topFiles || [];
+                        const mixedCandidate = buildRichTextMixedCandidate(
+                          topFilesToSend,
+                          editorBlocks
+                        );
+                        if (mixedCandidate) {
+                          let mixedSent = false;
+                          try {
+                            if (
+                              await this.sendRichTextMixed(
+                                mixedCandidate.blocks as EditorContentBlock[],
+                                reply
+                              )
+                            ) {
+                              mixedSent = true;
+                              anyMessageSent = true;
+                              consumedTopIds.push(
+                                ...mixedCandidate.topImageIds
+                              );
+                            }
+                            reply = undefined;
+                          } catch (err) {
+                            console.error(
+                              "[Conversation] richtext mixed send failed:",
+                              err
+                            );
+                            if (!(err as { toasted?: boolean })?.toasted) {
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
+                            }
+                          }
+                          if (mixedSent) {
+                            await this.clearDraftAfterSend(
+                              sendDraftGeneration,
+                              remoteDraftAtSend
+                            );
+                          }
+                          this.props.onMessageSent?.();
+                          return {
+                            editorConsumed: mixedSent,
+                            consumedTopIds,
+                          };
+                        }
+
                         for (const { id, file } of topFilesToSend) {
                           try {
                             let sent = false;
-                            if (file.type && file.type.startsWith("image/")) {
+                            if (isImageFileForRichTextMixed(file)) {
                               sent = await sendImageFile(file);
                             } else {
                               sent = await sendFileAttachment(file);
@@ -2828,9 +2996,11 @@ export class Conversation
                               consumedTopIds.push(id);
                             }
                           } catch (err) {
-                            Toast.error(t("base.conversation.upload.fileSendFailed", {
-                              values: { name: file.name },
-                            }));
+                            Toast.error(
+                              t("base.conversation.upload.fileSendFailed", {
+                                values: { name: file.name },
+                              })
+                            );
                           }
                         }
 
@@ -2840,13 +3010,13 @@ export class Conversation
                           // RichText(=14) 消息（而非拆成多条独立消息）。含 file 块或
                           // 纯文本/纯图片时仍走下方逐块发送路径，不回退已落地逻辑。
                           const hasText = editorBlocks.some(
-                            (b) => b.type === "text" && b.text.trim() !== "",
+                            (b) => b.type === "text" && b.text.trim() !== ""
                           );
                           const hasImage = editorBlocks.some(
-                            (b) => b.type === "image",
+                            (b) => b.type === "image"
                           );
                           const hasFile = editorBlocks.some(
-                            (b) => b.type === "file",
+                            (b) => b.type === "file"
                           );
                           if (hasText && hasImage && !hasFile) {
                             // 单独跟踪图文混排是否成功：图片准备失败时 sendRichTextMixed
@@ -2854,7 +3024,12 @@ export class Conversation
                             // 清空编辑器草稿——草稿里的文本+图片整条都没发出，须保留可重试。
                             let mixedSent = false;
                             try {
-                              if (await this.sendRichTextMixed(editorBlocks, reply)) {
+                              if (
+                                await this.sendRichTextMixed(
+                                  editorBlocks,
+                                  reply
+                                )
+                              ) {
                                 mixedSent = true;
                                 anyMessageSent = true;
                               }
@@ -2862,19 +3037,21 @@ export class Conversation
                             } catch (err) {
                               console.error(
                                 "[Conversation] richtext mixed send failed:",
-                                err,
+                                err
                               );
                               // 图片准备失败已在 sendRichTextMixed 内 Toast 具体原因，
                               // 不再重复弹通用错误。
                               if (!(err as { toasted?: boolean })?.toasted) {
-                                Toast.error(t("base.conversation.message.sendFailed"));
+                                Toast.error(
+                                  t("base.conversation.message.sendFailed")
+                                );
                               }
                             }
                             // 仅当图文混排本身发出时才清草稿；失败则保留编辑器内容可重试。
                             if (mixedSent) {
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
-                                remoteDraftAtSend,
+                                remoteDraftAtSend
                               );
                             }
                             this.props.onMessageSent?.();
@@ -2896,7 +3073,7 @@ export class Conversation
                               if (block.type === "text") {
                                 const msgContent = buildTextContent(
                                   block.text,
-                                  block.mention,
+                                  block.mention
                                 );
                                 // 第一个文本块携带 reply 信息
                                 if (reply && isFirstTextBlock) {
@@ -2919,9 +3096,11 @@ export class Conversation
                             } catch (err) {
                               console.error(
                                 "[Conversation] editorBlock send failed:",
-                                err,
+                                err
                               );
-                              Toast.error(t("base.conversation.message.sendFailed"));
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
                             }
                           }
                           // 如果 reply 还没被消费（没有文本块），附加到一条空白消息;
@@ -2952,7 +3131,7 @@ export class Conversation
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
-                            remoteDraftAtSend,
+                            remoteDraftAtSend
                           );
                         }
                         this.props.onMessageSent?.();
@@ -3002,14 +3181,14 @@ export class Conversation
                       }
                       const channel = new Channel(
                         this.vm.selectUID,
-                        ChannelTypePerson,
+                        ChannelTypePerson
                       );
                       const channelInfo =
                         WKSDK.shared().channelManager.getChannelInfo(channel);
 
                       this.messageInputContext()?.addMention(
                         this.vm.selectUID,
-                        channelInfo?.title || "",
+                        channelInfo?.title || ""
                       );
                     },
                   },
@@ -3024,7 +3203,7 @@ export class Conversation
                       if (this.vm.channel.channelType === ChannelTypeGroup) {
                         fromChannel = this.vm.channel;
                         const subscriber = this.vm.subscriberWithUID(
-                          this.vm.selectUID,
+                          this.vm.selectUID
                         );
                         if (subscriber?.orgData?.vercode) {
                           vercode = subscriber?.orgData?.vercode;
@@ -3033,7 +3212,7 @@ export class Conversation
                       WKApp.shared.baseContext.showUserInfo(
                         this.vm.selectUID,
                         fromChannel,
-                        vercode,
+                        vercode
                       );
                     },
                   },
@@ -3126,7 +3305,7 @@ class ConversationPositionView extends Component<
                   <div
                     className={classNames(
                       "wk-conversationpositionview-item",
-                      "wk-reveale",
+                      "wk-reveale"
                     )}
                     onClick={async () => {
                       if (onReminder) {
@@ -3166,7 +3345,7 @@ class ConversationPositionView extends Component<
             <div
               className={classNames(
                 "wk-conversationpositionview-item",
-                showScrollToBottom ? "wk-reveale" : undefined,
+                showScrollToBottom ? "wk-reveale" : undefined
               )}
               onClick={async () => {
                 if (onScrollToBottom) {
@@ -3209,7 +3388,7 @@ class ReplyView extends Component<ReplyViewProps> {
   render(): React.ReactNode {
     const { message, onClose, vm } = this.props;
     const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
-      new Channel(message.fromUID, ChannelTypePerson),
+      new Channel(message.fromUID, ChannelTypePerson)
     );
     const isEdit = vm.currentHandlerType === 2;
     const label = isEdit

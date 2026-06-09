@@ -172,6 +172,15 @@ describe("ConversationVM message ordering", () => {
         document.body.innerHTML = ""
     })
 
+    it("uses a unique message container id for each instance", () => {
+        const first = new ConversationVM(channel)
+        const second = new ConversationVM(channel)
+
+        expect(first.messageContainerId).toMatch(/^viewport-\d+$/)
+        expect(second.messageContainerId).toMatch(/^viewport-\d+$/)
+        expect(first.messageContainerId).not.toBe(second.messageContainerId)
+    })
+
     it("sorts no-seq messages with invalid order after sequenced messages", () => {
         const vm = new ConversationVM(channel)
         const seq2 = wrap({ clientMsgNo: "seq2", messageSeq: 2, timestamp: 200 })

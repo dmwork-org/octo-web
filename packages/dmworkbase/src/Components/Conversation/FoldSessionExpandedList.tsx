@@ -1,10 +1,10 @@
 import React from "react";
 import classNames from "classnames";
-import moment from "moment";
 import { Message } from "wukongimjssdk";
 import { MessageWrap } from "../../Service/Model";
 import Checkbox from "../Checkbox";
 import { isMessageSelectable } from "../../Service/messageSelection";
+import { formatMessageTimestamp } from "../../Utils/time";
 
 interface FoldSessionExpandedListProps {
   messages: MessageWrap[];
@@ -34,7 +34,7 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
     <>
       {messages.map((message) => {
         const senderName = message.from?.title || message.fromUID;
-        const timeStr = moment(message.timestamp * 1000).format("HH:mm");
+        const timeStr = formatMessageTimestamp(message.timestamp);
         const selectable = isMessageSelectable(message);
         return (
           <div

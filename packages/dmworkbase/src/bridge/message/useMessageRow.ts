@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson, ChannelTypeGroup } from 'wukongimjssdk'
+import WKSDK, { Channel, ChannelTypePerson, ChannelTypeGroup } from 'wukongimjssdk'
+import type { ChannelInfo, ChannelInfoListener } from 'wukongimjssdk'
 import WKApp from '../../App'
-import { MessageWrap } from '../../Service/Model'
-import { MessageRowUIProps } from './types'
+import type { MessageWrap } from '../../Service/Model'
+import type { MessageRowUIProps } from './types'
 import { resolveExternalForViewer } from '../../Utils/externalViewer'
-import { subscriberDisplayName } from '../../Utils/displayName'
+import { personalRemarkDisplayName, subscriberDisplayName } from '../../Utils/displayName'
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
 import moment from 'moment'
 import { isMessageContinuation } from '../../Service/messageContinuity'
-import { t } from '../../i18n'
+import { formatMessageTimestamp } from '../../Utils/time'
 
 export interface MessageRowSelectionState {
   /** 当前会话是否处于多选模式（不可选消息也需要知道，用于禁用行内操作） */
@@ -88,7 +89,7 @@ export function getMessageRow(
   const isContinue = isMessageContinuation(message.preMessage, message)
 
   // 格式化时间戳
-  const timestamp = formatTimestamp(message.timestamp)
+  const timestamp = formatMessageTimestamp(message.timestamp)
   const timeOnly = formatTimeOnly(message.timestamp)
 
   // 把 uid 绑定到回调
@@ -131,6 +132,10 @@ export function getMessageRow(
   // 单次群成员查找，同时拿到 memberName 和 member 对象，
   // 避免重复 .find()。
   const { member: groupMember, memberName: groupMemberName } = getGroupMemberInfo(message)
+  // 个人备注来自 sender 的 Person channelInfo。群消息虽然主路径读 subscriber，
+  // 但用户手动设置的个人备注必须优先于群成员名，否则 friend/remark 保存后
+  // fetchChannelInfo 已刷新也会被 subscriber.name 挡住。
+  const personalRemarkName = personalRemarkDisplayName(channelInfo)
 
   // Epic dmwork-web#1169 Phase A: 发送者实名徽章。
   // 优先群成员 orgData（群消息命中率最高），回落 Person channelInfo.orgData
@@ -205,9 +210,10 @@ export function getMessageRow(
     // payload 下发的 loginInfo 是可靠源。规则改动同步 Messages/Base/index.tsx。
     senderName: isOwnMessage
       ? WKApp.loginInfo.selfDisplayName() ||
+        personalRemarkName ||
         groupMemberName ||
         getSenderName(channelInfo, message.fromUID)
-      : groupMemberName || getSenderName(channelInfo, message.fromUID),
+      : personalRemarkName || groupMemberName || getSenderName(channelInfo, message.fromUID),
     isBot: channelInfo?.orgData?.robot === 1,
     timestamp,
     timeOnly,
@@ -324,41 +330,4 @@ export function useMessageRow(
 function formatTimeOnly(timestamp: number): string {
   const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp
   return moment(ms).format('HH:mm')
-}
-
-/**
- * 格式化时间戳
- * 
- * @param timestamp - 时间戳（秒或毫秒）
- * @returns 格式化后的时间字符串
- */
-function formatTimestamp(timestamp: number): string {
-  const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp
-  const now = Date.now()
-  const diff = now - ms
-  
-  // 今天：显示 HH:mm
-  if (diff < 86400 * 1000 && moment(ms).isSame(moment(), 'day')) {
-    return moment(ms).format('HH:mm')
-  }
-  
-  // 昨天：显示 "昨天 HH:mm"
-  if (diff < 86400 * 2000 && moment(ms).isSame(moment().subtract(1, 'day'), 'day')) {
-    return t('base.time.yesterdayWithTime', {
-      values: { time: moment(ms).format('HH:mm') },
-    })
-  }
-  
-  // 一周内：显示 "周X HH:mm"
-  if (diff < 86400 * 7000) {
-    return moment(ms).format('ddd HH:mm')
-  }
-  
-  // 今年：显示 "MM-DD HH:mm"
-  if (moment(ms).isSame(moment(), 'year')) {
-    return moment(ms).format('MM-DD HH:mm')
-  }
-  
-  // 跨年：显示 "YYYY-MM-DD HH:mm"
-  return moment(ms).format('YYYY-MM-DD HH:mm')
 }
