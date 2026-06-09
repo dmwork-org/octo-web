@@ -131,6 +131,16 @@ function fallbackCopy(text: string) {
   }
 }
 
+function removeLocalConversationAndCloseIfOpen(channel: Channel) {
+  WKSDK.shared().conversationManager.removeConversation(channel);
+  const isOpen = WKApp.shared.openChannel?.isEqual(channel);
+  if (isOpen) {
+    WKApp.shared.openChannel = undefined;
+    WKApp.routeRight.popToRoot();
+  }
+  WKApp.shared.notifyListener();
+}
+
 const pendingRevokeRoleFetches = new Set<string>();
 
 function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
@@ -1653,6 +1663,102 @@ export default class BaseModule implements IModule {
             },
           })
         );
+        if (data.subscriberOfMe?.role === GroupRole.owner) {
+          let transferOwnerFinishButtonContext: FinishButtonContext;
+          let transferOwnerSelectedItems: Subscriber[] = [];
+          rows.push(
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.channelSettings.transferOwner"),
+                onClick: () => {
+                  context.push(
+                    <SubscriberList
+                      channel={channel}
+                      canSelect={true}
+                      singleSelect={true}
+                      disableSelectList={[WKApp.loginInfo.uid || ""]}
+                      filter={(subscriber) =>
+                        subscriber.uid !== WKApp.loginInfo.uid &&
+                        (subscriber.orgData?.robot === 1) !== true
+                      }
+                      onSelect={(items) => {
+                        transferOwnerSelectedItems = items;
+                        transferOwnerFinishButtonContext?.disable(
+                          items.length !== 1
+                        );
+                      }}
+                    />,
+                    new RouteContextConfig({
+                      title: t(
+                        "base.module.channelSettings.transferOwnerSelect"
+                      ),
+                      showFinishButton: true,
+                      finishButtonTitle: t("base.common.ok"),
+                      onFinishContext: (finishButtonContext) => {
+                        transferOwnerFinishButtonContext = finishButtonContext;
+                        transferOwnerFinishButtonContext.disable(true);
+                      },
+                      onFinish: () => {
+                        const selected = transferOwnerSelectedItems[0];
+                        if (!selected) {
+                          Toast.warning(
+                            t(
+                              "base.module.channelSettings.transferOwnerSelectOne"
+                            )
+                          );
+                          return;
+                        }
+                        const name =
+                          selected.remark || selected.name || selected.uid;
+                        wkConfirm({
+                          title: t(
+                            "base.module.channelSettings.transferOwner"
+                          ),
+                          content: t(
+                            "base.module.channelSettings.transferOwnerConfirm",
+                            { values: { name } }
+                          ),
+                          okText: t("base.common.ok"),
+                          cancelText: t("base.common.cancel"),
+                          onOk: async () => {
+                            try {
+                              await WKApp.dataSource.channelDataSource.channelTransferOwner(
+                                channel,
+                                selected.uid
+                              );
+                              Toast.success(
+                                t(
+                                  "base.module.channelSettings.transferOwnerSuccess"
+                                )
+                              );
+                              context.pop();
+                              void WKSDK.shared().channelManager.syncSubscribes(
+                                channel
+                              );
+                              void WKSDK.shared().channelManager.fetchChannelInfo(
+                                channel
+                              );
+                              data.refresh();
+                            } catch (err: any) {
+                              Toast.error(
+                                err?.msg ||
+                                  t(
+                                    "base.module.channelSettings.transferOwnerFailed"
+                                  )
+                              );
+                              throw err;
+                            }
+                          },
+                        });
+                      },
+                    })
+                  );
+                },
+              },
+            })
+          );
+        }
         if (channel.channelType === ChannelTypeGroup) {
           const hasGroupMd = channelInfo?.orgData?.has_group_md;
           const mdVersion = channelInfo?.orgData?.group_md_version || 0;
@@ -2008,19 +2114,44 @@ export default class BaseModule implements IModule {
                 title: t("base.module.channelSettings.deleteAndExit"),
                 type: ListItemButtonType.warn,
                 onClick: () => {
+                  if (data.subscriberOfMe?.role === GroupRole.owner) {
+                    WKApp.shared.baseContext.showAlert({
+                      title: t(
+                        "base.module.channelSettings.ownerLeaveBlockedTitle"
+                      ),
+                      content: t(
+                        "base.module.channelSettings.ownerLeaveBlockedContent"
+                      ),
+                    });
+                    return;
+                  }
                   WKApp.shared.baseContext.showAlert({
                     content: t(
                       "base.module.channelSettings.deleteAndExitConfirm"
                     ),
                     onOk: async () => {
-                      WKApp.dataSource.channelDataSource
-                        .exitChannel(data.channel)
-                        .catch((err) => {
-                          Toast.error(err.msg);
-                        });
-                      WKApp.conversationProvider.deleteConversation(
-                        data.channel
-                      );
+                      try {
+                        await WKApp.dataSource.channelDataSource.exitChannel(
+                          data.channel
+                        );
+                        await WKApp.conversationProvider
+                          .deleteConversation(data.channel)
+                          .catch((err) => {
+                            console.warn(
+                              "[ChannelSetting] delete conversation after leaving failed:",
+                              err
+                            );
+                          });
+                        removeLocalConversationAndCloseIfOpen(data.channel);
+                      } catch (err: any) {
+                        Toast.error(
+                          err?.msg ||
+                            t(
+                              "base.module.channelSettings.deleteAndExitFailed"
+                            )
+                        );
+                        throw err;
+                      }
                     },
                   });
                 },
@@ -2329,16 +2460,25 @@ export default class BaseModule implements IModule {
                   content: t("base.module.thread.leaveConfirm"),
                   onOk: async () => {
                     if (threadInfo) {
-                      await WKApp.apiClient
-                        .post(`threads/${threadInfo.shortId}/leave`)
-                        .catch((err: any) => {
-                          Toast.error(
-                            err.msg || t("base.module.thread.leaveFailed")
-                          );
-                        });
-                      WKApp.conversationProvider.deleteConversation(
-                        data.channel
-                      );
+                      try {
+                        await WKApp.apiClient.post(
+                          `threads/${threadInfo.shortId}/leave`
+                        );
+                        await WKApp.conversationProvider
+                          .deleteConversation(data.channel)
+                          .catch((err) => {
+                            console.warn(
+                              "[ChannelSetting] delete thread conversation after leaving failed:",
+                              err
+                            );
+                          });
+                        removeLocalConversationAndCloseIfOpen(data.channel);
+                      } catch (err: any) {
+                        Toast.error(
+                          err?.msg || t("base.module.thread.leaveFailed")
+                        );
+                        throw err;
+                      }
                     }
                   },
                 });
