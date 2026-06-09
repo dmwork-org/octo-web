@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Modal, Input, Tabs, TabPane, Checkbox, Button, Spin, Empty, Tag } from "@douyinfe/semi-ui";
+import { Modal, Input, Tabs, TabPane, Checkbox, Button, Spin, Empty, Tag, Switch } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { I18nContext } from "@octo/base";
 import type { ChatCandidate } from "../types/summary";
@@ -21,6 +21,7 @@ interface State {
     candidates: ChatCandidate[];
     loading: boolean;
     localSelected: ChatCandidate[];
+    includeArchived: boolean;
 }
 
 interface DisplayEntry {
@@ -38,24 +39,37 @@ export default class ChatSelectorModal extends Component<Props, State> {
         candidates: [],
         loading: false,
         localSelected: [],
+        includeArchived: false,
     };
+
+    private reqSeq = 0;
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
-            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "all" });
-            this.loadCandidates();
+            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "all", includeArchived: false });
+            this.loadCandidates(false);
         }
     }
 
-    async loadCandidates() {
+    async loadCandidates(includeArchivedOverride?: boolean) {
+        const includeArchived = includeArchivedOverride ?? this.state.includeArchived;
+        const seq = ++this.reqSeq;
         this.setState({ loading: true });
         try {
-            const candidates = await api.getChatCandidates({});
+            const params = includeArchived ? { include_archived: true } : {};
+            const candidates = await api.getChatCandidates(params);
+            if (seq !== this.reqSeq) return;
             this.setState({ candidates, loading: false });
         } catch {
+            if (seq !== this.reqSeq) return;
             this.setState({ loading: false });
         }
     }
+
+    handleIncludeArchivedChange = (checked: boolean) => {
+        this.setState({ includeArchived: checked });
+        this.loadCandidates(checked);
+    };
 
     handleKeywordChange = (val: string) => {
         this.setState({ keyword: val });
@@ -192,6 +206,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         {item.chat_type === "direct" && item.is_bot && (
                             <span style={{ marginLeft: 4 }}><AiBadge size="small" /></span>
                         )}
+                        {item.is_archived && (
+                            <Tag size="small" color="grey" style={{ marginLeft: 6 }}>
+                                {t("summary.chatSelector.archivedTag")}
+                            </Tag>
+                        )}
                     </div>
                     {item.member_count !== null && (
                         <div style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
@@ -214,7 +233,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     render() {
         const { visible, onCancel, maxSelect = MAX_CHAT_SELECT } = this.props;
-        const { keyword, activeTab, loading, localSelected } = this.state;
+        const { keyword, activeTab, loading, localSelected, includeArchived } = this.state;
         const { t } = this.context;
         const displayList = this.getDisplayList();
 
@@ -252,6 +271,18 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     <TabPane tab={t("summary.source.groupChat")} itemKey="group" />
                     <TabPane tab={t("summary.source.directMessage")} itemKey="direct" />
                 </Tabs>
+                <div style={{ display: "flex", alignItems: "center", padding: "8px 0", gap: 8 }}>
+                    <Switch
+                        checked={includeArchived}
+                        onChange={this.handleIncludeArchivedChange}
+                        size="small"
+                        aria-label={t("summary.chatSelector.includeArchived")}
+                    />
+                    <span style={{ fontSize: 13 }}>{t("summary.chatSelector.includeArchived")}</span>
+                    <span style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
+                        {t("summary.chatSelector.includeArchivedHelper")}
+                    </span>
+                </div>
                 <div style={{ minHeight: 240, maxHeight: 360, overflowY: "auto" }}>
                     {loading ? (
                         <div style={{ textAlign: "center", paddingTop: 60 }}><Spin /></div>
