@@ -227,21 +227,31 @@ export async function inferScope(topic: string): Promise<InferResult> {
 
 // ─── Schedule CRUD ─────────────────────────────────────
 
+// 后端 is_active 序列化为 number(0/1)，而前端 ScheduleItem.is_active 声明为 boolean，
+// 且多处用严格比较（`is_active === false` / `!== false`）判断定时是否生效。
+// `0 === false` 为 false，会导致「关闭后刷新仍显示定时生效」。这里在 API 边界统一
+// 把 is_active 归一为 boolean，所有消费方判断即可正确（不依赖后端类型，亦无需改后端）。
+function normalizeScheduleItem<T extends { is_active?: unknown } | null | undefined>(item: T): T {
+    if (!item || typeof item !== 'object') return item;
+    const v = (item as { is_active?: unknown }).is_active;
+    return { ...(item as object), is_active: v === true || v === 1 || v === '1' } as T;
+}
+
 export async function getSchedule(scheduleId: number): Promise<ScheduleItem> {
-    return get(`/summary-schedules/${scheduleId}`);
+    return normalizeScheduleItem(await get<ScheduleItem>(`/summary-schedules/${scheduleId}`));
 }
 
 export async function createSchedule(params: CreateScheduleParams): Promise<ScheduleItem> {
-    return post('/summary-schedules', params);
+    return normalizeScheduleItem(await post<ScheduleItem>('/summary-schedules', params));
 }
 
 export async function listSchedules(): Promise<ScheduleItem[]> {
     const data = await get<ScheduleItem[]>('/summary-schedules');
-    return data || [];
+    return (data || []).map(normalizeScheduleItem);
 }
 
 export async function updateSchedule(scheduleId: number, params: UpdateScheduleParams): Promise<ScheduleItem> {
-    return put(`/summary-schedules/${scheduleId}`, params);
+    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params));
 }
 
 export async function deleteSchedule(scheduleId: number): Promise<void> {
@@ -249,7 +259,7 @@ export async function deleteSchedule(scheduleId: number): Promise<void> {
 }
 
 export async function toggleSchedule(scheduleId: number, isActive: boolean): Promise<ScheduleItem> {
-    return put(`/summary-schedules/${scheduleId}/toggle`, { is_active: isActive });
+    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}/toggle`, { is_active: isActive }));
 }
 
 // ─── Candidate Selection ───────────────────────────────

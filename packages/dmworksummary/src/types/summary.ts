@@ -199,6 +199,13 @@ export interface ScheduleItem {
     title: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
+    interval_days?: number;
+    interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
+    run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants: { user_id: string }[];
@@ -212,18 +219,50 @@ export interface CreateScheduleParams {
     title: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
+    interval_days?: number;
+    interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
+    run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants?: { user_id: string }[];
+    /**
+     * scope='task' 让后端在一个事务里原子完成「建定时 + 绑定到 task_id」：
+     * 校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
+     * 不带 scope 的旧两步式（create 再 update 绑定）已被后端 C1 直接 400 拒绝。
+     */
+    scope?: 'task';
+    /** scope==='task' 时必填：把新建定时原子绑定到该 task。 */
+    task_id?: number;
 }
 
 export interface UpdateScheduleParams {
     title?: string;
     summary_mode?: SummaryModeType;
     cron_expr?: string;
+    interval_days?: number;
+    interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
+    run_time?: string;
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
     participants?: { user_id: string }[];
+    /**
+     * Plan A1: scope distinguishes the caller. "task" means a summary detail
+     * page is editing the period of ONE summary — if the schedule is shared by
+     * multiple tasks the backend clones a new schedule for this task instead of
+     * mutating the shared row. Omit (schedule list page) to edit the template
+     * in place.
+     */
+    scope?: 'task';
+    /** Required when scope === 'task': the task whose schedule_id is rebound. */
+    task_id?: number;
 }
 
 /** API 统一响应 */
@@ -282,12 +321,22 @@ export interface MemberCandidate {
     department: string;
 }
 
-/** 定时配置（内部状态用） */
+/** 定时配置（内部状态用）：通用「数量 × 单位」组合 */
+export type ScheduleUnit = "day" | "week" | "month";
+
 export interface ScheduleConfig {
-    period: "daily" | "weekly" | "monthly";
-    dayOfWeek?: number;   // 1=Mon, 2=Tue, ..., 7=Sun (ISO weekday)
-    dayOfMonth?: number;  // 1..28
-    time: string;         // "HH:MM"
+    unit: ScheduleUnit;   // 天 / 周 / 月
+    every: number;        // 正整数数量，如 every=2 + unit="week" => 每 2 周
+    time: string;         // "HH:MM" — 运行时刻，始终保留
+    dayOfWeek?: number;   // 周模式：1=周一 .. 7=周日，0/undefined=不限
+    dayOfMonth?: number;  // 月模式：1..31，0/undefined=不限
+    /**
+     * 非阻塞1：原始遗留 cron 表达式（仅当回填的定时是遗留 cron 时存在）。
+     * 新表单仅支持 interval(天/周/月)，无法精确回填 cron。带此标记时弹窗会
+     * 提示「保存将把该遗留 cron 转换为间隔模式」，避免用户没改周期却被默默
+     * 转成「每 1 天」。用户改动周期字段后该标记清空。
+     */
+    legacyCron?: string;
 }
 
 /** 主题模板占位符 */
