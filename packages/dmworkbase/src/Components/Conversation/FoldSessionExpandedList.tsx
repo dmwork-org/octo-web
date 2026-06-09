@@ -36,6 +36,7 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
         const senderName = message.from?.title || message.fromUID;
         const timeStr = formatMessageTimestamp(message.timestamp);
         const selectable = isMessageSelectable(message);
+        const showMessageHead = !message.revoke;
         return (
           <div
             key={message.clientMsgNo}
@@ -95,10 +96,12 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
               className="wk-fold-msg-body"
               style={{ pointerEvents: editMode ? "none" : undefined }}
             >
-              <div className="wk-fold-msg-head">
-                <span className="wk-fold-msg-name">{senderName}</span>
-                <span className="wk-fold-msg-time">{timeStr}</span>
-              </div>
+              {showMessageHead ? (
+                <div className="wk-fold-msg-head">
+                  <span className="wk-fold-msg-name">{senderName}</span>
+                  <span className="wk-fold-msg-time">{timeStr}</span>
+                </div>
+              ) : null}
               {renderMessageContent(message)}
             </div>
           </div>

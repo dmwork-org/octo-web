@@ -109,6 +109,7 @@ export default class ConversationVM extends ProviderListener {
     subscribers: Subscriber[] = []
     private foldSessionState: Map<string, FoldSessionUIState> = new Map()
     private messageSeqToFoldSessionId: Map<number, string> = new Map()
+    private liveFoldRevokeClientMsgNos: Set<string> = new Set()
     afterFoldSessionClientMsgNos: Set<string> = new Set() // 紧跟在折叠卡片后的消息，需强制独立显示
     private foldSessionActiveTimer: ReturnType<typeof setTimeout> | null = null // 协作态超时自动结束
 
@@ -273,7 +274,10 @@ export default class ConversationVM extends ProviderListener {
         if (!this.supportsFolding) {
             return false
         }
-        if (message.revoke || message.send) {
+        if (message.send) {
+            return false
+        }
+        if (message.revoke && !this.liveFoldRevokeClientMsgNos.has(message.clientMsgNo)) {
             return false
         }
         if (message.contentType === MessageContentTypeConst.time
@@ -840,7 +844,11 @@ export default class ConversationVM extends ProviderListener {
                 let existMessage = this.findMessageWithMessageID(param.message_id)
                 if (existMessage) {
                     existMessage.revoke = true
-                    existMessage.revoker = existMessage.fromUID;
+                    existMessage.revoker = message.fromUID;
+                    if (this.findFoldSessionByMessageSeq(existMessage.messageSeq)) {
+                        this.liveFoldRevokeClientMsgNos.add(existMessage.clientMsgNo)
+                    }
+                    this.rebuildRenderItems()
                     this.notifyListener()
                 }
             } else if (cmdContent.cmd === 'syncMessageExtra') { // 同步消息扩展
@@ -894,6 +902,7 @@ export default class ConversationVM extends ProviderListener {
                 this.renderItems = []
                 this.foldSessionState.clear()
                 this.messageSeqToFoldSessionId.clear()
+                this.liveFoldRevokeClientMsgNos.clear()
                 if (this.foldSessionActiveTimer) {
                     clearTimeout(this.foldSessionActiveTimer)
                     this.foldSessionActiveTimer = null
@@ -1550,6 +1559,7 @@ export default class ConversationVM extends ProviderListener {
     // 同步消息
     async syncMessages(initMessageSeq?: number, stateCallback?: () => void, locateOffsetY: number = 0) {
         this.loading = true
+        this.liveFoldRevokeClientMsgNos.clear()
         this.notifyListener()
 
         const opts = new SyncMessageOptions()
