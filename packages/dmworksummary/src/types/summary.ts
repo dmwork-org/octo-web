@@ -120,6 +120,8 @@ export interface SummaryListItem {
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;
+    /** 绑定的定时配置 id。存在即表示该总结是定时任务（无论是否已执行过）。 */
+    schedule_id?: number | null;
     time_range_start: string;
     time_range_end: string;
     sources: SourceItem[];
@@ -146,7 +148,7 @@ export interface SummaryDetail {
     participants: Participant[];
     result: SummaryResult | null;
     error_message: string | null;
-    schedule_id?: number;
+    schedule_id?: number | null;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;
