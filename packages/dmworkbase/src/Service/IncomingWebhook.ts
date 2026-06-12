@@ -70,6 +70,17 @@ export function canManageIncomingWebhook(
 }
 
 /**
+ * 是否允许对该 webhook 执行「测试推送」（纯函数，便于单测钉死三态）。
+ *
+ * 仅 enabled 可测：test 走管理面、绕开推送面的 enabled 检查，对 disabled / deleted
+ * 的 webhook 仍会向群内发真实消息，且「测试成功」会对一个真实推送被 401 挡掉的
+ * webhook 给出假信心。与「禁用=不再发消息」的语义保持一致。
+ */
+export function canTestWebhook(item: Pick<IncomingWebhook, "status">): boolean {
+    return item.status === IncomingWebhookStatus.enabled;
+}
+
+/**
  * 构造 webhook 新建 / 编辑请求体（纯函数，便于单测钉死易错边界）。
  *
  * 规则（与服务端契约对齐）：
@@ -254,4 +265,35 @@ export function resolveWebhookRowDisplay(
         showBadge: true,
         avatarClickable: false,
     };
+}
+
+/**
+ * 构造 native / wecom 适配器的 curl 调用示例（纯函数，便于单测）。
+ *
+ * 关键：两种适配器 body 结构不同，不可互换（否则 push 返回 400）：
+ *   - native：`{"content":"..."}`（content 按 markdown 渲染，`text` 是 Slack 别名）；
+ *   - wecom ：企业微信群机器人格式 `{"msgtype":"text","text":{"content":"..."}}`。
+ *
+ * 安全：刻意不带 `username` / `avatar_url`——这两个发送者覆盖字段仅当 webhook
+ * 创建者当前为群管理员时才生效，对成员 / bot 创建的 webhook 一律忽略，默认带上反而误导。
+ *
+ * 注意：`url` 与 body 实参均以单引号包裹并对内部单引号做 POSIX 转义（`'` → `'\''`），
+ * 故未来本地化样例文案 / 服务端 URL 含单引号也不会破坏复制出的命令。
+ */
+export function buildWebhookCurlExample(
+    key: "native" | "wecom",
+    url: string,
+    sampleContent: string
+): string {
+    const body =
+        key === "wecom"
+            ? { msgtype: "text", text: { content: sampleContent } }
+            : { content: sampleContent };
+    // POSIX：单引号内无转义，故对内容里的 ' 以 '\'' 收尾再续接，保证复制出的命令安全可执行。
+    const shellQuote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+    return [
+        `curl -X POST ${shellQuote(url)} \\`,
+        `  -H 'Content-Type: application/json' \\`,
+        `  -d ${shellQuote(JSON.stringify(body))}`,
+    ].join("\n");
 }

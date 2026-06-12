@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+    IncomingWebhookStatus,
     buildIncomingWebhookUrl,
+    buildWebhookCurlExample,
     buildWebhookUpsertReq,
     buildWebhookUrlRows,
     canManageIncomingWebhook,
+    canTestWebhook,
     isIncomingWebhookSender,
     webhookFromOfMessage,
 } from "../IncomingWebhook";
@@ -292,5 +295,58 @@ describe("buildWebhookUrlRows", () => {
 
     it("既无 url 也无 urls（退化态）→ 空数组", () => {
         expect(buildWebhookUrlRows({ url: "" }, apiURL, origin)).toEqual([]);
+    });
+});
+
+describe("buildWebhookCurlExample", () => {
+    const url = "https://im-test.example.com/api/v1/incoming-webhooks/iwh_abc/tok";
+    const sample = "构建成功 ✅";
+
+    it("native：body 用 content，不含 msgtype", () => {
+        const out = buildWebhookCurlExample("native", url, sample);
+        expect(out).toContain(`curl -X POST '${url}'`);
+        expect(out).toContain("-H 'Content-Type: application/json'");
+        // native 直接 content；解析 -d 实参核对结构，避免转义/字段名漂移。
+        const body = JSON.parse(out.match(/-d '(.+)'$/)![1]);
+        expect(body).toEqual({ content: sample });
+        expect(out).not.toContain("msgtype");
+    });
+
+    it("wecom：body 用企微 msgtype/text 结构", () => {
+        const out = buildWebhookCurlExample("wecom", url, sample);
+        const body = JSON.parse(out.match(/-d '(.+)'$/)![1]);
+        expect(body).toEqual({ msgtype: "text", text: { content: sample } });
+    });
+
+    it("刻意不带 username / avatar_url（管理员专属覆盖字段，默认带上会误导）", () => {
+        expect(buildWebhookCurlExample("native", url, sample)).not.toMatch(
+            /username|avatar_url/
+        );
+        expect(buildWebhookCurlExample("wecom", url, sample)).not.toMatch(
+            /username|avatar_url/
+        );
+    });
+
+    it("样例文案含单引号时做 POSIX 转义，复制出的命令仍可执行", () => {
+        const out = buildWebhookCurlExample("native", url, "C'est fait ✅");
+        // 转义后 -d 实参形如 '...'\''...'：不应出现未转义的裸 ' 提前终止引号串。
+        expect(out).toContain("'\\''");
+        // 仍是合法的单引号包裹串：去掉 '\'' 续接记法后，content 应原样还原。
+        const dArg = out.match(/-d '(.*)'$/s)![1];
+        const unquoted = dArg.replace(/'\\''/g, "'");
+        expect(JSON.parse(unquoted)).toEqual({ content: "C'est fait ✅" });
+    });
+
+    it("URL 含单引号时同样转义，不会破坏 curl 目标", () => {
+        const out = buildWebhookCurlExample("native", "https://h/x'y", sample);
+        expect(out).toContain("curl -X POST 'https://h/x'\\''y'");
+    });
+});
+
+describe("canTestWebhook", () => {
+    it("仅 enabled 可测试，disabled / deleted 一律拒绝", () => {
+        expect(canTestWebhook({ status: IncomingWebhookStatus.enabled })).toBe(true);
+        expect(canTestWebhook({ status: IncomingWebhookStatus.disabled })).toBe(false);
+        expect(canTestWebhook({ status: IncomingWebhookStatus.deleted })).toBe(false);
     });
 });
