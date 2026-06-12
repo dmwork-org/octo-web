@@ -259,7 +259,7 @@ function offsetMentionEntities(
  * 参考 useMessageRow.ts + Messages/Base/index.tsx 的群成员名字解析路径:
  *
  *   1. 群消息: 从 channelManager.getSubscribes(groupChannel) 拉群成员列表,
- *      按 uid 匹配后用 subscriberDisplayName (remark > real_name > name)
+ *      按 uid 匹配后用 subscriberDisplayName (real_name(verified) > remark > name)
  *      — 群内用户大概率没开过 1v1, Person channelInfo 缓存常 miss,
  *      群成员列表缓存命中率高得多, 是主路径
  *   2. fallback: Person channelInfo.title (用户真开过 1v1 时才有)
@@ -2823,6 +2823,9 @@ export class Conversation
                           groupName = channelInfo?.title;
                         }
 
+                        const selfSub = this.vm.subscribers.find(
+                          (s) => s.uid === WKApp.loginInfo.uid
+                        );
                         return buildChatContext({
                           messages: this.vm.messagesOfOrigin || [],
                           subscribers: this.vm.subscribers,
@@ -2836,6 +2839,13 @@ export class Conversation
                               : undefined,
                           groupName,
                           threadName,
+                          self: {
+                            name: WKApp.loginInfo.name,
+                            remark: selfSub?.remark,
+                            realName: WKApp.loginInfo.realName,
+                            realnameVerified:
+                              WKApp.loginInfo.realnameVerified === true,
+                          },
                         });
                       }}
                       onSend={async (
