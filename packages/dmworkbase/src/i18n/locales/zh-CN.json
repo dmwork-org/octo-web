@@ -38,7 +38,6 @@
   "conversationList.minutesAgoShort": "{{count}}分钟",
   "conversationList.toggleThreads": "展开或收起子区",
   "conversationList.typing": "正在输入",
-  "conversationList.unreadCountHint": "[{{count}} 条]",
   "chatPage.archivedThreadNotice": "该子区已归档。发送消息后，子区会恢复为活跃状态。",
   "chatPage.channelSettings": "频道设置",
   "chatPage.chatModuleName": "聊天",

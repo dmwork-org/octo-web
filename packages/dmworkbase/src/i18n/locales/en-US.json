@@ -38,7 +38,6 @@
   "conversationList.minutesAgoShort": "{{count}}m",
   "conversationList.toggleThreads": "Expand or collapse threads",
   "conversationList.typing": "typing",
-  "conversationList.unreadCountHint": "[{{count}}]",
   "chatPage.archivedThreadNotice": "This thread is archived. Sending a message will restore it to active status.",
   "chatPage.channelSettings": "Channel settings",
   "chatPage.chatModuleName": "Chat",

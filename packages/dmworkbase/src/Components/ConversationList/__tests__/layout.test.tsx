@@ -14,29 +14,29 @@ import {
 let ConversationList: typeof import("../index").default;
 let container: HTMLDivElement;
 
+class MockChannel {
+  channelID: string;
+  channelType: number;
+
+  constructor(channelID: string, channelType: number) {
+    this.channelID = channelID;
+    this.channelType = channelType;
+  }
+
+  getChannelKey() {
+    return `${this.channelID}_${this.channelType}`;
+  }
+
+  isEqual(other: { channelID: string; channelType: number }) {
+    return (
+      other?.channelID === this.channelID &&
+      other?.channelType === this.channelType
+    );
+  }
+}
+
 beforeAll(async () => {
   vi.doMock("wukongimjssdk", () => {
-    class Channel {
-      channelID: string;
-      channelType: number;
-
-      constructor(channelID: string, channelType: number) {
-        this.channelID = channelID;
-        this.channelType = channelType;
-      }
-
-      getChannelKey() {
-        return `${this.channelID}_${this.channelType}`;
-      }
-
-      isEqual(other: Channel) {
-        return (
-          other?.channelID === this.channelID &&
-          other?.channelType === this.channelType
-        );
-      }
-    }
-
     const sdk = {
       shared: () => ({
         channelManager: {
@@ -51,7 +51,7 @@ beforeAll(async () => {
     return {
       default: sdk,
       WKSDK: sdk,
-      Channel,
+      Channel: MockChannel,
       ChannelTypePerson: 1,
       ChannelTypeGroup: 2,
       ReminderType: {
@@ -185,13 +185,7 @@ afterEach(() => {
 });
 
 function makeChannel(channelID: string, channelType = 1) {
-  return {
-    channelID,
-    channelType,
-    getChannelKey: () => `${channelID}_${channelType}`,
-    isEqual: (other: { channelID: string; channelType: number }) =>
-      other?.channelID === channelID && other?.channelType === channelType,
-  };
+  return new MockChannel(channelID, channelType);
 }
 
 function makeConversation(options: {
@@ -272,5 +266,44 @@ describe("ConversationList unread indicators", () => {
     expect(
       indicators?.querySelector(".wk-conv-unread-num--muted")?.textContent
     ).toBe("14");
+  });
+
+  it("renders mention and muted unread count together", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [makeConversation({ unread: 5, mention: true, mute: true })] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
+    expect(
+      indicators?.querySelector(".wk-conv-unread-num--muted")?.textContent
+    ).toBe("5");
+  });
+
+  it("does not render indicators when there is no unread count or mention", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[makeConversation({ unread: 0 })] as any}
+        />,
+        container
+      );
+    });
+
+    expect(
+      container.querySelector(".wk-conversationlist-item-indicators")
+    ).toBeNull();
   });
 });
