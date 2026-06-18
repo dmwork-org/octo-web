@@ -21,6 +21,7 @@ describe('friendApply reddot cleanup', () => {
         let isLoggedIn = true;
         let currentUid = uid;
         let shouldReject = false;
+        let clearReddotImpl: (() => Promise<void>) | undefined;
 
         return {
             deps: {
@@ -31,6 +32,7 @@ describe('friendApply reddot cleanup', () => {
                     if (shouldReject) {
                         throw new Error('API Error');
                     }
+                    await clearReddotImpl?.();
                 },
                 emitUnreadCount: (count: number) => {
                     friendApplyCount = count;
@@ -63,16 +65,14 @@ describe('friendApply reddot cleanup', () => {
             rejectNextCalls: () => {
                 shouldReject = true;
             },
+            setClearReddotImpl: (impl: () => Promise<void>) => {
+                clearReddotImpl = impl;
+            },
         };
     }
 
     beforeEach(() => {
         resetDeprecatedFriendApplyReddotCleanupForTest();
-    });
-
-    it('should have zero count initially', () => {
-        const manager = createCleanupDeps();
-        expect(manager.getCount()).toBe(0);
     });
 
     it('should not clear when user is not logged in', async () => {
@@ -108,6 +108,25 @@ describe('friendApply reddot cleanup', () => {
 
         expect(firstStarted).toBe(true);
         expect(secondStarted).toBe(false);
+        expect(manager.getApiCalled()).toBe(1);
+    });
+
+    it('should only clear once for concurrent same-user calls', async () => {
+        const manager = createCleanupDeps(5);
+        let releaseClear!: () => void;
+        const clearStarted = new Promise<void>((resolve) => {
+            releaseClear = resolve;
+        });
+        manager.setClearReddotImpl(() => clearStarted);
+
+        const firstCall = clearDeprecatedFriendApplyReddotOnce(manager.deps);
+        const secondCall = clearDeprecatedFriendApplyReddotOnce(manager.deps);
+
+        releaseClear();
+        const results = await Promise.all([firstCall, secondCall]);
+
+        expect(results).toContain(true);
+        expect(results).toContain(false);
         expect(manager.getApiCalled()).toBe(1);
     });
 

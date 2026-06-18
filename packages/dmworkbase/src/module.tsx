@@ -436,7 +436,6 @@ export default class BaseModule implements IModule {
         friendApply.unread = true;
         friendApply.createdAt = message.timestamp;
         WKApp.shared.addFriendApply(friendApply);
-        WKApp.shared.setFriendApplysUnreadCount();
         this.tipsAudio();
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
