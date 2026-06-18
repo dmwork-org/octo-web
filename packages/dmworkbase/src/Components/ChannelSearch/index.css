@@ -933,6 +933,10 @@
   font: 400 12px/20px var(--wk-font-sans);
 }
 
+.wk-channel-search-load-more--error {
+  color: var(--wk-color-error);
+}
+
 .wk-channel-search-load-more button {
   border: none;
   padding: 0;

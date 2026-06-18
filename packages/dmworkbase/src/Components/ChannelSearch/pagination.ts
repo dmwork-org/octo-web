@@ -21,7 +21,11 @@ export function shouldStopPaginationForCursor({
   nextCursor?: string;
   requestedCursor?: string;
 }) {
-  return Boolean(requestedCursor && hasMore && nextCursor === requestedCursor);
+  return Boolean(
+    requestedCursor &&
+      hasMore &&
+      (!nextCursor || nextCursor === requestedCursor)
+  );
 }
 
 export function shouldPauseAutoPaginationForEmptyPage({

@@ -52,6 +52,15 @@ describe("channel search scroll pagination helpers", () => {
     ).toBe(true);
   });
 
+  it("stops pagination when the backend has more but returns no next cursor", () => {
+    expect(
+      shouldStopPaginationForCursor({
+        hasMore: true,
+        requestedCursor: "cursor-2",
+      })
+    ).toBe(true);
+  });
+
   it("continues pagination when the backend advances the cursor", () => {
     expect(
       shouldStopPaginationForCursor({

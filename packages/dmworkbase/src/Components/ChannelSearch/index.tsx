@@ -22,12 +22,11 @@ import WKAvatar from "../WKAvatar";
 import WKButton from "../WKButton";
 import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
-import { getFileIcon } from "../MessageInput/AttachmentNode";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
 import { shouldRunSearch } from "./apiAdapter";
-import { fileNameForIconLookup } from "./fileIcon";
+import { resolveChannelSearchFileIconSrc } from "./fileIcon";
 import {
   canLocateChannelSearchItem,
   resolveChannelSearchLocateTarget,
@@ -149,10 +148,6 @@ function compactFileSize(bytes: number) {
     return `${(bytes / 1024).toFixed(1).replace(/\.0$/, "")}KB`;
   }
   return `${bytes}B`;
-}
-
-function resolveFileIconSrc(fileName: string, extension?: string) {
-  return getFileIcon(fileNameForIconLookup(fileName, extension), "");
 }
 
 function useOutsideDismiss(
@@ -944,7 +939,10 @@ const FileInlineResult = React.memo(function FileInlineResult({
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
   const inlineFileName = fileName.replace(/\.[^.]+$/, "");
-  const fileIconSrc = resolveFileIconSrc(fileName, item.file?.extension);
+  const fileIconSrc = resolveChannelSearchFileIconSrc(
+    fileName,
+    item.file?.extension
+  );
 
   return (
     <div className="wk-channel-search-result wk-channel-search-file-inline">
@@ -967,7 +965,7 @@ const FileInlineResult = React.memo(function FileInlineResult({
         </div>
         <div className="wk-channel-search-inline-file-card">
           <div className="wk-channel-search-inline-file-icon">
-            {fileIconSrc && <img src={fileIconSrc} alt="" />}
+            <img src={fileIconSrc} alt="" />
           </div>
           <div className="wk-channel-search-inline-file-body">
             <div className="wk-channel-search-inline-file-name">
@@ -1049,7 +1047,10 @@ const FileResultItem = React.memo(function FileResultItem({
   const menuRef = useRef<HTMLDivElement>(null);
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
-  const fileIconSrc = resolveFileIconSrc(fileName, item.file?.extension);
+  const fileIconSrc = resolveChannelSearchFileIconSrc(
+    fileName,
+    item.file?.extension
+  );
 
   const handleDownload = async () => {
     const url = item.file?.downloadUrl || item.file?.url;
@@ -1196,6 +1197,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const [autoPaginationPaused, setAutoPaginationPaused] = useState(false);
   const requestIdRef = useRef(0);
   const loadingMoreCursorRef = useRef<string | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const filterWrapRef = useRef<HTMLDivElement>(null);
@@ -1338,14 +1340,43 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     ]
   );
 
-  const handleContentScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
-      if (isNearChannelSearchScrollBottom(event.currentTarget)) {
+  const maybeLoadNextPageFromScroll = useCallback(
+    (content: HTMLElement) => {
+      if (isNearChannelSearchScrollBottom(content)) {
         loadNextPage();
       }
     },
     [loadNextPage]
   );
+
+  const handleContentScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const content = event.currentTarget;
+      if (typeof window.requestAnimationFrame !== "function") {
+        maybeLoadNextPageFromScroll(content);
+        return;
+      }
+      if (scrollFrameRef.current !== null) {
+        return;
+      }
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        maybeLoadNextPageFromScroll(content);
+      });
+    },
+    [maybeLoadNextPageFromScroll]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (
+        scrollFrameRef.current !== null &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (isComposing) return;
@@ -1374,13 +1405,12 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     return () => window.clearTimeout(timer);
   }, [canSearch, isComposing, runSearch]);
 
+  // User scrolls and this first-screen top-up effect share the same load guard.
   useEffect(() => {
     const content = contentRef.current;
     if (!content) return;
-    if (isNearChannelSearchScrollBottom(content)) {
-      loadNextPage();
-    }
-  }, [activeTab, loadNextPage, response.items.length]);
+    maybeLoadNextPageFromScroll(content);
+  }, [activeTab, maybeLoadNextPageFromScroll, response.items.length]);
 
   const handleLocate = useCallback(
     (item: ChannelSearchItem) => {

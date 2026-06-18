@@ -1,29 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { channelSearchFileIconTestUtils } from "../fileIcon";
 
-const { fileNameForIconLookup } = channelSearchFileIconTestUtils;
+const { extensionForIconLookup } = channelSearchFileIconTestUtils;
 
-describe("channel search file icon lookup name", () => {
-  it("keeps the original name when no backend extension is provided", () => {
-    expect(fileNameForIconLookup("report.final")).toBe("report.final");
+describe("channel search file icon lookup extension", () => {
+  it("falls back to the visible file name when no backend extension is provided", () => {
+    expect(extensionForIconLookup("report.final")).toBe("final");
   });
 
-  it("keeps the original name when it already ends with the backend extension", () => {
-    expect(fileNameForIconLookup("report.pdf", "pdf")).toBe("report.pdf");
-    expect(fileNameForIconLookup("REPORT.PDF", "pdf")).toBe("REPORT.PDF");
+  it("uses the backend extension when it matches the visible file name", () => {
+    expect(extensionForIconLookup("report.pdf", "pdf")).toBe("pdf");
+    expect(extensionForIconLookup("REPORT.PDF", "pdf")).toBe("pdf");
   });
 
-  it("appends a cleaned backend extension when the name has no extension", () => {
-    expect(fileNameForIconLookup("report", " .pdf ")).toBe("report.pdf");
+  it("cleans the backend extension before lookup", () => {
+    expect(extensionForIconLookup("report", " .pdf ")).toBe("pdf");
   });
 
   it("prefers backend extension when a dotted name segment is not the file type", () => {
-    expect(fileNameForIconLookup("report.final", "pdf")).toBe(
-      "report.final.pdf"
-    );
+    expect(extensionForIconLookup("report.final", "pdf")).toBe("pdf");
   });
 
   it("prefers backend extension when the visible name conflicts with it", () => {
-    expect(fileNameForIconLookup("report.doc", "pdf")).toBe("report.doc.pdf");
+    expect(extensionForIconLookup("report.doc", "pdf")).toBe("pdf");
   });
 });

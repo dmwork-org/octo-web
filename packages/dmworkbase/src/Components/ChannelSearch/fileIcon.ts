@@ -1,3 +1,5 @@
+import { getFileIconByExtension } from "../../Utils/fileIcon";
+
 function normalizeFileExtension(extension?: string) {
   return extension?.trim().replace(/^\./, "").toLowerCase() || "";
 }
@@ -10,17 +12,22 @@ function getFileNameExtension(fileName: string) {
   return fileName.slice(dotIdx + 1).toLowerCase();
 }
 
-export function fileNameForIconLookup(fileName: string, extension?: string) {
+export function extensionForIconLookup(fileName: string, extension?: string) {
   const ext = normalizeFileExtension(extension);
   if (!ext) {
-    return fileName;
+    return getFileNameExtension(fileName);
   }
-  if (getFileNameExtension(fileName) === ext) {
-    return fileName;
-  }
-  return `${fileName}.${ext}`;
+  return ext;
+}
+
+export function resolveChannelSearchFileIconSrc(
+  fileName: string,
+  extension?: string
+) {
+  return getFileIconByExtension(extensionForIconLookup(fileName, extension));
 }
 
 export const channelSearchFileIconTestUtils = {
-  fileNameForIconLookup,
+  extensionForIconLookup,
+  resolveChannelSearchFileIconSrc,
 };
