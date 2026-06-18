@@ -22,15 +22,20 @@ import WKAvatar from "../WKAvatar";
 import WKButton from "../WKButton";
 import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
-import { getFileIcon as getFileIconUrl } from "../MessageInput/AttachmentNode";
+import { getFileIcon } from "../MessageInput/AttachmentNode";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
 import { shouldRunSearch } from "./apiAdapter";
+import { fileNameForIconLookup } from "./fileIcon";
 import {
   canLocateChannelSearchItem,
   resolveChannelSearchLocateTarget,
 } from "./locate";
+import {
+  isNearChannelSearchScrollBottom,
+  shouldStopPaginationForCursor,
+} from "./pagination";
 import { defaultChannelSearchFilters } from "./types";
 import type {
   ChannelSearchDataSource,
@@ -57,7 +62,6 @@ interface ChannelSearchPanelProps {
 
 const tabs: ChannelSearchTab[] = ["all", "message", "media", "file"];
 const SEARCH_DEBOUNCE_MS = 300;
-const LOAD_MORE_SCROLL_THRESHOLD = 120;
 
 const tabI18nKey: Record<ChannelSearchTab, string> = {
   all: "base.channelSearch.tabs.all",
@@ -146,12 +150,8 @@ function compactFileSize(bytes: number) {
   return `${bytes}B`;
 }
 
-function getFileIconName(fileName: string, extension?: string) {
-  const ext = extension?.replace(/^\./, "").trim();
-  if (!ext || /\.[^.]+$/.test(fileName)) {
-    return fileName;
-  }
-  return `${fileName}.${ext}`;
+function resolveFileIconSrc(fileName: string, extension?: string) {
+  return getFileIcon(fileNameForIconLookup(fileName, extension), "");
 }
 
 function useOutsideDismiss(
@@ -943,10 +943,7 @@ const FileInlineResult = React.memo(function FileInlineResult({
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
   const inlineFileName = fileName.replace(/\.[^.]+$/, "");
-  const fileIconSrc = getFileIconUrl(
-    getFileIconName(fileName, item.file?.extension),
-    ""
-  );
+  const fileIconSrc = resolveFileIconSrc(fileName, item.file?.extension);
 
   return (
     <div className="wk-channel-search-result wk-channel-search-file-inline">
@@ -1051,10 +1048,7 @@ const FileResultItem = React.memo(function FileResultItem({
   const menuRef = useRef<HTMLDivElement>(null);
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
-  const fileIconSrc = getFileIconUrl(
-    getFileIconName(fileName, item.file?.extension),
-    ""
-  );
+  const fileIconSrc = resolveFileIconSrc(fileName, item.file?.extension);
 
   const handleDownload = async () => {
     const url = item.file?.downloadUrl || item.file?.url;
@@ -1197,6 +1191,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const [loadingMore, setLoadingMore] = useState(false);
   const [queryStarted, setQueryStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paginationError, setPaginationError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const loadingMoreCursorRef = useRef<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -1247,7 +1242,6 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       if (cursor && loadingMoreCursorRef.current === cursor) {
         return;
       }
-      loadingMoreCursorRef.current = cursor || null;
 
       // Empty-state guard: the keyword-optional `_search`/`_search_all` endpoints
       // reject an empty keyword + empty filter with 400 (validateSearchNotEmpty).
@@ -1257,13 +1251,16 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         return;
       }
 
+      loadingMoreCursorRef.current = cursor || null;
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       setQueryStarted(true);
-      setError(null);
       if (cursor) {
+        setPaginationError(null);
         setLoadingMore(true);
       } else {
+        setError(null);
+        setPaginationError(null);
         setLoading(true);
       }
 
@@ -1278,14 +1275,24 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
           limit: 20,
         });
         if (requestIdRef.current !== requestId) return;
+        const stopPagination = shouldStopPaginationForCursor({
+          hasMore: next.hasMore,
+          nextCursor: next.nextCursor,
+          requestedCursor: cursor,
+        });
         setResponse((prev) => ({
           items: cursor ? [...prev.items, ...next.items] : next.items,
-          nextCursor: next.nextCursor,
-          hasMore: next.hasMore,
+          nextCursor: stopPagination ? undefined : next.nextCursor,
+          hasMore: stopPagination ? false : next.hasMore,
         }));
       } catch (_) {
         if (requestIdRef.current === requestId) {
-          setError(t("base.channelSearch.searchFailed"));
+          const message = t("base.channelSearch.searchFailed");
+          if (cursor) {
+            setPaginationError(message);
+          } else {
+            setError(message);
+          }
         }
       } finally {
         if (requestIdRef.current === requestId) {
@@ -1300,25 +1307,29 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     [activeTab, channel, dataSource, filters, isComposing, keyword, t]
   );
 
-  const loadNextPage = useCallback(() => {
-    if (loading || loadingMore || !response.hasMore || !response.nextCursor) {
-      return;
-    }
-    void runSearch(response.nextCursor);
-  }, [
-    loading,
-    loadingMore,
-    response.hasMore,
-    response.nextCursor,
-    runSearch,
-  ]);
+  const loadNextPage = useCallback(
+    (force = false) => {
+      if (loading || loadingMore || !response.hasMore || !response.nextCursor) {
+        return;
+      }
+      if (paginationError && !force) {
+        return;
+      }
+      void runSearch(response.nextCursor);
+    },
+    [
+      loading,
+      loadingMore,
+      paginationError,
+      response.hasMore,
+      response.nextCursor,
+      runSearch,
+    ]
+  );
 
   const handleContentScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
-      const target = event.currentTarget;
-      const distanceToBottom =
-        target.scrollHeight - target.scrollTop - target.clientHeight;
-      if (distanceToBottom <= LOAD_MORE_SCROLL_THRESHOLD) {
+      if (isNearChannelSearchScrollBottom(event.currentTarget)) {
         loadNextPage();
       }
     },
@@ -1332,6 +1343,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     setResponse({ items: [], hasMore: false });
     setLoadingMore(false);
     setError(null);
+    setPaginationError(null);
 
     // No keyword and no effective filter → don't hit the backend (it would 400).
     // Reset to the initial empty-state prompt instead of a spinner.
@@ -1353,9 +1365,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   useEffect(() => {
     const content = contentRef.current;
     if (!content) return;
-    const distanceToBottom =
-      content.scrollHeight - content.scrollTop - content.clientHeight;
-    if (distanceToBottom <= LOAD_MORE_SCROLL_THRESHOLD) {
+    if (isNearChannelSearchScrollBottom(content)) {
       loadNextPage();
     }
   }, [activeTab, loadNextPage, response.items.length]);
@@ -1403,7 +1413,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         </div>
       );
     }
-    if (error) {
+    if (error && response.items.length === 0) {
       return <div className="wk-channel-search-error">{error}</div>;
     }
     if (!queryStarted || response.items.length === 0) {
@@ -1525,6 +1535,14 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         {loadingMore && (
           <div className="wk-channel-search-load-more" role="status">
             {t("base.channelSearch.loading")}
+          </div>
+        )}
+        {paginationError && response.items.length > 0 && (
+          <div className="wk-channel-search-load-more wk-channel-search-load-more--error">
+            <span>{paginationError}</span>
+            <button type="button" onClick={() => loadNextPage(true)}>
+              {t("base.channelSearch.loadMore")}
+            </button>
           </div>
         )}
       </div>

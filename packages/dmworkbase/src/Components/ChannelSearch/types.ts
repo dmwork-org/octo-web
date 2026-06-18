@@ -37,7 +37,6 @@ export interface ChannelSearchFileInfo {
   name: string;
   size: number;
   extension?: string;
-  iconUrl?: string;
   url?: string;
   downloadUrl?: string;
   previewUrl?: string | null;

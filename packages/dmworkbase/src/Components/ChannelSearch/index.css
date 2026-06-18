@@ -23,7 +23,7 @@
   );
   --channel-search-accent: var(--wk-text-accent);
   --channel-search-warning: var(--wk-color-warning);
-  --channel-search-highlight: #f8e6ab;
+  --channel-search-highlight: var(--wk-color-search-highlight);
   --channel-search-shadow: var(--wk-shadow-lg),
     0 0 0 1px var(--wk-border-subtle);
   --channel-search-overlay: color-mix(
@@ -773,8 +773,7 @@
   position: relative;
   width: 16px;
   height: 16px;
-  border: 1px solid
-    color-mix(in srgb, var(--wk-text-primary) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--wk-text-primary) 24%, transparent);
   border-radius: 4px;
   flex-shrink: 0;
   background: var(--channel-search-surface);
@@ -878,8 +877,7 @@
 .wk-channel-search-radio-list button span {
   width: 16px;
   height: 16px;
-  border: 1px solid
-    color-mix(in srgb, var(--wk-text-primary) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--wk-text-primary) 35%, transparent);
   border-radius: 9999px;
 }
 
@@ -927,8 +925,19 @@
 
 .wk-channel-search-load-more {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 8px;
   padding: 12px 16px 16px;
   color: var(--channel-search-text-tertiary);
   font: 400 12px/20px var(--wk-font-sans);
+}
+
+.wk-channel-search-load-more--error button {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--channel-search-accent);
+  font: inherit;
+  cursor: pointer;
 }
