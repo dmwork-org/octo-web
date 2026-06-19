@@ -22,15 +22,20 @@ import WKAvatar from "../WKAvatar";
 import WKButton from "../WKButton";
 import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
-import FileHelper from "../../Utils/filehelper";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
 import { shouldRunSearch } from "./apiAdapter";
+import { resolveChannelSearchFileIconSrc } from "./fileIcon";
 import {
   canLocateChannelSearchItem,
   resolveChannelSearchLocateTarget,
 } from "./locate";
+import {
+  isNearChannelSearchScrollBottom,
+  shouldPauseAutoPaginationForEmptyPage,
+  shouldStopPaginationForCursor,
+} from "./pagination";
 import { defaultChannelSearchFilters } from "./types";
 import type {
   ChannelSearchDataSource,
@@ -143,14 +148,6 @@ function compactFileSize(bytes: number) {
     return `${(bytes / 1024).toFixed(1).replace(/\.0$/, "")}KB`;
   }
   return `${bytes}B`;
-}
-
-function assetUrl(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && "default" in value) {
-    return assetUrl((value as { default?: unknown }).default);
-  }
-  return undefined;
 }
 
 function useOutsideDismiss(
@@ -942,8 +939,10 @@ const FileInlineResult = React.memo(function FileInlineResult({
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
   const inlineFileName = fileName.replace(/\.[^.]+$/, "");
-  const fileIconInfo = FileHelper.getFileIconInfo(fileName);
-  const fileIconSrc = item.file?.iconUrl || assetUrl(fileIconInfo?.icon);
+  const fileIconSrc = resolveChannelSearchFileIconSrc(
+    fileName,
+    item.file?.extension
+  );
 
   return (
     <div className="wk-channel-search-result wk-channel-search-file-inline">
@@ -966,7 +965,7 @@ const FileInlineResult = React.memo(function FileInlineResult({
         </div>
         <div className="wk-channel-search-inline-file-card">
           <div className="wk-channel-search-inline-file-icon">
-            {fileIconSrc && <img src={fileIconSrc} alt="" />}
+            <img src={fileIconSrc} alt="" />
           </div>
           <div className="wk-channel-search-inline-file-body">
             <div className="wk-channel-search-inline-file-name">
@@ -1048,9 +1047,10 @@ const FileResultItem = React.memo(function FileResultItem({
   const menuRef = useRef<HTMLDivElement>(null);
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
-  const fileIconInfo = FileHelper.getFileIconInfo(fileName);
-  const fileIconSrc = item.file?.iconUrl || assetUrl(fileIconInfo?.icon);
-  const hasFigmaIcon = !!item.file?.iconUrl;
+  const fileIconSrc = resolveChannelSearchFileIconSrc(
+    fileName,
+    item.file?.extension
+  );
 
   const handleDownload = async () => {
     const url = item.file?.downloadUrl || item.file?.url;
@@ -1084,18 +1084,8 @@ const FileResultItem = React.memo(function FileResultItem({
         }
       }}
     >
-      <div
-        className={[
-          "wk-channel-search-file-icon",
-          hasFigmaIcon ? "wk-channel-search-file-icon--figma" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={{
-          backgroundColor: hasFigmaIcon ? undefined : fileIconInfo?.color,
-        }}
-      >
-        {fileIconSrc && <img src={fileIconSrc} alt="" />}
+      <div className="wk-channel-search-file-icon">
+        <img src={fileIconSrc} alt="" />
       </div>
       <div className="wk-channel-search-file-body">
         <div className="wk-channel-search-file-name">
@@ -1203,8 +1193,13 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const [loadingMore, setLoadingMore] = useState(false);
   const [queryStarted, setQueryStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paginationError, setPaginationError] = useState<string | null>(null);
+  const [autoPaginationPaused, setAutoPaginationPaused] = useState(false);
   const requestIdRef = useRef(0);
+  const loadingMoreCursorRef = useRef<string | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
   const filterCount = activeFilterCount(filters);
@@ -1248,6 +1243,9 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       if (isComposing) {
         return;
       }
+      if (cursor && loadingMoreCursorRef.current === cursor) {
+        return;
+      }
 
       // Empty-state guard: the keyword-optional `_search`/`_search_all` endpoints
       // reject an empty keyword + empty filter with 400 (validateSearchNotEmpty).
@@ -1257,13 +1255,17 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         return;
       }
 
+      loadingMoreCursorRef.current = cursor || null;
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       setQueryStarted(true);
-      setError(null);
       if (cursor) {
+        setPaginationError(null);
         setLoadingMore(true);
       } else {
+        setError(null);
+        setPaginationError(null);
+        setAutoPaginationPaused(false);
         setLoading(true);
       }
 
@@ -1278,31 +1280,113 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
           limit: 20,
         });
         if (requestIdRef.current !== requestId) return;
+        const stopPagination = shouldStopPaginationForCursor({
+          hasMore: next.hasMore,
+          nextCursor: next.nextCursor,
+          requestedCursor: cursor,
+        });
+        const pauseAutoPagination = shouldPauseAutoPaginationForEmptyPage({
+          hasMore: next.hasMore,
+          itemCount: next.items.length,
+          nextCursor: next.nextCursor,
+          requestedCursor: cursor,
+        });
+        setAutoPaginationPaused(pauseAutoPagination);
         setResponse((prev) => ({
           items: cursor ? [...prev.items, ...next.items] : next.items,
-          nextCursor: next.nextCursor,
-          hasMore: next.hasMore,
+          nextCursor: stopPagination ? undefined : next.nextCursor,
+          hasMore: stopPagination ? false : next.hasMore,
         }));
       } catch (_) {
         if (requestIdRef.current === requestId) {
-          setError(t("base.channelSearch.searchFailed"));
+          const message = t("base.channelSearch.searchFailed");
+          if (cursor) {
+            setPaginationError(message);
+          } else {
+            setError(message);
+          }
         }
       } finally {
         if (requestIdRef.current === requestId) {
           setLoading(false);
           setLoadingMore(false);
+          if (loadingMoreCursorRef.current === cursor) {
+            loadingMoreCursorRef.current = null;
+          }
         }
       }
     },
     [activeTab, channel, dataSource, filters, isComposing, keyword, t]
   );
 
+  const loadNextPage = useCallback(
+    (force = false) => {
+      if (loading || loadingMore || !response.hasMore || !response.nextCursor) {
+        return;
+      }
+      if ((paginationError || autoPaginationPaused) && !force) {
+        return;
+      }
+      void runSearch(response.nextCursor);
+    },
+    [
+      autoPaginationPaused,
+      loading,
+      loadingMore,
+      paginationError,
+      response.hasMore,
+      response.nextCursor,
+      runSearch,
+    ]
+  );
+
+  const maybeLoadNextPageFromScroll = useCallback(
+    (content: HTMLElement) => {
+      if (isNearChannelSearchScrollBottom(content)) {
+        loadNextPage();
+      }
+    },
+    [loadNextPage]
+  );
+
+  const handleContentScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const content = event.currentTarget;
+      if (typeof window.requestAnimationFrame !== "function") {
+        maybeLoadNextPageFromScroll(content);
+        return;
+      }
+      if (scrollFrameRef.current !== null) {
+        return;
+      }
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        maybeLoadNextPageFromScroll(content);
+      });
+    },
+    [maybeLoadNextPageFromScroll]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (
+        scrollFrameRef.current !== null &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (isComposing) return;
     requestIdRef.current += 1;
+    loadingMoreCursorRef.current = null;
     setResponse({ items: [], hasMore: false });
     setLoadingMore(false);
     setError(null);
+    setPaginationError(null);
+    setAutoPaginationPaused(false);
 
     // No keyword and no effective filter → don't hit the backend (it would 400).
     // Reset to the initial empty-state prompt instead of a spinner.
@@ -1320,6 +1404,13 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [canSearch, isComposing, runSearch]);
+
+  // User scrolls and this first-screen top-up effect share the same load guard.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    maybeLoadNextPageFromScroll(content);
+  }, [activeTab, maybeLoadNextPageFromScroll, response.items.length]);
 
   const handleLocate = useCallback(
     (item: ChannelSearchItem) => {
@@ -1364,7 +1455,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         </div>
       );
     }
-    if (error) {
+    if (error && response.items.length === 0) {
       return <div className="wk-channel-search-error">{error}</div>;
     }
     if (!queryStarted || response.items.length === 0) {
@@ -1472,25 +1563,40 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         </div>
       </div>
 
-      <div className="wk-channel-search-content">
+      <div
+        className="wk-channel-search-content"
+        ref={contentRef}
+        onScroll={handleContentScroll}
+      >
         {activeTab === "media" && (
           <div className="wk-channel-search-media-tip">
             {t("base.channelSearch.mediaKeywordTip")}
           </div>
         )}
         {renderResults()}
-        {response.hasMore && !loading && (
-          <div className="wk-channel-search-load-more">
-            <WKButton
-              size="sm"
-              variant="secondary"
-              loading={loadingMore}
-              onClick={() => void runSearch(response.nextCursor)}
-            >
-              {t("base.channelSearch.loadMore")}
-            </WKButton>
+        {loadingMore && (
+          <div className="wk-channel-search-load-more" role="status">
+            {t("base.channelSearch.loading")}
           </div>
         )}
+        {paginationError && response.items.length > 0 && (
+          <div className="wk-channel-search-load-more wk-channel-search-load-more--error">
+            <span>{paginationError}</span>
+            <button type="button" onClick={() => loadNextPage(true)}>
+              {t("base.channelSearch.loadMore")}
+            </button>
+          </div>
+        )}
+        {autoPaginationPaused &&
+          !paginationError &&
+          !loadingMore &&
+          response.hasMore && (
+            <div className="wk-channel-search-load-more">
+              <button type="button" onClick={() => loadNextPage(true)}>
+                {t("base.channelSearch.loadMore")}
+              </button>
+            </div>
+          )}
       </div>
     </div>
   );
