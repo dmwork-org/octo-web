@@ -32,6 +32,11 @@ import {
 } from "./apiAdapter";
 import { resolveChannelSearchFileIconSrc } from "./fileIcon";
 import {
+  FORWARD_INNER_MESSAGE_DISPLAY_LIMIT,
+  formatForwardInnerMessage,
+  getForwardInnerMessageHiddenCount,
+} from "./forwardInnerMessage";
+import {
   canLocateChannelSearchItem,
   resolveChannelSearchLocateTarget,
 } from "./locate";
@@ -795,6 +800,22 @@ const MessageResultItem = React.memo(function MessageResultItem({
   const { format, t } = useI18n();
   const sender = resolveSender(item, getSender);
   const isForward = item.kind === "merge_forward";
+  const forwardInnerMessages = item.forward?.innerMessages || [];
+  const visibleForwardInnerMessages = forwardInnerMessages.slice(
+    0,
+    FORWARD_INNER_MESSAGE_DISPLAY_LIMIT
+  );
+  const hiddenForwardInnerMessageCount = getForwardInnerMessageHiddenCount(
+    forwardInnerMessages.length,
+    visibleForwardInnerMessages.length,
+    item.forward?.childCount
+  );
+  const forwardMatchReason =
+    isForward && keyword.trim()
+      ? t("base.channelSearch.forward.matchReason", {
+          values: { keyword: keyword.trim() },
+        })
+      : item.matchReason;
 
   return (
     <div className="wk-channel-search-result wk-channel-search-message-result">
@@ -818,7 +839,7 @@ const MessageResultItem = React.memo(function MessageResultItem({
         {isForward ? (
           <>
             <div className="wk-channel-search-match-reason">
-              <HighlightText text={item.matchReason} keyword={keyword} />
+              <HighlightText text={forwardMatchReason} keyword={keyword} />
             </div>
             <div className="wk-channel-search-forward-card">
               <div className="wk-channel-search-forward-title">
@@ -830,15 +851,35 @@ const MessageResultItem = React.memo(function MessageResultItem({
                   keyword={keyword}
                 />
               </div>
-              {item.forward?.snippets.map((snippet) => (
+              {visibleForwardInnerMessages.map((message, index) => (
                 <div
-                  key={snippet}
+                  key={`${message.messageId || "inner"}-${index}`}
                   className="wk-channel-search-forward-snippet"
                 >
-                  <HighlightText text={snippet} keyword={keyword} />
+                  <HighlightText
+                    text={formatForwardInnerMessage(message, getSender, t)}
+                    keyword={keyword}
+                  />
                 </div>
               ))}
-              {item.forward?.snippets.length === 0 &&
+              {hiddenForwardInnerMessageCount > 0 && (
+                <div className="wk-channel-search-forward-snippet">
+                  {t("base.channelSearch.forward.more", {
+                    values: { count: hiddenForwardInnerMessageCount },
+                  })}
+                </div>
+              )}
+              {visibleForwardInnerMessages.length === 0 &&
+                item.forward?.snippets.map((snippet) => (
+                  <div
+                    key={snippet}
+                    className="wk-channel-search-forward-snippet"
+                  >
+                    <HighlightText text={snippet} keyword={keyword} />
+                  </div>
+                ))}
+              {visibleForwardInnerMessages.length === 0 &&
+                item.forward?.snippets.length === 0 &&
                 !!item.forward?.childCount && (
                   <div className="wk-channel-search-forward-snippet">
                     {t("base.channelSearch.forward.childCount", {
