@@ -93,6 +93,17 @@ type CombinedSearchHit = {
 };
 
 const PAGE_SIZE_SENDERS = 50;
+export const CHANNEL_SEARCH_KEYWORD_MAX_RUNES = 64;
+
+export function countChannelSearchKeywordRunes(keyword: string) {
+  return Array.from(keyword).length;
+}
+
+export function truncateChannelSearchKeyword(keyword: string) {
+  return Array.from(keyword)
+    .slice(0, CHANNEL_SEARCH_KEYWORD_MAX_RUNES)
+    .join("");
+}
 
 function searchEndpoint(tab: ChannelSearchTab) {
   if (tab === "all") return "messages/_search_all";
@@ -193,7 +204,7 @@ function toRequestBody(query: ChannelSearchQuery) {
     cursor: query.cursor || "",
   };
 
-  const keyword = query.keyword.trim();
+  const keyword = truncateChannelSearchKeyword(query.keyword.trim());
   if (query.tab === "all" || query.tab === "message") {
     body.keyword = keyword;
   } else if (query.tab === "file" && keyword) {
@@ -467,8 +478,10 @@ export const channelSearchApiAdapterTestUtils = {
   monthBucketFromSentAt,
   normalizeItems,
   cleanFilters,
+  countChannelSearchKeywordRunes,
   hasEffectiveFilters,
   shouldRunSearch,
+  truncateChannelSearchKeyword,
   toRequestBody,
   mapMessageHit,
   mapFileHit,

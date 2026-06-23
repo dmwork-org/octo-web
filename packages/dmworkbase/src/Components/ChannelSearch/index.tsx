@@ -5,13 +5,12 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { DatePicker, Toast } from "@douyinfe/semi-ui";
+import { DatePicker, Toast, Tooltip } from "@douyinfe/semi-ui";
 import {
   CalendarDays,
   ChevronDown,
   Download,
   Filter,
-  LocateFixed,
   MoreHorizontal,
   Play,
   X,
@@ -25,7 +24,12 @@ import ConversationContext from "../Conversation/context";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
-import { shouldRunSearch } from "./apiAdapter";
+import {
+  CHANNEL_SEARCH_KEYWORD_MAX_RUNES,
+  countChannelSearchKeywordRunes,
+  shouldRunSearch,
+  truncateChannelSearchKeyword,
+} from "./apiAdapter";
 import { resolveChannelSearchFileIconSrc } from "./fileIcon";
 import {
   canLocateChannelSearchItem,
@@ -722,6 +726,66 @@ type ResultItemProps = {
   onLocate: (item: ChannelSearchItem) => void;
 };
 
+type LocateToChatIconProps = {
+  size?: number;
+};
+
+const LocateToChatIcon = React.memo(function LocateToChatIcon({
+  size = 16,
+}: LocateToChatIconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="wk-channel-search-locate-icon"
+      fill="none"
+      focusable="false"
+      height={size}
+      viewBox="0 0 16 16"
+      width={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        clipRule="evenodd"
+        d="M14.3333 1.66675H3.66658V3.00008H12.9999V13.0001H3.66659V14.3334H14.3333V1.66675Z"
+        fill="currentColor"
+        fillRule="evenodd"
+      />
+      <path
+        d="M6.88572 11.496L5.94291 10.5532L7.82889 8.66726L1.39062 8.66726L1.39062 7.33393L7.82817 7.33393L5.94291 5.44867L6.88572 4.50586L10.3808 8.00095L6.88572 11.496Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+});
+
+type LocateIconButtonProps = {
+  className: string;
+  iconSize?: number;
+  onClick: () => void;
+};
+
+const LocateIconButton = React.memo(function LocateIconButton({
+  className,
+  iconSize,
+  onClick,
+}: LocateIconButtonProps) {
+  const { t } = useI18n();
+  const label = t("base.channelSearch.locateToChatPosition");
+
+  return (
+    <Tooltip content={label} position="top">
+      <button
+        aria-label={label}
+        className={className}
+        type="button"
+        onClick={onClick}
+      >
+        <LocateToChatIcon size={iconSize} />
+      </button>
+    </Tooltip>
+  );
+});
+
 const MessageResultItem = React.memo(function MessageResultItem({
   item,
   keyword,
@@ -917,13 +981,11 @@ const MediaThumb = React.memo(function MediaThumb({
         </div>
       )}
       {canLocateChannelSearchItem(item) && (
-        <button
+        <LocateIconButton
           className="wk-channel-search-media-locate"
-          type="button"
+          iconSize={16}
           onClick={() => onLocate(item)}
-        >
-          <LocateFixed size={16} />
-        </button>
+        />
       )}
     </div>
   );
@@ -1128,7 +1190,7 @@ const FileResultItem = React.memo(function FileResultItem({
                   onLocate(item);
                 }}
               >
-                <LocateFixed size={14} />
+                <LocateToChatIcon size={14} />
                 {t("base.channelSearch.locateToChatPosition")}
               </button>
             )}
@@ -1176,7 +1238,9 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   onStateChange,
 }) => {
   const { t } = useI18n();
-  const [keyword, setKeyword] = useState(initialState?.keyword || "");
+  const [keyword, setKeyword] = useState(() =>
+    truncateChannelSearchKeyword(initialState?.keyword || "")
+  );
   const [activeTab, setActiveTab] = useState<ChannelSearchTab>(
     initialState?.activeTab || "all"
   );
@@ -1198,11 +1262,16 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const requestIdRef = useRef(0);
   const loadingMoreCursorRef = useRef<string | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
+  const keywordLimitToastShownRef = useRef(false);
+  const isComposingRef = useRef(false);
   const [isComposing, setIsComposing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
   const filterCount = activeFilterCount(filters);
+  const keywordRuneCount = countChannelSearchKeywordRunes(keyword);
+  const keywordAtLimit =
+    !isComposing && keywordRuneCount >= CHANNEL_SEARCH_KEYWORD_MAX_RUNES;
   const canSearch = shouldRunSearch({ keyword, filters, tab: activeTab });
   const getSender = useCallback(
     (uid: string) => dataSource.getSender(uid),
@@ -1215,6 +1284,27 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const closeFilterPopover = useCallback(() => {
     setFilterOpen(false);
   }, []);
+  const updateKeyword = useCallback(
+    (value: string) => {
+      const runeCount = countChannelSearchKeywordRunes(value);
+      const exceedsLimit = runeCount > CHANNEL_SEARCH_KEYWORD_MAX_RUNES;
+
+      if (exceedsLimit && !keywordLimitToastShownRef.current) {
+        Toast.warning(
+          t("base.channelSearch.keywordLimitToast", {
+            values: { count: CHANNEL_SEARCH_KEYWORD_MAX_RUNES },
+          })
+        );
+        keywordLimitToastShownRef.current = true;
+      }
+      if (!exceedsLimit && runeCount < CHANNEL_SEARCH_KEYWORD_MAX_RUNES) {
+        keywordLimitToastShownRef.current = false;
+      }
+
+      setKeyword(truncateChannelSearchKeyword(value));
+    },
+    [t]
+  );
   const shouldKeepSemiPopupOpen = useCallback((target: Node) => {
     return (
       target instanceof Element &&
@@ -1511,17 +1601,35 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
             placeholder={t("base.channelSearch.placeholder")}
             autoFocus
             onCompositionStart={() => {
+              isComposingRef.current = true;
               setIsComposing(true);
             }}
             onCompositionEnd={(event) => {
+              isComposingRef.current = false;
               setIsComposing(false);
-              setKeyword(event.currentTarget.value);
+              updateKeyword(event.currentTarget.value);
             }}
             onChange={(event) => {
-              setKeyword(event.currentTarget.value);
+              const nextKeyword = event.currentTarget.value;
+              if (isComposingRef.current) {
+                setKeyword(nextKeyword);
+                return;
+              }
+              updateKeyword(nextKeyword);
             }}
           />
         </div>
+        {keywordAtLimit && (
+          <div
+            className="wk-channel-search-keyword-limit"
+            role="status"
+            aria-live="polite"
+          >
+            {t("base.channelSearch.keywordLimitHint", {
+              values: { count: CHANNEL_SEARCH_KEYWORD_MAX_RUNES },
+            })}
+          </div>
+        )}
         <IconClick
           size="sm"
           icon={<X size={18} />}
