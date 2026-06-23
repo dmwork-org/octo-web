@@ -89,7 +89,9 @@ const {
   secondsToDateOnly,
   sentAtToSeconds,
   toRequestBody,
+  countChannelSearchKeywordRunes,
   shouldRunSearch,
+  truncateChannelSearchKeyword,
 } = channelSearchApiAdapterTestUtils;
 
 function baseQuery(tab: ChannelSearchQuery["tab"]): ChannelSearchQuery {
@@ -141,6 +143,24 @@ describe("channel search API adapter request construction", () => {
     expect(
       toRequestBody({ ...baseQuery("file"), keyword: "   " })
     ).not.toHaveProperty("keyword");
+  });
+
+  it("limits keywords to 64 unicode code points before sending", () => {
+    const keyword = `${"中".repeat(64)}尾`;
+    const emojiKeyword = `${"😀".repeat(64)}tail`;
+
+    expect(countChannelSearchKeywordRunes(emojiKeyword)).toBe(68);
+    expect(
+      countChannelSearchKeywordRunes(truncateChannelSearchKeyword(emojiKeyword))
+    ).toBe(64);
+    expect(toRequestBody({ ...baseQuery("message"), keyword })).toMatchObject({
+      keyword: "中".repeat(64),
+    });
+    expect(
+      toRequestBody({ ...baseQuery("file"), keyword: emojiKeyword })
+    ).toMatchObject({
+      keyword: "😀".repeat(64),
+    });
   });
 
   it("converts filters, pagination, and local day boundaries into request body", () => {

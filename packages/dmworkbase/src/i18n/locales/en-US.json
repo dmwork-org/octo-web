@@ -73,6 +73,8 @@
   "channelSearch.filter.today": "Today",
   "channelSearch.forward.childCount": "{{count}} chat messages",
   "channelSearch.forward.defaultTitle": "Chat history",
+  "channelSearch.keywordLimitHint": "Up to {{count}} characters",
+  "channelSearch.keywordLimitToast": "Search keywords can be up to {{count}} characters.",
   "channelSearch.loadMore": "Load more",
   "channelSearch.loading": "Searching...",
   "channelSearch.locateToChat": "Locate in chat",
