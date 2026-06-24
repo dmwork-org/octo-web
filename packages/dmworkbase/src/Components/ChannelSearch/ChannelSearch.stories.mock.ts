@@ -66,7 +66,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liubo",
     timestamp: toSeconds("2026-06-03T15:06:00+08:00"),
     kind: "text",
-    text: "哈哈哈哈哈哈有趣有趣",
+    text: "哈哈哈哈[有品位]有趣有趣",
   },
   {
     id: "msg-2",
