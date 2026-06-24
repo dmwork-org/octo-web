@@ -264,6 +264,30 @@
   color: inherit;
 }
 
+.wk-channel-search-highlight--emoji {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: -4px;
+  line-height: 1;
+}
+
+.wk-channel-search-snippet-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  vertical-align: -4px;
+  line-height: 1;
+}
+
+.wk-channel-search-snippet-emoji img {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
 .wk-channel-search-match-reason {
   color: var(--channel-search-text-secondary);
   font: 400 14px/20px var(--wk-font-sans);
