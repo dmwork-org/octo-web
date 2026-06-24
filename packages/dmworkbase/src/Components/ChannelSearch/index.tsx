@@ -46,6 +46,7 @@ import {
   shouldPauseAutoPaginationForEmptyPage,
   shouldStopPaginationForCursor,
 } from "./pagination";
+import ChannelSearchSnippetContent from "./snippetContent";
 import { defaultChannelSearchFilters } from "./types";
 import type {
   ChannelSearchDataSource,
@@ -189,71 +190,6 @@ function useOutsideDismiss(
     };
   }, [getContainers, onDismiss, open, shouldIgnoreTarget]);
 }
-
-const HighlightText = React.memo(function HighlightText({
-  text = "",
-  keyword,
-}: {
-  text?: string;
-  keyword: string;
-}) {
-  const content = useMemo(() => {
-    if (/<\/?mark>/i.test(text)) {
-      const parts: React.ReactNode[] = [];
-      const pattern = /<mark>(.*?)<\/mark>/gi;
-      let cursor = 0;
-      let match: RegExpExecArray | null;
-      while ((match = pattern.exec(text))) {
-        if (match.index > cursor) {
-          parts.push(text.slice(cursor, match.index));
-        }
-        parts.push(
-          <mark
-            key={`${match.index}-${pattern.lastIndex}`}
-            className="wk-channel-search-highlight"
-          >
-            {match[1]}
-          </mark>
-        );
-        cursor = pattern.lastIndex;
-      }
-      if (cursor < text.length) {
-        parts.push(text.slice(cursor));
-      }
-      return parts;
-    }
-
-    const needle = keyword.trim();
-    if (!needle) return text;
-
-    const lowerText = text.toLowerCase();
-    const lowerNeedle = needle.toLowerCase();
-    const parts: React.ReactNode[] = [];
-    let cursor = 0;
-    let index = lowerText.indexOf(lowerNeedle);
-
-    while (index !== -1) {
-      if (index > cursor) {
-        parts.push(text.slice(cursor, index));
-      }
-      const end = index + needle.length;
-      parts.push(
-        <mark key={`${index}-${end}`} className="wk-channel-search-highlight">
-          {text.slice(index, end)}
-        </mark>
-      );
-      cursor = end;
-      index = lowerText.indexOf(lowerNeedle, cursor);
-    }
-
-    if (cursor < text.length) {
-      parts.push(text.slice(cursor));
-    }
-    return parts;
-  }, [keyword, text]);
-
-  return <>{content}</>;
-});
 
 const SenderAvatar: React.FC<{
   uid: string;
@@ -832,11 +768,14 @@ const MessageResultItem = React.memo(function MessageResultItem({
         {isForward ? (
           <>
             <div className="wk-channel-search-match-reason">
-              <HighlightText text={forwardMatchReason} keyword={keyword} />
+              <ChannelSearchSnippetContent
+                text={forwardMatchReason}
+                keyword={keyword}
+              />
             </div>
             <div className="wk-channel-search-forward-card">
               <div className="wk-channel-search-forward-title">
-                <HighlightText
+                <ChannelSearchSnippetContent
                   text={
                     item.forward?.title ||
                     t("base.channelSearch.forward.defaultTitle")
@@ -849,7 +788,7 @@ const MessageResultItem = React.memo(function MessageResultItem({
                   key={`${message.messageId || "inner"}-${index}`}
                   className="wk-channel-search-forward-snippet"
                 >
-                  <HighlightText
+                  <ChannelSearchSnippetContent
                     text={formatForwardInnerMessage(message, getSender, t)}
                     keyword={keyword}
                   />
@@ -868,7 +807,10 @@ const MessageResultItem = React.memo(function MessageResultItem({
                     key={snippet}
                     className="wk-channel-search-forward-snippet"
                   >
-                    <HighlightText text={snippet} keyword={keyword} />
+                    <ChannelSearchSnippetContent
+                      text={snippet}
+                      keyword={keyword}
+                    />
                   </div>
                 ))}
               {visibleForwardInnerMessages.length === 0 &&
@@ -884,7 +826,7 @@ const MessageResultItem = React.memo(function MessageResultItem({
           </>
         ) : (
           <div className="wk-channel-search-result-text">
-            <HighlightText text={item.text} keyword={keyword} />
+            <ChannelSearchSnippetContent text={item.text} keyword={keyword} />
           </div>
         )}
       </div>
@@ -965,7 +907,10 @@ const MediaInlineResult = React.memo(function MediaInlineResult({
           </span>
         </div>
         <div className="wk-channel-search-match-reason">
-          <HighlightText text={item.matchReason} keyword={keyword} />
+          <ChannelSearchSnippetContent
+            text={item.matchReason}
+            keyword={keyword}
+          />
         </div>
         <MediaThumb item={item} onLocate={onLocate} compact />
       </div>
@@ -1065,7 +1010,10 @@ const FileInlineResult = React.memo(function FileInlineResult({
           </div>
           <div className="wk-channel-search-inline-file-body">
             <div className="wk-channel-search-inline-file-name">
-              <HighlightText text={inlineFileName} keyword={keyword} />
+              <ChannelSearchSnippetContent
+                text={inlineFileName}
+                keyword={keyword}
+              />
             </div>
             <div className="wk-channel-search-inline-file-size">
               {compactFileSize(item.file?.size || 0)}
@@ -1185,7 +1133,7 @@ const FileResultItem = React.memo(function FileResultItem({
       </div>
       <div className="wk-channel-search-file-body">
         <div className="wk-channel-search-file-name">
-          <HighlightText text={fileName} keyword={keyword} />
+          <ChannelSearchSnippetContent text={fileName} keyword={keyword} />
         </div>
         <div className="wk-channel-search-file-meta">
           <span>{sender.name}</span>
