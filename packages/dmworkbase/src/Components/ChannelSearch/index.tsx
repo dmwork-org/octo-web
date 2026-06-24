@@ -36,6 +36,7 @@ import {
   formatForwardInnerMessage,
   getForwardInnerMessageHiddenCount,
 } from "./forwardInnerMessage";
+import { activeChannelSearchFilterCount } from "./filterState";
 import {
   canLocateChannelSearchItem,
   resolveChannelSearchLocateTarget,
@@ -91,14 +92,6 @@ function resolveSender(
   getSender: GetChannelSearchSender
 ): ChannelSearchSender {
   return item.sender || getSender(item.senderUid);
-}
-
-function activeFilterCount(filters: ChannelSearchFilters) {
-  return (
-    (filters.senderUids.length > 0 ? 1 : 0) +
-    (filters.sort !== "time_desc" ? 1 : 0) +
-    (filters.datePreset || filters.startAt || filters.endAt ? 1 : 0)
-  );
 }
 
 function startOfDay(date: Date) {
@@ -1309,7 +1302,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
-  const filterCount = activeFilterCount(filters);
+  const filterCount = activeChannelSearchFilterCount(filters);
   const keywordRuneCount = countChannelSearchKeywordRunes(keyword);
   const keywordAtLimit =
     !isComposing && keywordRuneCount >= CHANNEL_SEARCH_KEYWORD_MAX_RUNES;
