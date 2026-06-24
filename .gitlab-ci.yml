@@ -6,6 +6,7 @@ workflow:
 stages:
   - package
   - sync
+  - deploy
   - notify
 
 variables:
@@ -100,6 +101,50 @@ sync_code:
 
       git commit -m "Update image to ${CI_PIPELINE_ID} for ${CI_COMMIT_REF_NAME}"
       git push --force https://__token__:$CODE_TOKEN@code.mlamp.cn/dm-fa/infra/deploy-files.git HEAD:$TARGET_BRANCH
+
+# ============================================================
+# argocd_sync: sync_code 推送 deploy-files 后，主动触发 ArgoCD 同步
+#   test 分支 → app dmwork-web-test（自动 sync）
+#   git tag   → prod，跳过自动 sync（人工确认）
+#   develop   → 暂不接入
+# ============================================================
+argocd_sync:
+  stage: deploy
+  only:
+    - test
+    - tags
+  tags:
+    - tke-deepmining-runner
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/alpine/curl:8.11.1
+  variables:
+    GIT_STRATEGY: none
+    ARGOCD_SERVER: argocd-server.argocd:80
+  script: |
+    set -e
+
+    if [[ -n "$CI_COMMIT_TAG" ]]; then
+      # prod 环境 — 暂不自动 sync，需人工确认
+      echo "Tag build: skipping auto ArgoCD sync for prod (manual approval required)"
+      exit 0
+    fi
+
+    ARGOCD_APP="dmwork-web-test"
+
+    echo "Syncing ArgoCD app: $ARGOCD_APP"
+    SYNC_RESP=$(curl -s -w "\n%{http_code}" -X POST \
+      "http://$ARGOCD_SERVER/api/v1/applications/$ARGOCD_APP/sync" \
+      -H "Authorization: Bearer $ARGOCD_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"prune":false,"dryRun":false}')
+    HTTP_CODE=$(echo "$SYNC_RESP" | tail -1)
+    echo "Sync HTTP status: $HTTP_CODE"
+
+    if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+      echo "ArgoCD sync failed with HTTP $HTTP_CODE"
+      echo "$SYNC_RESP" | head -5
+      exit 1
+    fi
+    echo "ArgoCD sync triggered ✅ (app: $ARGOCD_APP)"
 
 # ============================================================
 # 打包模板（YAML 锚点，被 package_tag / package_develop / package_test 复用）
