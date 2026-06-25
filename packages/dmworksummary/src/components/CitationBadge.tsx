@@ -5,8 +5,8 @@ import { Channel, ChannelTypeGroup, ChannelTypePerson } from 'wukongimjssdk';
 import WKApp from '@octo/base/src/App';
 import { ShowConversationOptions } from '@octo/base/src/EndpointCommon';
 import { ChannelTypeCommunityTopic } from '@octo/base/src/Service/Const';
-import { CitationContext } from './CitationText';
-import { CitationItem, CitationContextMessage } from '../types/summary';
+import CitationText, { CitationContext } from './CitationText';
+import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } from '../types/summary';
 
 interface CitationBadgeProps {
     index: number;
@@ -248,6 +248,82 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
             }
         >
             <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{label}]</sup>
+        </Popover>
+    );
+};
+
+interface TeamCitationBadgeProps {
+    index: number;
+    teamCitations: TeamCitationItem[];
+    badgeKey: string;
+    /**
+     * V5/§6.2：详情页已拉取的全体成员（已提交者带 content+citations）。
+     * `[Pn]` 点击时以此在本地匹配作者单人报告，不发新请求。
+     */
+    members?: MemberStatus[];
+}
+
+const memberRowStyle: React.CSSProperties = {
+    padding: '4px 8px',
+    borderLeft: '3px solid #1677ff',
+    fontSize: 13,
+    lineHeight: 1.5,
+    wordBreak: 'break-word',
+};
+
+// TeamCitationBadge renders a clickable [Pn] reference (V5/§6.2). A team
+// citation points to a PERSON (participant). On click we match that person in
+// the already-fetched members list and surface their single-person report
+// (content + its own [n] citations) inside the popover — no new request.
+// Match priority: personal_result_id (convenience field) is NOT carried on
+// MemberStatus, so the authoritative join key is user_id (§6.2/Q4). The popover
+// degrades to name-only when the member has not submitted (no content yet).
+export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, teamCitations, badgeKey, members = [] }) => {
+    const { t } = useI18n();
+    const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
+    const citation = teamCitations.find(c => c.index === index);
+
+    if (!citation) {
+        return <sup style={badgeStyle}>[P{index}]</sup>;
+    }
+
+    // 优先用 user_id 在 members 里匹配同一成员（§6.2/Q4）。
+    // 显式注解：避免在某些 broken React 类型环境下 members 退化为 never[]。
+    const memberList: MemberStatus[] = members;
+    const member = memberList.find((m) => m.user_id === citation.user_id);
+    const memberContent = member?.content?.trim();
+
+    const isVisible = activeKey === badgeKey;
+
+    return (
+        <Popover
+            trigger="custom"
+            visible={isVisible}
+            position="top"
+            showArrow
+            onClickOutSide={() => closeKey(badgeKey)}
+            content={
+                <div style={{ maxWidth: 360, padding: '8px 4px', maxHeight: 400, overflowY: 'auto' }}>
+                    <div style={memberRowStyle}>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: memberContent ? 4 : 0 }}>
+                            {t("summary.citation.member", { values: { name: citation.user_name } })}
+                        </div>
+                        {memberContent ? (
+                            <CitationText
+                                content={(memberContent || '').replace(/\[\d+\]/g, '')}
+                                citations={[]}
+                                hidePlainCitations
+                            />
+                        ) : (
+                            <div style={{ fontSize: 12, color: '#999' }}>
+                                {t("summary.detail.waitingSubmit", { values: { name: citation.user_name } })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            }
+        >
+            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[P{index}]</sup>
         </Popover>
     );
 };
