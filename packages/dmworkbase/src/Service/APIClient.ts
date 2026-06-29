@@ -87,14 +87,15 @@ export default class APIClient {
                 config.headers!["token"] = token;
             }
             // 统一注入 X-Space-Id header（GH Mininglamp-OSS/octo-web#1038）。
-            // 仅当回调返回非空字符串时写入，避免把 "" 作为合法 space_id 传给后端。
-            // 与 URL query 里的 space_id= 拼接共存，后端按优先级双读，前端渐进迁移。
             if (self.config.spaceIdCallback) {
                 const spaceId = self.config.spaceIdCallback()
                 if (spaceId && spaceId !== "") {
                     config.headers!["X-Space-Id"] = spaceId;
                 }
             }
+            // 合并 plan 决策一+二 Phase 3A: fleet/matter 已切到 AuthMiddleware,
+            // 接受 token: <session> 跟 server 一致, 不再换 JWT。删 getFleetJWT
+            // + FLEET_URL_RE 后 interceptor 走单一 session token 路径。
             return config;
         });
 
@@ -124,16 +125,20 @@ export default class APIClient {
 
      get<T>(path: string, config?: RequestConfig) {
        return this.wrapResult<T>(axios.get(path, {
-        params: config?.param
+        params: config?.param,
+        baseURL: config?.baseURL,
     }), config)
     }
     post(path: string, data?: any, config?: RequestConfig) {
-        return this.wrapResult(axios.post(path, data, {}), config)
+        return this.wrapResult(axios.post(path, data, {
+            baseURL: config?.baseURL,
+        }), config)
     }
 
     put(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.put(path, data, {
             params: config?.param,
+            baseURL: config?.baseURL,
         }), config)
     }
 
@@ -141,6 +146,7 @@ export default class APIClient {
         return this.wrapResult(axios.delete(path, {
             params: config?.param,
             data: config?.data,
+            baseURL: config?.baseURL,
         }), config)
     }
 
@@ -179,6 +185,12 @@ export class RequestConfig {
     param?: any
     data?:any
     resp?: () => APIResp
+    /**
+     * 逐请求覆盖 axios 全局 baseURL。用于走独立挂载段的后端服务
+     * (如 fleet 经 nginx 的 /fleet/api 段挂载),而无需污染全局 baseURL
+     * 或新建一套 client。不传则沿用 axios.defaults.baseURL。
+     */
+    baseURL?: string
 }
 
 export interface APIResp {
