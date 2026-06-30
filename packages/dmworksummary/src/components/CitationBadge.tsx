@@ -314,6 +314,15 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, tea
                                 citations={[]}
                                 hidePlainCitations
                             />
+                        ) : member?.status === "declined" ? (
+                            // OCT-15 / upstream #495：纵深防御。正常流程里 declined 成员不会被
+                            // 后端写进 team_citations（GLM 评审结论），但若数据漂移让 popover
+                            // 拿到一个 declined 的 [Pn]，不再误显示「等待提交」。
+                            // 复用已有 i18n key summary.confirmPage.declined（“已拒绝参与” /
+                            // “Participation declined”），不新增翻译。
+                            <div style={{ fontSize: 12, color: '#999' }}>
+                                {t("summary.confirmPage.declined")}
+                            </div>
                         ) : (
                             <div style={{ fontSize: 12, color: '#999' }}>
                                 {t("summary.detail.waitingSubmit", { values: { name: citation.user_name } })}
