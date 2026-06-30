@@ -257,6 +257,31 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         expect(open[0].textContent).toContain('李四');
     });
 
+    // OCT-16 / upstream #495（纵深防御复核）：dev 在 CitationBadge 给 [Pn] popover 的
+    // memberContent 为空分支加了 declined 兜底——若数据漂移让 popover 拿到一个 declined
+    // 成员，应显示「已拒绝参与」(summary.confirmPage.declined) 而不是「等待提交」。
+    // 这是对 dev「改了 declined 路径」结论的对应单测。
+    it('6b) [Pn] click shows "已拒绝参与" (not waitingSubmit) when matched member is declined with no content', () => {
+        const members: MemberStatus[] = [
+            { user_id: 'u1', user_name: '王五', status: 'declined', submitted_at: null },
+        ];
+        render(
+            <CitationText
+                content="参见 [P1]"
+                citations={[]}
+                teamCitations={[makeTeamCitation({ index: 1, user_id: 'u1', user_name: '王五' })]}
+                members={members}
+            />,
+        );
+        const team = badgeByText('[P1]')!;
+        fireEvent.click(team);
+        const open = screen.queryAllByTestId('popover-content');
+        expect(open.length).toBeGreaterThanOrEqual(1);
+        // declined 成员显示「已拒绝参与」，不显示「等待提交」。
+        expect(open[0].textContent).toContain('已拒绝参与');
+        expect(open[0].textContent).not.toContain('等待提交');
+    });
+
     // m2（隐私兜底，第二轮）：[Pn] 弹窗渲染成员单人报告时，绝不消费 member.citations，
     // 且对 memberContent 清掉 [n] 角标——即便（旧后端/缓存）给 member 带了 citations，
     // 也不能让他人点开看到原始聊天记录。fail-before（CitationBadge 传 member.citations）/

@@ -1320,9 +1320,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         // 如果只有 1 个人（creator 自己），不显示参与者报告区块
         if (membersLoading || members.length <= 1) return null;
+        // OCT-15 / upstream #495：成员按三类语义切分，pending 显式把 declined 排除掉，
+        // 否则被拒绝的成员会一直在「等待提交」里悬挂。declined 单独成集合，下面单独渲染。
         const submitted = members.filter((m) => m.submitted_at && m.content);
-        const pending = members.filter((m) => !m.submitted_at || !m.content);
-        if (submitted.length === 0 && pending.length === 0) return null;
+        const declined = members.filter((m) => m.status === "declined");
+        const pending = members.filter(
+            (m) => m.status !== "declined" && (!m.submitted_at || !m.content)
+        );
+        if (submitted.length === 0 && pending.length === 0 && declined.length === 0) return null;
         const myUid = WKApp.loginInfo.uid;
         // need2（排序）：把「我」那条置顶，其余保持原相对顺序（stable）。
         const submittedSorted = [
@@ -1432,6 +1437,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div key={m.user_id} className="summary-detail-participant-report-pending">
                         <IconClock style={{ fontSize: 14 }} />
                         <span>{t("summary.detail.waitingSubmit", { values: { name: m.user_name } })}</span>
+                    </div>
+                ))}
+                {/* OCT-15 / upstream #495：declined 成员单独成行，复用 confirmPage.declined（“已拒绝参与” / “Participation declined”）。
+                    沿用 pending 行的容器类名 + 一个 --declined modifier 以便将来定制样式；本次不动 SCSS。 */}
+                {declined.map((m) => (
+                    <div
+                        key={m.user_id}
+                        className="summary-detail-participant-report-pending summary-detail-participant-report-pending--declined"
+                    >
+                        <IconClose style={{ fontSize: 14 }} />
+                        <span>
+                            {m.user_name}
+                            <span style={{ color: "var(--semi-color-text-3)", fontWeight: 400 }}> · </span>
+                            <span style={{ fontSize: 13, color: "var(--semi-color-text-2)", fontWeight: 400 }}>
+                                {t("summary.confirmPage.declined")}
+                            </span>
+                        </span>
                     </div>
                 ))}
             </div>
