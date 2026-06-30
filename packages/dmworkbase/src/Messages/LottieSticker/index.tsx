@@ -43,6 +43,14 @@ declare global {
     }
 }
 
+// 已知位图贴纸格式 → 用 <img>；其余(含空/未知/tgs)一律走 <tgs-player>。历史贴纸
+// 消息在 format 字段出现前发送，format 解码默认空串，本质是 Lottie，必须 fail-safe
+// 到 tgs-player —— 否则会把 .tgs 喂进 <img>，历史聊天里的贴纸全裂(PR#496 review)。
+const BITMAP_STICKER_FORMATS = new Set(["gif", "png", "jpg", "jpeg", "webp"])
+export function isBitmapStickerFormat(format: string | undefined | null): boolean {
+    return BITMAP_STICKER_FORMATS.has((format || "").toLowerCase())
+}
+
 export class LottieStickerCell extends MessageCell {
 
 
@@ -51,8 +59,13 @@ export class LottieStickerCell extends MessageCell {
         const { message, context } = this.props
         const content = message.content as LottieSticker
         const url = WKApp.dataSource.commonDataSource.getImageURL(content.url)
+        const isBitmap = isBitmapStickerFormat(content.format)
         return <MessageBase hiddeBubble={true} message={message} context={context} >
-            <tgs-player style={{ width: "auto", height: "208px" }} autoplay loop mode="normal" src={url}></tgs-player>
+            {
+                isBitmap
+                    ? <img src={url} style={{ height: "208px", maxWidth: "208px", objectFit: "contain" }} alt="" />
+                    : <tgs-player style={{ width: "auto", height: "208px" }} autoplay loop mode="normal" src={url}></tgs-player>
+            }
         </MessageBase>
     }
 }
