@@ -236,6 +236,21 @@ export default class BaseModule implements IModule {
       () => DefaultEmojiService.shared
     );
 
+    // 启动时拉取服务端内置表情清单（fire-and-forget），据此动态重建 token→图 映射，
+    // 取代各端硬编码；失败/离线时保持内置兜底，不影响首屏。apiURL 在 index.tsx 模块注册前
+    // 已配置好，故此处 get 能拿到正确 base。
+    DefaultEmojiService.shared.load?.().catch(() => {
+      /* load() 内部已兜底处理，这里只防未捕获 rejection */
+    });
+
+    // 桥接：清单异步到达且确有变化时，广播全局事件，让已渲染消息列表(ConversationVM)与
+    // 表情选择器(EmojiPanel)各自重渲染一次 —— 消除"首屏无缓存、消息先于 manifest 渲染"时
+    // 新增服务端表情显示为裸 [xxx] token 的窗口(刷新后自愈)。EmojiService 不依赖 App，故由
+    // 此处把它的 onChange 桥接到 mittBus。
+    DefaultEmojiService.shared.onChange?.(() => {
+      WKApp.mittBus.emit("emoji-manifest-updated");
+    });
+
     WKApp.messageManager.registerMessageFactor(
       (contentType: number): ElementType | undefined => {
         switch (contentType) {
