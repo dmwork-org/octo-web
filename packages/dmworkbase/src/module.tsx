@@ -75,6 +75,7 @@ import { VoiceCell, VoiceContent } from "./Messages/Voice";
 import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
+import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
@@ -834,6 +835,26 @@ export default class BaseModule implements IModule {
         };
       },
       1100
+    );
+
+    // 「添加到我的贴纸」：仅位图贴纸消息显示（tgs/Lottie/空 url 一律隐藏）。
+    // 后端 sticker/user/collect 幂等：重复收藏返回已存在记录，不新增、不占配额；
+    // 因此点击即调，不需要前端查重。错误按 error.code 判断，不依赖 HTTP status。
+    WKApp.endpoints.registerMessageContextMenus(
+      "contextmenus.addSticker",
+      (message) => {
+        const content = message.content as LottieSticker;
+        // 纯逻辑（flag 门控 + 可收藏判定 + 收藏/广播/错误分发）抽到 collectMenu 便于单测。
+        return buildAddStickerMenu(message.contentType, content, {
+          stickerCustomEnabled: WKApp.remoteConfig.stickerCustomEnabled,
+          collect: (req) =>
+            WKApp.dataSource.commonDataSource.collectSticker(req),
+          emitUpdated: () => WKApp.mittBus.emit("stickers-updated"),
+          t,
+          toast: Toast,
+        });
+      },
+      1150
     );
 
     WKApp.endpoints.registerMessageContextMenus(
