@@ -15,7 +15,7 @@ ARG APP_VERSION=unknown
 ENV VITE_APP_VERSION=${APP_VERSION}
 ARG ENABLE_ENTERPRISE_SSO=false
 ENV VITE_ENABLE_ENTERPRISE_SSO=${ENABLE_ENTERPRISE_SSO}
-RUN pnpm build
+RUN pnpm --filter @octo/web build
 
 # 生成 version.json
 RUN echo "{\"version\":\"${APP_VERSION}\"}" > /app/apps/web/build/version.json
