@@ -19,7 +19,11 @@ import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import { t } from '../octoweb/index.ts'
+import { getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
 import { getDoc, getUserName, updateDocTitle } from '../pages/docsApi.ts'
+import { startDocForward } from '../forward/startDocForward.ts'
+import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
+import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { DocTerminal } from './DocTerminal.tsx'
 import {
   DocMoreMenu,
@@ -334,6 +338,10 @@ export function EditorShell(props: EditorShellProps) {
     }
   }, [ownerId, names, creatorNicknameOnly])
 
+  // Screen 4c (feature #511): pending access-request count for the Members-button red dot (admin
+  // only). Called unconditionally (hooks rules); the hook stays inert when not admin.
+  const pendingAccess = useAccessRequests(docId, role ? canManage(role) : false)
+
   // C4 (#5): reset the drawer whenever the document changes. The shell is keyed by docId in
   // DocsHome (so it already remounts), but this makes the reset explicit and robust if the key
   // strategy ever changes — open history on doc A, switch to doc B → drawer is closed, no stale A.
@@ -428,7 +436,38 @@ export function EditorShell(props: EditorShellProps) {
   )
   const closePanel = useCallback(() => setActivePanel(null), [])
 
+  // "Forward to chat" (feature #511): reader+ entry. Recompute grant capability from the LIVE role
+  // at click time (E-16: a demoted admin loses授权); the bridge opens the host conversation-select.
+  const onForwardToChat = useCallback(() => {
+    if (!role) return
+    startDocForward({
+      docId,
+      title: currentTitle,
+      role,
+      currentUid: getCurrentUid(),
+      ownerId,
+      space: props.space,
+      folder: props.folder,
+    })
+  }, [docId, currentTitle, role, ownerId, props.space, props.folder])
+
   if (terminal.kind !== 'none') {
+    // Screen 4c (feature #511): the forbidden landing renders inline so it can offer "Request
+    // access"; every other terminal kind uses the upstream shared <DocTerminal>.
+    if (terminal.kind === 'forbidden') {
+      return (
+        <div className="octo-doc octo-terminal">
+          {onBack && (
+            <button type="button" className="octo-doc-back" onClick={onBack}>
+              ← {t('docs.list.back')}
+            </button>
+          )}
+          <h2>{title}</h2>
+          <p className="octo-terminal-msg">{t('docs.error.permission.forbidden')}</p>
+          <RequestAccessButton docId={docId} />
+        </div>
+      )
+    }
     return <DocTerminal title={title} kind={terminal.kind} onBack={onBack} />
   }
 
@@ -442,6 +481,12 @@ export function EditorShell(props: EditorShellProps) {
 
   const editor = instance.editor
   const manage = role ? canManage(role) : false
+  // "Forward to chat" is only offered when the host actually exposes the conversation-select
+  // surface openDocForward() lands on. On the standalone /d/:docId page WKBase isn't mounted (the
+  // Layout early-return skips it), so showConversationSelect is undefined and a click would be a
+  // silent no-op — hide the entry there rather than render a dead button. In-shell WKBase is always
+  // present, so the button shows exactly as before (non-regression).
+  const canForward = canForwardToChat()
 
   // "More" (≡) menu contents. Order is fixed per spec: [caller-provided lead rows] → open-in-new-
   // page → version history → export, with delete pinned last (below a separator) as the destructive
@@ -523,6 +568,20 @@ export function EditorShell(props: EditorShellProps) {
           >
             💬 {t('docs.toolbar.comments')}
           </button>
+          {/* Forward to chat (feature #511) — reader+ (anyone with access can forward the link;
+              only admin/owner sees the enabled 授权区, gated inside the modal by canGrant). Gated
+              on canForward so it never renders as a silent no-op where the host lacks the
+              conversation-select surface (the standalone /d/:docId page). */}
+          {role && canForward && (
+            <button
+              type="button"
+              className="octo-tb-btn octo-doc-forward-btn"
+              title={t('docs.forward.entry')}
+              onClick={onForwardToChat}
+            >
+              ⤴ {t('docs.forward.entry')}
+            </button>
+          )}
           {manage && (
             <button
               type="button"
@@ -531,6 +590,11 @@ export function EditorShell(props: EditorShellProps) {
               onClick={() => togglePanel('members')}
             >
               {t('docs.toolbar.members')}
+              {pendingAccess.count > 0 && (
+                <span className="octo-access-badge" aria-label={t('docs.forward.pendingTitle')}>
+                  {pendingAccess.count}
+                </span>
+              )}
             </button>
           )}
           {/* Low-frequency actions (open in new page / version history / export / delete) collapse
@@ -626,7 +690,14 @@ export function EditorShell(props: EditorShellProps) {
             aria-label={t('docs.member.manage')}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <MemberPanel docId={docId} role={role!} space={props.space} ownerId={ownerId} onClose={closePanel} />
+            <MemberPanel
+              docId={docId}
+              role={role!}
+              space={props.space}
+              ownerId={ownerId}
+              accessRequests={pendingAccess}
+              onClose={closePanel}
+            />
           </div>
         </div>
       )}

@@ -52,6 +52,7 @@ import {
   parseStandaloneDocId,
   isStandaloneDocPath,
   standaloneFallbackSpace,
+  standaloneLinkSpace,
   persistStandaloneReturn,
   consumeStandaloneReturn,
   withReturnSid,
@@ -68,6 +69,9 @@ let wk: ReturnType<typeof createMockWKApp>
 beforeEach(() => {
   window.sessionStorage.clear()
   window.localStorage.clear()
+  // Reset the URL between tests so a `?sid=`/`?sp=` pushed by one test (Copy-link / return-target /
+  // space-resolution cases) cannot leak into the next, which reads the link's `?sp=` (standaloneLinkSpace).
+  window.history.pushState({}, '', '/')
   wk = createMockWKApp()
   setWKApp(wk)
 })
@@ -138,8 +142,11 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     )
     // The editor (and its WS transport) is never mounted on the archived path.
     expect(screen.queryByTestId('editor-shell')).toBeNull()
-    // Only a Back affordance is offered (no Share / Request access).
-    expect(screen.getByText(/docs\.list\.back/)).toBeTruthy()
+    // No "back to all documents" link: a standalone /d/:docId share page is a self-contained
+    // surface with no resident list to return to, so every terminal drops Back (XIN-505). No
+    // Request access either — that is scoped to the forbidden landing.
+    expect(screen.queryByText(/docs\.list\.back/)).toBeNull()
+    expect(screen.queryByText('docs.forward.requestAccess')).toBeNull()
   })
 
   it('AC-7: a GET 403 renders the access-denied terminal, editor not mounted', async () => {
@@ -156,6 +163,40 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
+  it('XIN-490 gap2: the 403 forbidden landing offers "Request access" in place', async () => {
+    // The whole point of the forward + access-request flow is that a link recipient WITHOUT
+    // permission can ask for it. The standalone /d/:docId deep link is the surface most recipients
+    // arrive through, yet it used to dead-end on a bare terminal (Back only). It must now render the
+    // in-shell RequestAccessButton so the receiver can request access without leaving the page.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_forbidden') throw apiError(403)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_forbidden" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
+    )
+    // The reused RequestAccessButton (its hint + action) is present on the forbidden landing.
+    expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
+    // XIN-505 redesign: the landing shows a non-misleading heading instead of a fake "Untitled
+    // document" title, and offers no "back to all documents" link (a share page has no list to
+    // return to). The reason line is still shown.
+    expect(screen.getByText('docs.forward.forbiddenTitle')).toBeTruthy()
+    expect(screen.queryByText('docs.state.untitled')).toBeNull()
+    expect(screen.queryByText(/docs\.list\.back/)).toBeNull()
+    // Clicking POSTs the access request for THIS doc (idempotency enforced server-side).
+    fireEvent.click(screen.getByText('docs.forward.requestAccess'))
+    await waitFor(() =>
+      expect(
+        wk.apiClient.calls.some(
+          (c) => c.method === 'post' && c.url === '/docs/d_forbidden/access-requests',
+        ),
+      ).toBe(true),
+    )
+  })
+
   it('AC-10: a GET 404 renders the not-found terminal, editor not mounted', async () => {
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_missing') throw apiError(404)
@@ -167,6 +208,9 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     await waitFor(() =>
       expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy(),
     )
+    // Request access is scoped to the forbidden landing only — a not-found terminal has no such
+    // affordance (there is no document to request access to).
+    expect(screen.queryByText('docs.forward.requestAccess')).toBeNull()
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
@@ -437,6 +481,151 @@ describe('StandaloneDocPage — cold-start preflight carries X-Space-Id from the
     const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
     expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-live')
     expect(screen.getByTestId('editor-space').textContent).toBe('space-live')
+  })
+})
+
+describe('XIN-501 — preflight addresses the doc space from the link ?sp, never the token-bucket ?sid', () => {
+  it('standaloneLinkSpace reads the dedicated ?sp param (the doc space), NOT ?sid (the token bucket)', () => {
+    // ?sp carries the doc's real space_id; ?sid is only the token-bucket key. They are distinct, and
+    // the preflight space must come from ?sp — feeding ?sid was the XIN-497 regression.
+    window.history.pushState({}, '', '/d/d_x?sid=2b60d3&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    expect(standaloneLinkSpace()).toBe('105d4a60d0fc4d55a5cfc3c2d0501361')
+    // Trimmed.
+    window.history.pushState({}, '', '/d/d_x?sp=%20space-doc%20')
+    expect(standaloneLinkSpace()).toBe('space-doc')
+    // A link with only the token-bucket ?sid (no ?sp) must NOT be treated as a space → empty, so
+    // callers fall back to currentSpaceId/cached/default.
+    window.history.pushState({}, '', '/d/d_x?sid=2b60d3')
+    expect(standaloneLinkSpace()).toBe('')
+    // No query at all → empty.
+    window.history.pushState({}, '', '/d/d_x')
+    expect(standaloneLinkSpace()).toBe('')
+  })
+
+  it('own doc (boss regression): preflight addresses the doc space from ?sp → 200, editor mounts', async () => {
+    // Scenario B (severest boss repro): the owner opens their OWN doc via a `/d/:docId` link. The
+    // link carries the doc's real space as ?sp and the short token key as ?sid. The preflight MUST
+    // send X-Space-Id = the ?sp value; sending the ?sid (as XIN-497 did) trips requireDocRole's
+    // cross-space 404 gate and 404s the owner's own doc.
+    window.history.pushState({}, '', '/d/d_own?sid=2b60d3&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_own') {
+        return {
+          data: { docId: 'd_own', title: 'My Doc', ownerId: 'u_self', role: 'admin' },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_own" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_own')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('105d4a60d0fc4d55a5cfc3c2d0501361')
+    // Never the token-bucket sid.
+    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('2b60d3')
+  })
+
+  it('a no-permission recipient whose OWN space differs from the doc: preflight uses ?sp so the backend returns 403 (forbidden + request-access), not a cross-space 404', async () => {
+    // Scenario A: logged in, no permission on THIS doc, recipient's own last space (cached
+    // currentSpaceId) is a DIFFERENT space. The preflight must address the doc's space from ?sp so
+    // the backend evaluates the caller's role in the doc's space and returns 403 — reaching the
+    // request-access entry — instead of the cross-space 404 dead-end.
+    window.history.pushState({}, '', '/d/d_shared?sid=2b60d3&sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-mine') // recipient's own last space, NOT the doc's
+
+    wk.apiClient.responder = (method, url) => {
+      // Real backend: same-space + no role → 403 forbidden; a mismatched space would be 404.
+      if (method === 'get' && url === '/docs/d_shared') throw apiError(403)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_shared" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
+    )
+    // The preflight addressed the doc's space (from ?sp), NOT the recipient's own cached space.
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_shared')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('space-mine')
+    // gap2 request-access entry is reached (the whole point of the fix).
+    expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('a genuinely deleted doc still lands on not-found even with a valid ?sp', async () => {
+    // With the correct space, a 404 now means the doc is truly gone (status 0), not a cross-space
+    // artifact — so not-found is the correct terminal.
+    window.history.pushState({}, '', '/d/d_gone?sid=2b60d3&sp=space-doc')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_gone') throw apiError(404)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_gone" />)
+
+    await waitFor(() => expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy())
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('an older link with only ?sid (no ?sp) falls back to the cached currentSpaceId, so the owner opening their own doc still works', async () => {
+    // Backward compatibility: links minted before XIN-501 carry only the token-bucket ?sid. The
+    // preflight must NOT send that sid as the space; it falls back to the cached currentSpaceId,
+    // which is the doc's space whenever the opener is already in it (owner / same-space recipient).
+    window.history.pushState({}, '', '/d/d_legacy?sid=2b60d3')
+    window.localStorage.setItem('currentSpaceId', 'space-doc') // opener is in the doc's space
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_legacy') {
+        return { data: { docId: 'd_legacy', title: 'Legacy', ownerId: 'u_self' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_legacy" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_legacy')
+    // The cached space is used — never the token-bucket sid.
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('2b60d3')
+  })
+
+  it('a real expired/invalid token still 401s → login handoff, unaffected by the space (AC-4)', async () => {
+    // The space only steers requireDocRole's cross-space (404) vs role (403) branches; the auth
+    // middleware returns 401 for a bad token regardless of X-Space-Id. So a genuine stale token still
+    // hands off to onSessionExpired (login re-auth) — the space fix does not swallow real 401s.
+    window.history.pushState({}, '', '/d/d_expired?sid=2b60d3&sp=space-doc')
+    const onSessionExpired = vi.fn()
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_expired') throw apiError(401)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_expired" onSessionExpired={onSessionExpired} />)
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('docs.error.permission.forbidden')).toBeNull()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('seeds the empty live currentSpaceId from the link ?sp so follow-up requests match the preflight', async () => {
+    window.history.pushState({}, '', '/d/d_ok?sid=2b60d3&sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-mine') // recipient's own; must NOT win over ?sp
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(wk.shared.currentSpaceId).toBe('space-doc')
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
   })
 })
 

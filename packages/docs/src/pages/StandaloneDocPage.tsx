@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
+import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
 import { getDoc, type DocMeta } from './docsApi.ts'
@@ -154,16 +155,28 @@ export function withReturnSid(target: string, sid: string | null | undefined): s
   }
 }
 
-/** Preserve the octo session id (`?sid=`) across an in-app navigation when present. */
-function withSid(path: string): string {
-  if (typeof window === 'undefined') return path
-  try {
-    const sid = new URLSearchParams(window.location.search).get('sid')
-    if (!sid) return path
-    return path + (path.includes('?') ? '&' : '?') + `sid=${encodeURIComponent(sid)}`
-  } catch {
-    return path
-  }
+/**
+ * Lock glyph for the forbidden landing (XIN-505). 24×24 line icon, stroke inherits `currentColor`
+ * so the surrounding icon chip drives its colour — mirrors the line-icon style used elsewhere in
+ * the docs package (DocMoreMenu).
+ */
+function LockIcon(): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="28"
+      height="28"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
 }
 
 /**
@@ -191,6 +204,41 @@ export function standaloneFallbackSpace(currentSpaceId: string | undefined): str
   return DEFAULT_DOC_SPACE
 }
 
+/**
+ * The doc's OWN space, as carried by the standalone share link's dedicated `?sp=` query param.
+ *
+ * buildDocLink (forward/link.ts) embeds the shared document's REAL space id as `?sp=` — the space
+ * the doc actually lives in (doc_meta.space_id, a 32-hex docs-backend id), known to the sharer at
+ * forward time (the in-shell EditorShell space prop = the live currentSpaceId). It is the
+ * AUTHORITATIVE space for the standalone preflight, ahead of the recipient's own live/cached
+ * currentSpaceId (which, for a cross-space share, is a DIFFERENT space).
+ *
+ * Why a DEDICATED `?sp` and NOT the link's `?sid` (XIN-501, boss real-device evidence): `?sid` is
+ * the token-bucket key (`token<sid>`, #511 problem 2) — a short octo session/space id (e.g.
+ * `2b60d3`), which is NOT the docs backend space_id (e.g. `105d4a60d0fc4d55a5cfc3c2d0501361`).
+ * XIN-497 fed `?sid` in as X-Space-Id; the backend gates GET /docs/:docId behind requireDocRole,
+ * which checks the CROSS-SPACE guard (`meta.space_id !== req.spaceId` → 404 not_found) BEFORE the
+ * role guard (role `none` → 403 forbidden). Because the sid never equals the doc's space_id, that
+ * preflight returned 404 for EVERY recipient — including the owner opening their OWN doc (the boss
+ * regression) — and never reached the intended 403 forbidden + request-access landing. Addressing
+ * the preflight from the doc's real space (`?sp`) lets the backend evaluate the caller's role in the
+ * doc's space: 200 for a member/owner, 403 for a no-permission caller (→ request-access), 404 only
+ * when the doc is genuinely gone. The `token<sid>` logic is untouched — `?sid` still keys the token.
+ *
+ * Returns '' when the link carries no `?sp=` (older links minted before XIN-501, or under SSR);
+ * callers then fall back to standaloneFallbackSpace (live currentSpaceId → cached → deploy default),
+ * which still addresses the doc correctly whenever the opener is already in the doc's space (the
+ * owner opening their own doc, or a same-space recipient).
+ */
+export function standaloneLinkSpace(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return (new URLSearchParams(window.location.search).get('sp') || '').trim()
+  } catch {
+    return ''
+  }
+}
+
 type Phase =
   | { status: 'loading' }
   | { status: 'ready'; meta: DocMeta }
@@ -203,8 +251,8 @@ type Phase =
  * standalone view, so the loaded editor offers no "back to all documents" return link (XIN-416, boss
  * real-device acceptance) — users arrive here from an external chat link, not from inside the shell,
  * and a pure share page needs no entry back into the doc list. The page therefore passes NO onBack to
- * EditorShell; the preflight error terminals (below) keep their own Back affordance as an escape
- * hatch out of a not-found / forbidden / locked dead end.
+ * EditorShell; for the same reason the preflight error terminals (below) also render without a Back
+ * link (XIN-505) — a share surface has no resident list to return to.
  *
  * "Copy link" is collapsed into the header's ≡ "more" menu (as its top row) rather than sitting as a
  * resident title-bar button, keeping the standalone header as trim as the in-shell one. The clipboard
@@ -217,8 +265,9 @@ type Phase =
  * single deterministic gate for every boundary state, and it needs no WebSocket:
  *   - 200          -> mount the editor.
  *   - 403 forbidden (AC-7), 404 not-found (AC-10), 401 login (AC-11), 409 locked/archived (AC-12)
- *     -> render the matching terminal screen (Back only). 409 is the archived signal the
- *     collab-token path never reports, which is exactly why the preflight exists.
+ *     -> render the matching terminal screen (a centered card; the forbidden landing adds Request
+ *     access, XIN-505). 409 is the archived signal the collab-token path never reports, which is
+ *     exactly why the preflight exists.
  *
  * `docId` is nullable: the host Layout claims the whole `/d` namespace, so a malformed / empty id
  * (`/d/`, `/d/a:b`) arrives here as null and short-circuits to the not-found terminal instead of
@@ -245,12 +294,17 @@ export function StandaloneDocPage({
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Resolve the standalone space ONCE, from the SAME source the room-addressing fallback uses
-  // (standaloneFallbackSpace: live currentSpaceId → cached localStorage → deploy default). Both the
-  // preflight's explicit X-Space-Id header and the EditorShell room fallback read this one value, so
-  // preflight and room can never address different spaces (the bug: a bare preflight got 400/404 and
-  // fell to the not-found terminal even for the user's own last space).
-  const preflightSpace = standaloneFallbackSpace(wk.shared?.currentSpaceId)
+  // Resolve the standalone space ONCE, and address BOTH the preflight's explicit X-Space-Id header
+  // and the EditorShell room fallback from it, so preflight and room can never target different
+  // spaces. Priority (XIN-501): the doc's real space carried by the share link's dedicated `?sp=`
+  // (standaloneLinkSpace — the doc_meta.space_id embedded by buildDocLink, authoritative for a
+  // `/d/:docId` deep link) → live currentSpaceId → cached localStorage → deploy default. Do NOT use
+  // the link's `?sid` here: `?sid` is the token-bucket key, a short octo session/space id, not the
+  // doc's space_id, so feeding it as X-Space-Id trips requireDocRole's cross-space 404 gate BEFORE
+  // the role check — 404'ing every recipient, including the owner opening their own doc (XIN-497
+  // regression). Older links minted without `?sp` fall through to currentSpaceId, which still
+  // addresses the doc correctly when the opener is already in the doc's space (owner / same-space).
+  const preflightSpace = standaloneLinkSpace() || standaloneFallbackSpace(wk.shared?.currentSpaceId)
 
   // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
   // page mounts via the Layout early-return, before the app shell restores currentSpaceId from
@@ -268,6 +322,15 @@ export function StandaloneDocPage({
   useEffect(() => {
     const shared = wk.shared
     if (!shared || shared.currentSpaceId) return
+    // Prefer the doc's real space carried by the share link (`?sp=`, standaloneLinkSpace) so the
+    // global interceptor injects the SAME space on the editor's follow-up requests as the preflight
+    // header used (XIN-501); fall back to the cached last space when the link carries no `?sp`.
+    // Never overwrite a real live space, so in-shell mounts (where it is already set) are unaffected.
+    const linkSpace = standaloneLinkSpace()
+    if (linkSpace) {
+      shared.currentSpaceId = linkSpace
+      return
+    }
     if (typeof window === 'undefined') return
     try {
       const cached = window.localStorage.getItem('currentSpaceId')
@@ -325,16 +388,6 @@ export function StandaloneDocPage({
     [],
   )
 
-  // Back / return-to-list handler for the preflight ERROR terminals only (not-found / forbidden /
-  // locked / login). The loaded editor view intentionally has no back link (XIN-416); this remains
-  // wired to DocTerminal so a user who lands on a dead-end error screen still has an escape hatch to
-  // the in-shell docs home. From a full-window standalone view there is no resident list to fall
-  // back to, so route to the in-shell docs home (the natural "all documents" destination), carrying
-  // the session sid when present.
-  const onBack = useCallback(() => {
-    if (typeof window !== 'undefined') window.location.assign(withSid('/docs'))
-  }, [])
-
   const onCopyLink = useCallback(async () => {
     if (typeof window === 'undefined') return
     try {
@@ -388,9 +441,38 @@ export function StandaloneDocPage({
   }
 
   if (phase.status === 'terminal') {
+    // Standalone share-page terminals render as a centered card in the product's design language
+    // (XIN-505 boss real-device requirements). A `/d/:docId` link is a self-contained share surface
+    // for external recipients, not an in-app list view, so NO terminal offers a "back to all
+    // documents" link (the loaded editor already omits Back per XIN-416; the terminals now match).
+    // The in-shell EditorShell renders its OWN inline terminal markup and is untouched by this
+    // branch, so this redesign cannot affect the in-shell scenario.
+    if (phase.kind === 'forbidden' && docId) {
+      // Forbidden landing (feature #511 screen 4c): a lock glyph, a non-misleading heading — NOT a
+      // fake "Untitled document" title, since a recipient without permission cannot know the real
+      // title — the reason line, and the reused RequestAccessButton whose action is the centered
+      // primary CTA. docId is guaranteed non-null here: a null id short-circuits to the not-found
+      // terminal before any preflight runs, so it can never reach a forbidden terminal.
+      return (
+        <div className="octo-doc-standalone octo-doc-standalone--terminal">
+          <div className="octo-standalone-card octo-standalone-forbidden" role="alert">
+            <span className="octo-standalone-forbidden-icon" aria-hidden="true">
+              <LockIcon />
+            </span>
+            <h1 className="octo-standalone-card-title">{t('docs.forward.forbiddenTitle')}</h1>
+            <p className="octo-standalone-card-msg">{t('docs.error.permission.forbidden')}</p>
+            <RequestAccessButton docId={docId} />
+          </div>
+        </div>
+      )
+    }
+    // not-found / locked / login: the shared DocTerminal, centered in the same card, with no Back
+    // link (onBack omitted). RequestAccess is scoped to the forbidden landing only.
     return (
-      <div className="octo-doc-standalone">
-        <DocTerminal title={t('docs.state.untitled')} kind={phase.kind} onBack={onBack} />
+      <div className="octo-doc-standalone octo-doc-standalone--terminal">
+        <div className="octo-standalone-card">
+          <DocTerminal title={t('docs.state.untitled')} kind={phase.kind} />
+        </div>
       </div>
     )
   }
