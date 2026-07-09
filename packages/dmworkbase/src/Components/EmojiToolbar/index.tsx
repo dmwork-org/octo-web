@@ -73,6 +73,18 @@ const EMOJI_PANEL_HEIGHT = 372
 const EMOJI_PANEL_GAP = 12
 const EMOJI_PANEL_MARGIN = 8
 
+// 贴纸 hover 放大预览（对齐 Discord 贴纸面板的「悬停看大图」）。60px 缩略图看不清复杂
+// 插画，悬停时在格子上方浮出一张 STICKER_PREVIEW_SIZE 的圆角大图卡片。放大层 portal 到
+// <body>、position:fixed 并夹进视口——因为面板内容区 .wk-emojipanel-content 是
+// overflow:hidden，放大卡片会被裁掉顶部/边缘，portal 才能让它浮出面板而不被裁。
+// 浮在格子上方（而非盖住格子）是为了不遮挡 hover 才出现的右上角删除「×」。
+const STICKER_PREVIEW_SIZE = 140
+const STICKER_PREVIEW_MARGIN = 8
+// 放大卡片与格子之间的间距，避免贴着格子边缘。
+const STICKER_PREVIEW_GAP = 8
+// 首次悬停到浮出的延时：扫过网格时不会一路狂闪；一旦浮出，格子间移动直接无缝切换。
+const STICKER_PREVIEW_DELAY = 120
+
 interface EmojiToolbarProps {
     conversationContext: ConversationContext
     icon: string | React.ReactNode
@@ -185,6 +197,8 @@ interface EmojiPanelState {
     category: string
     stickers: StickerItem[]
     uploading: boolean
+    // 当前 hover 放大预览的目标贴纸及其格子在视口中的矩形；null 表示不显示。
+    preview: { sticker: StickerItem; rect: DOMRect } | null
 }
 
 interface EmojiPanelProps {
@@ -202,6 +216,8 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     private stickersLoaded = false
     // 订阅 appconfig 字段变化，让 sticker_custom_enabled 灰度切换后无需刷新前台即可生效。
     private removeConfigChangeListener?: () => void
+    // hover 放大预览的浮出延时句柄；卸载/隐藏时清除，避免离屏后 setState。
+    private previewTimer: ReturnType<typeof setTimeout> | null = null
 
     constructor(props: any) {
         super(props)
@@ -211,6 +227,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             category: "emoji",
             stickers: [],
             uploading: false,
+            preview: null,
         }
     }
 
@@ -228,6 +245,14 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         this.removeConfigChangeListener = WKApp.remoteConfig.addConfigChangeListener(
             this._onRemoteConfigChange
         )
+        // 放大预览用 hover 那一刻捕获的格子 rect 做 position:fixed 定位；网格滚动或窗口
+        // 缩放后该 rect 会失真，而滚动不冒泡、也不触发 <ul> 的 mouseleave，卡片会悬在旧
+        // 坐标、盖到错的贴纸上。捕获阶段监听任意滚动 + resize，一发生就隐藏预览（最简且
+        // 正确，下次 hover 自然重新浮出）。
+        // passive: true — 这个监听器只读、从不 preventDefault，标记 passive 让浏览器不用
+        // 等它跑完就能开始滚动，避免不必要的滚动卡顿。
+        window.addEventListener("scroll", this.hideStickerPreview, { capture: true, passive: true })
+        window.addEventListener("resize", this.hideStickerPreview)
         // 贴纸列表延迟到首次切到「我的贴纸」tab 时再拉（ensureStickersLoaded），
         // 避免每次打开表情面板都打一次 sticker/user 请求（PR#496 review P2-1）。
     }
@@ -238,6 +263,14 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         WKApp.mittBus.off("stickers-updated", this._onStickersUpdated)
         this.removeConfigChangeListener?.()
         this.removeConfigChangeListener = undefined
+        // removeEventListener 按 capture 标志匹配（passive 不参与匹配），{capture:true} 与
+        // 注册时的 {capture:true, passive:true} 匹配一致。
+        window.removeEventListener("scroll", this.hideStickerPreview, { capture: true })
+        window.removeEventListener("resize", this.hideStickerPreview)
+        if (this.previewTimer) {
+            clearTimeout(this.previewTimer)
+            this.previewTimer = null
+        }
     }
 
     private _onEmojiManifestUpdated = () => {
@@ -260,6 +293,11 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         if (this.isUnmounted) {
             return
         }
+        // 灰度关掉自定义贴纸时，顺手清掉可能仍在显示的放大预览——面板常驻不卸载，否则
+        // stale preview 状态会跨这次 tab 消失继续留着。
+        if (!WKApp.remoteConfig.stickerCustomEnabled) {
+            this.hideStickerPreview()
+        }
         // 开关值直接从 WKApp.remoteConfig 读取, 用 forceUpdate 触发 render 拾取最新值。
         // 不需要拷贝到 state, 避免 state 与 remoteConfig 双源不一致。
         this.forceUpdate()
@@ -269,11 +307,23 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         return WKApp.dataSource.commonDataSource.userStickers().then((result) => {
             this.stickersLoaded = true
             if (!this.isUnmounted) {
-                this.setState({ stickers: result.list || [] })
+                const list = result.list || []
+                this.setState((prev) => ({
+                    stickers: list,
+                    // 后台刷新（如「stickers-updated」广播）可能悄悄把正在 hover 预览的那张
+                    // 贴纸移除/替换掉，而指针并没有移动去触发任何 hide 路径——预览会滞留、
+                    // 展示一张已经不存在的贴纸。新列表里已经找不到该 sticker_id 时一并清掉，
+                    // 和 onDelete 是同一类残影，只是触发源不同。
+                    preview: prev.preview && !list.some((s) => s.sticker_id === prev.preview!.sticker.sticker_id)
+                        ? null
+                        : prev.preview,
+                }))
             }
         }).catch(() => {
             if (!this.isUnmounted) {
-                this.setState({ stickers: [] })
+                // 失败分支把 stickers 清空，等于「新列表里不含任何 sticker_id」——和成功分支
+                // 同一类残影，正在显示的预览必然指向一个已经不在（空）列表里的贴纸，一并清掉。
+                this.setState({ stickers: [], preview: null })
             }
         })
     }
@@ -357,6 +407,9 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
 
     onDelete = (e: React.MouseEvent, sticker: StickerItem) => {
         e.stopPropagation()
+        // × 的 onClick stopPropagation 会绕过 <li> 的 hideStickerPreview，删掉正在 hover 的
+        // 那张贴纸后预览会残留在空位上（还会短暂渲染一张已不存在的贴纸），先清掉。
+        this.hideStickerPreview()
         WKApp.dataSource.commonDataSource.deleteSticker(sticker.sticker_id).then(() => {
             this.requestStickers()
         }).catch(() => {
@@ -378,8 +431,72 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         return <tgs-player autoplay mode="normal" src={url}></tgs-player>
     }
 
+    // hover 进入某张贴纸：已有预览显示时立刻切换目标（格子间移动无缝跟随，对齐 Discord），
+    // 否则起一个短延时再浮出，避免鼠标扫过网格时一路狂闪。rect 在进入时即取，用于把放大
+    // 卡片按格子中心定位。
+    private scheduleStickerPreview = (sticker: StickerItem, target: HTMLElement) => {
+        const rect = target.getBoundingClientRect()
+        // 先清掉可能仍在排队的旧延时，避免它稍后 fire 用旧 sticker/rect 覆盖更新的目标。
+        if (this.previewTimer) {
+            clearTimeout(this.previewTimer)
+            this.previewTimer = null
+        }
+        if (this.state.preview) {
+            this.setState({ preview: { sticker, rect } })
+            return
+        }
+        this.previewTimer = setTimeout(() => {
+            this.previewTimer = null
+            // 延时排队期间贴纸列表也可能刷新掉这张（同 requestStickers 里的残影修复），
+            // fire 时再核对一次，避免浮出一张已经不存在的贴纸。
+            if (!this.isUnmounted && this.state.stickers.some((s) => s.sticker_id === sticker.sticker_id)) {
+                this.setState({ preview: { sticker, rect } })
+            }
+        }, STICKER_PREVIEW_DELAY)
+    }
+
+    // 离开贴纸网格或点击发送后隐藏放大预览，并清掉尚未浮出的延时。
+    private hideStickerPreview = () => {
+        if (this.previewTimer) {
+            clearTimeout(this.previewTimer)
+            this.previewTimer = null
+        }
+        if (this.state.preview) {
+            this.setState({ preview: null })
+        }
+    }
+
+    // 离开某张贴纸格子：移到另一张贴纸时不隐藏（让它的 onMouseEnter 无缝切换目标，保留
+    // Discord 式跟随）；移到「+」号 / 网格空白内边距 / 网格外等非贴纸目标时隐藏——否则指针
+    // 虽已不在任何贴纸上、但仍在 <ul> 内，<ul> 的 mouseleave 不触发，预览会滞留在空位上。
+    private onStickerLeave = (e: React.MouseEvent) => {
+        const related = e.relatedTarget
+        if (related instanceof Element && related.closest(".wk-sticker-item")) {
+            return
+        }
+        this.hideStickerPreview()
+    }
+
+    // 把放大卡片定位并夹进视口（口径同 computePanelPos）：水平以格子中心对齐；垂直优先浮在
+    // 格子上方（保留格子与删除「×」可见），上方空间不足则翻到格子下方，最后统一夹进视口。
+    private computeStickerPreviewStyle(rect: DOMRect): React.CSSProperties {
+        const vw = typeof window !== "undefined" ? window.innerWidth : STICKER_PREVIEW_SIZE
+        const vh = typeof window !== "undefined" ? window.innerHeight : STICKER_PREVIEW_SIZE
+        const m = STICKER_PREVIEW_MARGIN
+        // 小视口兜底：卡片边长不超过可用视口，避免极窄/极矮窗口下夹取退化后仍溢出、盖住
+        // 格子与删除「×」。正常面板尺寸下就是 STICKER_PREVIEW_SIZE。
+        const size = Math.max(0, Math.min(STICKER_PREVIEW_SIZE, vw - 2 * m, vh - 2 * m))
+        const left = Math.max(m, Math.min(rect.left + rect.width / 2 - size / 2, vw - size - m))
+        let top = rect.top - STICKER_PREVIEW_GAP - size
+        if (top < m) {
+            top = rect.bottom + STICKER_PREVIEW_GAP
+        }
+        top = Math.max(m, Math.min(top, vh - size - m))
+        return { left, top, width: size, height: size }
+    }
+
     render(): React.ReactNode {
-        const { emojis, category, stickers, uploading } = this.state
+        const { emojis, category, stickers, uploading, preview } = this.state
         const { onEmoji, onSticker } = this.props
         // stickerCustomEnabled 关闭时: 隐藏贴纸 tab, 并把 isSticker 强制视为 false, 兜住
         // 「面板已打开且当前在 sticker tab, 后端灰度关掉开关」的边界——避免 tab 消失但
@@ -387,9 +504,24 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         const stickerCustomEnabled = WKApp.remoteConfig.stickerCustomEnabled
         const stickerUploadLimits = WKApp.remoteConfig.stickerUploadLimits
         const isSticker = stickerCustomEnabled && category === STICKER_CATEGORY
+        // 放大预览层 portal 到 <body>，逃出 .wk-emojipanel-content 的 overflow:hidden 裁剪，
+        // 并盖过面板（面板 z-index:999）。pointer-events:none（见 CSS）保证不拦截点击即发送。
+        const previewOverlay = isSticker && preview && typeof document !== "undefined"
+            ? ReactDOM.createPortal(
+                <div className="wk-sticker-preview" style={this.computeStickerPreviewStyle(preview.rect)} aria-hidden="true">
+                    {/* key 按 sticker_id：切换目标时重建媒体元素，避免复用同一 <tgs-player>、
+                        只换 src 时 Lottie 动画不重启（沿用 renderStickerMedia 的分流）。 */}
+                    {React.cloneElement(
+                        this.renderStickerMedia(preview.sticker) as React.ReactElement,
+                        { key: preview.sticker.sticker_id }
+                    )}
+                </div>,
+                document.body
+            )
+            : null
         return <div className="wk-emojipanel">
             <div className={classNames("wk-emojipanel-content", isSticker ? "wk-emojipanel-content-sticker" : undefined)}>
-                <ul>
+                <ul onMouseLeave={this.hideStickerPreview}>
                     {
                         !isSticker ? emojis.map((emoji, i) => {
                             return <li key={i} onClick={(e) => {
@@ -418,8 +550,12 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                     }
                     {
                         isSticker ? stickers.map((sticker) => {
-                            return <li key={sticker.sticker_id} className="wk-sticker-item" onClick={(e) => {
+                            return <li key={sticker.sticker_id} className="wk-sticker-item"
+                                onMouseEnter={(e) => this.scheduleStickerPreview(sticker, e.currentTarget)}
+                                onMouseLeave={this.onStickerLeave}
+                                onClick={(e) => {
                                 e.stopPropagation()
+                                this.hideStickerPreview()
                                 if (onSticker) {
                                     onSticker(sticker)
                                 }
@@ -443,6 +579,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             <div className="wk-emojipanel-tab">
                 <div className={classNames("wk-emojipanel-tab-item", !isSticker ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
                     e.stopPropagation()
+                    this.hideStickerPreview()
                     this.setState({ category: "emoji" })
                 }}>
                     <img alt="" src={require("./emoji_tab_icon.png")}></img>
@@ -469,6 +606,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                 accept={stickerUploadLimits.allowedFormats.join(",")}
                 style={{ display: "none" }}
             />
+            {previewOverlay}
         </div>
     }
 }
