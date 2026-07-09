@@ -4,8 +4,26 @@
   },
   "list": {
     "new": "New document",
+    "newMenu": "New",
+    "newDocument": "New document",
+    "newBoard": "New board",
+    "newSheet": "New sheet",
+    "comingSoon": "Coming soon",
+    "kindDoc": "Document",
+    "kindBoard": "Board",
     "back": "All documents",
     "updatedAt": "Updated"
+  },
+  "board": {
+    "readOnly": "Read-only",
+    "saveFailed": "Not saved — local storage is full or unavailable",
+    "untitled": "Untitled board",
+    "deleteEntry": "Delete board",
+    "importLibrary": "Import from local",
+    "importLibraryError": "Couldn't import that library — please make sure it's a valid .excalidrawlib",
+    "saveLibrary": "Save to file",
+    "resetLibrary": "Reset library",
+    "resetLibraryConfirm": "Reset the library? This will clear all saved items and can't be undone."
   },
   "doc": {
     "deleteEntry": "Delete document",

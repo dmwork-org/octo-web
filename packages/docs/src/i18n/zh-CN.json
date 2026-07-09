@@ -4,8 +4,26 @@
   },
   "list": {
     "new": "新建文档",
+    "newMenu": "新建",
+    "newDocument": "新建文档",
+    "newBoard": "新建画板",
+    "newSheet": "新建表格",
+    "comingSoon": "即将上线",
+    "kindDoc": "文档",
+    "kindBoard": "画板",
     "back": "全部文档",
     "updatedAt": "更新于"
+  },
+  "board": {
+    "readOnly": "只读",
+    "saveFailed": "未保存 — 本地存储已满或不可用",
+    "untitled": "未命名画板",
+    "deleteEntry": "删除画板",
+    "importLibrary": "从本地导入",
+    "importLibraryError": "无法导入该素材库文件，请确认是有效的 .excalidrawlib",
+    "saveLibrary": "导出到文件",
+    "resetLibrary": "清空素材库",
+    "resetLibraryConfirm": "确认清空素材库？此操作不可恢复。"
   },
   "doc": {
     "deleteEntry": "删除文档",

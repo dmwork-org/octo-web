@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
+import { BoardSession } from '../board/BoardSession.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
@@ -425,13 +426,22 @@ export function StandaloneDocPage({
       try {
         const parsed = parseDocumentName(phase.meta.documentName)
         if (parsed.kind === 'document') {
-          return { space: parsed.space, folder: parsed.folder, doc: parsed.doc }
+          return { space: parsed.space, folder: parsed.folder, doc: parsed.doc, board: undefined }
+        }
+        // A whiteboard key (octo:{space}:{folder}:wb:{board}) is authoritative for the board
+        // surface just as the document key is for the editor: honor it symmetrically. Falling
+        // through to DEFAULT_DOC_FOLDER here derived a DIFFERENT whiteboard key than the REST
+        // preflight authorized for any board in a non-default folder — a wrong collab token / WS
+        // room / uid-scoped cache on the cross-node/cross-user `/d/:docId` share surface (XIN-634
+        // P1-a). It only worked before because in-app boards hardcode DEFAULT_DOC_FOLDER.
+        if (parsed.kind === 'whiteboard') {
+          return { space: parsed.space, folder: parsed.folder, doc: docId ?? '', board: parsed.board }
         }
       } catch {
         // Malformed documentName from the backend: fall back to the caller's space + default folder.
       }
     }
-    return { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '' }
+    return { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '', board: undefined }
   }, [phase, preflightSpace, docId])
 
   const names = useMemberNames(addressing.space)
@@ -485,6 +495,36 @@ export function StandaloneDocPage({
   // In the ready phase the addressed id is guaranteed non-null (a null id short-circuits to the
   // not-found terminal above); prefer the id echoed by the preflight, falling back to it.
   const editorDocId = meta.docId || (docId as string)
+
+  // Board-kind is resolved from the AUTHORITATIVE backend docType the preflight already carried —
+  // NOT a node-local registry (XIN-530, boss real-device). A `/d/:docId` share link opens on any
+  // node/session, so a board created on node A must render as a board on node B even though node
+  // B's board-kind localStorage registry has never seen this docId. The standalone page has no
+  // registry to lean on, which makes the backend docType the single source of truth here; anything
+  // that isn't an explicit `'board'` falls through to the rich-text editor (the safe default for
+  // plain docs and legacy backends that omit docType). This mirrors DocsHome's buildRightPane
+  // dispatch so both open paths agree on the shell for every member.
+  if (meta.docType === 'board') {
+    // The whiteboard {board} segment is BoardSession's `docId` (it becomes octo:{space}:{folder}:
+    // wb:{board}). Prefer the authoritative segment parsed from the preflight documentName so the
+    // key matches what REST authorized; fall back to the addressed id for legacy backends whose
+    // preflight omitted the documentName (XIN-634 P1-a).
+    const boardId = addressing.board || editorDocId
+    return (
+      <div className="octo-doc-standalone">
+        <BoardSession
+          key={boardId}
+          docId={boardId}
+          title={meta.title || t('docs.state.untitled')}
+          uid={uid}
+          space={addressing.space}
+          folder={addressing.folder}
+          userName={names.get(uid) || uid}
+          creatorNicknameOnly
+        />
+      </div>
+    )
+  }
   // "Copy link" as the first row of the header ≡ "more" menu (it used to be a resident title-bar
   // button). Selecting the row closes the menu, so the "Link copied" confirmation can't ride on the
   // row label (the panel unmounts); the label is always the action name and the success feedback is
