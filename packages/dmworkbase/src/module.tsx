@@ -113,6 +113,7 @@ import {
 } from "./Utils/clipboard";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t, I18nText } from "./i18n";
+import { GROUP_NAME_MAX_LENGTH, THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -1039,6 +1040,7 @@ export default class BaseModule implements IModule {
                     type="text"
                     placeholder={t("base.module.createThread.namePlaceholder")}
                     defaultValue={defaultName}
+                    maxLength={THREAD_NAME_MAX_LENGTH}
                     style={{
                       width: "100%",
                       padding: "10px 12px",
@@ -1060,6 +1062,10 @@ export default class BaseModule implements IModule {
               onOk: async () => {
                 if (!threadName || threadName.trim() === "") {
                   Toast.error(t("base.module.createThread.nameRequired"));
+                  return;
+                }
+                if (threadName.length > THREAD_NAME_MAX_LENGTH) {
+                  Toast.warning(t("base.threadCreate.nameMaxLength"));
                   return;
                 }
                 try {
@@ -1656,7 +1662,7 @@ export default class BaseModule implements IModule {
                         });
                     },
                     t("base.module.channelSettings.groupNamePlaceholder"),
-                    20
+                    GROUP_NAME_MAX_LENGTH
                   );
                 },
               },
@@ -2362,7 +2368,7 @@ export default class BaseModule implements IModule {
                     data.refresh();
                   },
                   t("base.module.thread.name"),
-                  50
+                  THREAD_NAME_MAX_LENGTH
                 );
               },
             },
