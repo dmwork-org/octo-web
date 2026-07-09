@@ -30,6 +30,7 @@ const hoisted = vi.hoisted(() => {
         userStickers: vi.fn().mockResolvedValue({ list: [] }),
         uploadSticker: vi.fn().mockResolvedValue({ path: "sticker-path", format: "png" }),
         addSticker: vi.fn().mockResolvedValue({}),
+        deleteSticker: vi.fn().mockResolvedValue({}),
         toastError: vi.fn(),
         addConfigChangeListener: vi.fn((cb: () => void) => {
             state.listener = cb;
@@ -89,6 +90,7 @@ vi.mock("../../../App", () => ({
                 userStickers: hoisted.userStickers,
                 uploadSticker: hoisted.uploadSticker,
                 addSticker: hoisted.addSticker,
+                deleteSticker: hoisted.deleteSticker,
                 getFileURL: (p: string) => p,
             },
         },
@@ -149,6 +151,7 @@ beforeEach(() => {
     hoisted.getAllEmoji.mockClear();
     hoisted.uploadSticker.mockClear();
     hoisted.addSticker.mockClear();
+    hoisted.deleteSticker.mockClear();
     hoisted.userStickers.mockClear();
     hoisted.mittOn.mockClear();
     hoisted.mittOff.mockClear();
@@ -331,6 +334,269 @@ describe("EmojiPanel sticker gating", () => {
 
         expect(hoisted.uploadSticker).not.toHaveBeenCalled();
         expect(hoisted.addSticker).not.toHaveBeenCalled();
+    });
+});
+
+describe("EmojiPanel sticker hover preview（原位放大预览）", () => {
+    const STICKER = {
+        sticker_id: "s1",
+        path: "sticker-1.png",
+        category: "sticker",
+        placeholder: "",
+        format: "png",
+    };
+
+    // 切到「我的贴纸」tab 并等首屏懒加载完成，返回渲染出来的第一个贴纸格子。
+    async function mountWithSticker(): Promise<HTMLElement> {
+        hoisted.userStickers.mockResolvedValueOnce({ list: [STICKER] });
+        render(<EmojiPanel />);
+        await act(async () => {
+            tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            await Promise.resolve();
+        });
+        const item = container.querySelector(".wk-sticker-item") as HTMLElement;
+        expect(item).not.toBeNull();
+        return item;
+    }
+
+    // React 17 的 onMouseEnter/onMouseLeave 由根节点上的 mouseover/mouseout 合成而来，
+    // 直接 dispatch 原生 mouseenter/mouseleave 不会触发合成事件，故用 mouseover/mouseout。
+    function hover(el: HTMLElement) {
+        act(() => {
+            el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body }));
+        });
+    }
+    function leave(el: HTMLElement) {
+        act(() => {
+            el.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+        });
+    }
+
+    it("portals an enlarged preview to <body> after the hover delay elapses", async () => {
+        const item = await mountWithSticker();
+
+        vi.useFakeTimers();
+        hover(item);
+        // 延时未到之前不浮出，避免鼠标扫过网格时狂闪。
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+
+        const preview = document.body.querySelector(".wk-sticker-preview");
+        expect(preview).not.toBeNull();
+        // 位图贴纸走 <img>，且尺寸远大于 60px 缩略图（由 CSS 控制，这里只断言渲染出媒体）。
+        expect(preview!.querySelector("img")).not.toBeNull();
+    });
+
+    it("hides the preview when the pointer leaves the sticker grid", async () => {
+        const item = await mountWithSticker();
+        const ul = container.querySelector(".wk-emojipanel-content ul") as HTMLElement;
+
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        leave(ul);
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("clears a still-pending preview timer on unmount without throwing", async () => {
+        const item = await mountWithSticker();
+
+        vi.useFakeTimers();
+        hover(item); // 起了延时但还没浮出
+        act(() => {
+            ReactDOM.unmountComponentAtNode(container);
+        });
+        // 卸载后即使 fire 掉挂起的 timer 也不应 setState 报错或残留浮层。
+        expect(() => {
+            act(() => {
+                vi.advanceTimersByTime(500);
+            });
+        }).not.toThrow();
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("hides the preview on scroll while it is visible (frozen rect would go stale)", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 网格滚动/窗口缩放会让一次性捕获的 rect 失真；捕获阶段 scroll 监听应隐藏预览。
+        act(() => {
+            window.dispatchEvent(new Event("scroll"));
+        });
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("clears the preview when the hovered sticker is deleted (no ghost)", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 删除 × 的 onClick stopPropagation 绕过 <li> 的 hide；onDelete 顶部需自行清预览。
+        const del = item.querySelector(".wk-sticker-del") as HTMLElement;
+        act(() => {
+            del.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(hoisted.deleteSticker).toHaveBeenCalledTimes(1);
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("hides the preview when leaving a sticker for non-sticker space inside the grid", async () => {
+        const item = await mountWithSticker();
+        const ul = container.querySelector(".wk-emojipanel-content ul") as HTMLElement;
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 指针离开贴纸但仍在 <ul> 内（relatedTarget 是 ul，非贴纸）：<ul> 的 mouseleave
+        // 不触发，需靠 .wk-sticker-item 上的 onMouseLeave 隐藏，避免预览滞留在空白处。
+        act(() => {
+            item.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: ul }));
+        });
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("cancels a pending preview when leaving the sticker before the delay elapses", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item); // 起了 120ms 延时但还没浮出
+        leave(item); // 延时内离开 → 应清掉待触发的 timer
+        act(() => {
+            vi.advanceTimersByTime(300);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("keeps the preview visible when moving directly onto another sticker (seamless swap)", async () => {
+        hoisted.userStickers.mockResolvedValueOnce({
+            list: [STICKER, { ...STICKER, sticker_id: "s2", path: "sticker-2.png" }],
+        });
+        render(<EmojiPanel />);
+        await act(async () => {
+            tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            await Promise.resolve();
+        });
+        const items = container.querySelectorAll(".wk-sticker-item");
+        const a = items[0] as HTMLElement;
+        const b = items[1] as HTMLElement;
+
+        vi.useFakeTimers();
+        hover(a);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 从 a 直接移到另一张贴纸 b（relatedTarget 是贴纸）：不应隐藏——交给 b 的
+        // onMouseEnter 无缝切换目标，保留 Discord 式跟随。
+        act(() => {
+            a.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: b }));
+        });
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 仅证明"没被隐藏"还不够——真实鼠标移动会在 a 的 mouseout 之外，紧接着在 b 上触发
+        // mouseover。补上这一步，断言预览的媒体确实换成了 b（而不只是继续显示着 a 的旧图）。
+        hover(b);
+        const img = document.body.querySelector(".wk-sticker-preview img") as HTMLImageElement | null;
+        expect(img?.src).toContain("sticker-2.png");
+    });
+
+    it("clears a visible preview when a background refresh removes the previewed sticker (no ghost)", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 已加载过贴纸的面板才会重拉（stickersLoaded 已在 mountWithSticker 里置 true），
+        // 模拟后台「stickers-updated」广播把正在预览的这张贴纸移除掉——指针没有移动，
+        // 不会触发任何既有的 hide 路径，必须靠 requestStickers 自己核对 sticker_id。
+        hoisted.userStickers.mockResolvedValueOnce({ list: [] });
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("clears a visible preview when a background refresh fails (grid goes empty too)", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 失败分支把 stickers 清空——和成功分支返回空列表是同一类残影，预览必须一起清掉，
+        // 否则放大卡片会浮在一个已经空掉的网格上方。
+        hoisted.userStickers.mockRejectedValueOnce(new Error("network error"));
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("does not show a pending preview for a sticker removed by a refresh before the delay elapses", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item); // 起了 120ms 延时，还没浮出
+
+        // 延时排队期间后台广播把这张贴纸移除掉。
+        hoisted.userStickers.mockResolvedValueOnce({ list: [] });
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("marks the portaled preview aria-hidden so it is not announced as a duplicate", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+
+        const preview = document.body.querySelector(".wk-sticker-preview");
+        expect(preview?.getAttribute("aria-hidden")).toBe("true");
     });
 });
 
