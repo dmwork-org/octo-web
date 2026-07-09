@@ -75,3 +75,9 @@ docs/superpowers/plans/
 grp_out.txt
 .cctmp/
 .codegraph/
+
+# docs standalone dev build output
+packages/docs/dev-dist/
+# docs collab smoke screenshots / artifacts
+packages/docs/dev/smoke-out/
+packages/docs/dev/presence-out/

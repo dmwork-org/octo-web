@@ -105,7 +105,7 @@ export function exportDownloadName(title: string | null | undefined): string {
  * users it is click-to-edit: Enter / blur commits via PATCH /docs/{docId}; Esc cancels.
  * Read-only users see a plain heading.
  */
-function DocTitle({
+export function DocTitle({
   docId,
   initialTitle,
   canEdit,
@@ -644,7 +644,7 @@ export function EditorShell(props: EditorShellProps) {
         />
         <div className="octo-doc-header-right">
           {headerRight}
-          <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
+          <PresenceBar provider={instance.provider} connState={connState} synced={ready} names={names} />
           {/* Comments are reader+ (everyone with access — "can see → can comment"). */}
           <button
             type="button"
