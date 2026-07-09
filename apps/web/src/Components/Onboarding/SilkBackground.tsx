@@ -161,6 +161,16 @@ function createProgram(gl: WebGLRenderingContext) {
     return program;
 }
 
+const addMediaQueryListener = (query: MediaQueryList, listener: () => void) => {
+    if (typeof query.addEventListener === "function") {
+        query.addEventListener("change", listener);
+        return () => query.removeEventListener("change", listener);
+    }
+
+    query.addListener(listener);
+    return () => query.removeListener(listener);
+};
+
 const SilkBackground: React.FC<SilkBackgroundProps> = ({
     brightness = 0.9,
     className,
@@ -172,6 +182,7 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
     textureScale = 1,
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const contextLossTimerRef = useRef<number | null>(null);
     const targetSettingsRef = useRef<SilkRenderSettings>({
         brightness,
         damping,
@@ -204,6 +215,11 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
     }, [brightness, damping, hue, mouseSensitivity, saturation, speed, textureScale]);
 
     useEffect(() => {
+        if (contextLossTimerRef.current !== null) {
+            window.clearTimeout(contextLossTimerRef.current);
+            contextLossTimerRef.current = null;
+        }
+
         const canvas = canvasRef.current;
         if (!canvas) return;
 
@@ -239,18 +255,21 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
         let shaderTime = 0;
         const pointer = { x: 0, y: 0, active: 0 };
         const smoothPointer = { x: 0, y: 0, active: 0 };
+        const reducedMotionQuery =
+            typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-        const resize = () => {
-            const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-            const rect = canvas.getBoundingClientRect();
-            width = Math.max(1, Math.floor(rect.width * pixelRatio));
-            height = Math.max(1, Math.floor(rect.height * pixelRatio));
-            canvas.width = width;
-            canvas.height = height;
-            gl.viewport(0, 0, width, height);
+        const canAnimate = () => !reducedMotionQuery?.matches;
+
+        const stopAnimation = () => {
+            if (frameId) {
+                cancelAnimationFrame(frameId);
+                frameId = 0;
+            }
         };
 
         const handlePointerMove = (event: PointerEvent) => {
+            if (!canAnimate()) return;
+
             const rect = canvas.getBoundingClientRect();
             const isInsideCanvas =
                 event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
@@ -269,7 +288,7 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
             pointer.active = 0;
         };
 
-        const render = (now: number) => {
+        const renderFrame = (now: number) => {
             const targetSettings = targetSettingsRef.current;
             const renderSettings = renderSettingsRef.current;
             const easing = 0.055;
@@ -302,7 +321,53 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
             gl.uniform1f(textureScaleLocation, renderSettings.textureScale);
 
             gl.drawArrays(gl.TRIANGLES, 0, 6);
-            frameId = requestAnimationFrame(render);
+        };
+
+        const renderLoop = (now: number) => {
+            renderFrame(now);
+            if (canAnimate()) {
+                frameId = requestAnimationFrame(renderLoop);
+            } else {
+                frameId = 0;
+            }
+        };
+
+        const renderStaticFrame = () => {
+            stopAnimation();
+            pointer.active = 0;
+            smoothPointer.active = 0;
+            lastFrameTime = performance.now();
+            renderFrame(lastFrameTime);
+        };
+
+        const startAnimation = () => {
+            if (frameId || !canAnimate()) return;
+
+            lastFrameTime = performance.now();
+            frameId = requestAnimationFrame(renderLoop);
+        };
+
+        const updateMotionPreference = () => {
+            if (canAnimate()) {
+                startAnimation();
+                return;
+            }
+
+            renderStaticFrame();
+        };
+
+        const resize = () => {
+            const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+            const rect = canvas.getBoundingClientRect();
+            width = Math.max(1, Math.floor(rect.width * pixelRatio));
+            height = Math.max(1, Math.floor(rect.height * pixelRatio));
+            canvas.width = width;
+            canvas.height = height;
+            gl.viewport(0, 0, width, height);
+
+            if (!canAnimate()) {
+                renderStaticFrame();
+            }
         };
 
         resize();
@@ -310,17 +375,30 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
         window.addEventListener("pointerleave", handlePointerLeave);
         window.addEventListener("blur", handlePointerLeave);
         window.addEventListener("resize", resize);
-        frameId = requestAnimationFrame(render);
+        const removeReducedMotionQueryListener = reducedMotionQuery
+            ? addMediaQueryListener(reducedMotionQuery, updateMotionPreference)
+            : () => {};
+        updateMotionPreference();
 
         return () => {
-            cancelAnimationFrame(frameId);
+            stopAnimation();
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerleave", handlePointerLeave);
             window.removeEventListener("blur", handlePointerLeave);
             window.removeEventListener("resize", resize);
+            removeReducedMotionQueryListener();
             gl.deleteBuffer(positionBuffer);
             gl.deleteProgram(program);
-            gl.getExtension("WEBGL_lose_context")?.loseContext();
+            const loseContext = gl.getExtension("WEBGL_lose_context");
+            if (loseContext) {
+                const lossTimer = window.setTimeout(() => {
+                    if (contextLossTimerRef.current !== lossTimer) return;
+
+                    loseContext.loseContext();
+                    contextLossTimerRef.current = null;
+                }, 0);
+                contextLossTimerRef.current = lossTimer;
+            }
         };
     }, []);
 
