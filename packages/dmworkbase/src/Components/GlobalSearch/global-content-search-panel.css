@@ -1,0 +1,136 @@
+/*
+  The content-tab panel reuses ChannelSearch markup (`wk-channel-search-*`)
+  but renders under its own `.wk-global-content-search` root, outside
+  `.wk-channel-search-panel`. Mirror the same `--channel-search-*` -> `--wk-*`
+  token mapping here so every reused ChannelSearch class (content list, filter
+  trigger, and the filter popover below) resolves to the shared design tokens
+  instead of falling back to `inherit`/undefined. No hard-coded colors — all
+  values come from the `--wk-*` semantic layer (DEVELOPMENT.md §2/§13).
+*/
+.wk-global-content-search {
+  --channel-search-surface: var(--wk-bg-surface);
+  --channel-search-text-primary: var(--wk-text-primary);
+  --channel-search-text-secondary: var(--wk-text-secondary);
+  --channel-search-text-tertiary: var(--wk-text-tertiary);
+  --channel-search-text-placeholder: color-mix(
+    in srgb,
+    var(--wk-text-primary) 40%,
+    transparent
+  );
+  --channel-search-border: var(--wk-border-default);
+  --channel-search-hover: color-mix(
+    in srgb,
+    var(--wk-text-primary) 4%,
+    transparent
+  );
+  --channel-search-field-bg: color-mix(
+    in srgb,
+    var(--wk-text-primary) 4%,
+    transparent
+  );
+  --channel-search-accent: var(--wk-text-accent);
+  --channel-search-shadow: var(--wk-shadow-lg),
+    0 0 0 1px var(--wk-border-subtle);
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Fixed 50vh so the modal window matches the contacts / group / file
+     sub-tabs (all 50vh) and doesn't jump when switching tabs. The toolbar +
+     scrollable content share this height via the flex column below. */
+  height: 50vh;
+}
+
+.wk-global-content-search-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 8px 4px 8px;
+  gap: 8px;
+}
+
+.wk-global-content-search .wk-channel-search-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/*
+  Filter popover: reuse ChannelSearch's `wk-channel-search-filter-*` shell
+  (popover / section / title / chip / actions) for identical chrome. This
+  class only carries the global-search-specific sizing overrides — the global
+  panel has more sections than the in-conversation one, so it is wider and
+  scrolls.
+*/
+.wk-global-content-search .wk-global-search-filter-panel {
+  width: 300px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.wk-global-content-search .wk-global-search-filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Toggle-chip active / disabled states. ChannelSearch's chip is a removable
+   tag with no selected state, so these modifiers live here (global-only). */
+.wk-global-content-search .wk-channel-search-filter-chip.is-active {
+  border-color: var(--channel-search-accent);
+  color: var(--channel-search-accent);
+  background: color-mix(in srgb, var(--wk-text-accent) 8%, transparent);
+}
+
+.wk-global-content-search .wk-channel-search-filter-chip.is-active svg {
+  color: var(--channel-search-accent);
+}
+
+.wk-global-content-search .wk-channel-search-filter-chip.is-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wk-global-content-search .wk-global-search-filter-search {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--channel-search-field-bg);
+  color: var(--channel-search-text-primary);
+  font: 400 14px/20px var(--wk-font-sans);
+  outline: none;
+}
+
+.wk-global-content-search .wk-global-search-filter-search::placeholder {
+  color: var(--channel-search-text-placeholder);
+}
+
+.wk-global-content-search .wk-global-search-filter-help {
+  font: 400 12px/20px var(--wk-font-sans);
+  color: var(--channel-search-text-placeholder);
+}
+
+.wk-global-content-search .wk-global-search-filter-size-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.wk-global-content-search .wk-global-search-filter-size-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--channel-search-field-bg);
+  color: var(--channel-search-text-primary);
+  font: 400 14px/20px var(--wk-font-sans);
+  outline: none;
+}
+
+.wk-global-content-search .wk-global-search-filter-size-row span {
+  color: var(--channel-search-text-tertiary);
+}
