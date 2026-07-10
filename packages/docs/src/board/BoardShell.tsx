@@ -1,20 +1,20 @@
 import {
-  Component,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ComponentType,
-  type ErrorInfo,
   type ReactElement,
   type ReactNode,
 } from 'react'
 import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
-import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
+import { BoardVersionPanel } from './BoardVersionPanel.tsx'
+import { BoardErrorBoundary } from './BoardErrorBoundary.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
@@ -30,8 +30,9 @@ import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
-import { makeGenerateIdForFile, dataURLToBlob, blobToDataURL } from './collab/index.ts'
-import { presignUpload, uploadBinary, resolveAttachments } from '../attachments/api.ts'
+import { makeGenerateIdForFile, dataURLToBlob } from './collab/index.ts'
+import { presignUpload, uploadBinary } from '../attachments/api.ts'
+import { fetchBoardFileBinaries } from './boardFiles.ts'
 import {
   setLocalPresenceUser,
   publishLocalPointer,
@@ -247,27 +248,6 @@ function boardTerminalForAccessLoss(err: unknown): BoardTerminal | null {
 }
 
 /**
- * Error boundary around the Excalidraw subtree (mirrors DocsErrorBoundary): a render throw in the
- * board canvas surfaces a recoverable message instead of tearing down the host tree.
- */
-class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
-    super(props)
-    this.state = { error: null }
-  }
-  static getDerivedStateFromError(error: Error): { error: Error } {
-    return { error }
-  }
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[board] canvas failed', error, info.componentStack)
-  }
-  render(): ReactNode {
-    if (this.state.error) return <div className="octo-board-state octo-error">{t('docs.state.error')}</div>
-    return this.props.children
-  }
-}
-
-/**
  * Whiteboard editor shell (frontend-design §5.1) — the board counterpart of EditorShell, NOT a
  * reuse of the Tiptap shell. It aligns the header with Docs (back / editable title / actions) and
  * embeds Excalidraw in the body.
@@ -311,6 +291,9 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const [synced, setSynced] = useState(false)
   // Members modal toggle (manage role only), matching the doc editor's #A4 modal.
   const [membersOpen, setMembersOpen] = useState(false)
+  // Version-history modal toggle (any role — reader+ can browse/preview; restore/delete gate to
+  // admin inside the panel). Opened from the ≡ "more" menu, like the doc/sheet history entry.
+  const [versionOpen, setVersionOpen] = useState(false)
   // Creator + creation date for the ≡ "more" menu head, fetched from the per-doc GET like EditorShell.
   const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
@@ -815,34 +798,11 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     },
     [docId],
   )
+  // Batch-resolve fresh signed GET urls in ONE round trip (contract: POST /attachments/resolve),
+  // then download each binary. Shared with the version-history preview (boardFiles.ts) so the live
+  // canvas and the historical preview can never drift onto different fetch/decoding paths.
   const fetchBoardFiles = useCallback(
-    async (refs: readonly FileFetchRef[]): Promise<BinaryFileData[]> => {
-      if (refs.length === 0) return []
-      // Batch-resolve fresh signed GET urls in ONE round trip (contract: POST /attachments/resolve),
-      // then download each binary. Re-resolving each time honours the read-URL TTL. An attachId the
-      // backend can't resolve (deleted / unknown) is simply skipped — the next apply retries.
-      const refByAttach = new Map(refs.map((r) => [r.attachId, r]))
-      const { items } = await resolveAttachments(
-        docId,
-        refs.map((r) => r.attachId),
-      )
-      const out: BinaryFileData[] = []
-      await Promise.all(
-        items.map(async (item) => {
-          const ref = refByAttach.get(item.attachId)
-          if (!ref) return
-          try {
-            const res = await fetch(item.url)
-            if (!res.ok) return
-            const dataURL = await blobToDataURL(await res.blob())
-            out.push({ id: ref.id, dataURL, mimeType: item.mime ?? ref.mimeType, created: Date.now() })
-          } catch {
-            // Leave this one a placeholder; the next applyRemote re-collects and retries it.
-          }
-        }),
-      )
-      return out
-    },
+    (refs: readonly FileFetchRef[]): Promise<BinaryFileData[]> => fetchBoardFileBinaries(docId, refs),
     [docId],
   )
 
@@ -1072,9 +1032,9 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
   // ≡ "more" menu (XIN-601 item 2 / XIN-621 ②): delete is collapsed into the destructive slot,
   // matching the doc editor. The neutral item list holds "Open in new page" when the host wired the
-  // handler (in-app path) — mirroring EditorShell — and is otherwise empty (boards have no version-
-  // history / markdown-export rows, and the standalone page never wires open-in-new-page). Creator
-  // name falls back to a short uid → placeholder, so the head never blanks or crashes on a miss.
+  // handler (in-app path) — mirroring EditorShell — and the version-history entry (consuming the P1
+  // board version REST). Creator name falls back to a short uid → placeholder, so the head never
+  // blanks or crashes on a miss.
   const moreItems: DocMoreMenuItem[] = []
   if (onOpenInNewPage) {
     moreItems.push({
@@ -1084,6 +1044,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       onClick: onOpenInNewPage,
     })
   }
+  moreItems.push({
+    key: 'history',
+    label: t('docs.toolbar.history'),
+    icon: HistoryIcon,
+    onClick: () => setVersionOpen((v) => !v),
+  })
   const deleteItem: DocMoreMenuItem | undefined = manage
     ? {
         key: 'delete',
@@ -1231,6 +1197,29 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               ownerId={ownerId}
               accessRequests={pendingAccess}
               onClose={() => setMembersOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Version history opens a dedicated modal (like members), wide enough for the read-only scene
+          preview. Available to any role: reader+ can browse/preview, restore/delete gate to admin
+          inside the panel. */}
+      {versionOpen && (
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setVersionOpen(false)}>
+          <div
+            className="octo-modal octo-board-version-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('docs.board.version.title')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <BoardVersionPanel
+              docId={docId}
+              role={role ?? 'reader'}
+              dark={dark}
+              names={names}
+              onClose={() => setVersionOpen(false)}
             />
           </div>
         </div>
