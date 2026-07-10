@@ -16,7 +16,15 @@ import { validateCardForOcto } from "./validateCardForOcto";
  * 说明：SDK 默认逐元素 fallback，不满足 octo 整卡降级契约，故渲染前先走 validate；
  * `kind:"card"` 只携带**已通过校验**的 card 与两个能力位，具体 DOM 渲染由 Cell 用 SDK 完成。
  *   - allowInteractive：profile 派生，是否**渲染** Input.* / Submit；
- *   - interactive：sender 派生，是否可**提交**（仅 bot 卡开放交互；webhook 卡展示-only）。
+ *   - interactive：sender 派生，是否可**提交**（仅原始 bot 卡开放交互；webhook/转发卡展示-only）。
+ *
+ * 安全（信任边界）：**信任仅从服务端权威信封 `message.fromUID` 派生**。payload 里的
+ * `forwarded_from_uid` 由客户端写入、不受服务端归属校验，任何普通用户都能通过
+ * direct-socket 写入伪造 `forwarded_from_uid:"iwh_x"` 的裸 type-17 包，让本地 iwh_
+ * 前缀检查误判为 webhook 信任。故 render gate 不再据该字段回落信任，只以直连发送者
+ * 定信任级别；转发的展示型卡在接收端一律 fail-closed 渲 plain（服务端 `plain` 权威派生），
+ * 待服务端对 type-17 转发做归属背书后再放开该路径。参见 IncomingWebhook.webhookFromOfMessage
+ * 中同款「fromUID 前置门控，不采信 payload.from」的实现口径。
  */
 export type CardDecision =
   | { kind: "plain" }
@@ -30,6 +38,11 @@ export type CardDecision =
 
 export interface DecideCardInput {
   fromUID: string | undefined;
+  /**
+   * 逐条转发时 payload 写入的原始可信来源 UID。**不参与信任决策**（详见文件头注释），
+   * 仅为线协议兼容 / 未来服务端背书转发时的过渡字段。
+   */
+  forwardedFromUID?: string;
   profile: string;
   cardVersion: string;
   card: Record<string, unknown>;
@@ -37,6 +50,7 @@ export interface DecideCardInput {
 
 export function decideCardBody(input: DecideCardInput): CardDecision {
   // 1. sender trust gate：仅 webhook / bot 可信；其余 fail-closed 渲 plain。
+  // 信任只从服务端权威信封 fromUID 派生，不接受 payload 里的 forwarded_from_uid 回落。
   const trust = classifyCardSender(input.fromUID);
   if (!isTrustedCardSender(trust)) {
     return { kind: "plain" };
@@ -60,4 +74,3 @@ export function decideCardBody(input: DecideCardInput): CardDecision {
     interactive: trust === "bot",
   };
 }
-
