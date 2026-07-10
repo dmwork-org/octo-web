@@ -452,6 +452,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       className="wk-channel-search-filter-popover wk-global-search-filter-panel"
       onClick={(e) => e.stopPropagation()}
     >
+      <div className="wk-global-search-filter-body">
       <FilterSearchSelect
         title={t("base.channelSearch.filter.sender")}
         placeholder={t("base.channelSearch.filter.senderPlaceholder")}
@@ -662,6 +663,8 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
           value={dateFromSeconds(draft.endAt)}
           onChange={(v) => setCustomDate("endAt", v)}
         />
+      </div>
+
       </div>
 
       <div className="wk-channel-search-filter-actions">

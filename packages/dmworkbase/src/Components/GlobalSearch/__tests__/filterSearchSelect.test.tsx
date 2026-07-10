@@ -118,6 +118,34 @@ describe("FilterSearchSelect — 发送者 (multi)", () => {
       within(field()).queryByRole("button", { name: /Alice/ })
     ).not.toBeInTheDocument();
   });
+
+  it("选中候选后清空输入 + 保持下拉打开：mirrors ChannelSearch's chooseSender", () => {
+    // Regression for YUJ-19: picking a candidate from the dropdown must reset
+    // the typed query (so the user can search for the next name from a clean
+    // input) and keep the listbox open so the follow-up pick doesn't need
+    // another focus click. ChannelSearch's `chooseSender` does exactly this.
+    render(<Harness mode="multi" master={SENDERS} />);
+    openDropdown();
+
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "ali" } });
+    // Narrowed pool now only shows Alice.
+    expect(within(listbox()).getByText("Alice")).toBeInTheDocument();
+    expect(within(listbox()).queryByText("Bob")).not.toBeInTheDocument();
+
+    fireEvent.click(within(listbox()).getByText("Alice"));
+
+    // Query is now cleared.
+    expect(input.value).toBe("");
+    // Dropdown is still open, showing the full candidate pool again.
+    expect(within(listbox()).getByText("Alice")).toBeInTheDocument();
+    expect(within(listbox()).getByText("Bob")).toBeInTheDocument();
+    expect(within(listbox()).getByText("Carol")).toBeInTheDocument();
+    // Alice chip has landed in the field.
+    expect(
+      within(field()).getByRole("button", { name: /Alice/ })
+    ).toBeInTheDocument();
+  });
 });
 
 describe("FilterSearchSelect — 所在群聊 (multi, composite ids)", () => {

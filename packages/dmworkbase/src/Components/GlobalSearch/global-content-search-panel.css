@@ -59,13 +59,45 @@
   Filter popover: reuse ChannelSearch's `wk-channel-search-filter-*` shell
   (popover / section / title / chip / actions) for identical chrome. This
   class only carries the global-search-specific sizing overrides — the global
-  panel has more sections than the in-conversation one, so it is wider and
-  scrolls.
+  panel has more sections than the in-conversation one, so it is wider,
+  laid out as a flex column, and its interior scrolls while the action bar
+  stays pinned at the bottom.
+
+  Why a flex column instead of a single `max-height + overflow-y: auto` on
+  the popover: the popover is `position: absolute` and its ancestors
+  (`.wk-global-content-search`, the Semi Modal `.semi-modal-content`) can
+  clip its bottom edge on shorter viewports, which used to hide the
+  「确定」 button below the visible area even though the popover said it
+  scrolled. Constraining the popover's own max-height with `calc(100vh -
+  <toolbar/tab offset>)` keeps the whole popover inside the modal body, and
+  the flex layout keeps `.wk-channel-search-filter-actions` visible as an
+  auto-sticky footer while the middle sections scroll.
 */
 .wk-global-content-search .wk-global-search-filter-panel {
+  display: flex;
+  flex-direction: column;
   width: 300px;
-  max-height: 70vh;
+  /* 200px ≈ modal top-chrome (30px marginTop + 40px input + tab strip +
+     toolbar padding) plus a safety gutter so the panel never touches the
+     modal's bottom edge. Capped at 70vh so the popover still shrinks on
+     tall viewports where the toolbar sits low in the modal. */
+  max-height: min(70vh, calc(100vh - 200px));
+}
+
+.wk-global-content-search .wk-global-search-filter-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.wk-global-content-search .wk-global-search-filter-panel
+  .wk-channel-search-filter-actions {
+  flex: 0 0 auto;
+  /* Reuse the reset shared with ChannelSearch (`margin-top: 16px`) but keep
+     the actions row visually attached to the popover edge instead of
+     inheriting the section-list padding rhythm now that it lives outside
+     the scrollable body. */
+  margin-top: 12px;
 }
 
 .wk-global-content-search .wk-global-search-filter-chip-row {
