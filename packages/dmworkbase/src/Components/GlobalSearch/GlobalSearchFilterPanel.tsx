@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -122,6 +123,51 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
 
   const keywordActive = keyword.trim().length > 0;
   const selfUid = dataSource.getSelfUid();
+
+  // Task 3 (footer truncation): the popover is `position: absolute` under the
+  // filter trigger and its natural height (~600px) exceeds the space between
+  // its top and the bottom of the enclosing Semi modal, so the 「发送时间」
+  // section + Apply/Clear footer render below the fold — and because the footer
+  // lives OUTSIDE the scrollable body, body-scroll alone can't reach it. This is
+  // what #592's pure-CSS `max-height` cap missed on two counts: CSS can't read
+  // the panel's own viewport top (it shifts with the vertically-centered modal),
+  // and the true clipping edge is the Semi `.semi-modal-content` (which has
+  // `overflow: hidden`), NOT the viewport. Measure the panel's top on open (and
+  // on resize) and cap max-height to `min(clippingAncestorsBottom, viewport) -
+  // top - gutter` so the whole panel — footer included — always fits inside the
+  // modal while the body scrolls internally. useLayoutEffect runs before paint,
+  // so the oversized frame is never shown.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelMaxHeight, setPanelMaxHeight] = useState<number | undefined>(
+    undefined
+  );
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = panelRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      const gutter = 16; // keep the panel clear of the clipping bottom edge
+      // The visible bottom is bounded by the viewport AND by every clipping
+      // ancestor (overflow != visible) — the Semi modal content clips with
+      // overflow:hidden. Take the tightest.
+      let boundBottom = window.innerHeight;
+      let anc: HTMLElement | null = el.parentElement;
+      while (anc) {
+        const cs = window.getComputedStyle(anc);
+        if (cs.overflowY !== "visible" || cs.overflowX !== "visible") {
+          boundBottom = Math.min(boundBottom, anc.getBoundingClientRect().bottom);
+        }
+        anc = anc.parentElement;
+      }
+      const avail = boundBottom - top - gutter;
+      // Floor guards degenerate/tiny containers; when the content is shorter
+      // than `avail` the panel keeps its natural (smaller) height regardless.
+      setPanelMaxHeight(Math.max(160, Math.round(avail)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
 
   // Load sender candidates on open + when query changes (debounced light).
   useEffect(() => {
@@ -449,7 +495,9 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
 
   return (
     <div
+      ref={panelRef}
       className="wk-channel-search-filter-popover wk-global-search-filter-panel"
+      style={panelMaxHeight ? { maxHeight: `${panelMaxHeight}px` } : undefined}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="wk-global-search-filter-body">
