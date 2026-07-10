@@ -126,6 +126,18 @@
   gap: 6px;
 }
 
+/*
+  Title -> content rhythm. ChannelSearch always wraps its section title in
+  `.wk-channel-search-filter-title-row` (margin-bottom: 8px), so its titles sit
+  8px above their field/chips. The global panel renders the bare
+  `.wk-channel-search-filter-title` (no per-section clear row), which ships no
+  bottom margin — leaving every title glued to its control. Restore the same
+  8px gap here so the two filter surfaces share one vertical rhythm.
+*/
+.wk-global-content-search .wk-channel-search-filter-title {
+  margin-bottom: 8px;
+}
+
 /* Toggle-chip active / disabled states. ChannelSearch's chip is a removable
    tag with no selected state, so these modifiers live here (global-only). */
 .wk-global-content-search .wk-channel-search-filter-chip.is-active {

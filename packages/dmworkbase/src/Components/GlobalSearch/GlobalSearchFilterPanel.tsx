@@ -53,6 +53,21 @@ function dateFromSeconds(seconds?: number) {
   if (!seconds) return undefined;
   return new Date(seconds * 1000);
 }
+
+// Mirror of ChannelSearch's date label ("2026/07/10 周四") so the global-search
+// date trigger reads identically to the in-conversation one. Copied verbatim
+// from ChannelSearch/index.tsx to keep the two surfaces visually in lock-step.
+function dateDisplayValue(seconds?: number, locale?: string) {
+  if (!seconds) return "";
+  const date = new Date(seconds * 1000);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const weekday = new Intl.DateTimeFormat(locale, {
+    weekday: "short",
+  }).format(date);
+  return `${year}/${month}/${day} ${weekday}`;
+}
 function datePickerValueToDate(
   value?: Date | Date[] | string | string[] | null
 ) {
@@ -92,7 +107,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   onApply,
   onClose,
 }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [draft, setDraft] = useState<GlobalSearchFilters>(filters);
   const [senderQuery, setSenderQuery] = useState("");
   const [senderOptions, setSenderOptions] = useState<ChannelSearchSender[]>(
@@ -700,16 +715,48 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
           })}
         </div>
         <DatePicker
-          density="compact"
-          type="date"
+          className="wk-channel-search-date-picker"
           value={dateFromSeconds(draft.startAt)}
           onChange={(v) => setCustomDate("startAt", v)}
+          density="compact"
+          position="bottomLeft"
+          autoSwitchDate={false}
+          disabledDate={(date) => {
+            if (!date || !draft.endAt) return false;
+            return toSeconds(startOfDay(date)) > draft.endAt;
+          }}
+          triggerRender={() => (
+            <button className="wk-channel-search-date-input" type="button">
+              <span className={draft.startAt ? undefined : "is-placeholder"}>
+                {draft.startAt
+                  ? dateDisplayValue(draft.startAt, locale)
+                  : t("base.channelSearch.filter.startDate")}
+              </span>
+              <CalendarDays size={16} />
+            </button>
+          )}
         />
         <DatePicker
-          density="compact"
-          type="date"
+          className="wk-channel-search-date-picker"
           value={dateFromSeconds(draft.endAt)}
           onChange={(v) => setCustomDate("endAt", v)}
+          density="compact"
+          position="bottomLeft"
+          autoSwitchDate={false}
+          disabledDate={(date) => {
+            if (!date || !draft.startAt) return false;
+            return toSeconds(endOfDay(date)) < draft.startAt;
+          }}
+          triggerRender={() => (
+            <button className="wk-channel-search-date-input" type="button">
+              <span className={draft.endAt ? undefined : "is-placeholder"}>
+                {draft.endAt
+                  ? dateDisplayValue(draft.endAt, locale)
+                  : t("base.channelSearch.filter.endDate")}
+              </span>
+              <CalendarDays size={16} />
+            </button>
+          )}
         />
       </div>
 
