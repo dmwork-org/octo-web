@@ -149,7 +149,18 @@ const FilterSearchSelect: React.FC<FilterSearchSelectProps> = ({
                   role="checkbox"
                   aria-checked={active}
                   className={active ? "is-selected" : undefined}
-                  onClick={() => onToggle(opt.id)}
+                  onClick={() => {
+                    // Mirror ChannelSearch's chooseSender pattern (packages/
+                    // dmworkbase/src/Components/ChannelSearch/index.tsx —
+                    // toggle + clear the typed query + keep the dropdown
+                    // open so the user can immediately pick another
+                    // candidate). Without the reset the input keeps the
+                    // narrowing text after a pick and users have to
+                    // manually clear it before searching the next name.
+                    onToggle(opt.id);
+                    onQueryChange("");
+                    setOpen(true);
+                  }}
                 >
                   <span className="wk-channel-search-filter-check" />
                   {opt.avatarUrl && (
