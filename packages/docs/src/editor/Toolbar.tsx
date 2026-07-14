@@ -13,6 +13,8 @@ import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { t } from '../octoweb/index.ts'
+import { FONT_FAMILY_ENABLED } from '../config.ts'
+import { FONT_FAMILIES } from './fontFamilies.ts'
 
 // Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
 // alignment, replacing the ambiguous text placeholders. 16×16, fill: currentColor (via .octo-tb-icon).
@@ -525,6 +527,37 @@ function FontSizeSelect({ editor }: { editor: Editor }) {
   )
 }
 
+/**
+ * Font-family dropdown (SCHEMA_VERSION 16): sets the textStyle `fontFamily` attr, or clears it.
+ * Mirrors FontSizeSelect. Rendered ONLY when FONT_FAMILY_ENABLED is on (feature flag, default
+ * off) — the caller gates it, so when off the selector is absent from the DOM entirely and the
+ * user cannot set a font (see config.ts for the phased-rollout rationale).
+ */
+function FontFamilySelect({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  const current = (editor.getAttributes('textStyle').fontFamily as string) || ''
+  return (
+    <select
+      className="octo-font-family"
+      title={t('docs.toolbar.fontFamily')}
+      value={current}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const v = e.target.value
+        if (!v) editor.chain().focus().unsetFontFamily().run()
+        else editor.chain().focus().setFontFamily(v).run()
+      }}
+    >
+      <option value="">{t('docs.toolbar.fontFamilyDefault')}</option>
+      {FONT_FAMILIES.map((f) => (
+        <option key={f.labelKey} value={f.value} style={{ fontFamily: f.value }}>
+          {t(f.labelKey)}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 /** Block-type dropdown (C1): collapses H1–H6 + a "Body text" (paragraph) option into one selector
  * that reflects the current block. Selecting a heading sets it; "Body text" sets a paragraph. */
 function BlockTypeSelect({ editor }: { editor: Editor }) {
@@ -985,6 +1018,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <Btn label="x²" title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
       <Btn label="x₂" title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
       <FontSizeSelect editor={editor} />
+      {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
       <span className="octo-tb-sep" />
