@@ -275,7 +275,23 @@ export function shouldShowFloatingMenu(args: {
   return isRootDepth && isEmptyTextBlock
 }
 
-const HIGHLIGHT_COLORS = ['#fff3a3', '#ffd6cc', '#cdeccd', '#cfe2ff', '#e7d6ff'] as const
+// Common highlight (text-background) colours (octo-web follow-up to #719, same plan): a set of
+// light / pastel tints spread warm→cool so dark foreground text stays readable on every swatch.
+// The original five (yellow, peach, green, blue, purple) are preserved and kept in place; the new
+// entries fill out the spectrum (amber, pink, indigo, cyan, neutral grey). Values are standard
+// #rrggbb hex so DOCX/Markdown export keeps them lossless, mirroring TEXT_COLORS below.
+const HIGHLIGHT_COLORS = [
+  '#fff3a3',
+  '#ffe0a3',
+  '#ffd6cc',
+  '#ffd6e7',
+  '#e7d6ff',
+  '#d6ddff',
+  '#cfe2ff',
+  '#c9f0ef',
+  '#cdeccd',
+  '#e6e9ed',
+] as const
 // Common font colours (octo-web #719, plan A): near-black default, secondary grey, then the
 // warm→cool spread. Values are standard #rrggbb hex so DOCX export (normalizeDocxColor) keeps
 // them lossless. This scope covers font colour only — HIGHLIGHT_COLORS above is intentionally
@@ -296,6 +312,27 @@ const TEXT_COLORS = [
 /** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
 function HighlightControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
+  // Native <input type="color"> distinguishes drag from commit only at the DOM level: `input`
+  // streams while the hue wheel moves, `change` fires once the pick is committed. React folds
+  // both onto its synthetic onChange (native `input`), so we bind the raw `change` event via a ref.
+  // RC1: commit the highlight once, on `change` only — never on the `input` stream. Applying per
+  // `input` tick ran one ProseMirror transaction each, so a single pick piled up dozens of undo
+  // records and flooded collaborators with a Yjs update per intermediate hue. The OS colour dialog
+  // previews the hue live in its own UI while dragging, so committing on `change` keeps one pick =
+  // one undo record + one Yjs update, and the popover collapses on commit like a preset swatch.
+  const customRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const input = customRef.current
+    if (!input) return
+    const onCommit = () => {
+      editor.chain().focus().setHighlight({ color: input.value }).run()
+      setOpen(false)
+    }
+    input.addEventListener('change', onCommit)
+    return () => {
+      input.removeEventListener('change', onCommit)
+    }
+  }, [editor, open])
   return (
     <span className="octo-color-control">
       <Btn
@@ -305,7 +342,7 @@ function HighlightControl({ editor }: { editor: Editor }) {
         onClick={() => setOpen((v) => !v)}
       />
       {open && (
-        <span className="octo-color-popover">
+        <span className="octo-color-popover octo-highlight-color-popover">
           {HIGHLIGHT_COLORS.map((c) => (
             <button
               key={c}
@@ -323,10 +360,33 @@ function HighlightControl({ editor }: { editor: Editor }) {
           <Btn
             label="✕"
             onClick={() => {
-              editor.chain().focus().unsetHighlight().run()
+              // Clear the highlight the caret sits in. unsetHighlight() alone only clears a
+              // non-empty selection range — with a collapsed caret inside a highlight (the common
+              // "click into highlighted text, then hit ✕" flow) it clears stored marks only and
+              // leaves the surrounding <mark> in the document. extendMarkRange('highlight') first
+              // grows the selection to span the whole highlight under the caret (a no-op when a
+              // range is already selected), so unsetHighlight() reliably removes the mark. Same
+              // idiom TipTap uses for link clearing (extendMarkRange('link').unsetLink()).
+              editor.chain().focus().extendMarkRange('highlight').unsetHighlight().run()
               setOpen(false)
             }}
           />
+          {/* Custom highlight (same approach as the text-colour picker): native picker, zero new
+              deps. It emits standard #rrggbb, so setHighlight stays lossless through Yjs and the
+              DOCX/Markdown exporters. The picker stays open while dragging the hue wheel and
+              commits once on `change`, collapsing the popover — see the ref-bound listener above. */}
+          <label
+            className="octo-swatch octo-color-custom"
+            title={t('docs.toolbar.customColor')}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <input
+              ref={customRef}
+              type="color"
+              className="octo-color-custom-input"
+              aria-label={t('docs.toolbar.customColor')}
+            />
+          </label>
         </span>
       )}
     </span>
