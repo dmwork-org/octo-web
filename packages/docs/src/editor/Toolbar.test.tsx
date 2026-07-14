@@ -449,25 +449,25 @@ describe('Toolbar — highlight palette + custom picker', () => {
     expect(swatches).toHaveLength(10)
     const colours = swatches.map((s) => (s.getAttribute('title') || '').replace('Highlight ', ''))
     expect(colours).toEqual([
-      '#fff3a3',
-      '#ffe0a3',
-      '#ffd6cc',
-      '#ffd6e7',
-      '#e7d6ff',
-      '#d6ddff',
-      '#cfe2ff',
-      '#c9f0ef',
-      '#cdeccd',
-      '#e6e9ed',
+      '#d2d3d4',
+      '#e8e9ec',
+      '#f9d6d6',
+      '#fce8cc',
+      '#fcf1cd',
+      '#d5ecda',
+      '#ceede4',
+      '#d1e3f3',
+      '#d6e2ff',
+      '#ebd7f0',
     ])
   })
 
   it('applies a preset swatch highlight to the selection', () => {
     editor!.chain().focus().selectAll().run()
     const popover = openHighlightPopover()
-    const swatch = within(popover).getByTitle('Highlight #cfe2ff')
+    const swatch = within(popover).getByTitle('Highlight #d1e3f3')
     fireEvent.click(swatch)
-    expect(editor!.getAttributes('highlight').color).toBe('#cfe2ff')
+    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
   })
 
   it('exposes a native colour input that commits an arbitrary hex highlight on change', () => {
@@ -1037,5 +1037,51 @@ describe('Toolbar — format painter (XIN-963)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// XIN-1048 #3: the inline and block formula popovers shared one MathControl and rendered an
+// identical body, so the two dialogs were indistinguishable once open. Each popover now carries a
+// kind-specific title (the existing mathInline / mathBlock i18n keys) at the top.
+describe('Toolbar — math popover kind title (XIN-1048 #3)', () => {
+  it('titles the inline-formula popover with the inline key', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.mathInline'))
+    const popover = document.querySelector('.octo-math-popover') as HTMLElement
+    expect(popover).toBeTruthy()
+    const title = popover.querySelector('.octo-math-popover-title')
+    expect(title?.textContent).toBe('docs.toolbar.mathInline')
+  })
+
+  it('titles the block-formula popover with the block key', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.mathBlock'))
+    const popover = document.querySelector('.octo-math-popover') as HTMLElement
+    expect(popover).toBeTruthy()
+    const title = popover.querySelector('.octo-math-popover-title')
+    expect(title?.textContent).toBe('docs.toolbar.mathBlock')
+  })
+
+  it('gives the inline and block popovers different titles', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.mathInline'))
+    const inlineTitle = document.querySelector('.octo-math-popover-title')?.textContent
+    fireEvent.click(titleBtn('docs.toolbar.mathInline')) // close
+    fireEvent.click(titleBtn('docs.toolbar.mathBlock'))
+    const blockTitle = document.querySelector('.octo-math-popover-title')?.textContent
+    expect(inlineTitle).not.toBe(blockTitle)
+  })
+})
+
+// XIN-1048 #7b: the font-family selector now sits BEFORE the font-size selector in the toolbar
+// (family → size), matching the requested control order. FONT_FAMILY_ENABLED defaults on in tests.
+describe('Toolbar — font family precedes font size (XIN-1048 #7b)', () => {
+  it('renders the font-family select before the font-size select in document order', () => {
+    const { container } = render(<Toolbar editor={editor!} />)
+    const family = container.querySelector('.octo-font-family') as HTMLElement
+    const size = container.querySelector('.octo-font-size') as HTMLElement
+    expect(family).toBeTruthy()
+    expect(size).toBeTruthy()
+    expect(family.compareDocumentPosition(size) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

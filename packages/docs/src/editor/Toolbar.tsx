@@ -13,6 +13,7 @@ import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
+import { HIGHLIGHT_COLORS, TEXT_COLORS } from './colorPalette.ts'
 import { t } from '../octoweb/index.ts'
 import { FONT_FAMILY_ENABLED, LINE_SPACING_ENABLED } from '../config.ts'
 import { FONT_FAMILIES } from './fontFamilies.ts'
@@ -310,39 +311,11 @@ export function shouldShowFloatingMenu(args: {
   return isRootDepth && isEmptyTextBlock
 }
 
-// Common highlight (text-background) colours (octo-web follow-up to #719, same plan): a set of
-// light / pastel tints spread warm→cool so dark foreground text stays readable on every swatch.
-// The original five (yellow, peach, green, blue, purple) are preserved and kept in place; the new
-// entries fill out the spectrum (amber, pink, indigo, cyan, neutral grey). Values are standard
-// #rrggbb hex so DOCX/Markdown export keeps them lossless, mirroring TEXT_COLORS below.
-const HIGHLIGHT_COLORS = [
-  '#fff3a3',
-  '#ffe0a3',
-  '#ffd6cc',
-  '#ffd6e7',
-  '#e7d6ff',
-  '#d6ddff',
-  '#cfe2ff',
-  '#c9f0ef',
-  '#cdeccd',
-  '#e6e9ed',
-] as const
-// Common font colours (octo-web #719, plan A): near-black default, secondary grey, then the
-// warm→cool spread. Values are standard #rrggbb hex so DOCX export (normalizeDocxColor) keeps
-// them lossless. This scope covers font colour only — HIGHLIGHT_COLORS above is intentionally
-// left unchanged.
-const TEXT_COLORS = [
-  '#1f2329',
-  '#8a919e',
-  '#e03131',
-  '#f08c00',
-  '#f2b705',
-  '#2f9e44',
-  '#0ca678',
-  '#1971c2',
-  '#3370ff',
-  '#9c36b5',
-] as const
+// The highlight (text-background) and font-colour presets are DERIVED from one shared hue base
+// (PALETTE_HUES) in ./colorPalette.ts: TEXT_COLORS are the saturated hues, HIGHLIGHT_COLORS are the
+// same hues at the same index tinted light so dark text stays readable on top. Same count, same hue
+// order, same column ↦ same colour family across both pickers. Values stay #rrggbb so they survive
+// Yjs collaboration and the DOCX/Markdown exporters losslessly.
 
 /** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
 function HighlightControl({ editor }: { editor: Editor }) {
@@ -1204,25 +1177,30 @@ function MathControl({ editor, kind }: { editor: Editor; kind: 'inline' | 'block
       />
       {open && (
         <span className="octo-color-popover octo-math-popover">
-          <input
-            className="octo-find-input"
-            autoFocus
-            value={latex}
-            placeholder={t('docs.toolbar.mathPlaceholder')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onChange={(e) => setLatex(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                confirm()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                setOpen(false)
-                setLatex('')
-              }
-            }}
-          />
-          <Btn label={t('docs.toolbar.insert')} onClick={confirm} />
+          <span className="octo-math-popover-title">
+            {t(kind === 'inline' ? 'docs.toolbar.mathInline' : 'docs.toolbar.mathBlock')}
+          </span>
+          <span className="octo-math-popover-row">
+            <input
+              className="octo-find-input"
+              autoFocus
+              value={latex}
+              placeholder={t('docs.toolbar.mathPlaceholder')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => setLatex(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  confirm()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setOpen(false)
+                  setLatex('')
+                }
+              }}
+            />
+            <Btn label={t('docs.toolbar.insert')} onClick={confirm} />
+          </span>
         </span>
       )}
     </span>
@@ -1393,8 +1371,8 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <Btn label={<IconStrike />} title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
       <Btn label="x²" title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
       <Btn label="x₂" title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
-      <FontSizeSelect editor={editor} />
       {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
+      <FontSizeSelect editor={editor} />
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
       {LINE_SPACING_ENABLED && <LineHeightSelect editor={editor} />}
