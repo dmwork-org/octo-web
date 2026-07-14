@@ -328,6 +328,7 @@
   "attach": {
     "title": "Attachments",
     "add": "Add attachment",
+    "download": "Download {{name}}",
     "empty": "No attachments"
   },
   "createIssue": {
