@@ -293,6 +293,49 @@
 .octo-swatch:hover {
   outline: 2px solid var(--octo-accent);
 }
+/* Custom-colour entry (#719): a rainbow swatch that wraps the native <input type="color">.
+   The input fills the swatch but stays invisible so the OS colour dialog opens on click while
+   the toolbar keeps its own visual language (works in both light and dark themes). */
+.octo-color-custom {
+  position: relative;
+  overflow: hidden;
+  /* RC2: the rainbow ring is a deliberate palette — it signals "pick any colour", so it must show
+     the actual hue spectrum and cannot be expressed with semantic theme tokens. Declared as an
+     intentional exception to the hardcoded-colour policy (stylelint.ci.config.mjs → color-no-hex);
+     these are literal spectrum stops, not themeable UI colours. */
+  /* stylelint-disable color-no-hex */
+  background: conic-gradient(
+    from 0deg,
+    #e03131,
+    #f08c00,
+    #f2b705,
+    #2f9e44,
+    #0ca678,
+    #1971c2,
+    #3370ff,
+    #9c36b5,
+    #e03131
+  );
+  /* stylelint-enable color-no-hex */
+}
+/* RC3: the native colour <input> is fully transparent, so keyboard focus was invisible. Surface a
+   visible focus ring on the wrapping swatch (via :focus-within) using the accent token so it
+   follows the light/dark theme, matching the hover affordance above. */
+.octo-color-custom:focus-within {
+  outline: 2px solid var(--octo-accent);
+  outline-offset: 1px;
+}
+.octo-color-custom-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
 .octo-code-lang {
   border: 1px solid var(--octo-border);
   border-radius: 6px;
