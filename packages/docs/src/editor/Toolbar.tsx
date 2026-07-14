@@ -274,7 +274,22 @@ export function shouldShowFloatingMenu(args: {
 }
 
 const HIGHLIGHT_COLORS = ['#fff3a3', '#ffd6cc', '#cdeccd', '#cfe2ff', '#e7d6ff'] as const
-const TEXT_COLORS = ['#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'] as const
+// Common font colours (octo-web #719, plan A): near-black default, secondary grey, then the
+// warm→cool spread. Values are standard #rrggbb hex so DOCX export (normalizeDocxColor) keeps
+// them lossless. This scope covers font colour only — HIGHLIGHT_COLORS above is intentionally
+// left unchanged.
+const TEXT_COLORS = [
+  '#1f2329',
+  '#8a919e',
+  '#e03131',
+  '#f08c00',
+  '#f2b705',
+  '#2f9e44',
+  '#0ca678',
+  '#1971c2',
+  '#3370ff',
+  '#9c36b5',
+] as const
 
 /** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
 function HighlightControl({ editor }: { editor: Editor }) {
@@ -319,11 +334,32 @@ function HighlightControl({ editor }: { editor: Editor }) {
 /** Text-colour control (SCHEMA-SPEC §3): palette of font colours + clear. */
 function TextColorControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
+  // Native <input type="color"> distinguishes drag from commit only at the DOM level: `input`
+  // streams while the hue wheel moves, `change` fires once the pick is committed. React folds
+  // both onto its synthetic onChange (native `input`), so we bind the raw `change` event via a ref.
+  // RC1: commit the colour once, on `change` only — never on the `input` stream. Applying per
+  // `input` tick ran one ProseMirror transaction each, so a single pick piled up dozens of undo
+  // records and flooded collaborators with a Yjs update per intermediate hue. The OS colour dialog
+  // previews the hue live in its own UI while dragging, so committing on `change` keeps one pick =
+  // one undo record + one Yjs update, and the popover collapses on commit like a preset swatch.
+  const customRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const input = customRef.current
+    if (!input) return
+    const onCommit = () => {
+      editor.chain().focus().setColor(input.value).run()
+      setOpen(false)
+    }
+    input.addEventListener('change', onCommit)
+    return () => {
+      input.removeEventListener('change', onCommit)
+    }
+  }, [editor, open])
   return (
     <span className="octo-color-control">
       <Btn label="A̲" title={t('docs.toolbar.textColor')} active={open} onClick={() => setOpen((v) => !v)} />
       {open && (
-        <span className="octo-color-popover">
+        <span className="octo-color-popover octo-text-color-popover">
           {TEXT_COLORS.map((c) => (
             <button
               key={c}
@@ -345,6 +381,22 @@ function TextColorControl({ editor }: { editor: Editor }) {
               setOpen(false)
             }}
           />
+          {/* Custom colour (plan A): native picker, zero new deps. It emits standard #rrggbb,
+              so setColor stays lossless through Yjs and the DOCX/Markdown exporters. The picker
+              stays open while dragging the hue wheel and commits once on `change`, collapsing the
+              popover — see the ref-bound listener above. */}
+          <label
+            className="octo-swatch octo-color-custom"
+            title={t('docs.toolbar.customColor')}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <input
+              ref={customRef}
+              type="color"
+              className="octo-color-custom-input"
+              aria-label={t('docs.toolbar.customColor')}
+            />
+          </label>
         </span>
       )}
     </span>
