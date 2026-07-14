@@ -190,6 +190,31 @@ function useEditorTick(editor: Editor): void {
 }
 
 /**
+ * Like useEditorTick but also re-renders when the value returned by `read(editor)` changes —
+ * not only when the selection moves. A setLineHeight / setSpaceBefore transaction rewrites a
+ * block attribute while leaving the caret put, so the selection-keyed snapshot of useEditorTick
+ * does NOT change and React skips the re-render; a controlled <select> is then restored to its
+ * stale `value` prop, so the dropdown kept showing the old label after a value was picked
+ * (line-spacing display desync, XIN-1039 #1). Keying the snapshot off the displayed value itself
+ * makes the control re-render exactly when that value changes — the same fix shape as useFindState
+ * below. Returns the freshly read value so the caller renders from it directly.
+ */
+function useEditorValueTick(editor: Editor, read: (editor: Editor) => string): string {
+  useSyncExternalStore(
+    (cb) => {
+      editor.on('transaction', cb)
+      editor.on('selectionUpdate', cb)
+      return () => {
+        editor.off('transaction', cb)
+        editor.off('selectionUpdate', cb)
+      }
+    },
+    () => `${editor.state.selection.from}:${editor.state.selection.to}:${read(editor)}`,
+  )
+  return read(editor)
+}
+
+/**
  * Subscribe a component to the find/replace plugin state, returning the live FindReplaceState.
  *
  * The plain useEditorTick snapshot keys only off the selection (from:to), so a setFindQuery
@@ -706,9 +731,19 @@ function currentLineHeight(editor: Editor): string {
  * and the value is pushed to the editor once, on blur or Enter. An invalid draft on commit is
  * reverted to the last committed value rather than written.
  */
-function LineHeightCustomInput({ editor }: { editor: Editor }) {
+function LineHeightCustomInput({ editor, autoFocus = false }: { editor: Editor; autoFocus?: boolean }) {
   const committed = currentLineHeight(editor)
   const [draft, setDraft] = useState(committed)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Focus the field the moment it is revealed by picking "custom" from the dropdown, so the user
+  // can type a multiplier straight away. Only on mount, and only when the reveal was an explicit
+  // pick — never when the field appears because the caret entered a block that already carries a
+  // custom value (stealing focus there would yank the caret out of the document mid-navigation).
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Adopt the committed value into the draft when it changes underneath us (caret moved to
   // another block, a preset was picked, or our own commit landed) — done as a render-phase
@@ -746,6 +781,7 @@ function LineHeightCustomInput({ editor }: { editor: Editor }) {
 
   return (
     <input
+      ref={inputRef}
       type="text"
       inputMode="decimal"
       className="octo-line-height-custom"
@@ -767,26 +803,51 @@ function LineHeightCustomInput({ editor }: { editor: Editor }) {
 
 /**
  * Line-spacing dropdown (SCHEMA_VERSION 17): sets the `lineHeight` attr on the current
- * heading/paragraph block (or clears it). The presets cover the common multipliers; the
- * adjacent number input takes a custom value. Reads the current value from whichever of the
- * two block types is active, so the control reflects the caret's block.
+ * heading/paragraph block (or clears it). The presets cover the common multipliers; a custom
+ * multiplier is entered in a number input that appears ONLY while "custom" is the active option —
+ * either because the caret sits in a block already carrying a non-preset value, or because the
+ * user just picked "custom" from the dropdown. Any preset/default selection hides the input, and
+ * because it is conditionally rendered (not merely hidden) it takes up no layout space when absent.
+ * Reads the current value from whichever of the two block types is active, so the control reflects
+ * the caret's block.
  */
 function LineHeightSelect({ editor }: { editor: Editor }) {
-  useEditorTick(editor)
-  const current = currentLineHeight(editor)
+  const current = useEditorValueTick(editor, currentLineHeight)
   const isPreset = (LINE_HEIGHTS as readonly string[]).includes(current)
+  // A non-preset, non-empty value (e.g. a pasted 1.3, or one typed via the input) already means
+  // the block is on a custom multiplier — the input must show and seed from it (#1 display sync).
+  const hasCustomValue = !isPreset && current !== ''
+
+  // "Custom" is also a sticky UI mode: picking it from the dropdown reveals the input even before a
+  // value is typed (nothing is written to the block until a multiplier is committed). The mode is
+  // dropped as soon as the caret moves to another block, so the input never lingers over a
+  // preset/default block after navigation.
+  const [customPicked, setCustomPicked] = useState(false)
+  const seenFrom = useRef(editor.state.selection.from)
+  if (editor.state.selection.from !== seenFrom.current) {
+    seenFrom.current = editor.state.selection.from
+    if (customPicked) setCustomPicked(false)
+  }
+
+  const showCustom = hasCustomValue || customPicked
   return (
     <span className="octo-line-height-control">
       <select
         className="octo-line-height"
         title={t('docs.toolbar.lineHeight')}
-        value={isPreset ? current : current ? 'custom' : ''}
+        value={showCustom ? 'custom' : isPreset ? current : ''}
         onMouseDown={(e) => e.stopPropagation()}
         onChange={(e) => {
           const v = e.target.value
+          if (v === 'custom') {
+            // Reveal the custom input; the block value stays untouched until a multiplier is
+            // committed via the input.
+            setCustomPicked(true)
+            return
+          }
+          setCustomPicked(false)
           if (!v) editor.chain().focus().unsetLineHeight().run()
-          else if (v !== 'custom') editor.chain().focus().setLineHeight(v).run()
-          // 'custom' leaves the value untouched — the number input drives custom multipliers.
+          else editor.chain().focus().setLineHeight(v).run()
         }}
       >
         <option value="">{t('docs.toolbar.lineHeightDefault')}</option>
@@ -797,7 +858,7 @@ function LineHeightSelect({ editor }: { editor: Editor }) {
         ))}
         <option value="custom">{t('docs.toolbar.lineHeightCustom')}</option>
       </select>
-      <LineHeightCustomInput editor={editor} />
+      {showCustom && <LineHeightCustomInput editor={editor} autoFocus={customPicked} />}
     </span>
   )
 }
@@ -814,12 +875,14 @@ const PARAGRAPH_SPACINGS = ['0px', '4px', '8px', '12px', '16px', '24px'] as cons
  * (e.g. an em length pasted in) still shows as "Custom" so it isn't silently reset.
  */
 function ParagraphSpacingSelect({ editor, edge }: { editor: Editor; edge: 'before' | 'after' }) {
-  useEditorTick(editor)
   const attr = edge === 'before' ? 'spaceBefore' : 'spaceAfter'
-  const current =
-    (editor.getAttributes('paragraph')[attr] as string | undefined) ??
-    (editor.getAttributes('heading')[attr] as string | undefined) ??
-    ''
+  const current = useEditorValueTick(
+    editor,
+    (e) =>
+      (e.getAttributes('paragraph')[attr] as string | undefined) ??
+      (e.getAttributes('heading')[attr] as string | undefined) ??
+      '',
+  )
   const isPreset = (PARAGRAPH_SPACINGS as readonly string[]).includes(current)
   const titleKey = edge === 'before' ? 'docs.toolbar.spaceBefore' : 'docs.toolbar.spaceAfter'
   return (
