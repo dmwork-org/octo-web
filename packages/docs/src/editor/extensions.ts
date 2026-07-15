@@ -36,6 +36,7 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { TableCellView } from './TableCellView.ts'
+import { TableFreeze } from './TableFreeze.ts'
 import { OctoImage } from './ImageNode.ts'
 import { CommentHighlight } from '../comments/CommentDecorations.ts'
 import { buildEmoji } from './emoji.ts'
@@ -230,7 +231,15 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // self-built NodeView (TableCellView) that gives ProseMirror explicit
     // ignoreMutation/stopEvent rules so resize/remote DOM writes don't desync
     // collaborative cursors (§3.2 requirement).
-    Table.configure({ resizable: true }),
+    // #749: the default prosemirror-tables `handleWidth` (5px) only arms a ~10px band
+    // straddling each column border, and the LAST column's right border sits flush with
+    // the visible edge so its arm zone is effectively unreachable — dragging it did
+    // nothing. Widen the arm band to 12px so every border, including the last column's
+    // right edge, has a comfortable grab zone. `cellMinWidth` is pinned to prosemirror's
+    // default (25) — kept explicit because it must stay >= handleWidth * 2 so adjacent
+    // borders' arm bands never overlap on the narrowest columns (which would make a small
+    // column impossible to grab/shrink).
+    Table.configure({ resizable: true, handleWidth: 12, cellMinWidth: 25 }),
     TableRow,
     TableHeader.extend({
       addNodeView() {
@@ -242,6 +251,10 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
         return ({ node }) => new TableCellView(node, 'td')
       },
     }),
+    // #755 (XIN-1096): freeze rows/columns (冻结窗格). View-state only — a plugin marks the first N
+    // rows / columns sticky, nothing is written to the Y.Doc (see TableFreeze.ts). Registered on the
+    // live editor only; the static/export editor below has no interactive freeze.
+    TableFreeze,
     // SCHEMA-SPEC §2 (SCHEMA_VERSION 2): image node. Extends @tiptap/extension-image
     // (pinned 2.27.2, single core) with the backend-aligned attr set + parse/render
     // mapping and a self-built NodeView. docId is threaded so the NodeView and the
