@@ -71,3 +71,54 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
     expect(layout).toMatch(/window\.location\.reload\(\)/)
   })
 })
+
+describe('Layout — standalone /s/:taskNo summary clean cold-load path', () => {
+  let layout: string
+
+  beforeAll(() => {
+    layout = fs.readFileSync(path.join(__dirname, '../Layout/index.tsx'), 'utf-8')
+  })
+
+  it('matches only a well-formed single-segment /s/<taskNo>, not /s, /s/, or nested paths', () => {
+    expect(layout).toMatch(/isStandaloneSummaryPath\(\s*window\.location\.pathname\s*\)/)
+    expect(layout).toMatch(/function\s+parseStandaloneSummaryTaskNo/)
+    // The matcher must delegate to the strict parser (single segment) rather than a
+    // loose /s namespace regex, so /s, /s/, and /s/a/b fall through instead of
+    // mounting SummaryDetailPage with an undefined taskId.
+    expect(layout).toMatch(/return\s+parseStandaloneSummaryTaskNo\(pathname\)\s*!==\s*null/)
+    expect(layout).not.toMatch(/STANDALONE_SUMMARY_NAMESPACE/)
+    expect(layout).not.toMatch(/if\s*\(\s*standaloneTaskNo\s*\)/)
+    // The strict single-segment path regex is the sole source of truth.
+    expect(layout).toMatch(/STANDALONE_SUMMARY_PATH\s*=\s*\/\^\\\/s\\\/\(\[A-Za-z0-9_-\]\+\)/)
+  })
+
+  it('recovers a stored session before rendering the summary detail page', () => {
+    const branchIdx = layout.indexOf('Standalone summary deep-link')
+    expect(branchIdx).toBeGreaterThan(0)
+    const nsIdx = layout.indexOf('isStandaloneSummaryPath(window.location.pathname)', branchIdx)
+    expect(nsIdx).toBeGreaterThan(0)
+    const recoverIdx = layout.indexOf('recoverOctoSessionFromStorage(true)', nsIdx)
+    const renderIdx = layout.indexOf('<SummaryDetailPage', nsIdx)
+    expect(recoverIdx).toBeGreaterThan(nsIdx)
+    expect(renderIdx).toBeGreaterThan(recoverIdx)
+  })
+
+  it('renders summary detail only with a token, passing the raw task_no string through', () => {
+    expect(layout).toMatch(/if\s*\(\s*WKApp\.loginInfo\.token\s*\)\s*\{[\s\S]*?<SummaryDetailPage/)
+    expect(layout).toMatch(/const\s+standaloneTaskNo\s*=\s*parseStandaloneSummaryTaskNo\(window\.location\.pathname\)/)
+    expect(layout).toMatch(/<SummaryDetailPage\s+taskId=\{standaloneTaskNo\s*\?\?\s*undefined\}/)
+  })
+
+  it('stashes anonymous /s targets and carries sp through post-login return', () => {
+    const branchIdx = layout.indexOf('Standalone summary deep-link')
+    expect(branchIdx).toBeGreaterThan(0)
+    const nsIdx = layout.indexOf('isStandaloneSummaryPath(window.location.pathname)', branchIdx)
+    expect(nsIdx).toBeGreaterThan(0)
+    const stashIdx = layout.indexOf('persistStandaloneReturn()', nsIdx)
+    expect(stashIdx).toBeGreaterThan(nsIdx)
+    expect(layout).toMatch(/const\s+forwardSp\s*=\s*getQueryParam\("sp"\)\s*\|\|\s*""/)
+    expect(layout).toMatch(/redirectQuery\.set\("sp",\s*forwardSp\)/)
+    expect(layout).toMatch(/consumeStandaloneReturn\(\)/)
+    expect(layout).toMatch(/withReturnSid\(standaloneReturn,\s*sessionSid\)/)
+  })
+})

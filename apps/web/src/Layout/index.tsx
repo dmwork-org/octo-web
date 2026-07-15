@@ -14,6 +14,7 @@ import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
 import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn, withReturnSid } from "@octo/docs";
+import { SummaryDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
 
@@ -75,6 +76,28 @@ function clearExpiredStandaloneSessionAndReload(): void {
     if (typeof window !== "undefined") window.location.reload();
 }
 
+/** `/s/:taskNo` — summary taskNo is a single URL path segment, optional trailing slash. */
+const STANDALONE_SUMMARY_PATH = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
+
+export function parseStandaloneSummaryTaskNo(pathname: string): string | null {
+    if (typeof pathname !== "string") return null;
+    const m = STANDALONE_SUMMARY_PATH.exec(pathname);
+    return m ? m[1] : null;
+}
+
+// Only a well-formed single-segment `/s/<taskNo>` counts as standalone; `/s`,
+// `/s/`, and nested `/s/a/b` must fall through (else the render branch mounts
+// SummaryDetailPage with an undefined taskId).
+export function isStandaloneSummaryPath(pathname: string): boolean {
+    return parseStandaloneSummaryTaskNo(pathname) !== null;
+}
+
+function applyStandaloneSummarySpaceFromQuery(): void {
+    const params = new URLSearchParams(window.location.search);
+    const spaceId = params.get("sp") || params.get("space") || "";
+    if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+}
+
 export default class AppLayout extends Component<{}, AppLayoutState> {
     state: AppLayoutState = { showJoinSpace: false };
 
@@ -124,12 +147,18 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             const forwardDoc = getQueryParam("doc") || ""
             const forwardSpace = getQueryParam("space") || ""
             const forwardFolder = getQueryParam("folder") || ""
+            const forwardSp = getQueryParam("sp") || ""
             const redirectQuery = new URLSearchParams()
             if (existingSid) redirectQuery.set("sid", existingSid)
             if (forwardDoc) {
                 redirectQuery.set("doc", forwardDoc)
                 if (forwardSpace) redirectQuery.set("space", forwardSpace)
                 if (forwardFolder) redirectQuery.set("folder", forwardFolder)
+            }
+            if (isStandaloneSummaryPath(window.location.pathname)) {
+                // 与 applyStandaloneSummarySpaceFromQuery(sp||space) 对称：登录重定向也一并透传 space。
+                if (forwardSp) redirectQuery.set("sp", forwardSp)
+                if (forwardSpace) redirectQuery.set("space", forwardSpace)
             }
             const redirectQs = redirectQuery.toString()
             const sidParam = redirectQs ? `?${redirectQs}` : ""
@@ -404,6 +433,25 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // the login screen (below) without navigating away. The standalone page itself only
             // mounts once a token exists, so the anonymous path is the ONLY place this key gets
             // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
+            persistStandaloneReturn();
+            // Anonymous: fall through to the login screen (below) without navigating away.
+        }
+
+        // Standalone summary deep-link (`/s/:taskNo`): notification cards use task_no (not numeric
+        // task_id), so pass the raw path segment into the detail fetch. Auth/session recovery mirrors
+        // `/d/:docId`; anonymous visitors stash the exact target and return after login.
+        if (isStandaloneSummaryPath(window.location.pathname)) {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            if (WKApp.loginInfo.token) {
+                applyStandaloneSummarySpaceFromQuery();
+                const standaloneTaskNo = parseStandaloneSummaryTaskNo(window.location.pathname);
+                return <SummaryDetailPage taskId={standaloneTaskNo ?? undefined} />;
+            }
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.
         }

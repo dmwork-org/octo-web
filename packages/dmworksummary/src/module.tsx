@@ -55,7 +55,9 @@ export class SummaryModule implements IModule {
             "en-US": enUS,
         });
 
-        WKApp.openSummaryDetail = (taskId: number) => {
+        WKApp.openSummaryDetail = (taskId: number | string, spaceId?: string) => {
+            // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
+            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
             WKApp.switchToMenuById?.("summary");
             WKApp.routeLeft.popToRoot();
             WKApp.routeRight.replaceToRoot(
