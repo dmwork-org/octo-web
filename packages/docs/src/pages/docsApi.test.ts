@@ -3,6 +3,8 @@ import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
 import {
   listDocs,
+  listRecentDocs,
+  listRecentCreators,
   createDoc,
   getDoc,
   getUserName,
@@ -134,6 +136,77 @@ describe('docs list/create API (bare-relative /docs)', () => {
       throw { response: { status: 409 } }
     }
     await expect(deleteDoc('d_arch')).rejects.toMatchObject({ response: { status: 409 } })
+  })
+})
+
+// The recent tab is the default landing surface, so its list/creators GETs must degrade to an
+// empty result — never throw — when the backend is not yet deployed (404) or errors (5xx).
+// Otherwise useDocsView's `.catch` flips the default tab into the error phase on first paint.
+describe('recent feed resilience (not-yet-deployed backend degrades to empty)', () => {
+  it('listRecentDocs returns an empty page instead of rejecting on a 404/5xx', async () => {
+    api.responder = () => {
+      throw { response: { status: 404 } }
+    }
+    await expect(listRecentDocs({ q: 'x' })).resolves.toEqual({
+      total: 0,
+      items: [],
+      nextCursor: null,
+    })
+  })
+
+  it('listRecentDocs still parses a normal 200 body', async () => {
+    api.responder = () => ({
+      data: {
+        total: 2,
+        items: [{ docId: 'd_r', title: 'Recent', ownerId: 'u0', role: 'admin', viewedAt: 't' }],
+        nextCursor: 'cur_1',
+      },
+      status: 200,
+    })
+    const res = await listRecentDocs()
+    expect(res.items).toHaveLength(1)
+    expect(res.nextCursor).toBe('cur_1')
+    expect(api.calls.at(-1)!.url).toContain('/docs/recent')
+  })
+
+  it('listRecentCreators returns [] instead of rejecting on a 404/5xx', async () => {
+    api.responder = () => {
+      throw { response: { status: 500 } }
+    }
+    await expect(listRecentCreators('x')).resolves.toEqual([])
+  })
+
+  it('listRecentCreators still parses a normal 200 body', async () => {
+    api.responder = () => ({ data: { creators: [{ uid: 'u1', name: 'Ada' }] }, status: 200 })
+    expect(await listRecentCreators()).toEqual([{ uid: 'u1', name: 'Ada' }])
+  })
+})
+
+// XIN-1188: the multi-select type filter serializes as repeated `?type=` params (never CSV),
+// mirroring the `creator` convention, on BOTH the recent and mine list calls.
+describe('type filter serialization (repeated ?type=, both lists)', () => {
+  it('listRecentDocs appends one ?type= per selected kind (OR), alongside creator', async () => {
+    api.responder = () => ({ data: { total: 0, items: [], nextCursor: null }, status: 200 })
+    await listRecentDocs({ types: ['doc', 'sheet'], creators: ['u_a'] })
+    const url = api.calls.at(-1)!.url
+    expect(url).toContain('type=doc')
+    expect(url).toContain('type=sheet')
+    expect(url).toContain('creator=u_a')
+    expect(url).not.toContain('type=doc%2Csheet') // not CSV
+  })
+
+  it('listDocs (mine) appends one ?type= per selected kind', async () => {
+    api.responder = () => ({ data: { total: 0, items: [] }, status: 200 })
+    await listDocs({ owner: 'me', types: ['board'] })
+    const url = api.calls.at(-1)!.url
+    expect(url).toContain('type=board')
+    expect(url).toContain('owner=me')
+  })
+
+  it('omits the type param entirely when none is selected (backward compatible)', async () => {
+    api.responder = () => ({ data: { total: 0, items: [], nextCursor: null }, status: 200 })
+    await listRecentDocs({})
+    expect(api.calls.at(-1)!.url).not.toContain('type=')
   })
 })
 

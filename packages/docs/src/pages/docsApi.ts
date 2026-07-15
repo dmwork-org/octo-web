@@ -7,6 +7,16 @@
 import { apiClient } from '../octoweb/index.ts'
 import type { Role } from '../auth/roles.ts'
 
+/**
+ * Document kind enum — the wire contract for `doc_type`, authored in lockstep with the backend
+ * (octo-docs-backend `DOC_TYPES` in src/db/docType.ts and the `doc_meta.doc_type` column). The three
+ * values are the single source of truth on BOTH sides: the list distinguishes them by row icon and
+ * the type filter narrows the recent/mine feeds on them (`?type=doc&type=sheet`). Never mock a value
+ * that the backend does not persist — a drifting enum is exactly the assumed-wire trap FEAT-B avoids.
+ */
+export const DOC_TYPES = ['doc', 'sheet', 'board'] as const
+export type DocType = (typeof DOC_TYPES)[number]
+
 export interface DocListItem {
   docId: string
   title: string
@@ -14,10 +24,17 @@ export interface DocListItem {
   role: Role
   updatedAt?: string
   /**
-   * Document kind: `'doc'` (Tiptap rich text, the default) or `'board'` (Excalidraw whiteboard).
-   * Optional because older records and backends that predate the whiteboard feature omit it; a
-   * missing value is treated as a plain document. The list mixes both kinds and distinguishes
-   * them by icon (frontend-design §4.1 / §5.1).
+   * Last-viewed timestamp (ISO-8601, UTC, ms). Present ONLY on "recent" (最近查看) rows — the
+   * backend `GET /docs/recent` response includes it (XIN-1098 API 2); the plain `GET /docs`
+   * (我的文档 / owned) response omits it. Consumed by the recent tab to order and render the
+   * "viewed" sub-line; absent for "my documents" rows (frontend-design §3.2 / §3.3).
+   */
+  viewedAt?: string
+  /**
+   * Document kind — one of {@link DocType}: `'doc'` (Tiptap rich text, the default), `'sheet'`
+   * (Univer spreadsheet), or `'board'` (Excalidraw whiteboard). Optional because older records and
+   * backends that predate a given kind omit it; a missing value is treated as a plain document. The
+   * list mixes all kinds and distinguishes them by icon (frontend-design §4.1 / §5.1).
    */
   docType?: string
 }
@@ -25,6 +42,12 @@ export interface DocListItem {
 export interface ListDocsResult {
   total: number
   items: DocListItem[]
+}
+
+/** A creator candidate for the recent-tab filter — server-resolved `{uid,name}` (XIN-1098 API 4). */
+export interface CreatorOption {
+  uid: string
+  name: string
 }
 
 export interface CreateDocResult {
@@ -45,9 +68,27 @@ export interface ListDocsParams {
   page?: number
   pageSize?: number
   sort?: 'updatedAt:desc' | 'updatedAt:asc'
+  /**
+   * Filename search term (frontend-design §3.3 / XIN-1098 §4.1). The server trims it and treats a
+   * blank result as "no search"; a case-insensitive substring match is applied before pagination.
+   */
+  q?: string
+  /**
+   * `'me'` scopes the list to documents the caller OWNS (strict `owner_id == uid`), excluding
+   * shared-to-me docs — the "我的文档" tab (frontend-design §3.3 / XIN-1098 API 3). Omitted for the
+   * legacy "owned or member" listing.
+   */
+  owner?: 'me'
+  /**
+   * Selected document kinds — multi-value OR filter serialized as repeated `?type=doc&type=sheet`
+   * (same repeated-param convention as `creator`, never CSV; frontend-design §5.2 / XIN-1188). The
+   * server narrows on `doc_type` BEFORE pagination and treats an absent param as "no type filter",
+   * so it is fully backward compatible. Empty = no type filter.
+   */
+  types?: DocType[]
 }
 
-/** GET /api/v1/docs — list docs the caller owns or is a member of. */
+/** GET /api/v1/docs — list docs the caller owns or is a member of (or, with `owner=me`, owns). */
 export async function listDocs(params: ListDocsParams = {}): Promise<ListDocsResult> {
   const q = new URLSearchParams()
   if (params.spaceId) q.set('spaceId', params.spaceId)
@@ -55,9 +96,122 @@ export async function listDocs(params: ListDocsParams = {}): Promise<ListDocsRes
   if (params.page) q.set('page', String(params.page))
   if (params.pageSize) q.set('pageSize', String(params.pageSize))
   if (params.sort) q.set('sort', params.sort)
+  if (params.owner) q.set('owner', params.owner)
+  const term = (params.q ?? '').trim()
+  if (term) q.set('q', term)
+  for (const ty of params.types ?? []) {
+    if (ty) q.append('type', ty)
+  }
   const qs = q.toString()
   const { data } = await apiClient().get<ListDocsResult>(`/docs${qs ? `?${qs}` : ''}`)
-  return data
+  return { total: data?.total ?? (data?.items?.length ?? 0), items: data?.items ?? [] }
+}
+
+export interface RecentDocsParams {
+  /** Filename search term (server trims; blank = no search). Same normalization as `listDocs`. */
+  q?: string
+  /**
+   * Selected creator uids — multi-value OR filter (`?creator=a&creator=b`). Only the recent tab
+   * carries this (frontend-design §3.2 / XIN-1098 §4.2). Empty = no creator filter.
+   */
+  creators?: string[]
+  /**
+   * Selected document kinds — multi-value OR filter serialized as repeated `?type=doc&type=sheet`
+   * (same convention as `creators`; frontend-design §5.2 / XIN-1188). Narrowed server-side on
+   * `doc_type` before keyset pagination; absent param = no type filter (backward compatible).
+   */
+  types?: DocType[]
+  /**
+   * Keyset cursor for the NEXT page (opaque, from the previous response's `nextCursor`). First page
+   * omits it. Recent pagination is keyset-only — there is NO offset fallback (XIN-1098 §4.3).
+   */
+  cursor?: string | null
+  pageSize?: number
+}
+
+export interface RecentDocsResult {
+  total: number
+  items: DocListItem[]
+  /** Opaque keyset cursor for the next page; `null`/absent means no more pages (XIN-1098 §4.3). */
+  nextCursor: string | null
+}
+
+/**
+ * GET /api/v1/docs/recent — the "最近查看" (recently viewed) feed, ordered `viewed_at DESC` on the
+ * server (XIN-1098 API 2). Keyset-paginated: pass the previous response's `nextCursor` to page; a
+ * null `nextCursor` marks the end. uid + space are derived server-side from the token / `X-Space-Id`
+ * header (the frontend never sends them). Resilient: coerces a missing body to an empty page so a
+ * not-yet-deployed backend degrades to an empty list rather than throwing.
+ */
+export async function listRecentDocs(params: RecentDocsParams = {}): Promise<RecentDocsResult> {
+  const q = new URLSearchParams()
+  const term = (params.q ?? '').trim()
+  if (term) q.set('q', term)
+  for (const uid of params.creators ?? []) {
+    if (uid) q.append('creator', uid)
+  }
+  for (const ty of params.types ?? []) {
+    if (ty) q.append('type', ty)
+  }
+  if (params.cursor) q.set('cursor', params.cursor)
+  if (params.pageSize) q.set('pageSize', String(params.pageSize))
+  const qs = q.toString()
+  try {
+    const { data } = await apiClient().get<Partial<RecentDocsResult>>(
+      `/docs/recent${qs ? `?${qs}` : ''}`,
+    )
+    const items = data?.items ?? []
+    return {
+      total: data?.total ?? items.length,
+      items,
+      nextCursor: data?.nextCursor ?? null,
+    }
+  } catch {
+    // Degrade to an empty page when the endpoint is not yet deployed (404) or errors (5xx). A
+    // rejected request would otherwise bubble to useDocsView's `.catch` and flip the default tab to
+    // the error phase; the contract (and the JSDoc above) is an empty list, mirroring recordDocView.
+    return { total: 0, items: [], nextCursor: null }
+  }
+}
+
+/**
+ * GET /api/v1/docs/recent/creators — creator candidates for the recent-tab filter (XIN-1098 API 4).
+ * The candidate set is "the DISTINCT owners of the current recent result set AFTER `q` filtering,
+ * BEFORE creator filtering, BEFORE pagination, AFTER permission filtering". The server resolves each
+ * `name`, so the dropdown needs no per-uid name round-trips. Resilient: returns `[]` on a missing /
+ * malformed body so a not-yet-deployed backend just yields no candidates.
+ */
+export async function listRecentCreators(q?: string): Promise<CreatorOption[]> {
+  const params = new URLSearchParams()
+  const term = (q ?? '').trim()
+  if (term) params.set('q', term)
+  const qs = params.toString()
+  try {
+    const { data } = await apiClient().get<{ creators?: CreatorOption[] }>(
+      `/docs/recent/creators${qs ? `?${qs}` : ''}`,
+    )
+    return Array.isArray(data?.creators) ? data.creators : []
+  } catch {
+    // Not-yet-deployed / erroring backend yields no candidates rather than throwing (same contract
+    // as listRecentDocs); the recent tab simply shows an empty creator filter.
+    return []
+  }
+}
+
+/**
+ * POST /api/v1/docs/{docId}/view — record that the caller opened a document (ingest, XIN-1098 API 1).
+ * Fire-and-forget by contract: the caller `void`s it and this helper swallows every failure, so a
+ * failed / not-yet-deployed ingest never blocks opening the doc and never surfaces a toast
+ * (frontend-design §3.4). No body — uid is derived server-side. The server UPSERTs on `(uid,docId)`
+ * so calling it once per open is idempotent.
+ */
+export async function recordDocView(docId: string): Promise<void> {
+  try {
+    await apiClient().post(`/docs/${encodeURIComponent(docId)}/view`)
+  } catch {
+    // Fire-and-forget: ingest is best-effort and must never disrupt the open path. The backend
+    // collab-token path also has a best-effort fallback ingest, so a dropped call here is covered.
+  }
 }
 
 /** POST /api/v1/docs — create a new document; caller becomes admin. */

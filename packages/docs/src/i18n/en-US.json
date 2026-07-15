@@ -11,8 +11,14 @@
     "comingSoon": "Coming soon",
     "kindDoc": "Document",
     "kindBoard": "Board",
+    "kindSheet": "Spreadsheet",
     "back": "All documents",
-    "updatedAt": "Updated"
+    "updatedAt": "Updated",
+    "viewedAt": "Viewed",
+    "loadingMore": "Loading more…",
+    "end": "No more documents",
+    "loadMoreFailed": "Couldn't load more",
+    "retry": "Retry"
   },
   "board": {
     "readOnly": "Read-only",
@@ -536,5 +542,31 @@
     "pendingError": "Failed to load pending requests.",
     "approve": "Approve",
     "deny": "Deny"
+  },
+  "tab": {
+    "recent": "Recently viewed",
+    "mine": "My documents"
+  },
+  "search": {
+    "placeholder": "Search by file name"
+  },
+  "filter": {
+    "creator": "Creator",
+    "type": "Type",
+    "clearAll": "Clear all",
+    "noCreators": "No creators"
+  },
+  "empty": {
+    "recentNone": "You haven't viewed any documents yet",
+    "recentNoneCta": "Open a document",
+    "myDocsNone": "You haven't created any documents yet",
+    "myDocsNoneCta": "New document",
+    "searchNone": "No documents match “{{kw}}”",
+    "searchNoneCta": "Clear search",
+    "filterNone": "No documents you've viewed from the selected creators",
+    "filterNoneCta": "Clear filter",
+    "typeNone": "No documents of the selected type",
+    "typeNoneCta": "Clear type",
+    "combinedNone": "No matching results"
   }
 }

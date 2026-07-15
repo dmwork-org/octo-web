@@ -3,7 +3,7 @@ import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-libra
 import type { ReactNode } from 'react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
-import { resolveDocTarget, clearDocTarget, DocsHome } from './DocsHome.tsx'
+import { resolveDocTarget, clearDocTarget, readDocFromHistory, DocsHome } from './DocsHome.tsx'
 import { captureDocTargetDeepLink } from '../config.ts'
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
@@ -58,6 +58,7 @@ const TARGET_KEY = 'octo.docs.target'
 
 let assignSpy: ReturnType<typeof vi.fn>
 let replaceStateSpy: ReturnType<typeof vi.fn>
+let pushStateSpy: ReturnType<typeof vi.fn>
 const realLocation = window.location
 
 beforeEach(() => {
@@ -72,13 +73,19 @@ beforeEach(() => {
     writable: true,
     value: { search: '', assign: assignSpy },
   })
-  // Split-pane mirrors selection to the URL via history.replaceState (no host re-push),
-  // not a full navigation — stub it so the URL-mirror is observable.
+  // Split-pane mirrors selection to the URL via the History API (no host re-push), not a full
+  // navigation — stub replaceState AND pushState so the URL-mirror is observable. Opening a doc
+  // now normalises the current entry to the list (replaceState) then pushes the doc as its own
+  // entry (pushState) so a browser Back returns to the list, not about:blank (XIN-1172).
   replaceStateSpy = vi.fn()
+  pushStateSpy = vi.fn()
   // Cast at the call site: vitest 4's loosely-typed `vi.fn()` isn't directly assignable to the
-  // precise `replaceState` signature mockImplementation expects (the spy still records calls).
+  // precise replaceState/pushState signatures mockImplementation expects (the spies still record).
   vi.spyOn(window.history, 'replaceState').mockImplementation(
     replaceStateSpy as unknown as typeof window.history.replaceState,
+  )
+  vi.spyOn(window.history, 'pushState').mockImplementation(
+    pushStateSpy as unknown as typeof window.history.pushState,
   )
 })
 
@@ -249,11 +256,14 @@ describe('DocsHome navigation (split-pane)', () => {
     // and the list stays resident on the left.
     await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_new')
-    // selection mirrored to sessionStorage + URL (replaceState, not assign).
+    // selection mirrored to sessionStorage + URL. Opening from the list PUSHES a doc entry over a
+    // normalised list entry (XIN-1172): the doc addressing lands on pushState, the last replaceState
+    // is the list entry beneath it (no `doc=`), so a browser Back returns to the list.
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_new' })
     expect(assignSpy).not.toHaveBeenCalled()
-    expect(replaceStateSpy).toHaveBeenCalled()
-    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_new')
+    expect(pushStateSpy).toHaveBeenCalled()
+    expect(String(pushStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_new')
+    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).not.toContain('doc=')
   })
 
   it('creates a board via the New dropdown and opens it in the board shell', async () => {
@@ -341,7 +351,9 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(screen.getByText('Doc A')).toBeTruthy()
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_a' })
     expect(assignSpy).not.toHaveBeenCalled()
-    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_a')
+    // First open from the list pushes the doc entry over a normalised list entry (XIN-1172).
+    expect(String(pushStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_a')
+    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).not.toContain('doc=')
   })
 
   it('AC-1: the open doc exposes an "Open in new page" entry that opens the /d/:docId standalone link', async () => {
@@ -695,18 +707,25 @@ describe('DocsHome — a stale (out-of-order) list response cannot overwrite the
     wk.shared.currentSpaceId = 'space-a'
     setWKApp(wk)
 
-    // Deferred resolvers keyed by the Space each GET was scoped to, so the test drives the ORDER
-    // responses settle independently of the order the requests were issued (delayed / reordered).
+    // The default tab is "recent" (最近查看), which lists via GET /docs/recent — it carries NO
+    // spaceId query (space is server-derived from the token / X-Space-Id header), so we key deferred
+    // resolvers by the live `currentSpaceId` read at call time instead of parsing the URL. This
+    // keeps the P0 guard covering the actual rendered rows now that recent is the default surface.
     const deferred: Record<string, (items: unknown[]) => void> = {}
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/docs')) {
-        const spaceId = new URLSearchParams(url.split('?')[1] ?? '').get('spaceId') ?? ''
+      // The recent tab also fetches its creator candidates; answer that sibling GET immediately so
+      // only the paged-list request lands in `deferred`.
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        const spaceId = wk.shared.currentSpaceId ?? ''
         return new Promise((resolve) => {
           deferred[spaceId] = (items) =>
-            resolve({ data: { total: items.length, items }, status: 200 })
+            resolve({ data: { total: items.length, items, nextCursor: null }, status: 200 })
         })
       }
-      return { data: {}, status: 200 }
+      return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
     }
 
     render(<DocsHome />)
@@ -722,8 +741,8 @@ describe('DocsHome — a stale (out-of-order) list response cannot overwrite the
     deferred['space-b']([{ docId: 'd_b', title: 'Space B Doc', ownerId: 'u_self', role: 'admin' }])
     await waitFor(() => expect(screen.getByText('Space B Doc')).toBeTruthy())
 
-    // ...then let the OLDER (space-a) request resolve LAST (out of order). Without the guard this
-    // stale setItems would clobber the list with the old Space's doc.
+    // ...then let the OLDER (space-a) request resolve LAST (out of order). Without the per-view
+    // seqRef guard this stale setItems would clobber the list with the old Space's doc.
     deferred['space-a']([{ docId: 'd_a', title: 'Space A Doc', ownerId: 'u_self', role: 'admin' }])
     // Give the stale promise a chance to (wrongly) apply before asserting.
     await new Promise((r) => setTimeout(r, 20))
@@ -1030,19 +1049,24 @@ describe('DocsHome — in-flight unknown-kind open is discarded after a Space sw
             })
         })
       }
-      if (method === 'get' && url.startsWith('/docs')) {
-        const spaceId = new URLSearchParams(url.split('?')[1] ?? '').get('spaceId') ?? ''
-        // Only the initial Space lists the unknown-kind row; the new Space is empty.
-        if (spaceId === 'space-a') {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        // The default tab lists via GET /docs/recent (no spaceId query — space is server-derived),
+        // so branch on the live current Space: only the initial Space lists the unknown-kind row;
+        // the new Space is empty.
+        if (wk.shared.currentSpaceId === 'space-a') {
           return {
             data: {
               total: 1,
               items: [{ docId: 'd_a', title: 'Space A Doc', ownerId: 'u_owner', role: 'admin' }],
+              nextCursor: null,
             },
             status: 200,
           }
         }
-        return { data: { total: 0, items: [] }, status: 200 }
+        return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -1196,5 +1220,234 @@ describe('DocsHome — deleting the open doc clears the right pane and selection
     const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
     expect(last?.props?.docId).toBe('d_x')
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_x' })
+  })
+})
+
+// XIN-1172 — opening a doc → browser Back / Back-then-reload landed on about:blank because the
+// open only replaceState'd the current entry (no in-app entry to go Back to) and the persisted
+// target re-opened the doc on the host's popstate re-push. The fix pushes a doc entry over a
+// normalised list entry and reconciles popstate to the list, clearing the target.
+describe('readDocFromHistory (XIN-1172 Back/Forward intent)', () => {
+  it('returns the docId when the entry is marked as a doc entry', () => {
+    expect(readDocFromHistory({ octoDocsDoc: 'd_open' }, '')).toBe('d_open')
+  })
+
+  it('returns null (list) when the entry is marked as the list entry', () => {
+    // Even if a stale ?doc= lingers in the URL, an explicit list marker wins → show the list.
+    expect(readDocFromHistory({ octoDocsList: true }, '?doc=d_stale')).toBeNull()
+  })
+
+  it('falls back to the URL query when the state carries no marker (host re-push overwrote it)', () => {
+    expect(readDocFromHistory({}, '?space=s&folder=f&doc=d_url')).toBe('d_url')
+    expect(readDocFromHistory(null, '?sid=abc')).toBeNull()
+  })
+
+  it('accepts docId as an alias in the URL fallback', () => {
+    expect(readDocFromHistory(undefined, '?docId=d_alias')).toBe('d_alias')
+  })
+})
+
+describe('DocsHome — browser Back returns to the list, never about:blank (XIN-1172)', () => {
+  it('pushes a doc entry over a normalised list entry so Back has a list to return to', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_a', title: 'Doc A', ownerId: 'u_self', role: 'admin', docType: 'doc' }],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
+    fireEvent.click(screen.getByText('Doc A'))
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+
+    // The current entry was normalised to the list (no doc), then the doc was pushed on top —
+    // guaranteeing an in-app list entry beneath so a browser Back never pops past /docs.
+    const listReplace = replaceStateSpy.mock.calls.at(-1)!
+    expect(String(listReplace[2])).not.toContain('doc=')
+    expect((listReplace[0] as Record<string, unknown>).octoDocsList).toBe(true)
+    const docPush = pushStateSpy.mock.calls.at(-1)!
+    expect(String(docPush[2])).toContain('doc=d_a')
+    expect((docPush[0] as Record<string, unknown>).octoDocsDoc).toBe('d_a')
+  })
+
+  it('on popstate to a non-doc entry, closes the doc and clears the persisted target (Back → list)', async () => {
+    // A doc is open via a persisted target (mirrors the host having re-opened it before a Back).
+    window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ doc: 'd_persist' }))
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+
+    // Simulate the browser Back popping to the list entry (history.state is the mocked no-op, so
+    // readDocFromHistory sees no doc marker and the empty URL → "this is the list").
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+
+    // The editor is dismissed and the persisted target is cleared, so the host's own popstate
+    // re-push (which re-mounts DocsHome reading sessionStorage) cannot re-open the doc — and a
+    // reload of the now doc-less /docs URL lands on the list, not a blank page.
+    await waitFor(() => expect(screen.queryByTestId('editor-shell')).toBeNull())
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    expect(assignSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('DocsHome — pin order survives the search → pin → clear-search re-render (XIN-1185)', () => {
+  // Reproduces the exact tester path reported against FEAT-B: 我的文档 → search "FEAT" → right-click
+  // pin the matching doc → clear the search. The suspicion was that the post-clear re-fetch drops the
+  // pin ordering. The client-side pin is React/localStorage state on DocsHome, and `displayItems`
+  // re-applies a stable pinned-first sort over EVERY mine result set — including the fresh list the
+  // cleared search re-fetches — so a doc pinned while filtered must float to the first row afterward.
+  const item = (docId: string, title: string, updatedAt: string) => ({
+    docId,
+    title,
+    ownerId: 'u_self',
+    role: 'admin' as const,
+    updatedAt,
+  })
+  // Server order for the unfiltered "mine" list is updatedAt:desc, so FEAT spec is NOT first here.
+  const FULL = [
+    item('d_alpha', 'Alpha', '2026-07-10T00:00:00Z'),
+    item('d_feat', 'FEAT spec', '2026-07-09T00:00:00Z'),
+    item('d_beta', 'Beta', '2026-07-08T00:00:00Z'),
+  ]
+
+  const rowTitles = () =>
+    Array.from(document.querySelectorAll('.octo-docs-list-row-title')).map(
+      (el) => el.textContent ?? '',
+    )
+
+  it('floats a doc pinned while a search is active to the top after the search is cleared', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
+      }
+      if (method === 'get' && url.includes('owner=me')) {
+        // The "search FEAT" request narrows the list to the single matching doc.
+        if (url.includes('q=FEAT')) {
+          return { data: { total: 1, items: [FULL[1]] }, status: 200 }
+        }
+        return { data: { total: FULL.length, items: FULL }, status: 200 }
+      }
+      return { data: { total: 0, items: [] }, status: 200 }
+    }
+
+    render(<DocsHome />)
+
+    // 我的文档 tab.
+    fireEvent.click(screen.getByText('docs.tab.mine'))
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+    // Baseline: server order, FEAT spec is not first.
+    expect(rowTitles()[0]).toBe('Alpha')
+
+    // search "FEAT" (SearchBox debounces ~300ms before emitting the query).
+    fireEvent.change(screen.getByPlaceholderText('docs.search.placeholder'), {
+      target: { value: 'FEAT' },
+    })
+    await waitFor(() => {
+      const titles = rowTitles()
+      expect(titles).toEqual(['FEAT spec'])
+    })
+
+    // right-click the matching row → pin it.
+    fireEvent.contextMenu(screen.getByText('FEAT spec').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.pin'))
+    // Pin persisted to localStorage (the durable client-side pin store).
+    expect(JSON.parse(window.localStorage.getItem('octo.docs.pinned') || '[]')).toContain('d_feat')
+
+    // clear the search → the full list is re-fetched and re-rendered.
+    fireEvent.click(screen.getByLabelText('docs.empty.searchNoneCta'))
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+
+    // The pinned doc floats to the FIRST row over the server's updatedAt:desc order; the rest keep
+    // their server order beneath it (stable sort).
+    expect(rowTitles()).toEqual(['FEAT spec', 'Alpha', 'Beta'])
+  })
+})
+
+// XIN-1188: the list distinguishes doc / sheet / board rows by icon (three-way), and the type
+// filter control is present on BOTH tabs (creator is recent-only).
+describe('DocsHome — type distinction + filter (XIN-1188)', () => {
+  const recentRows = [
+    { docId: 'd_doc', title: 'A Doc', ownerId: 'u_o', role: 'admin', docType: 'doc', viewedAt: '2026-07-15T06:00:00.000Z' },
+    { docId: 'd_sheet', title: 'A Sheet', ownerId: 'u_o', role: 'admin', docType: 'sheet', viewedAt: '2026-07-15T05:00:00.000Z' },
+    { docId: 'd_board', title: 'A Board', ownerId: 'u_o', role: 'admin', docType: 'board', viewedAt: '2026-07-15T04:00:00.000Z' },
+  ]
+
+  function mountList() {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return { data: { total: recentRows.length, items: recentRows, nextCursor: null }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        // mine tab (owner=me)
+        return { data: { total: 1, items: [recentRows[0]] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return wk
+  }
+
+  it('renders three distinct row-kind icons/labels (sheet is NOT shown as a document)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Sheet')).toBeTruthy())
+    // Each kind carries its own aria-label/title on the row icon.
+    expect(screen.getByLabelText('docs.list.kindDoc')).toBeTruthy()
+    expect(screen.getByLabelText('docs.list.kindSheet')).toBeTruthy()
+    expect(screen.getByLabelText('docs.list.kindBoard')).toBeTruthy()
+  })
+
+  it('shows the type filter on both tabs and drives a multi-select OR request', async () => {
+    const wk = mountList()
+    await waitFor(() => expect(screen.getByText('A Sheet')).toBeTruthy())
+
+    // Type filter present on the recent tab.
+    const typeBtn = screen.getByText('docs.filter.type')
+    expect(typeBtn).toBeTruthy()
+
+    // Open the dropdown and select "sheet" → the next recent request narrows on type=sheet.
+    fireEvent.click(typeBtn)
+    fireEvent.click(screen.getByText('docs.list.kindSheet'))
+    await waitFor(() => {
+      const lastRecent = wk.apiClient.calls
+        .filter((c) => c.method === 'get' && c.url.startsWith('/docs/recent?'))
+        .at(-1)
+      expect(lastRecent?.url).toContain('type=sheet')
+    })
+
+    // Switch to the mine tab — the type filter is still rendered there.
+    fireEvent.click(screen.getByText('docs.tab.mine'))
+    await waitFor(() => expect(screen.getByText('docs.filter.type')).toBeTruthy())
   })
 })
