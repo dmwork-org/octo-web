@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { createPortal } from 'react-dom'
-import { getWKApp, getRouteRight, onSpaceChanged, t } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
@@ -13,11 +12,18 @@ import {
   DEFAULT_DOC_ID,
   DOC_TARGET_STORAGE_KEY,
 } from '../config.ts'
-import { listDocs, createDoc, getDoc, type DocListItem } from './docsApi.ts'
+import { createDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { createInvite, buildInviteUrl } from '../invite/api.ts'
 import { canManage, type Role } from '../auth/roles.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
+import { PortalMenu } from './PortalMenu.tsx'
+import { DocsTabs } from './DocsTabs.tsx'
+import { SearchBox } from './SearchBox.tsx'
+import { CreatorFilter, CreatorChips, creatorName } from './CreatorFilter.tsx'
+import { TypeFilter, TypeChips } from './TypeFilter.tsx'
+import { InfiniteList } from './InfiniteList.tsx'
+import { useDocsView, type DocsViewKind } from './useDocsView.ts'
 
 export interface DocTarget {
   space: string
@@ -36,47 +42,6 @@ export interface DocTarget {
  * per release. Import machinery (parse + float-image + hyperlink) lives in xlsxImport/CollabSheet.
  */
 const IMPORT_ENABLED = true
-
-/**
- * A dropdown menu rendered in a body portal at fixed coords, so it is never clipped by an
- * ancestor's `overflow` (the docs list panel scrolls, which was cutting off inline menus).
- * A full-screen transparent backdrop closes it on outside click.
- */
-function PortalMenu({
-  at,
-  onClose,
-  children,
-}: {
-  at: { left: number; top: number }
-  onClose: () => void
-  children: React.ReactNode
-}) {
-  return createPortal(
-    <>
-      <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000 }} />
-      <div
-        role="menu"
-        style={{
-          position: 'fixed',
-          left: at.left,
-          top: at.top,
-          zIndex: 1001,
-          background: '#fff',
-          color: '#333',
-          border: '1px solid #dadce0',
-          borderRadius: 8,
-          boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
-          padding: 6,
-          minWidth: 160,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {children}
-      </div>
-    </>,
-    document.body,
-  )
-}
 
 /**
  * sessionStorage key holding the doc the user is currently viewing.
@@ -199,25 +164,87 @@ export function resolveDocTarget(search: string, uid?: string): DocTarget | null
 }
 
 /**
+ * History-state markers we stamp on the docs route's entries so a browser Back/Forward can be
+ * told apart from a genuine reload/deep-link (see readDocFromHistory + the popstate handler).
+ * `octoDocsDoc` tags the entry that addresses an open doc; `octoDocsList` tags the list entry
+ * that sits beneath it. Kept as a small serialisable shape so it survives history.state.
+ */
+const HISTORY_STATE_DOC = 'octoDocsDoc'
+const HISTORY_STATE_LIST = 'octoDocsList'
+
+/** Build the `/docs?…&doc=<id>` URL for the given selection (doc addressing). */
+function docUrl(docId: string, space: string, folder: string): string {
+  const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+  q.set('space', space)
+  q.set('folder', folder)
+  q.set('doc', docId)
+  return `/docs?${q.toString()}`
+}
+
+/** Build the `/docs` list URL (doc addressing stripped). */
+function listUrl(): string {
+  const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+  q.delete('doc')
+  q.delete('docId')
+  q.delete('space')
+  q.delete('folder')
+  const qs = q.toString()
+  return qs ? `/docs?${qs}` : '/docs'
+}
+
+/**
  * Mirror the active doc to the URL (`?doc=<id>`) WITHOUT a full navigation.
  *
- * Split-pane note: opening a doc is now an in-pane state change (setSelectedDoc), not a
- * `window.location.assign`. We still reflect the selection into the URL via
- * history.replaceState so the link is shareable/refreshable — but replaceState does NOT
- * trigger the host RouteManager's pathname-only re-push (that fires on assign/pushState),
- * so `?doc=` is no longer wiped. sessionStorage remains the durable mirror for the
- * deep-link/refresh path. This is what neutralizes the `?doc=` strip should-fix.
+ * Split-pane note: opening a doc is an in-pane state change (setSelectedDoc), not a
+ * `window.location.assign`. We reflect the selection into the URL so the link is
+ * shareable/refreshable; neither replaceState nor pushState triggers the host RouteManager's
+ * pathname-only re-push (that only fires on `popstate`/`pageshow`), so `?doc=` is not wiped
+ * on open. sessionStorage remains the durable mirror for the deep-link/refresh path.
+ *
+ * `push` controls the history entry (XIN-1172 — the Back/reload → about:blank fix):
+ *   - `push: true`  — opening a doc while none was open. We first normalise the CURRENT entry
+ *     to the list, then push the doc as its OWN entry. That guarantees a list entry sits
+ *     beneath the doc, so a browser Back returns to the list instead of popping past `/docs`
+ *     to the tab's initial `about:blank` (the reported blank page). Before this fix opening a
+ *     doc only replaceState'd the current entry, leaving no in-app entry to go Back to.
+ *   - `push: false` — switching from one open doc to another: stay at the same history depth
+ *     (a single doc entry over the one list entry), so Back still lands on the list.
  */
-function mirrorDocToUrl(docId: string, space: string, folder: string): void {
+function mirrorDocToUrl(docId: string, space: string, folder: string, push: boolean): void {
   if (typeof window === 'undefined') return
   try {
-    const q = new URLSearchParams(window.location.search)
-    q.set('space', space)
-    q.set('folder', folder)
-    q.set('doc', docId)
-    window.history.replaceState(window.history.state, '', `/docs?${q.toString()}`)
+    const url = docUrl(docId, space, folder)
+    if (push) {
+      // Normalise the current entry to the list (Back target), then push the doc entry on top.
+      window.history.replaceState({ [HISTORY_STATE_LIST]: true }, '', listUrl())
+      window.history.pushState({ [HISTORY_STATE_DOC]: docId }, '', url)
+    } else {
+      window.history.replaceState({ [HISTORY_STATE_DOC]: docId }, '', url)
+    }
   } catch {
     // history unavailable: selection still works via state; just not URL-reflected.
+  }
+}
+
+/**
+ * Resolve which doc (if any) a history entry addresses, used by the popstate handler to decide
+ * list vs doc after a browser Back/Forward. Prefers the marker we stamped on the entry
+ * (`octoDocsDoc`/`octoDocsList`); falls back to the URL query when the state is absent (e.g. the
+ * host RouteManager overwrote it on its own popstate re-push). Returns the docId, or null for
+ * "this is the list".
+ */
+export function readDocFromHistory(state: unknown, search: string): string | null {
+  const st = state && typeof state === 'object' ? (state as Record<string, unknown>) : null
+  if (st) {
+    const doc = st[HISTORY_STATE_DOC]
+    if (typeof doc === 'string' && doc) return doc
+    if (st[HISTORY_STATE_LIST] === true) return null
+  }
+  try {
+    const q = new URLSearchParams(search)
+    return q.get('doc') || q.get('docId') || null
+  } catch {
+    return null
   }
 }
 
@@ -225,13 +252,7 @@ function mirrorDocToUrl(docId: string, space: string, folder: string): void {
 function mirrorListToUrl(): void {
   if (typeof window === 'undefined') return
   try {
-    const q = new URLSearchParams(window.location.search)
-    q.delete('doc')
-    q.delete('docId')
-    q.delete('space')
-    q.delete('folder')
-    const qs = q.toString()
-    window.history.replaceState(window.history.state, '', qs ? `/docs?${qs}` : '/docs')
+    window.history.replaceState({ [HISTORY_STATE_LIST]: true }, '', listUrl())
   } catch {
     // ignore
   }
@@ -263,6 +284,120 @@ function BoardRowIcon(): React.ReactElement {
 }
 
 /**
+ * Sheet row glyph — a grid to mark spreadsheets, visually distinct from the plain-doc and board
+ * glyphs so a `docType==='sheet'` row is never mistaken for a document (XIN-1188 icon three-way).
+ */
+function SheetRowIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2" y="2.5" width="12" height="11" rx="1" stroke="currentColor" strokeWidth="1" fill="none" />
+      <path d="M2 6.5h12M2 10h12M6 2.5v11M10 2.5v11" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  )
+}
+
+/**
+ * Layered empty states A–F (frontend-design §5.3). Each variant carries its OWN i18n title + CTA
+ * keys — A ("看", browse) and B ("建", create) are deliberately NOT merged (product MF1). C/D/F cover
+ * a single "condition matched nothing" (search / creator / type) and offer that one clear
+ * affordance; E is the combined bucket for ANY 2+ active conditions and renders each matching clear
+ * (search / creator / type) conditionally on the active flags.
+ */
+function DocsEmptyState({
+  kind,
+  query,
+  hasQuery,
+  hasCreators,
+  hasTypes,
+  onCreate,
+  onBrowseMine,
+  onClearSearch,
+  onClearFilter,
+  onClearTypes,
+}: {
+  kind: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+  query: string
+  hasQuery: boolean
+  hasCreators: boolean
+  hasTypes: boolean
+  onCreate: () => void
+  onBrowseMine: () => void
+  onClearSearch: () => void
+  onClearFilter: () => void
+  onClearTypes: () => void
+}): React.ReactElement {
+  const kw = query.trim()
+  return (
+    <div className="octo-docs-list-state octo-docs-list-empty">
+      {kind === 'A' && (
+        <>
+          <p className="octo-docs-empty-title">{t('docs.empty.recentNone')}</p>
+          <button type="button" className="octo-docs-empty-cta" onClick={onBrowseMine}>
+            {t('docs.empty.recentNoneCta')}
+          </button>
+        </>
+      )}
+      {kind === 'B' && (
+        <>
+          <p className="octo-docs-empty-title">{t('docs.empty.myDocsNone')}</p>
+          <button type="button" className="octo-docs-empty-cta" onClick={onCreate}>
+            {t('docs.empty.myDocsNoneCta')}
+          </button>
+        </>
+      )}
+      {kind === 'C' && (
+        <>
+          <p className="octo-docs-empty-title">
+            {t('docs.empty.searchNone', { values: { kw } })}
+          </p>
+          <button type="button" className="octo-docs-empty-cta" onClick={onClearSearch}>
+            {t('docs.empty.searchNoneCta')}
+          </button>
+        </>
+      )}
+      {kind === 'D' && (
+        <>
+          <p className="octo-docs-empty-title">{t('docs.empty.filterNone')}</p>
+          <button type="button" className="octo-docs-empty-cta" onClick={onClearFilter}>
+            {t('docs.empty.filterNoneCta')}
+          </button>
+        </>
+      )}
+      {kind === 'F' && (
+        <>
+          <p className="octo-docs-empty-title">{t('docs.empty.typeNone')}</p>
+          <button type="button" className="octo-docs-empty-cta" onClick={onClearTypes}>
+            {t('docs.empty.typeNoneCta')}
+          </button>
+        </>
+      )}
+      {kind === 'E' && (
+        <>
+          <p className="octo-docs-empty-title">{t('docs.empty.combinedNone')}</p>
+          <div className="octo-docs-empty-actions">
+            {hasQuery && (
+              <button type="button" className="octo-docs-empty-cta" onClick={onClearSearch}>
+                {t('docs.empty.searchNoneCta')}
+              </button>
+            )}
+            {hasCreators && (
+              <button type="button" className="octo-docs-empty-cta" onClick={onClearFilter}>
+                {t('docs.empty.filterNoneCta')}
+              </button>
+            )}
+            {hasTypes && (
+              <button type="button" className="octo-docs-empty-cta" onClick={onClearTypes}>
+                {t('docs.empty.typeNoneCta')}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * Document list landing — shown when `/docs` is opened without a specific doc addressed.
  * Lists documents the caller owns or is a member of (GET /api/v1/docs) and offers a
  * "new document" action (POST /api/v1/docs). Selecting/creating navigates to the editor.
@@ -283,14 +418,13 @@ function DocsList({
   onSelect: (docId: string, docType?: string) => void
   reloadToken?: number
 }): React.ReactElement {
-  const [items, setItems] = useState<DocListItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
   const [importMenuAt, setImportMenuAt] = useState<{ left: number; top: number } | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
-  // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top.
+  // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top. Pin is a
+  // "我的文档" affordance ONLY: the recent tab renders the server's `viewed_at DESC` order verbatim
+  // with no client re-sort and no pin menu item (frontend-design §5.4).
   const [pinned, setPinned] = useState<Set<string>>(() => {
     try {
       return new Set<string>(JSON.parse(window.localStorage.getItem('octo.docs.pinned') || '[]'))
@@ -301,6 +435,37 @@ function DocsList({
   // Right-click context menu anchor (like 企业微信's list menu): { docId, role, x, y } | null.
   const [menu, setMenu] = useState<{ docId: string; role: Role; x: number; y: number } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // Transient create/import error (distinct from a per-view list-load error). Shown as a state line
+  // above the list; cleared on the next successful create/import.
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  // Two tabs, each with its OWN search / creator filter / items / pagination state
+  // (frontend-design §2.1). Both instances stay mounted so per-view state survives a tab switch and
+  // is restored + re-sent on return (AC-2.3.2). `reloadToken` (parent rename/delete) and a Space
+  // switch refetch both views. The stale-response guard now lives inside useDocsView (per view).
+  const token = reloadToken ?? 0
+  const recentView = useDocsView('recent', space, folder, token)
+  const mineView = useDocsView('mine', space, folder, token)
+  const [activeView, setActiveView] = useState<DocsViewKind>('recent')
+  const view = activeView === 'recent' ? recentView : mineView
+
+  // Creator-name fallback for the recent filter when the facet omits a name (frontend-design §3.5 /
+  // §1.7): the space member-name map, else the raw uid (resolved in creatorName()).
+  const names = useMemberNames(space)
+  const nameFallback = useCallback((id: string) => names.get(id), [names])
+
+  const onTab = (next: DocsViewKind) => {
+    if (next === activeView) return
+    setActiveView(next)
+    // Restore the target view's remembered q/creators AND re-send its request (AC-2.3.2).
+    ;(next === 'recent' ? recentView : mineView).reload()
+  }
+
+  // Refresh both tabs after an in-list create/import so a new doc appears without a full remount.
+  const reloadViews = useCallback(() => {
+    recentView.reload()
+    mineView.reload()
+  }, [recentView, mineView])
 
   const togglePin = (id: string) => {
     setPinned((prev) => {
@@ -334,79 +499,6 @@ function DocsList({
     }
   }
 
-  // Stale-response guard (XIN-417). Switching Space bumps `space`, which recreates `reload` and
-  // fires a fresh listDocs — but the previous Space's request may still be in flight. listDocs
-  // resolves in network order, not call order, so an older-Space response can land AFTER the
-  // newer one and its unconditional setItems would render the wrong Space's documents into the
-  // current page (exactly the class of bug this PR fixes). We stamp each reload with a monotonic
-  // sequence and only let the LATEST reload's response touch state; superseded responses are
-  // dropped. A ref (not state) so it survives re-renders without itself triggering one.
-  const reloadSeq = useRef(0)
-
-  const reload = useCallback(() => {
-    const seq = ++reloadSeq.current
-    setLoading(true)
-    setError(null)
-    // The backend paginates (default pageSize 20, max 100) and reports `total`.
-    // The sidebar must show every document, not just the first page, so fetch
-    // all pages and concatenate. pageSize is pinned to the backend maximum (100)
-    // to minimize round-trips; the loop stops once we have collected `total`
-    // items (or a short page comes back, guarding against a stalled total).
-    const fetchAll = async (): Promise<DocListItem[]> => {
-      const PAGE_SIZE = 100
-      const all: DocListItem[] = []
-      let page = 1
-      for (;;) {
-        const res = await listDocs({
-          spaceId: space || undefined,
-          folderId: folder || undefined,
-          sort: 'updatedAt:desc',
-          page,
-          pageSize: PAGE_SIZE,
-        })
-        const batch = res?.items ?? []
-        all.push(...batch)
-        const total = res?.total ?? all.length
-        if (batch.length < PAGE_SIZE || all.length >= total) break
-        page += 1
-      }
-      return all
-    }
-    fetchAll()
-      .then((items) => {
-        // A newer reload has superseded this one (e.g. the Space changed again while this
-        // request was in flight) — drop the stale response so it can't overwrite the current list.
-        if (seq !== reloadSeq.current) return
-        setItems(items)
-      })
-      .catch((err) => {
-        if (seq !== reloadSeq.current) return
-        // Don't swallow the failure: surface it so a first-load error is diagnosable
-        // (and offer a retry below) instead of a silently sticky error state.
-        console.error('[docs] list failed', err)
-        setError(t('docs.state.error'))
-      })
-      .finally(() => {
-        // Keep the spinner up until the latest reload settles; a stale request finishing first
-        // must not clear loading while the current one is still pending.
-        if (seq !== reloadSeq.current) return
-        setLoading(false)
-      })
-  }, [space, folder])
-
-  useEffect(reload, [reload])
-
-  // Refresh the list when the parent bumps reloadToken (e.g. after a rename) so titles update.
-  const firstReloadRef = useRef(true)
-  useEffect(() => {
-    if (firstReloadRef.current) {
-      firstReloadRef.current = false
-      return // initial load already handled by the mount effect above
-    }
-    reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadToken])
-
   const onCreate = async (docType?: string) => {
     if (creating) return
     setCreating(true)
@@ -428,10 +520,10 @@ function DocsList({
       if (docType === 'board') rememberBoard(created.docId, uid)
       // New docs land in the list; select it inline (right pane opens, list stays).
       onSelect(created.docId, created.docType || docType)
-      reload()
+      reloadViews()
       setCreating(false)
     } catch {
-      setError(t('docs.state.error'))
+      setCreateError(t('docs.state.error'))
       setCreating(false)
     }
   }
@@ -446,14 +538,14 @@ function DocsList({
     // pull them into memory. 20MB comfortably covers real spreadsheets.
     const MAX_IMPORT_BYTES = 20 * 1024 * 1024
     if (file.size > MAX_IMPORT_BYTES) {
-      setError(t('docs.sheet.importTooLarge'))
+      setCreateError(t('docs.sheet.importTooLarge'))
       return
     }
     setCreating(true)
     try {
       const result = await parseXlsxToMatrix(await file.arrayBuffer())
       if (!result.ok) {
-        setError(result.reason === 'empty' ? t('docs.sheet.importEmpty') : t('docs.sheet.importError'))
+        setCreateError(result.reason === 'empty' ? t('docs.sheet.importEmpty') : t('docs.sheet.importError'))
         setCreating(false)
         return
       }
@@ -467,17 +559,129 @@ function DocsList({
       })
       pendingSheetImports.set(created.docId, parsed)
       onSelect(created.docId, 'sheet')
-      reload()
+      reloadViews()
       // Every visible worksheet is imported now (multi-sheet), so the only remaining caveat
       // is per-sheet truncation of an oversized grid.
       if (parsed.truncated) {
-        setError(t('docs.sheet.importTruncated'))
+        setCreateError(t('docs.sheet.importTruncated'))
       }
     } catch {
-      setError(t('docs.state.error'))
+      setCreateError(t('docs.state.error'))
     } finally {
       setCreating(false)
     }
+  }
+
+  // Rows for the active view. mine keeps the pinned-first client sort over the server order; recent
+  // renders the server's `viewed_at DESC` order verbatim (no pin re-sort — frontend-design §5.4).
+  const displayItems =
+    activeView === 'mine'
+      ? [...mineView.items].sort(
+          (a, b) => (pinned.has(b.docId) ? 1 : 0) - (pinned.has(a.docId) ? 1 : 0),
+        )
+      : recentView.items
+
+  const renderRow = (d: DocListItem): React.ReactNode => {
+    const active = d.docId === selectedDocId
+    const hasTitle = !!d.title && d.title.trim().length > 0
+    const label = hasTitle ? d.title : t('docs.state.untitled')
+    const board = isBoardDoc(d, uid)
+    // Kind we can assert without a round-trip: a known board (API `docType==='board'` or the
+    // creator's local registry, both via isBoardDoc), an explicit `'doc'`, or an explicit `'sheet'`
+    // so a known spreadsheet row opens straight into SheetView. When the list API omitted docType
+    // AND we have no local board record — a NON-creator viewing a shared board — pass `undefined`
+    // so openDoc resolves the authoritative kind via getDoc (the M2 routing bug).
+    const knownKind: 'board' | 'doc' | 'sheet' | undefined = board
+      ? 'board'
+      : d.docType === 'sheet'
+        ? 'sheet'
+        : d.docType === 'doc'
+          ? 'doc'
+          : undefined
+    // Row-icon kind (visual only, always concrete): a known board, then an explicit sheet, else a
+    // plain doc — the three-way distinction so a spreadsheet never renders as a document icon
+    // (XIN-1188). Independent of `knownKind` above, which stays `undefined` for an unresolved
+    // shared row so openDoc can still resolve the authoritative shell via getDoc.
+    const iconKind: 'board' | 'sheet' | 'doc' = board
+      ? 'board'
+      : d.docType === 'sheet'
+        ? 'sheet'
+        : 'doc'
+    const kindLabel =
+      iconKind === 'board'
+        ? t('docs.list.kindBoard')
+        : iconKind === 'sheet'
+          ? t('docs.list.kindSheet')
+          : t('docs.list.kindDoc')
+    // Recent rows show the creator inline + when the doc was VIEWED; mine rows keep the "updated"
+    // sub-line (frontend-design §2.1 / §5.1).
+    const creator =
+      activeView === 'recent'
+        ? creatorName(d.ownerId, recentView.creatorOptions, nameFallback)
+        : ''
+    const stampIso = activeView === 'recent' ? d.viewedAt || d.updatedAt : d.updatedAt
+    return (
+      <li
+        key={d.docId}
+        className={
+          active ? 'octo-docs-list-item octo-docs-list-item-active' : 'octo-docs-list-item'
+        }
+      >
+        <button
+          type="button"
+          className="octo-docs-list-row"
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setMenu({ docId: d.docId, role: d.role, x: e.clientX, y: e.clientY })
+          }}
+          onClick={() => onSelect(d.docId, knownKind)}
+          aria-current={active ? 'true' : undefined}
+        >
+          <span
+            className="octo-docs-list-row-icon"
+            aria-label={kindLabel}
+            title={kindLabel}
+          >
+            {iconKind === 'board' ? (
+              <BoardRowIcon />
+            ) : iconKind === 'sheet' ? (
+              <SheetRowIcon />
+            ) : (
+              <DocRowIcon />
+            )}
+          </span>
+          <span className="octo-docs-list-row-text">
+            <span
+              className={
+                hasTitle
+                  ? 'octo-docs-list-row-title'
+                  : 'octo-docs-list-row-title octo-docs-list-row-title-untitled'
+              }
+            >
+              {label}
+            </span>
+            {(creator || stampIso) && (
+              <span
+                className="octo-docs-list-row-sub"
+                title={stampIso ? formatAbsolute(stampIso) : undefined}
+              >
+                {activeView === 'recent' ? (
+                  <>
+                    {creator}
+                    {creator && stampIso ? ' · ' : ''}
+                    {stampIso ? `${t('docs.list.viewedAt')} ${formatRelative(stampIso)}` : ''}
+                  </>
+                ) : stampIso ? (
+                  <>
+                    {t('docs.list.updatedAt')} {formatRelative(stampIso)}
+                  </>
+                ) : null}
+              </span>
+            )}
+          </span>
+        </button>
+      </li>
+    )
   }
 
   return (
@@ -609,88 +813,66 @@ function DocsList({
           </>
         )}
       </div>
-      {loading && <p className="octo-docs-list-state">{t('docs.state.loading')}</p>}
-      {error && !loading && (
+      <DocsTabs active={activeView} onChange={onTab} />
+      <div className="octo-docs-toolbar">
+        <SearchBox value={view.q} onSearch={view.setQuery} onClear={view.clearQuery} />
+        {activeView === 'recent' && (
+          <CreatorFilter
+            options={recentView.creatorOptions}
+            selected={recentView.creators}
+            onToggle={recentView.toggleCreator}
+            nameFallback={nameFallback}
+          />
+        )}
+        {/* Type filter lives on BOTH tabs (creator is recent-only). Uses the active view's per-tab
+            types state so each tab remembers its own selection across switches. */}
+        <TypeFilter selected={view.types} onToggle={view.toggleType} />
+      </div>
+      {activeView === 'recent' && (
+        <CreatorChips
+          options={recentView.creatorOptions}
+          selected={recentView.creators}
+          onToggle={recentView.toggleCreator}
+          onClearAll={recentView.clearCreators}
+          nameFallback={nameFallback}
+        />
+      )}
+      <TypeChips selected={view.types} onToggle={view.toggleType} onClearAll={view.clearTypes} />
+      {createError && <p className="octo-docs-list-state octo-error">{createError}</p>}
+      {view.phase === 'loading' && (
+        <p className="octo-docs-list-state">{t('docs.state.loading')}</p>
+      )}
+      {view.phase === 'error' && (
         <p className="octo-docs-list-state octo-error">
-          {error}
-          <button type="button" className="octo-docs-list-retry" onClick={reload}>
+          {t('docs.state.error')}
+          <button type="button" className="octo-docs-list-retry" onClick={view.retry}>
             {t('docs.state.retry')}
           </button>
         </p>
       )}
-      {!loading && !error && items.length === 0 && (
-        <p className="octo-docs-list-state octo-docs-list-empty">{t('docs.state.empty')}</p>
+      {view.phase === 'ready' && view.empty && (
+        <DocsEmptyState
+          kind={view.empty}
+          query={view.q}
+          hasQuery={view.q.trim().length > 0}
+          hasCreators={view.creators.length > 0}
+          hasTypes={view.types.length > 0}
+          onCreate={() => void onCreate()}
+          onBrowseMine={() => onTab('mine')}
+          onClearSearch={view.clearQuery}
+          onClearFilter={view.clearCreators}
+          onClearTypes={view.clearTypes}
+        />
       )}
-      {!loading && !error && items.length > 0 && (
-        <ul className="octo-docs-list-items">
-          {[...items]
-            .sort((a, b) => (pinned.has(b.docId) ? 1 : 0) - (pinned.has(a.docId) ? 1 : 0))
-            .map((d) => {
-            const active = d.docId === selectedDocId
-            const hasTitle = !!d.title && d.title.trim().length > 0
-            const label = hasTitle ? d.title : t('docs.state.untitled')
-            const board = isBoardDoc(d, uid)
-            // Kind we can assert without a round-trip: a known board (API `docType==='board'` or
-            // the creator's local registry, both via isBoardDoc), an explicit `'doc'`, or an
-            // explicit `'sheet'` so a known spreadsheet row opens straight into SheetView. When the
-            // list API omitted docType AND we have no local board record — a NON-creator viewing a
-            // shared board — pass `undefined` so openDoc resolves the authoritative kind via getDoc
-            // instead of defaulting that member to the rich-text editor (the M2 routing bug).
-            const knownKind: 'board' | 'doc' | 'sheet' | undefined = board
-              ? 'board'
-              : d.docType === 'sheet'
-                ? 'sheet'
-                : d.docType === 'doc'
-                  ? 'doc'
-                  : undefined
-            return (
-              <li
-                key={d.docId}
-                className={
-                  active ? 'octo-docs-list-item octo-docs-list-item-active' : 'octo-docs-list-item'
-                }
-              >
-                <button
-                  type="button"
-                  className="octo-docs-list-row"
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    setMenu({ docId: d.docId, role: d.role, x: e.clientX, y: e.clientY })
-                  }}
-                  onClick={() => onSelect(d.docId, knownKind)}
-                  aria-current={active ? 'true' : undefined}
-                >
-                  <span
-                    className="octo-docs-list-row-icon"
-                    aria-label={board ? t('docs.list.kindBoard') : t('docs.list.kindDoc')}
-                    title={board ? t('docs.list.kindBoard') : t('docs.list.kindDoc')}
-                  >
-                    {board ? <BoardRowIcon /> : <DocRowIcon />}
-                  </span>
-                  <span className="octo-docs-list-row-text">
-                    <span
-                      className={
-                        hasTitle
-                          ? 'octo-docs-list-row-title'
-                          : 'octo-docs-list-row-title octo-docs-list-row-title-untitled'
-                      }
-                    >
-                      {label}
-                    </span>
-                    {d.updatedAt && (
-                      <span
-                        className="octo-docs-list-row-sub"
-                        title={formatAbsolute(d.updatedAt)}
-                      >
-                        {t('docs.list.updatedAt')} {formatRelative(d.updatedAt)}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+      {view.phase === 'ready' && !view.empty && (
+        <InfiniteList
+          items={displayItems}
+          hasMore={view.hasMore}
+          moreStatus={view.moreStatus}
+          resultSetId={view.resultSetId}
+          onLoadMore={view.loadMore}
+          renderRow={renderRow}
+        />
       )}
       {menu && (
         <>
@@ -718,16 +900,18 @@ function DocsList({
               fontSize: 13,
             }}
           >
-            <div
-              role="menuitem"
-              style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 6 }}
-              onClick={() => {
-                togglePin(menu.docId)
-                setMenu(null)
-              }}
-            >
-              {pinned.has(menu.docId) ? t('docs.sheet.unpin') : t('docs.sheet.pin')}
-            </div>
+            {activeView === 'mine' && (
+              <div
+                role="menuitem"
+                style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 6 }}
+                onClick={() => {
+                  togglePin(menu.docId)
+                  setMenu(null)
+                }}
+              >
+                {pinned.has(menu.docId) ? t('docs.sheet.unpin') : t('docs.sheet.pin')}
+              </div>
+            )}
             {canManage(menu.role) && (
               <div
                 role="menuitem"
@@ -850,6 +1034,13 @@ export function DocsHome() {
   useEffect(() => {
     selectedDocIdRef.current = selectedDocId
   }, [selectedDocId])
+  // Companion live mirror of the open doc's KIND, read by the nav-reactivation handler below so it
+  // re-pushes the right shell (editor vs board vs sheet) without a stale closure — same reason
+  // selectedDocIdRef exists.
+  const selectedDocTypeRef = useRef<string | undefined>(selectedDocType)
+  useEffect(() => {
+    selectedDocTypeRef.current = selectedDocType
+  }, [selectedDocType])
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
@@ -1057,12 +1248,21 @@ export function DocsHome() {
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
     (docId: string, docType: 'board' | 'doc' | 'sheet') => {
+      // Whether a doc was already open BEFORE this commit — read from the live ref (not the
+      // closed-over state, which lags a render). Drives whether we PUSH a new history entry
+      // (first open from the list) or REPLACE in place (doc → doc switch). See mirrorDocToUrl.
+      const wasOpen = selectedDocIdRef.current !== null
       setSelectedDocId(docId)
       setSelectedDocType(docType)
-      // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
-      // no host re-push) — together neutralizing the `?doc=` strip should-fix.
+      // View ingest (frontend-design §3.4 / XIN-1098 API 1): record that this doc was opened so it
+      // surfaces in "最近查看". Fire-and-forget on the open success path — read-only opens count too,
+      // the call is idempotent (server UPSERTs on (uid,docId)), and a failure never blocks the open.
+      void recordDocView(docId)
+      // Durable mirror (survives the host's query-wiping re-push) + shareable URL. On a first open
+      // we push a doc entry over a normalised list entry so a browser Back returns to the list, not
+      // the tab's initial about:blank (XIN-1172).
       persistDocTarget({ space, folder, doc: docId, docType })
-      mirrorDocToUrl(docId, space, folder)
+      mirrorDocToUrl(docId, space, folder, !wasOpen)
       const push = (dt: string | undefined) => {
         setSelectedDocType(dt)
         if (routeRight) {
@@ -1161,6 +1361,69 @@ export function DocsHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Re-assert docs' ownership of the right pane whenever the user RE-ENTERS via the NavRail
+  // "文档" icon. This is what makes the nav-icon entry render identically to a direct/refresh
+  // `/docs` load (XIN-1165). The mechanism it repairs:
+  //   - apps/web Pages/Main `onMenuClick` calls `WKApp.routeRight.popToRoot()` for a non-chat
+  //     menu, EMPTYING the shared right pane on every docs nav click;
+  //   - but MainContentLeft keeps `/docs` mounted and only toggles `display`, so DocsHome does
+  //     NOT remount and the mount-only effect above never re-runs to refill the pane;
+  //   - the deep-link / hard-load activation path (MainVM.didMount / activatePendingRouteMenu)
+  //     deliberately does NOT popToRoot, so a direct `/docs` always keeps the pane full.
+  // Net effect before this fix: nav-icon return left the right pane empty → the host chat
+  // placeholder (the always-present base layer of the right viewqueue) showed through, so the
+  // two entries diverged and "开文档→返回/reload" appeared to fall back. We re-push exactly what
+  // the mount effect would: the open doc's shell if one is selected (its React state survives the
+  // display-toggle), otherwise the docs empty state — never leaving the queue empty. Refs keep the
+  // handler reading the CURRENT selection AND the CURRENT buildRightPane (which is re-created on a
+  // Space switch / member-name resolve) so a re-push never rebuilds the editor against a stale
+  // Space (the cross-Space session leak reconciled in XIN-448).
+  const buildRightPaneRef = useRef(buildRightPane)
+  useEffect(() => {
+    buildRightPaneRef.current = buildRightPane
+  }, [buildRightPane])
+  useEffect(() => {
+    if (!routeRight) return
+    return onNavMenuActivated('docs', () => {
+      try {
+        const id = selectedDocIdRef.current
+        if (id) {
+          routeRight.replaceToRoot(buildRightPaneRef.current(id, selectedDocTypeRef.current) as unknown)
+        } else {
+          routeRight.replaceToRoot(buildEmptyState() as unknown)
+        }
+      } catch {
+        // ignore — right pane unavailable
+      }
+    })
+    // routeRight + buildEmptyState are stable (singleton + []-dep useCallback); buildRightPane is
+    // read through a ref so the subscription stays mounted for the component's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Browser Back / Forward handling (XIN-1172). Opening a doc pushes a doc history entry over a
+  // list entry (see mirrorDocToUrl), so a Back pops to the list entry and fires `popstate`. Here we
+  // reconcile the pane to whatever that entry addresses: a doc → (re)open it; the list → close the
+  // doc AND clear the persisted target so neither this instance nor the host RouteManager's own
+  // popstate re-push (which re-mounts DocsHome reading sessionStorage) re-opens the doc. Clearing
+  // synchronously in the popstate dispatch — before React flushes the host's re-mount — is what
+  // makes "open doc → Back → list (kept), reload → still list, never about:blank" deterministic.
+  useEffect(() => {
+    const onPopState = () => {
+      const doc =
+        typeof window !== 'undefined'
+          ? readDocFromHistory(window.history.state, window.location.search)
+          : null
+      if (doc) {
+        if (doc !== selectedDocIdRef.current) openDoc(doc)
+      } else {
+        clearDocTarget()
+        backToList()
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [openDoc, backToList])
   // Production (routeRight present): the editor lives in the host's main pane; this route
   // slot renders ONLY the resident list (left). Tests / standalone (no routeRight): render
   // the inline CSS split-pane (left list + right editor) so the layout still works.
