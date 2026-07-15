@@ -12,7 +12,7 @@ interface UseSummaryDetailReturn {
     cancel: () => Promise<void>;
 }
 
-export function useSummaryDetail(taskId: number | null): UseSummaryDetailReturn {
+export function useSummaryDetail(taskId: number | string | null): UseSummaryDetailReturn {
     const [detail, setDetail] = useState<SummaryDetail | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -41,13 +41,13 @@ export function useSummaryDetail(taskId: number | null): UseSummaryDetailReturn 
     }, []);
 
     const regenerate = useCallback(async () => {
-        if (taskId == null) return;
+        if (typeof taskId !== "number") return;
         await api.regenerateSummary(taskId);
         refresh();
     }, [taskId, refresh]);
 
     const cancel = useCallback(async () => {
-        if (taskId == null) return;
+        if (typeof taskId !== "number") return;
         await api.cancelSummary(taskId);
         refresh();
     }, [taskId, refresh]);

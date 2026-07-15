@@ -800,6 +800,13 @@ describe('standalone return target — open-redirect-safe post-login bounce (blo
     }
   })
 
+  it('accepts a safe same-origin /s/:taskNo target for summary notification returns', () => {
+    for (const good of ['/s/TN_20260713_abcd', '/s/TN-9_x?sp=space-1']) {
+      window.sessionStorage.setItem(STANDALONE_RETURN_KEY, good)
+      expect(consumeStandaloneReturn()).toBe(good)
+    }
+  })
+
   it('AC-11 anonymous entry: the sign-in terminal stashes a safe, consumable return target', async () => {
     window.history.pushState({}, '', '/d/d_locked_out')
     wk.apiClient.responder = (method, url) => {
@@ -824,6 +831,7 @@ describe('withReturnSid — carry the current session sid on the post-login /d/:
     // now-strict multi-session recovery (which would loop back to login).
     expect(withReturnSid('/d/d_abc', 'fresh6')).toBe('/d/d_abc?sid=fresh6')
     expect(withReturnSid('/d/d_abc/', 'fresh6')).toBe('/d/d_abc/?sid=fresh6')
+    expect(withReturnSid('/s/TN_20260713_abcd?sp=space-1', 'fresh6')).toBe('/s/TN_20260713_abcd?sp=space-1&sid=fresh6')
   })
 
   it('leaves a target that already carries a sid untouched (no doubling)', () => {

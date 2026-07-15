@@ -143,8 +143,8 @@ export async function listSummaries(
     return get('/summaries', params as Record<string, unknown>, config);
 }
 
-export async function getSummaryDetail(taskId: number): Promise<SummaryDetail> {
-    return get(`/summaries/${taskId}`);
+export async function getSummaryDetail(taskId: number | string): Promise<SummaryDetail> {
+    return get(`/summaries/${encodeURIComponent(String(taskId))}`);
 }
 
 export async function deleteSummary(taskId: number): Promise<void> {

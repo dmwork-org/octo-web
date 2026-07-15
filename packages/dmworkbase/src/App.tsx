@@ -703,7 +703,7 @@ export default class WKApp extends ProviderListener {
   static menus = MenusManager.shared; // 菜单
   // Callback to switch the active sidebar menu by id (set by Main page)
   static switchToMenuById?: (menuId: string) => void;
-  static openSummaryDetail?: (taskId: number) => void;
+  static openSummaryDetail?: (taskId: number | string, spaceId?: string) => void;
   static searchChatCandidates?: (params: { keyword?: string; chat_type?: string; space_id?: string }) => Promise<any[]>;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;

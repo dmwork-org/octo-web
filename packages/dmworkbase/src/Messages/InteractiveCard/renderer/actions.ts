@@ -1,4 +1,7 @@
+import WKApp from "../../../App";
 import { isSafeUrl } from "../../../Utils/security";
+
+const SUMMARY_DETAIL_PATH_RE = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
 
 /**
  * Action.OpenUrl 导航。
@@ -11,6 +14,24 @@ import { isSafeUrl } from "../../../Utils/security";
 /** 在新标签打开 URL；提交前二次 isSafeUrl 校验（http/https），非法直接忽略。 */
 export function openUrl(url: string): void {
   if (!isSafeUrl(url)) return;
+
+  // isSafeUrl 已保证 http/https 绝对 URL（new URL 不会抛）；try 兼容未来 isSafeUrl 放宽相对路径的情况。
+  let summaryTaskNo: string | null = null;
+  let summarySpace: string | undefined;
+  try {
+    const u = new URL(url);
+    summaryTaskNo = u.pathname.match(SUMMARY_DETAIL_PATH_RE)?.[1] ?? null;
+    // 深链带的空间（sp||space）随任务号一起透传，避免跨空间详情解析到当前空间→404。
+    summarySpace = u.searchParams.get("sp") || u.searchParams.get("space") || undefined;
+  } catch {
+    summaryTaskNo = null;
+  }
+  if (summaryTaskNo && WKApp.openSummaryDetail) {
+    // 卡片深链可能来自 https 生产域，本地调试是 http/端口；/s/<taskNo> 路径本身是内部详情信号。
+    WKApp.openSummaryDetail(summaryTaskNo, summarySpace);
+    return;
+  }
+
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
