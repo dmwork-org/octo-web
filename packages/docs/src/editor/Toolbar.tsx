@@ -14,7 +14,7 @@ import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { INDENT_MAX_LEVEL } from './ParagraphIndent.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
-import { HIGHLIGHT_COLORS, TEXT_COLORS } from './colorPalette.ts'
+import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizeHexColor } from './colorPalette.ts'
 import { t } from '../octoweb/index.ts'
 import { FONT_FAMILY_ENABLED, LINE_SPACING_ENABLED } from '../config.ts'
 import { FONT_FAMILIES } from './fontFamilies.ts'
@@ -345,6 +345,53 @@ export function shouldShowFloatingMenu(args: {
 // order, same column ↦ same colour family across both pickers. Values stay #rrggbb so they survive
 // Yjs collaboration and the DOCX/Markdown exporters losslessly.
 
+/**
+ * Inline hex entry shared by the font-colour and highlight popovers. It complements the preset
+ * swatches and the native OS wheel (<input type="color">) with an OS-independent way to type or paste
+ * an arbitrary #rrggbb — the "hex 输入" path in #719 — so a user can enter a brand hex directly instead
+ * of hunting for it in the platform colour dialog. It commits ONCE, on Enter, and only when the value
+ * parses to a valid 3-/6-digit hex (normalizeHexColor): one entry is one ProseMirror transaction, i.e.
+ * one undo record and one Yjs update, the same commit-once discipline the native picker uses. Invalid
+ * input is flagged via aria-invalid and never reaches the document; an empty value is a no-op. Typing
+ * into the field blurs the editor but ProseMirror keeps the last selection, and the parent's onCommit
+ * re-focuses via editor.chain().focus() before applying — the same idiom the link popover relies on.
+ */
+function HexColorInput({ onCommit }: { onCommit: (hex: string) => void }) {
+  const [value, setValue] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  return (
+    <input
+      type="text"
+      className={`octo-color-hex${invalid ? ' octo-color-hex-invalid' : ''}`}
+      placeholder={t('docs.toolbar.hexPlaceholder')}
+      aria-label={t('docs.toolbar.hexInput')}
+      aria-invalid={invalid || undefined}
+      value={value}
+      spellCheck={false}
+      // No maxLength on the raw input: normalizeHexColor trims and sanitises on Enter, so a paste
+      // that carries leading/trailing whitespace (e.g. " #1971c2") must not be clipped to 7 chars
+      // before it is trimmed — that would wrongly reject an otherwise valid hex. Bad input is still
+      // caught (and flagged via aria-invalid) by the parse, never by a length cap on the raw value.
+      onChange={(e) => {
+        setValue(e.target.value)
+        if (invalid) setInvalid(false)
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter') return
+        e.preventDefault()
+        const raw = value.trim()
+        if (raw === '') return
+        const hex = normalizeHexColor(raw)
+        if (!hex) {
+          setInvalid(true)
+          return
+        }
+        onCommit(hex)
+      }}
+    />
+  )
+}
+
 /** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
 function HighlightControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
@@ -423,6 +470,17 @@ function HighlightControl({ editor }: { editor: Editor }) {
               aria-label={t('docs.toolbar.customColor')}
             />
           </label>
+          <HexColorInput
+            onCommit={(hex) => {
+              // setHighlight (not toggleHighlight): the hex field is an explicit "apply this
+              // colour" action like the native picker above (Toolbar's setHighlight at the custom
+              // <input type="color"> commit). toggleHighlight would REMOVE the highlight when the
+              // selection already carries the same colour, so re-entering an identical hex must
+              // still leave it applied, not clear it.
+              editor.chain().focus().setHighlight({ color: hex }).run()
+              setOpen(false)
+            }}
+          />
         </span>
       )}
     </span>
@@ -495,6 +553,12 @@ function TextColorControl({ editor }: { editor: Editor }) {
               aria-label={t('docs.toolbar.customColor')}
             />
           </label>
+          <HexColorInput
+            onCommit={(hex) => {
+              editor.chain().focus().setColor(hex).run()
+              setOpen(false)
+            }}
+          />
         </span>
       )}
     </span>
