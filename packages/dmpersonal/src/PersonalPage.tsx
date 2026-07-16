@@ -55,6 +55,10 @@ export default function PersonalPage() {
     workspaceApi.listWorkspaces()
       .then((workspaces) => {
         if (!mountedRef.current || seq !== resolveSeqRef.current) return;
+        // If the page was backgrounded before this resolve landed, don't write
+        // the shared pane/context (would clobber the now-active page). Bail;
+        // reactivation re-resolves via wk:nav-menu-activated (resolveRef).
+        if (WKApp.currentMenuId !== "dmpersonal") return;
         // 优先用本页自己存的 workspace,仅当它不存在(如在别处被删)时才回落到共享全局。
         // 直接读 currentWorkspaceId() 会让 Personal 跟随 Loop 最后选中的 workspace(#619 污染)。
         const targetId = selectedWsRef.current?.id ?? currentWorkspaceId();
@@ -83,6 +87,8 @@ export default function PersonalPage() {
       })
       .catch((error) => {
         if (!mountedRef.current || seq !== resolveSeqRef.current) return;
+        // Backgrounded before the failure landed → don't paint the shared pane.
+        if (WKApp.currentMenuId !== "dmpersonal") return;
         const message = error?.message ? String(error.message) : t("personal.workspace.loadFailed");
         setWorkspaceError(message);
         setWorkspaceReady(false);
@@ -135,6 +141,48 @@ export default function PersonalPage() {
     };
     WKApp.mittBus.on("wk:nav-menu-activated", onNavMenuActivated);
     return () => WKApp.mittBus.off("wk:nav-menu-activated", onNavMenuActivated);
+  }, []);
+
+  // 切换 octo space 时,本页存的 workspace 归属(selectedWsRef + @octo/loop 模块级
+  // workspace 全局)属于上一个 space,必须作废重判 —— 否则会带旧 workspace 作用域向新
+  // space 发 workspace 维度请求,撞后端 space 隔离闸门(workspace does not belong to
+  // this space / not a member of this space)。
+  //
+  // 三份 workspace 状态必须一起复位,缺一不可:
+  //  - selectedWsRef:本页自留、优先于共享全局的选择(#619 防污染),不清则重解析仍选中旧 ws;
+  //  - machineModeRef:决定 openTab 的分支,不清则窗口期分支判断用旧值;
+  //  - setWorkspaceContext("",""):清 @octo/loop 的 http 层模块级 slug/id。这一步关键——
+  //    resolveAndPaint(showLoading=true) 不置 workspaceReady=false,从 emit 到重解析完成的
+  //    loading 窗口内 nav 按钮不禁用,用户此刻点 tab 会走 openTab;若 http 层仍留旧 slug,
+  //    RuntimePage 会用旧 slug 打 /runtimes(consistency group 内)→ 403 重现本 bug。
+  //    先把 http 作用域降为空(machine),窗口期任何请求都无 slug 发出、安全走 /machine-runtimes。
+  // 复位后 resolveAndPaint 重新 listWorkspaces:新 space 无 workspace 时自然落入 machine 空态。
+  useEffect(() => {
+    const onSpaceChanged = () => {
+      // Only the active page may touch the single shared right pane / http-layer
+      // workspace context. When backgrounded, do NOT clear the shared context
+      // (that would wipe the active Loop page's slug) — but still reset our own
+      // PRIVATE state and drop workspaceReady, so the reactivation window is
+      // gated by !workspaceReady (openTab bails) instead of letting a click
+      // write the old space's slug back → 403. Reactivation re-resolves via
+      // wk:nav-menu-activated (resolveRef.current(true)).
+      if (WKApp.currentMenuId !== "dmpersonal") {
+        selectedWsRef.current = null;
+        machineModeRef.current = false;
+        setWorkspaceReady(false);
+        return;
+      }
+      selectedWsRef.current = null;
+      machineModeRef.current = false;
+      setWorkspaceContext("", "");
+      // Gate the re-resolve window: openTab bails on !workspaceReady, so the
+      // Skills / runtime tabs cannot be opened against the old space's workspace
+      // scope until resolveAndPaint re-establishes the new space's selection.
+      setWorkspaceReady(false);
+      resolveRef.current(true);
+    };
+    WKApp.mittBus.on("space-changed", onSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", onSpaceChanged);
   }, []);
 
   return (

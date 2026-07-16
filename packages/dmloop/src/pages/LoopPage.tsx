@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Typography, Dropdown, Avatar, Modal, Toast } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import {
@@ -61,6 +61,19 @@ export default function LoopPage() {
   const [wsBusy, setWsBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
+  // tab 的同步镜像:mount-once 的 space-changed 副作用闭包(deps=[])会冻结当时的 tab,
+  // 用 ref 让 applyWorkspace 始终读到最新 tab,避免切 space 后右栏恒被铺成初始 issue。
+  const tabRef = useRef<TabKey>("issue");
+  tabRef.current = tab;
+  // space-changed 重解析的过期守卫:快速连切 space 时并发的 listWorkspaces 可能乱序返回,
+  // 只有最后一次解析允许写回 workspace context,否则慢的旧响应会把旧 slug 落回、撞新 space 的 403。
+  const spaceResolveSeqRef = useRef(0);
+  // Set when a space change arrives while LoopPage is backgrounded (its
+  // space-changed handler is gated to the active menu). On reactivation the
+  // nav-menu-activated handler consumes it to force a fresh re-resolve instead
+  // of painting the stale old-space workspaces/wsId it still holds in state.
+  const pendingSpaceReresolveRef = useRef(false);
+
   const findWs = (list: Workspace[], id: string) => list.find((w) => w.id === id) ?? null;
 
   const renderTab = (key: TabKey, ws: Workspace | null): JSX.Element => {
@@ -80,12 +93,15 @@ export default function LoopPage() {
   };
 
   const openTab = (key: TabKey) => {
+    // 重解析窗口期(切 space 后 loaded=false 直到新 space 的 workspace 解析完成)不响应:
+    // 此时 workspaces/wsId 尚属旧 space,点击会用旧作用域渲染 workspace 级页面。
+    if (!loaded) return;
     setTab(key);
     WKApp.routeRight.replaceToRoot(renderTab(key, findWs(workspaces, wsId)));
   };
 
   // 新建回路 → 唤起统一建单弹窗（对齐 multica，不再拉起独立 AI 页）。成功后落回路看板并刷新。
-  const openNewLoop = () => setCreateOpen(true);
+  const openNewLoop = () => { if (!loaded) return; setCreateOpen(true); };
 
   // 空态引导：无 workspace 时右栏提示创建
   const showEmptyGuide = () => {
@@ -103,7 +119,7 @@ export default function LoopPage() {
       setWorkspaceContext(ws.slug, ws.id, ws.name);
       setWsId(ws.id);
       resetWorkspaceCaches();
-      WKApp.routeRight.replaceToRoot(renderTab(tab, ws));
+      WKApp.routeRight.replaceToRoot(renderTab(tabRef.current, ws));
     } else {
       setWorkspaceContext("", "");
       setWsId("");
@@ -118,14 +134,77 @@ export default function LoopPage() {
     return list;
   };
 
-  useEffect(() => {
+  // Re-resolve the workspace scope for the current octo space: clear the old
+  // scope, unmount the stale right pane, re-list, and repaint. Shared by the
+  // space-changed handler (when LoopPage is active) and by reactivation
+  // (nav-menu-activated) when a space change happened while it was backgrounded.
+  const reResolveSpace = () => {
+    const seq = ++spaceResolveSeqRef.current;
+    setWorkspaceContext("", "");
+    setWsId("");
+    // Close any open create modals so a submit cannot land during the
+    // re-resolve window and write a workspace under the wrong space.
+    setWsModalOpen(false);
+    setCreateOpen(false);
+    // setLoaded(false): mark not-ready for the re-resolve window so the
+    // wk:nav-menu-activated `if (!loaded) return` guard holds and no entry uses
+    // the old space's workspaces closure.
+    setLoaded(false);
+    resetWorkspaceCaches();
+    // Unmount the stale right pane immediately so the previous space's IssuePage
+    // (and its polling / create entry) stops firing during the re-resolve window.
+    WKApp.routeRight.replaceToRoot(<div className="loop-page" />);
     listWorkspaces()
       .then((list) => {
+        // Out-of-order guard: only the latest resolve applies, dropping a stale
+        // response that would write the old slug back and hit the new space's 403.
+        if (seq !== spaceResolveSeqRef.current) return;
+        // If the user navigated away while this resolve was in flight, do NOT
+        // write the shared pane/context (would clobber the now-active page).
+        // Defer to reactivation instead.
+        if (WKApp.currentMenuId !== "loop") { pendingSpaceReresolveRef.current = true; return; }
         setLoaded(true);
         const first = findWs(list, currentWorkspaceId()) ?? list[0] ?? null;
         applyWorkspace(first, list);
       })
-      .catch(() => { setLoaded(true); showEmptyGuide(); });
+      .catch(() => {
+        if (seq !== spaceResolveSeqRef.current) return;
+        if (WKApp.currentMenuId !== "loop") { pendingSpaceReresolveRef.current = true; return; }
+        setLoaded(true);
+        // Clear the stale old-space list on a failed re-resolve — otherwise the
+        // switcher dropdown keeps the previous space's workspaces, re-enabled by
+        // setLoaded(true) and clickable, so switchWorkspace would bind an
+        // old-space slug under the new space's X-Space-Id → cross-space 403.
+        setWorkspaces([]);
+        showEmptyGuide();
+      });
+  };
+
+  useEffect(() => {
+    // mount 初始解析也纳入 spaceResolveSeqRef 域:若初始 listWorkspaces 尚未返回、
+    // 用户就切了 space,space-changed 会递增 seq 使这次 mount 响应过期被丢弃,避免旧 space
+    // 的 workspace slug 被写回 http 层、撞新 space 的隔离 403(与 space-changed 共享守卫)。
+    const seq = ++spaceResolveSeqRef.current;
+    listWorkspaces()
+      .then((list) => {
+        if (seq !== spaceResolveSeqRef.current) return;
+        // If the page was backgrounded before this mount resolve landed, don't
+        // write the shared pane/context; defer to reactivation.
+        if (WKApp.currentMenuId !== "loop") { pendingSpaceReresolveRef.current = true; return; }
+        setLoaded(true);
+        const first = findWs(list, currentWorkspaceId()) ?? list[0] ?? null;
+        applyWorkspace(first, list);
+      })
+      .catch(() => {
+        if (seq !== spaceResolveSeqRef.current) return;
+        if (WKApp.currentMenuId !== "loop") { pendingSpaceReresolveRef.current = true; return; }
+        setLoaded(true);
+        // Clear the switcher list on a failed resolve: showEmptyGuide only
+        // repaints the right pane, so without this the dropdown would keep the
+        // previous list, re-enabled by setLoaded(true) and clickable.
+        setWorkspaces([]);
+        showEmptyGuide();
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -135,6 +214,14 @@ export default function LoopPage() {
   useEffect(() => {
     const onNavMenuActivated = ({ menuId }: { menuId: string }) => {
       if (menuId !== "loop") return;
+      // A space change arrived while this page was backgrounded: its handler was
+      // deferred, so state still holds the old space. Force a fresh re-resolve
+      // instead of painting stale workspaces/wsId.
+      if (pendingSpaceReresolveRef.current) {
+        pendingSpaceReresolveRef.current = false;
+        reResolveSpace();
+        return;
+      }
       // workspace 列表尚未加载完时不处理：挂载副作用会在加载完成后自行铺默认视图，
       // 避免 workspaces 还是 [] 时误闪空态引导。
       if (!loaded) return;
@@ -150,14 +237,40 @@ export default function LoopPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaces, wsId, loaded]);
 
+  // 切换 octo space 时,当前 wsId + @octo/loop 模块级 workspace 全局属于上一个 space,
+  // 必须作废重判 —— 否则会带旧 workspace 作用域向新 space 发 workspace 维度请求,撞后端
+  // space 隔离闸门(workspace does not belong to this space / not a member of this space)。
+  // 先 setWorkspaceContext("","") 清 http 层旧 slug,避免重列期间任何请求带旧作用域;再重新
+  // listWorkspaces 并铺新 space 的默认 workspace,新 space 无 workspace 时 applyWorkspace(null)
+  // 自然落入空态引导(showEmptyGuide)。
+  useEffect(() => {
+    const onSpaceChanged = () => {
+      // Only the active page may touch the single shared right pane / http-layer
+      // workspace context. When LoopPage is backgrounded (kept mounted), defer:
+      // flag a pending re-resolve that reactivation (below) consumes, so we never
+      // fight the active page for the pane nor paint stale old-space data.
+      if (WKApp.currentMenuId !== "loop") {
+        pendingSpaceReresolveRef.current = true;
+        return;
+      }
+      reResolveSpace();
+    };
+    WKApp.mittBus.on("space-changed", onSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", onSpaceChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const switchWorkspace = (w: Workspace) => {
+    // 重解析窗口期不响应:下拉里的 w 属于旧 space 的 workspaces,选它会把旧 slug 写回。
+    if (!loaded) return;
     setWorkspaceContext(w.slug, w.id, w.name);
     setWsId(w.id);
     resetWorkspaceCaches();
-    WKApp.routeRight.replaceToRoot(renderTab(tab, w));
+    WKApp.routeRight.replaceToRoot(renderTab(tabRef.current, w));
   };
 
   const openCreateWs = () => {
+    if (!loaded) return;
     setWsName(""); setWsSlug(""); setWsSlugTouched(false); setWsSlugSuffix(slugSuffix()); setWsModalOpen(true);
   };
   const doCreateWs = async () => {
@@ -166,6 +279,15 @@ export default function LoopPage() {
     const autoSlug = !wsSlugTouched;
     let slug = wsSlug.trim() || withRandomSuffix(getPinyin(name), wsSlugSuffix);
     if (!slug) { Toast.warning(t("loop.workspace.slugRequired")); return; }
+    // Capture (do NOT bump) the resolve generation: creating a workspace writes
+    // workspace context after awaits, so if the user switches octo space
+    // mid-create, space-changed bumps the seq and the post-await applyWorkspace
+    // below is dropped (would otherwise bind this space's slug under the new
+    // space's X-Space-Id → isolation 403). Capturing rather than bumping is
+    // deliberate: onSpaceChanged owns `loaded` restoration through its own
+    // generation, and a create must not invalidate that resolve (else `loaded`
+    // could stay false forever, wedging the page).
+    const seq = spaceResolveSeqRef.current;
     setWsBusy(true);
     try {
       // auto slug re-rolls its random suffix on the backend's 409 (slug is
@@ -173,9 +295,18 @@ export default function LoopPage() {
       // slug is surfaced as taken, never silently changed.
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
+          // Re-check before each create so a space switch during a 409 retry
+          // doesn't create a stray workspace in the newly-selected space.
+          if (seq !== spaceResolveSeqRef.current) return;
           const created = await createWorkspace({ name, slug });
           setWsModalOpen(false);
           const list = await reloadWorkspaces();
+          // A space switch during creation invalidates this write; the
+          // space-changed resolve owns the pane now.
+          if (seq !== spaceResolveSeqRef.current) return;
+          // Navigated away mid-create (no space-changed, so seq is unchanged):
+          // don't write the shared pane/context in the background; defer.
+          if (WKApp.currentMenuId !== "loop") { pendingSpaceReresolveRef.current = true; return; }
           applyWorkspace(findWs(list, created.id) ?? created, list);
           setTab("issue");
           WKApp.routeRight.replaceToRoot(<IssuePage viewKey="loop.view.issue" />);
