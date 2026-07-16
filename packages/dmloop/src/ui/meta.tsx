@@ -18,7 +18,6 @@ import type {
   IssueStatus,
   IssuePriority,
   ProjectStatus,
-  AgentStatus,
   AssigneeType,
 } from "../api/types";
 import type { LoopTagTone } from "./LoopTag";
@@ -36,6 +35,13 @@ type TagColor =
   | "amber"
   | "teal"
   | "light-blue";
+
+// Status values with a `.loop-status-dot[data-status]` rule + a `loop.agentStatus.*` label.
+const KNOWN_DOT_STATUSES = new Set(["idle", "working", "offline", "error", "unstable", "archived"]);
+/** Clamp a possibly-unknown status to a known one so dots and labels never render a raw value. */
+export function normalizeAgentStatus(status?: string): string {
+  return status && KNOWN_DOT_STATUSES.has(status) ? status : "offline";
+}
 
 /** 依据名称稳定地挑一个 Semi 头像色，避免同一实体每次渲染换色（Agent/Squad 头像共用）。 */
 const AVATAR_COLORS = ["violet", "blue", "cyan", "teal", "green", "amber", "orange", "purple", "indigo", "pink"] as const;
@@ -138,13 +144,6 @@ export const PROJECT_STATUS_STYLE: Record<ProjectStatus, { solid: boolean; bg: s
   cancelled: { solid: false, bg: "", dot: "var(--semi-color-danger, #f5222d)" },
 };
 
-export const AGENT_STATUS_COLOR: Record<AgentStatus, TagColor> = {
-  idle: "grey",
-  working: "green",
-  offline: "grey",
-  error: "red",
-};
-
 export const ASSIGNEE_TYPE_COLOR: Record<AssigneeType, TagColor> = {
   member: "blue",
   agent: "violet",
@@ -165,11 +164,11 @@ export const RUN_STATUS_HEX_FALLBACK = "#c9cdd4";
 
 // Autopilot 运行状态 → 状态点颜色（卡片 last-run 点与详情运行行共用；未知值走灰兜底）。
 export const AUTOPILOT_RUN_DOT: Record<string, string> = {
-  issue_created: "#23a55a",
-  completed: "#23a55a",
-  running: "#f5a623",
-  failed: "#f5222d",
-  skipped: "#8a8f99",
+  issue_created: "var(--semi-color-success, #23a55a)",
+  completed: "var(--semi-color-success, #23a55a)",
+  running: "var(--semi-color-warning, #f5a623)",
+  failed: "var(--semi-color-danger, #f5222d)",
+  skipped: "var(--semi-color-tertiary, #8a8f99)",
 };
 export const AUTOPILOT_RUN_DOT_FALLBACK = "#c9cdd4";
 
