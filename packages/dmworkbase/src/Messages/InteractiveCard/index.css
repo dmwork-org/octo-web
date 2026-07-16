@@ -584,6 +584,36 @@
   box-shadow: 0 0 0 var(--wk-sp-0-5, 2px) var(--wk-border-glow);
 }
 
+/* ── ActionStyle 主/次区分（AdaptiveCards style: positive/destructive） ──
+ * 默认 .ac-pushButton 是「AI 强调」浅紫胶囊,主次不分。审批类卡片(允许/拒绝)由服务端模板
+ * 给动作打 style,这里落成一对**主操作 vs 次操作**:
+ *   - positive（允许）：品牌主色实心,读作「拍板/主操作」；
+ *   - destructive（拒绝）：中性幽灵,刻意不用告警红——「拒绝」是次操作而非危险操作。
+ * 只作用于设了 style 的按钮;未设 style 的其它 bot 卡按钮保持基础样式,零副作用。 */
+.wk-interactive-card-sdk .ac-pushButton.style-positive {
+  color: var(--wk-text-on-brand, #fff);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+}
+
+.wk-interactive-card-sdk .ac-pushButton.style-positive:hover {
+  color: var(--wk-text-on-brand, #fff);
+  background: var(--wk-brand-primary-hover);
+  border-color: var(--wk-brand-primary-hover);
+}
+
+.wk-interactive-card-sdk .ac-pushButton.style-destructive {
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border-color: var(--wk-border-default);
+}
+
+.wk-interactive-card-sdk .ac-pushButton.style-destructive:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-elevated);
+  border-color: var(--wk-border-strong);
+}
+
 .wk-interactive-card-sdk .ac-textInput,
 .wk-interactive-card-sdk .ac-numberInput,
 .wk-interactive-card-sdk .ac-dateInput,
