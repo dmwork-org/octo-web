@@ -551,6 +551,7 @@ export interface UpdateAgentReq {
   description?: string;
   instructions?: string;
   status?: AgentStatus;
+  runtime_id?: string;
   model?: string;
   thinking_level?: string;
   visibility?: AgentVisibility;
