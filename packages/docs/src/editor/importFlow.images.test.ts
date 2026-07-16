@@ -31,8 +31,8 @@ function firstImageNode(doc: { content: Array<Record<string, unknown>> }): Recor
 }
 
 /** Echo translator: returns the key plus its params so tests can assert both. */
-const echoT = (key: string, params?: Record<string, string | number>): string =>
-  params ? `${key} ${JSON.stringify(params)}` : key
+const echoT = (key: string, opts?: { values?: Record<string, unknown> }): string =>
+  opts?.values ? `${key} ${JSON.stringify(opts.values)}` : key
 
 describe('migrateImportedImages', () => {
   beforeEach(() => {

@@ -50,7 +50,7 @@ export interface ImportOptions {
    * omitted, callers fall back to the raw key so the parser stays pure and the
    * source carries no hard-coded UI strings.
    */
-  t?: (key: string, params?: Record<string, string | number>) => string
+  t?: (key: string, opts?: { values?: Record<string, unknown> }) => string
 }
 
 let mdInstance: MarkdownIt | null = null
@@ -164,7 +164,10 @@ function tr(
   key: string,
   params?: Record<string, string | number>,
 ): string {
-  return opts.t ? opts.t(key, params) : key
+  // Interpolation params MUST be passed under `opts.values` so the host
+  // `@octo/base` t() actually substitutes {{name}} placeholders — passing them
+  // as bare props leaves `{{count}}`/`{{name}}` literal in the message.
+  return opts.t ? opts.t(key, params ? { values: params } : undefined) : key
 }
 
 interface Ctx {
