@@ -134,11 +134,33 @@ export interface ImportResult {
  * Caller navigates to result.docId after this resolves.
  */
 /** Translator type threaded from the calling React component (has useTranslation). */
-type Translate = (key: string, params?: Record<string, string | number>) => string
+type Translate = (key: string, opts?: { values?: Record<string, unknown> }) => string
 
-/** Resolve an i18n key via the optional translator, falling back to the key. */
-function tr(t: Translate | undefined, key: string, params?: Record<string, string | number>): string {
-  return t ? t(key, params) : key
+/**
+ * Resolve an i18n key via the optional translator, falling back to the key.
+ * `params` are the interpolation values ({{name}} placeholders); they MUST be
+ * passed under `opts.values` so the host `@octo/base` t() actually substitutes
+ * them — passing them as bare props leaves `{{reason}}` literal in the message.
+ */
+function tr(
+  t: Translate | undefined,
+  key: string,
+  params?: Record<string, string | number>,
+): string {
+  return t ? t(key, params ? { values: params } : undefined) : key
+}
+
+/**
+ * Map a machine-readable backend failure `reason` (from copyAttachments /
+ * ingestAttachments) to a human, localized phrase. Unknown codes fall back to
+ * the raw code so a newly-added backend reason is still visible, not swallowed.
+ */
+function reasonText(t: Translate | undefined, reason: string): string {
+  const key = `docs.import.reason.${reason}`
+  const text = tr(t, key)
+  // When there is no translation for this code, tr() returns the key itself;
+  // surface the raw backend code instead of the (meaningless) i18n key.
+  return text === key ? reason : text
 }
 
 export async function runMarkdownImport(
@@ -254,7 +276,9 @@ export async function migrateImportedImages(
         }
       }
       for (const nc of result.notCopied)
-        warnings.push(tr(t, 'docs.import.imageMigrateFailed', { reason: nc.reason }))
+        warnings.push(
+          tr(t, 'docs.import.imageMigrateFailed', { reason: reasonText(t, nc.reason) }),
+        )
     } catch {
       warnings.push(tr(t, 'docs.import.imagesMigratePartial'))
     }

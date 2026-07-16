@@ -738,8 +738,11 @@ function DocsList({
         setCreateError(t('docs.toolbar.importCorrupt'))
       } else if (err instanceof Error && /取消|cancel/i.test(err.message)) {
         // silent: user closed the file picker
+      } else if (err instanceof Error && /mdOnly|Markdown|\.md/i.test(err.message)) {
+        // Wrong file type picked (guard threw docs.import.mdOnly).
+        setCreateError(t('docs.import.mdOnly'))
       } else {
-        setCreateError(t('docs.state.error'))
+        setCreateError(t('docs.import.mdFailed'))
       }
     } finally {
       setCreating(false)
@@ -762,15 +765,24 @@ function DocsList({
         setCreateError(t('docs.toolbar.importCorrupt'))
       } else if (err instanceof Error && /取消|cancel/i.test(err.message)) {
         // silent: user closed the file picker
-      } else if (
-        typeof (err as { response?: { status?: number } })?.response?.status === 'number' &&
-        (err as { response: { status: number } }).response.status === 413
-      ) {
-        // The server rejected the upload as too large / too complex (zip-bomb
-        // guard, size / entry-count / compression-ratio bound).
-        setCreateError(t('docs.import.wordTooLarge'))
       } else {
-        setCreateError(t('docs.import.wordError'))
+        const status = (err as { response?: { status?: number } })?.response?.status
+        const body = (err as { response?: { data?: { error?: string; reason?: string } } })
+          ?.response?.data
+        if (status === 413) {
+          // The server rejected the upload as too large / too complex (zip-bomb
+          // guard, size / entry-count / compression-ratio bound).
+          setCreateError(t('docs.import.wordTooLarge'))
+        } else if (body?.error === 'empty_upload') {
+          setCreateError(t('docs.import.wordEmpty'))
+        } else if (body?.error === 'import_unsafe') {
+          // Backend hit a hard safety bound; show the precise reason when known.
+          const key = `docs.import.docxReason.${body.reason ?? ''}`
+          const mapped = t(key)
+          setCreateError(mapped === key ? t('docs.import.wordTooLarge') : mapped)
+        } else {
+          setCreateError(t('docs.import.wordError'))
+        }
       }
     } finally {
       setCreating(false)
