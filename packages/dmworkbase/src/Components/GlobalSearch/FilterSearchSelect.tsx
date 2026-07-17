@@ -7,9 +7,7 @@ import { ChevronDown, X } from "lucide-react";
 // surfaces read the same. It intentionally reuses ChannelSearch's existing CSS
 // (`wk-channel-search-sender-*` field/dropdown + `wk-channel-search-filter-*`
 // chip/check) rather than introducing new classes or colors; those class
-// definitions ship in ChannelSearch/index.css and resolve against the
-// `--channel-search-*` -> `--wk-*` token map declared on `.wk-global-content-
-// search` (see global-content-search-panel.css).
+// definitions use the shared semantic `--wk-*` token layer.
 //
 // It is a controlled/presentational component: the panel owns the query state,
 // candidate loading (debounced dataSource.searchSenders / searchChannels), and
@@ -151,7 +149,7 @@ const FilterSearchSelect: React.FC<FilterSearchSelectProps> = ({
                   className={active ? "is-selected" : undefined}
                   onClick={() => {
                     // Mirror ChannelSearch's chooseSender pattern (packages/
-                    // dmworkbase/src/Components/ChannelSearch/index.tsx —
+                    // dmworkbase/src/features/channelSearch/ChannelSearchPanel.tsx —
                     // toggle + clear the typed query + keep the dropdown
                     // open so the user can immediately pick another
                     // candidate). Without the reset the input keeps the
