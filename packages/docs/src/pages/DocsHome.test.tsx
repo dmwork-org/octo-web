@@ -54,6 +54,18 @@ vi.mock('../sheet/SheetView.tsx', () => ({
   ),
 }))
 
+// Replace the read-only HTML view (which raw-fetches the octo-doc backend) with a marker so
+// the html docType dispatch is testable without a real octo-doc fetch. Surfaces the docId and
+// optional octo-doc slug, mirroring the editor / board / sheet markers above.
+vi.mock('../html/HtmlDocView.tsx', () => ({
+  HtmlDocView: (props: { docId: string; slug?: string }) => (
+    <div data-testid="html-doc-view">
+      <span data-testid="html-doc">{props.docId}</span>
+      <span data-testid="html-slug">{props.slug ?? ''}</span>
+    </div>
+  ),
+}))
+
 const TARGET_KEY = 'octo.docs.target'
 
 let assignSpy: ReturnType<typeof vi.fn>
@@ -208,6 +220,50 @@ describe('resolveDocTarget', () => {
     expect(resolveDocTarget('?sid=abc')).toBeNull()
     window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ space: 'x' })) // no doc
     expect(resolveDocTarget('?sid=abc')).toBeNull()
+  })
+
+  it('keeps an html doc reachable after the mirrored `?doc=` re-render (kind/slug not lost)', () => {
+    // Opening an html doc persists its kind + octo-doc slug, then docUrl mirrors ONLY the docId to
+    // `?doc=`; the host's re-render feeds that back through resolveDocTarget. Regression: the query
+    // branch used to rebuild a docId-only target and clobber the slug, so HtmlDocView fell back to
+    // docId and 404'd against octo-doc (/d/<slug>/v/latest). The same-doc backfill must preserve
+    // both fields.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({
+        space: 'sp1',
+        folder: 'fd1',
+        doc: 'd_html',
+        docType: 'html',
+        octoDocSlug: 'badminton',
+      }),
+    )
+    const backfilled = resolveDocTarget('?space=sp1&folder=fd1&doc=d_html')
+    expect(backfilled).toMatchObject({ doc: 'd_html', docType: 'html', octoDocSlug: 'badminton' })
+    // The persisted mirror must stay intact too, not be overwritten with a docId-only value.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      docType: 'html',
+      octoDocSlug: 'badminton',
+    })
+  })
+
+  it('does not leak one html doc’s slug onto a different doc', () => {
+    // Backfill only inherits when the docId matches, so switching to another doc never carries the
+    // previous doc's slug/kind (which would mis-address octo-doc).
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({
+        space: 'sp1',
+        folder: 'fd1',
+        doc: 'd_html',
+        docType: 'html',
+        octoDocSlug: 'badminton',
+      }),
+    )
+    const other = resolveDocTarget('?doc=d_other')
+    expect(other!.doc).toBe('d_other')
+    expect(other!.octoDocSlug).toBeUndefined()
+    expect(other!.docType).toBeUndefined()
   })
 })
 
@@ -522,6 +578,56 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(screen.getByTestId('board-shell')).toBeTruthy()
     expect(screen.getByTestId('board-doc').textContent).toBe('b_known')
     expect(calls.some((c) => c.method === 'get' && c.url === '/docs/b_known')).toBe(false)
+  })
+
+  it('opens a persisted html doc directly into HtmlDocView on refresh (no getDoc round-trip, no editor fallback)', async () => {
+    // Regression: the stored docType='html' must open the read-only HtmlDocView on first paint.
+    // Previously the initial known-kind whitelist only covered board/doc, so a refreshed html doc
+    // took a getDoc detour and, on any hiccup, fell back to the rich-text editor.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'h_known', docType: 'html' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // HtmlDocView mounts immediately from the stored kind — not the editor.
+    expect(screen.getByTestId('html-doc-view')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // No per-doc getDoc round-trip was needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/h_known')).toBe(false)
+  })
+
+  it('opens a persisted sheet doc directly into SheetView on refresh (no getDoc round-trip)', async () => {
+    // Same whitelist fix also covers sheet, which the reviewer flagged as missing alongside html.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 's_known', docType: 'sheet' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    expect(screen.getByTestId('sheet-view')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/s_known')).toBe(false)
   })
 
   it('back-to-list unmounts the editor and clears the persisted target (no full navigation)', async () => {
@@ -945,6 +1051,166 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
       doc: 's_new',
       docType: 'sheet',
     })
+  })
+
+  it('opens an existing html row with the octo-doc slug in the read-only HtmlDocView (no per-doc lookup)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              {
+                docId: 'h_row',
+                title: 'Agent Report',
+                ownerId: 'u_owner',
+                role: 'admin',
+                docType: 'html',
+                octoDocSlug: 'octo-html-report',
+              },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Agent Report')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Agent Report'))
+
+    await waitFor(() => expect(screen.getByTestId('html-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('html-doc').textContent).toBe('h_row')
+    expect(screen.getByTestId('html-slug').textContent).toBe('octo-html-report')
+    // Read-only html doc: it must NOT open the rich-text editor / sheet.
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('sheet-view')).toBeNull()
+    // The list row already carried docType='html' — no authoritative round-trip needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/h_row')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'h_row',
+      docType: 'html',
+      octoDocSlug: 'octo-html-report',
+    })
+  })
+
+  it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
+    // Repro of the "open html → click the 文档 nav button → 出错了" bug: the nav-reactivation
+    // re-push must carry octoDocSlug, else HtmlDocView falls back to docId and 404s against octo-doc.
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              {
+                docId: 'h_row',
+                title: 'Agent Report',
+                ownerId: 'u_owner',
+                role: 'admin',
+                docType: 'html',
+                octoDocSlug: 'octo-html-report',
+              },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Agent Report')).toBeTruthy())
+    fireEvent.click(screen.getByText('Agent Report'))
+    await waitFor(() =>
+      expect(
+        replaceToRoot.mock.calls.some(
+          (c) => (c[0] as { props?: { docId?: string } })?.props?.docId === 'h_row',
+        ),
+      ).toBe(true),
+    )
+
+    // Simulate the user clicking the docs NavRail button while the html doc is open.
+    wk.mockMittBus.emitNavMenuActivated('docs')
+
+    const lastPush = replaceToRoot.mock.calls.at(-1)![0] as {
+      props: { docId: string; slug?: string }
+    }
+    expect(lastPush.props.docId).toBe('h_row')
+    // The re-push must preserve the slug (bug: it was dropped → HtmlDocView used docId → 404).
+    expect(lastPush.props.slug).toBe('octo-html-report')
+  })
+
+  it('opens an existing html row without octoDocSlug using HtmlDocView fallback', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 'h_legacy', title: 'Legacy Report', ownerId: 'u_owner', role: 'admin', docType: 'html' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Legacy Report')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Legacy Report'))
+
+    await waitFor(() => expect(screen.getByTestId('html-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('html-doc').textContent).toBe('h_legacy')
+    expect(screen.getByTestId('html-slug').textContent).toBe('')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('opens an html deep-link with the octo-doc slug resolved from getDoc metadata', async () => {
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'h_direct' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/h_direct') {
+        return {
+          data: {
+            docId: 'h_direct',
+            title: 'Direct Report',
+            role: 'admin',
+            docType: 'html',
+            octoDocSlug: 'octo-direct-report',
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByTestId('html-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('html-doc').textContent).toBe('h_direct')
+    expect(screen.getByTestId('html-slug').textContent).toBe('octo-direct-report')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
   it('opens an existing sheet row directly in the sheet view (no per-doc lookup)', async () => {
@@ -1396,6 +1662,7 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     { docId: 'd_doc', title: 'A Doc', ownerId: 'u_o', role: 'admin', docType: 'doc', viewedAt: '2026-07-15T06:00:00.000Z' },
     { docId: 'd_sheet', title: 'A Sheet', ownerId: 'u_o', role: 'admin', docType: 'sheet', viewedAt: '2026-07-15T05:00:00.000Z' },
     { docId: 'd_board', title: 'A Board', ownerId: 'u_o', role: 'admin', docType: 'board', viewedAt: '2026-07-15T04:00:00.000Z' },
+    { docId: 'd_html', title: 'A Web Page', ownerId: 'u_o', role: 'admin', docType: 'html', octoDocSlug: 'sp/fd/html-slug', viewedAt: '2026-07-15T03:00:00.000Z' },
   ]
 
   function mountList() {
@@ -1427,6 +1694,13 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     expect(screen.getByLabelText('docs.list.kindBoard')).toBeTruthy()
   })
 
+  it('renders the HTML row with its own kindHtml icon (distinct from doc/sheet/board)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Web Page')).toBeTruthy())
+    // The html row carries its own aria-label/title on the row icon (HtmlRowIcon).
+    expect(screen.getByLabelText('docs.list.kindHtml')).toBeTruthy()
+  })
+
   it('shows the type filter on both tabs and drives a multi-select OR request', async () => {
     const wk = mountList()
     await waitFor(() => expect(screen.getByText('A Sheet')).toBeTruthy())
@@ -1448,6 +1722,21 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     // Switch to the mine tab — the type filter is still rendered there.
     fireEvent.click(screen.getByText('docs.tab.mine'))
     await waitFor(() => expect(screen.getByText('docs.filter.type')).toBeTruthy())
+  })
+
+  it('offers html as a selectable type-filter option driving a type=html request', async () => {
+    const wk = mountList()
+    await waitFor(() => expect(screen.getByText('A Web Page')).toBeTruthy())
+
+    // Open the type dropdown — the html option is present alongside doc/sheet/board.
+    fireEvent.click(screen.getByText('docs.filter.type'))
+    fireEvent.click(screen.getByText('docs.list.kindHtml'))
+    await waitFor(() => {
+      const lastRecent = wk.apiClient.calls
+        .filter((c) => c.method === 'get' && c.url.startsWith('/docs/recent?'))
+        .at(-1)
+      expect(lastRecent?.url).toContain('type=html')
+    })
   })
 })
 

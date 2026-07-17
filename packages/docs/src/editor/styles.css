@@ -2652,6 +2652,28 @@ body.octo-row-resizing {
 .octo-docs-list-row-title-untitled {
   color: var(--octo-fg-3, #86909c);
 }
+/* Bot badge: a small capsule after a bot-created doc's title so it's easy to tell apart. */
+.octo-docs-list-row-title-line {
+  display: flex;
+  align-items: center;
+  min-width: 0; /* let the title ellipsis, keep the badge fully visible */
+}
+.octo-docs-list-row-title-line .octo-docs-list-row-title {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.octo-docs-list-row-bot-badge {
+  flex: none;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--octo-active-fg, #1664ff);
+  background: var(--octo-active-bg, rgba(22, 100, 255, 0.1));
+  border-radius: 8px;
+  white-space: nowrap;
+}
 .octo-docs-list-row-sub {
   font-size: 12px;
   line-height: 1.3;
@@ -3537,3 +3559,26 @@ body.octo-row-resizing {
   font-style: normal;
 }
 
+
+/* Prominent primary action button for html-doc UI (send comment / add member / handle-with-AI).
+   Defined here (globally loaded) so MemberPicker in members/ picks it up too.
+   Mirrors the existing primary范式 .octo-docs-list-new: color via --octo-active-fg token; this
+   octo-* CSS subsystem has no radius/spacing/size tokens, so those reuse the same范式 literals. */
+.octo-doc-primary-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #fff;
+  background: var(--octo-active-fg, #1664ff);
+  transition: background 0.15s ease;
+}
+.octo-doc-primary-btn:hover:not(:disabled) {
+  background: var(--octo-active-fg-hover, #0e4fd6);
+}
+.octo-doc-primary-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

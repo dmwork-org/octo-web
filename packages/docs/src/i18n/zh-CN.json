@@ -12,6 +12,8 @@
     "kindDoc": "文档",
     "kindBoard": "画板",
     "kindSheet": "表格",
+    "kindHtml": "网页",
+    "botBadge": "机器人",
     "back": "全部文档",
     "updatedAt": "更新于",
     "viewedAt": "查看于",
@@ -339,7 +341,16 @@
     "orphaned": "（已失效）",
     "deleteConfirm": "删除这条评论？",
     "errorAnchor": "无法在此处锚定评论。",
-    "errorAdd": "添加评论失败。"
+    "errorAdd": "添加评论失败。",
+    "anchorDoc": "文档级评论",
+    "targetDoc": "文档级评论",
+    "targetAnchor": "将评论定位到",
+    "clearAnchor": "取消定位",
+    "placeholder": "写下评论…",
+    "send": "发送",
+    "handleWithAI": "让 AI 处理",
+    "anonymous": "匿名",
+    "agentInstructionTitle": "让 AI 处理评论：{{request}} (doc {{slug}} · {{target}})"
   },
   "time": {
     "justNow": "刚刚",
@@ -391,6 +402,7 @@
     },
     "ownerCannotRemove": "无法移除所有者",
     "errorAdd": "添加成员失败。",
+    "errorLoad": "加载成员失败。",
     "errorRemove": "移除成员失败。",
     "errorRole": "修改角色失败。",
     "errorUserNotFound": "该用户不是 octo 用户，无法添加。",
@@ -584,6 +596,11 @@
       "login": "登录已过期，请重新登录。",
       "deleted": "文档已删除。"
     }
+  },
+  "header": {
+    "creator": "创建者",
+    "comingSoon": "该功能即将上线",
+    "membersComingSoon": "成员管理即将上线"
   },
   "forward": {
     "entry": "转发到聊天",
