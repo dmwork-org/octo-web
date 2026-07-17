@@ -24,7 +24,22 @@ export MATTER_API_URL
 : "${DOCS_ASSET_CSP_ORIGIN:=}"
 export DOCS_ASSET_CSP_ORIGIN
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL} ${DOCS_ASSET_CSP_ORIGIN}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+# octo-doc HTML render + comments/reactions/grants/admin upstream. Per-environment:
+# override in .env to the reachable octo-docs-html host:port. Blank by default (like
+# SUMMARY/MATTER above): unset ⇒ the doc routes 503 rather than nginx trying to resolve
+# a dev-only hostname at startup and hard-failing the whole container. Trailing slash
+# stripped to avoid a double-slash upstream when a rewrite builds the URI.
+: "${DOC_APP_URL:=}"
+DOC_APP_URL="${DOC_APP_URL%/}"
+export DOC_APP_URL
+
+# octo-docs-backend (full docs-meta REST surface) upstream for /api/v1/docs.
+# Override per-environment in .env. Blank by default (503 when unset) — see DOC_APP_URL.
+: "${DOCS_BACKEND_URL:=}"
+DOCS_BACKEND_URL="${DOCS_BACKEND_URL%/}"
+export DOCS_BACKEND_URL
+
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

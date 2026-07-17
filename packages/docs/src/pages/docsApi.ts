@@ -9,12 +9,12 @@ import type { Role } from '../auth/roles.ts'
 
 /**
  * Document kind enum — the wire contract for `doc_type`, authored in lockstep with the backend
- * (octo-docs-backend `DOC_TYPES` in src/db/docType.ts and the `doc_meta.doc_type` column). The three
+ * (octo-docs-backend `DOC_TYPES` in src/db/docType.ts and the `doc_meta.doc_type` column). These
  * values are the single source of truth on BOTH sides: the list distinguishes them by row icon and
  * the type filter narrows the recent/mine feeds on them (`?type=doc&type=sheet`). Never mock a value
  * that the backend does not persist — a drifting enum is exactly the assumed-wire trap FEAT-B avoids.
  */
-export const DOC_TYPES = ['doc', 'sheet', 'board'] as const
+export const DOC_TYPES = ['doc', 'sheet', 'board', 'html'] as const
 export type DocType = (typeof DOC_TYPES)[number]
 
 export interface DocListItem {
@@ -45,6 +45,8 @@ export interface DocListItem {
    * list mixes all kinds and distinguishes them by icon (frontend-design §4.1 / §5.1).
    */
   docType?: string
+  /** Present only for html docs: the octo-doc slug used to fetch/render the read-only body. */
+  octoDocSlug?: string
 }
 
 export interface ListDocsResult {
@@ -264,6 +266,8 @@ export interface DocMeta {
   documentName?: string
   /** `'doc'` | `'board'` — see DocListItem.docType. Absent on backends that don't persist it. */
   docType?: string
+  /** Present only for html docs: the octo-doc slug used to fetch/render the read-only body. */
+  octoDocSlug?: string
   /**
    * Link share scope / role (feature #64). The per-doc GET returns these additive, optional fields
    * so the share dialog can render current state without a second GET /share round-trip. Forward-

@@ -420,6 +420,8 @@
   "claw.tabs.sessionInfo": "Session info",
   "claw.unknown": "Unknown",
   "claw.unknownBot": "Unknown Bot",
+  "docTab.empty": "No documents",
+  "docTab.loading": "Loading...",
   "me.accountSecurity": "Account security",
   "me.avatar": "Avatar",
   "me.experimentalFeatures": "🧪 Experimental features",

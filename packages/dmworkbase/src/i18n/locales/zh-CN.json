@@ -420,6 +420,8 @@
   "claw.tabs.sessionInfo": "Session 信息",
   "claw.unknown": "未知",
   "claw.unknownBot": "未知 Bot",
+  "docTab.empty": "暂无文档",
+  "docTab.loading": "加载中…",
   "me.accountSecurity": "账号安全",
   "me.avatar": "头像",
   "me.experimentalFeatures": "🧪 实验性功能",

@@ -4,7 +4,7 @@ import { fetchAllSpaceMembers, fetchMyBots, t, type SpaceMemberLite } from '../o
 import { colorFromId } from '../awareness/presence.ts'
 import { sortPickerMembers } from './sort.ts'
 
-const ROLES: Role[] = ['reader', 'writer', 'admin']
+const DEFAULT_ROLES: Role[] = ['reader', 'writer', 'admin']
 
 /** First glyph of a name for the fallback avatar (uppercased; '?' when empty). */
 function initial(name: string): string {
@@ -43,6 +43,7 @@ export function MemberPicker({
   space,
   existingUids,
   hideUids,
+  roles = DEFAULT_ROLES,
   onAdd,
   busy,
 }: {
@@ -53,16 +54,25 @@ export function MemberPicker({
   /** uids to omit from the candidate list ENTIRELY (not shown at all) — the current user and the
    *  doc owner, who can never be "added" and shouldn't appear as candidates. */
   hideUids?: Set<string>
+  /** Grantable roles for the dropdown. Default = all three (rich-doc unchanged). HTML docs pass
+   *  ['reader'] so only the single "只读" option shows — backend grants only accept reader there. */
+  roles?: Role[]
   /** Add the chosen members (one or many) with the chosen role. */
   onAdd: (uids: string[], role: Role) => Promise<void> | void
   /** True while a parent add/refresh is in flight (disables the Add button). */
   busy?: boolean
 }) {
+  // An empty roles={[]} would yield an undefined role + empty dropdown; fall back to defaults.
+  const effectiveRoles = roles.length > 0 ? roles : DEFAULT_ROLES
   const [members, setMembers] = useState<SpaceMemberLite[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [role, setRole] = useState<Role>('writer')
+  // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
+  // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
+  const [role, setRole] = useState<Role>(
+    effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0],
+  )
 
   useEffect(() => {
     let active = true
@@ -175,13 +185,13 @@ export function MemberPicker({
 
       <div className="octo-member-picker-actions">
         <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-          {ROLES.map((r) => (
+          {effectiveRoles.map((r) => (
             <option key={r} value={r}>
               {t(`docs.role.${r}`)}
             </option>
           ))}
         </select>
-        <button type="button" className="octo-tb-btn" disabled={count === 0 || busy} onClick={add}>
+        <button type="button" className="octo-doc-primary-btn" disabled={count === 0 || busy} onClick={add}>
           {count > 1 ? t('docs.member.addCount', { values: { count } }) : t('docs.member.add')}
         </button>
       </div>

@@ -12,6 +12,8 @@
     "kindDoc": "Document",
     "kindBoard": "Board",
     "kindSheet": "Spreadsheet",
+    "kindHtml": "HTML",
+    "botBadge": "Bot",
     "back": "All documents",
     "updatedAt": "Updated",
     "viewedAt": "Viewed",
@@ -339,7 +341,16 @@
     "orphaned": "(orphaned)",
     "deleteConfirm": "Delete this comment?",
     "errorAnchor": "Could not anchor a comment here.",
-    "errorAdd": "Failed to add comment."
+    "errorAdd": "Failed to add comment.",
+    "anchorDoc": "Document-level comment",
+    "targetDoc": "Document-level comment",
+    "targetAnchor": "Comment will be anchored to",
+    "clearAnchor": "Clear target",
+    "placeholder": "Write a comment…",
+    "send": "Send",
+    "handleWithAI": "Ask AI to handle",
+    "anonymous": "Anonymous",
+    "agentInstructionTitle": "Ask AI to handle comment: {{request}} (doc {{slug}} · {{target}})"
   },
   "time": {
     "justNow": "just now",
@@ -391,6 +402,7 @@
     },
     "ownerCannotRemove": "The owner cannot be removed",
     "errorAdd": "Failed to add member.",
+    "errorLoad": "Failed to load members.",
     "errorRemove": "Failed to remove member.",
     "errorRole": "Failed to change role.",
     "errorUserNotFound": "That user is not an octo user and cannot be added.",
@@ -584,6 +596,11 @@
       "login": "Your session expired. Please sign in again.",
       "deleted": "Document deleted."
     }
+  },
+  "header": {
+    "creator": "Creator",
+    "comingSoon": "This feature is coming soon",
+    "membersComingSoon": "Member management is coming soon"
   },
   "forward": {
     "entry": "Forward to chat",
