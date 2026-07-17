@@ -7,7 +7,7 @@ import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
-import { getDoc, type DocMeta } from './docsApi.ts'
+import { getDoc, recordDocView, type DocMeta } from './docsApi.ts'
 import { parseDocumentName } from '../documentName/index.ts'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER } from '../config.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -209,6 +209,35 @@ export function standaloneFallbackSpace(currentSpaceId: string | undefined): str
 }
 
 /**
+ * The VIEWER's real current space, resolved from a genuine viewer signal ONLY: the live
+ * `currentSpaceId`, else the cached `currentSpaceId` localStorage key the shell persists. Returns
+ * '' when neither exists — deliberately WITHOUT standaloneFallbackSpace's DEFAULT_DOC_SPACE tail.
+ *
+ * This is the space recordDocView writes the "最近查看" ingest into (XIN-1237 write/read contract):
+ * the backend writes and reads the recent list by X-Space-Id = the viewer's current space, so the
+ * view MUST be recorded under the viewer's space, NOT the doc's link space (`?sp=`). Where the doc
+ * space is used (preflight/room addressing) the deploy default is a safe last resort, but for the
+ * view record it is NOT: recording into DEFAULT_DOC_SPACE when we cannot confirm the viewer is
+ * actually there would (a) write the view into a space the viewer isn't in — breaking the
+ * per-space isolation the recent list relies on — and (b) still never surface in the viewer's own
+ * recent list. So when there is no real viewer signal we return '' and the caller omits the
+ * explicit header, letting the global interceptor decide (exactly as the in-shell entry does),
+ * rather than forcing a wrong space.
+ */
+export function viewerCurrentSpace(currentSpaceId: string | undefined): string {
+  if (currentSpaceId) return currentSpaceId
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = window.localStorage.getItem('currentSpaceId')
+      if (cached) return cached
+    } catch {
+      // localStorage unavailable (private mode / disabled): no viewer signal → '' (omit the header).
+    }
+  }
+  return ''
+}
+
+/**
  * The doc's OWN space, as carried by the standalone share link's dedicated `?sp=` query param.
  *
  * buildDocLink (forward/link.ts) embeds the shared document's REAL space id as `?sp=` — the space
@@ -310,6 +339,21 @@ export function StandaloneDocPage({
   // addresses the doc correctly when the opener is already in the doc's space (owner / same-space).
   const preflightSpace = standaloneLinkSpace() || standaloneFallbackSpace(wk.shared?.currentSpaceId)
 
+  // XIN-1237 write/read space contract: a view is written into the space carried by the request's
+  // X-Space-Id and "最近查看" reads back by that SAME viewer space. recordDocView must therefore be
+  // written to the VIEWER's current space, NOT the doc's own space. But the seed effect below
+  // overwrites wk.shared.currentSpaceId to the doc's link space (`?sp=`) for preflight/room
+  // addressing, so by the time the doc is ready that value no longer reflects the viewer. Capture
+  // the viewer's real current space ONCE on first render — before the seed effect runs — resolving
+  // live currentSpaceId → cached localStorage (viewerCurrentSpace). Do NOT source it from the link
+  // `?sp=` and do NOT fall through to the deploy default: an empty result means "no viewer signal",
+  // which the record path treats as "omit the explicit header", never as "write to DEFAULT space".
+  // Lazy null-init so the resolution runs exactly once and is immune to the later seed mutation.
+  const viewerSpaceRef = useRef<string | null>(null)
+  if (viewerSpaceRef.current === null) {
+    viewerSpaceRef.current = viewerCurrentSpace(wk.shared?.currentSpaceId)
+  }
+
   // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
   // page mounts via the Layout early-return, before the app shell restores currentSpaceId from
   // localStorage, so any in-shell-shared logic the EditorShell touches would see an empty space. If —
@@ -331,16 +375,36 @@ export function StandaloneDocPage({
     // header used (XIN-501); fall back to the cached last space when the link carries no `?sp`.
     // Never overwrite a real live space, so in-shell mounts (where it is already set) are unaffected.
     const linkSpace = standaloneLinkSpace()
+    let seeded: string | undefined
     if (linkSpace) {
-      shared.currentSpaceId = linkSpace
-      return
+      seeded = linkSpace
+    } else if (typeof window !== 'undefined') {
+      try {
+        const cached = window.localStorage.getItem('currentSpaceId')
+        if (cached) seeded = cached
+      } catch {
+        // localStorage unavailable: the explicit preflight header (primary fix) still carries the space.
+      }
     }
-    if (typeof window === 'undefined') return
-    try {
-      const cached = window.localStorage.getItem('currentSpaceId')
-      if (cached) shared.currentSpaceId = cached
-    } catch {
-      // localStorage unavailable: the explicit preflight header (primary fix) still carries the space.
+    if (!seeded) return
+    shared.currentSpaceId = seeded
+
+    // XIN-1254 (XIN-1234 variant): the seed above overwrites the shared `currentSpaceId` — which the
+    // app shell reads as "the VIEWER's current space" — with the DOC's link space so the global
+    // interceptor addresses the standalone editor's cross-space collab requests. Left in place after
+    // the page tears down, returning to the docs list scopes "最近查看"'s read to the DOC space (the
+    // recent feed derives its space from the live currentSpaceId via the interceptor). A view we
+    // recorded under the VIEWER's real space (viewerSpaceRef) is then invisible in that read — the
+    // exact write/read space split of XIN-1234, reintroduced by this seed for a CROSS-space share
+    // (opening someone else's doc, `?sp=` ≠ the viewer's space). Restore the viewer's real space on
+    // teardown so the shell's recent-view read matches the space the view was written to. React runs
+    // an unmounted tree's effect cleanups before the newly-mounted tree's effects within the same
+    // commit, so this restore lands before DocsHome's recent-view request fires. Only revert the
+    // value WE seeded — never clobber a space the shell legitimately switched to meanwhile.
+    return () => {
+      if (shared.currentSpaceId === seeded) {
+        shared.currentSpaceId = viewerSpaceRef.current ?? ''
+      }
     }
   }, [wk.shared])
 
@@ -384,6 +448,26 @@ export function StandaloneDocPage({
       cancelled = true
     }
   }, [docId, onSessionExpired, preflightSpace])
+
+  // XIN-1238 / XIN-1234: the standalone `/d/:docId` page never recorded a view, so a doc opened from
+  // a chat share link never surfaced in the opener's "最近查看". Mirror the in-shell entry
+  // (DocsHome.commitOpen): once the doc is READY, fire a single view ingest. It is written to the
+  // VIEWER's real current space (viewerSpaceRef), per the XIN-1237 write/read space contract — NOT
+  // the doc space (`?sp=`) the page seeds for addressing. When no viewer signal was resolvable
+  // (viewerSpaceRef === ''), omit the explicit X-Space-Id and let the global interceptor decide,
+  // exactly as the in-shell entry does — never force the deploy-default space, which would record
+  // the view under a space the viewer isn't in and break per-space isolation. Guarded by docId so
+  // React re-renders and strict-mode double-invocation record at most once per opened doc, matching
+  // the timing of the normal entry (on open success, not in a render loop). Fire-and-forget:
+  // recordDocView swallows every failure, so a failed / not-yet-deployed ingest never affects open.
+  const recordedDocRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (phase.status !== 'ready' || !docId) return
+    if (recordedDocRef.current === docId) return
+    recordedDocRef.current = docId
+    const viewerSpace = viewerSpaceRef.current
+    void recordDocView(docId, viewerSpace ? { spaceId: viewerSpace } : undefined)
+  }, [phase.status, docId])
 
   useEffect(
     () => () => {
