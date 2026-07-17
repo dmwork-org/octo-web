@@ -65,6 +65,7 @@ import {
   parseStandaloneDocId,
   isStandaloneDocPath,
   standaloneFallbackSpace,
+  viewerCurrentSpace,
   standaloneLinkSpace,
   persistStandaloneReturn,
   consumeStandaloneReturn,
@@ -512,6 +513,26 @@ describe('standaloneFallbackSpace — cold-start cross-space addressing (blocker
   })
 })
 
+describe('viewerCurrentSpace — the space a recorded view is written to (XIN-1237, no deploy-default tail)', () => {
+  it('prefers the live currentSpaceId when the shell has one', () => {
+    window.localStorage.setItem('currentSpaceId', 's_cached')
+    expect(viewerCurrentSpace('s_live')).toBe('s_live')
+  })
+
+  it('falls back to the cached localStorage currentSpaceId when the shell has none', () => {
+    window.localStorage.setItem('currentSpaceId', 's_cached')
+    expect(viewerCurrentSpace('')).toBe('s_cached')
+    expect(viewerCurrentSpace(undefined)).toBe('s_cached')
+  })
+
+  it('returns empty (NOT the deploy default) when there is no viewer signal, so the caller omits the header', () => {
+    // Unlike standaloneFallbackSpace (used for room addressing, where a default is a safe last
+    // resort), the view record must never be written to a space we cannot confirm the viewer is in.
+    expect(viewerCurrentSpace('')).toBe('')
+    expect(viewerCurrentSpace(undefined)).toBe('')
+  })
+})
+
 describe('StandaloneDocPage — cold-start addressing uses the cached space, not the deploy default (blocker 3)', () => {
   it('addresses the EditorShell to the cached currentSpaceId when the preflight carries no documentName', async () => {
     // Repro: 200 preflight WITHOUT documentName + a cached currentSpaceId in localStorage. Before
@@ -884,5 +905,192 @@ describe('StandaloneDocPage — creator name is nickname-only on the shared surf
     // The standalone page is an externally shareable surface: it must NOT expose the creator's
     // verified real_name to a link holder. It flags the shell to use the nickname only.
     expect(screen.getByTestId('editor-creator-nickname-only').textContent).toBe('true')
+  })
+})
+
+describe('StandaloneDocPage — records a view so share-link opens surface in 最近查看 (XIN-1238)', () => {
+  it('fires POST /docs/:id/view once the doc is ready, written to the VIEWER current space, not the doc link space', async () => {
+    // XIN-1234 root cause: the standalone page never recorded a view, so a doc opened from a chat
+    // share link never appeared in the opener's 最近查看. XIN-1237 write/read space contract: the
+    // view must be written under the VIEWER's current space (X-Space-Id), which 最近查看 reads back
+    // by — NOT the doc's own space the standalone page seeds for preflight addressing.
+    // Cross-space share: the link carries the doc space `?sp=space-doc`, but the viewer is currently
+    // in space-viewer (their cached/live current space).
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/docs/d_ok/view')).toBe(true),
+    )
+    const view = wk.apiClient.calls.find((c) => c.method === 'post' && c.url === '/docs/d_ok/view')
+    // The preflight is addressed to the doc's own space (link `?sp`), but the view ingest must go to
+    // the viewer's current space so it surfaces in the viewer's recent list.
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    expect(view!.config?.headers?.['X-Space-Id']).toBe('space-viewer')
+  })
+
+  it('same-space share (老板 real-device acceptance): opening a doc from a same-space group link records the view under that space so it surfaces in 最近查看', async () => {
+    // The acceptance scenario (三叉戟大队): the viewer opens a doc shared in the space they are
+    // already in. The link's `?sp=` and the viewer's current space are the SAME space, so the view
+    // is recorded under that space and the shell's recent-view read (scoped to the same current
+    // space) surfaces it — the exact "点链接开同 space 文档→回→最近查看可见" flow.
+    window.history.pushState({}, '', '/d/d_ok?sp=space-team')
+    window.localStorage.setItem('currentSpaceId', 'space-team')
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Team Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/docs/d_ok/view')).toBe(true),
+    )
+    const view = wk.apiClient.calls.find((c) => c.method === 'post' && c.url === '/docs/d_ok/view')
+    expect(view!.config?.headers?.['X-Space-Id']).toBe('space-team')
+  })
+
+  it('per-space safety: with no live and no cached viewer space, the view record omits the explicit X-Space-Id instead of forcing the deploy default', async () => {
+    // No viewer signal at all (no live currentSpaceId, no cached one). Recording the view under the
+    // deploy-default space would write it into a space the viewer isn't in — polluting that space's
+    // recent list and still never surfacing in the viewer's own. Omit the explicit header and let
+    // the global interceptor decide, exactly as the in-shell entry does.
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/docs/d_ok/view')).toBe(true),
+    )
+    const view = wk.apiClient.calls.find((c) => c.method === 'post' && c.url === '/docs/d_ok/view')
+    // No explicit header forced: never the deploy default, never the doc link space.
+    expect(view!.config?.headers?.['X-Space-Id']).toBeUndefined()
+  })
+
+  it('uses the live current space as the viewer space when the shell already restored it (in-shell mount)', async () => {
+    wk.shared.currentSpaceId = 'space-live'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/docs/d_ok/view')).toBe(true),
+    )
+    const view = wk.apiClient.calls.find((c) => c.method === 'post' && c.url === '/docs/d_ok/view')
+    expect(view!.config?.headers?.['X-Space-Id']).toBe('space-live')
+  })
+
+  it('records the view at most once (idempotent — never in a render loop)', async () => {
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.filter((c) => c.method === 'post' && c.url === '/docs/d_ok/view').length).toBe(1),
+    )
+    // Give any stray re-render a chance to double-fire, then re-assert the single call.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(wk.apiClient.calls.filter((c) => c.method === 'post' && c.url === '/docs/d_ok/view').length).toBe(1)
+  })
+
+  it('does NOT record a view when the preflight fails to a terminal (forbidden / not-found)', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_forbidden') {
+        return Promise.reject(apiError(403))
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_forbidden" />)
+
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'get' && c.url === '/docs/d_forbidden')).toBe(true),
+    )
+    expect(wk.apiClient.calls.some((c) => c.url === '/docs/d_forbidden/view')).toBe(false)
+  })
+})
+
+describe('StandaloneDocPage — restores the viewer current space on teardown so 最近查看 is not left scoped to the doc space (XIN-1254)', () => {
+  it('reverts the doc-link space it seeded back to the viewer current space when the page unmounts', async () => {
+    // Cross-space share (老板 real-device repro): the viewer (大棍子) is in space-viewer; the link
+    // carries the DOC owner's (大背头) space `?sp=space-doc`. On this cold deep link
+    // wk.shared.currentSpaceId is empty, so the seed effect overwrites it with space-doc for the
+    // interceptor to address the editor's cross-space collab requests. Left in place, returning to
+    // the docs list scopes 最近查看's read (derived from the live currentSpaceId via the interceptor)
+    // to space-doc — but the view was recorded under space-viewer (viewerSpaceRef), so it stays
+    // invisible: the XIN-1234 write/read space split reintroduced by the seed.
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { unmount } = render(<StandaloneDocPage docId="d_ok" />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    // Seed applied while the standalone editor is mounted (cross-space collab addressing).
+    expect(wk.shared.currentSpaceId).toBe('space-doc')
+
+    // On teardown the viewer's real space is restored, so the shell's recent-view read matches the
+    // space the view was written to (space-viewer) and the doc surfaces in 最近查看.
+    unmount()
+    expect(wk.shared.currentSpaceId).toBe('space-viewer')
+  })
+
+  it('only reverts the value it seeded — never clobbers a space the shell switched to meanwhile', async () => {
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { unmount } = render(<StandaloneDocPage docId="d_ok" />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(wk.shared.currentSpaceId).toBe('space-doc')
+
+    // A genuine space switch happened while the page was open; the teardown restore must be a no-op.
+    wk.shared.currentSpaceId = 'space-switched'
+    unmount()
+    expect(wk.shared.currentSpaceId).toBe('space-switched')
   })
 })
