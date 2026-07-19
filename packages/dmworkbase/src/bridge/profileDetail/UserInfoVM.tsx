@@ -34,6 +34,11 @@ export class UserInfoVM extends ProviderListener {
   channelInfo?: ChannelInfo;
   vercode?: string;
   subscriberChangeListener?: SubscriberChangeListener;
+  editingRemark = false;
+  remarkDraft = "";
+  savingRemark = false;
+  remarkSaveError = "";
+  private mounted = false;
 
   constructor(uid: string, fromChannel?: Channel, vercode?: string) {
     super();
@@ -43,6 +48,7 @@ export class UserInfoVM extends ProviderListener {
   }
 
   didMount(): void {
+    this.mounted = true;
     this.reloadSubscribers();
 
     WKApp.shared.changeChannelAvatarTag(
@@ -69,11 +75,86 @@ export class UserInfoVM extends ProviderListener {
   }
 
   didUnMount(): void {
+    this.mounted = false;
     if (this.subscriberChangeListener) {
       WKSDK.shared().channelManager.removeSubscriberChangeListener(
         this.subscriberChangeListener
       );
     }
+  }
+
+  getRemark() {
+    return this.channelInfo?.orgData?.remark || "";
+  }
+
+  startEditRemark() {
+    this.editingRemark = true;
+    this.remarkDraft = this.getRemark();
+    this.notifyListener();
+  }
+
+  cancelEditRemark() {
+    this.editingRemark = false;
+    this.remarkDraft = "";
+    this.notifyListener();
+  }
+
+  setRemarkDraft(value: string) {
+    this.remarkDraft = value;
+    this.notifyListener();
+  }
+
+  async saveRemark(): Promise<"ok" | "stale" | "failed"> {
+    const requestedUid = this.uid;
+    const remark = this.remarkDraft.trim();
+    this.savingRemark = true;
+    this.remarkSaveError = "";
+    this.notifyListener();
+    try {
+      await UserService.updateRemark(requestedUid, remark);
+      if (!this.isCurrentUid(requestedUid)) return "stale";
+      if (this.channelInfo) {
+        this.channelInfo.orgData = {
+          ...this.channelInfo.orgData,
+          remark,
+          displayName: remark || this.channelInfo.title,
+        };
+      }
+      this.editingRemark = false;
+      this.remarkDraft = "";
+      this.notifyListener();
+      Promise.resolve(
+        WKSDK.shared().channelManager.fetchChannelInfo(new Channel(requestedUid, ChannelTypePerson))
+      ).catch((error: unknown) => {
+        console.warn("[UserInfo] refresh channel after remark failed:", error);
+      });
+      Promise.resolve(this.reloadChannelInfo()).catch((error: unknown) => {
+        console.warn("[UserInfo] reload profile after remark failed:", error);
+      });
+      return "ok";
+    } catch (error: any) {
+      if (!this.isCurrentUid(requestedUid)) return "stale";
+      this.remarkSaveError = error?.msg || "";
+      return "failed";
+    } finally {
+      if (this.isCurrentUid(requestedUid)) {
+        this.savingRemark = false;
+        this.notifyListener();
+      }
+    }
+  }
+
+  applyFriend(remark: string, spaceId?: string) {
+    return UserService.applyFriend({
+      uid: this.uid,
+      remark,
+      vercode: this.vercode || "",
+      spaceId,
+    });
+  }
+
+  private isCurrentUid(uid: string) {
+    return this.mounted && this.uid === uid;
   }
 
   reloadSubscribers() {
