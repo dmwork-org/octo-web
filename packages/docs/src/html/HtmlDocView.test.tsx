@@ -80,8 +80,8 @@ describe('resolveOctoDocBase / buildOctoDocUrl', () => {
     expect(resolveOctoDocBase()).toBe('https://octo-doc.example.com')
   })
 
-  it('defaults to same-origin (empty base) when nothing is configured', () => {
-    expect(resolveOctoDocBase()).toBe('')
+  it('defaults to the same-origin /docs-html unified prefix when nothing is configured', () => {
+    expect(resolveOctoDocBase()).toBe('/docs-html')
   })
 
   it('builds the octo-doc read-only URL `<base>/d/{slug}/v/{version}`', () => {
@@ -107,6 +107,29 @@ describe('absolutizeDocAssetUrls', () => {
     expect(out).toContain('href="https://od.test/d/slug/v/assets/doc.css?sig=s"')
     expect(out).toContain('src="https://od.test/d/slug/v/assets/a.png"')
     expect(out).toContain('src="https://od.test/d/slug/assets/b.png?exp=9"')
+  })
+
+  it('re-roots root-relative /d/ octo-doc assets under the same-origin /docs-html prefix (DEFAULT deploy)', () => {
+    // DEFAULT deploy: no override, resolveOctoDocBase() === '/docs-html'. The doc backend emits
+    // root-relative refs like /d/{slug}/assets/{sha}; without re-rooting they resolve against the
+    // page origin, DROP the /docs-html prefix, and 404 (the nginx only proxies /docs-html/*).
+    expect(resolveOctoDocBase()).toBe('/docs-html')
+    const out = absolutizeDocAssetUrls(
+      '<!doctype html><html><body><img src="/d/slug/assets/a.png?sig=s1&exp=9"></body></html>',
+      // same-origin default docUrl form: {origin}/docs-html/d/{slug}/v/{ver}
+      'http://localhost/docs-html/d/slug/v/latest'
+    )
+    expect(out).toContain('src="http://localhost/docs-html/d/slug/assets/a.png?sig=s1&amp;exp=9"')
+    expect(out).not.toContain('src="http://localhost/d/slug/assets/a.png')
+  })
+
+  it('does not double-prefix an asset already under /docs-html/d/', () => {
+    const out = absolutizeDocAssetUrls(
+      '<!doctype html><html><body><img src="/docs-html/d/slug/assets/a.png"></body></html>',
+      'http://localhost/docs-html/d/slug/v/latest'
+    )
+    expect(out).toContain('src="http://localhost/docs-html/d/slug/assets/a.png"')
+    expect(out).not.toContain('/docs-html/docs-html/')
   })
 
   it('leaves already absolute asset URLs and ordinary relative links untouched', () => {
@@ -232,7 +255,7 @@ describe('HtmlDocView — read-only rendering', () => {
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="published-slug" version="v7" />)
     await waitForFrame(container)
-    expect(String(spy.mock.calls[0][0])).toBe('/d/published-slug/v/v7')
+    expect(String(spy.mock.calls[0][0])).toBe('/docs-html/d/published-slug/v/v7')
   })
 
   it('shows a loading state before the fetch resolves', async () => {
