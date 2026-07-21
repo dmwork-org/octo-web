@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -24,7 +24,12 @@ import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGa
 import ContactsSearch from "../ui/ContactsSearch";
 import { ContactsDirectory, ContactsDirectorySection } from "../ui/ContactsDirectory";
 import type { ContactsDirectorySectionKey } from "../ui/ContactsDirectory/types";
-import { searchContacts } from "../bridge/contactsSearch/searchContacts";
+import {
+    buildContactsSearchIndex,
+    createEmptyContactsSearchIndex,
+    searchContacts,
+} from "../bridge/contactsSearch/searchContacts";
+import type { ContactsSearchIndex } from "../bridge/contactsSearch/types";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [visible, setVisible] = useState(false)
@@ -211,9 +216,11 @@ export default class ContactsList extends Component<any, ContactsState> {
     private spaceChangedHandler!: (space: any) => void
     private flatItems: Contacts[] = []
     private indexCache = new Map<ContactFilterMode, ContactIndexData>()
+    private contactsSearchIndex: ContactsSearchIndex = createEmptyContactsSearchIndex()
     private filterScrollTops: Record<ContactFilterMode, number> = { all: 0, bots: 0, humans: 0 }
     // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
     private prefetchedUids = new Set<string>()
+    private unsubscribeChannelInfoListener?: () => void
     private visibilityHandler!: () => void
     // 组件是否仍挂载：refreshTrackedOnlineStatus 是异步的，回包后 setState 前需确认未卸载
     private mounted = false
@@ -233,10 +240,14 @@ export default class ContactsList extends Component<any, ContactsState> {
             )
             if (idx !== -1) {
                 const members = [...this.state.spaceMembers]
+                const nameChanged = members[idx].name !== channelInfo.title
                 members[idx] = { ...members[idx], name: channelInfo.title }
                 this.setState({ spaceMembers: members }, () => {
-                    this.clearIndexCache()
-                    this.rebuildIndex()
+                    if (nameChanged) {
+                        this.rebuildContactsSearchIndex()
+                        this.clearIndexCache()
+                        this.rebuildIndex()
+                    }
                 })
                 return
             }
@@ -251,6 +262,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.spaceChangedHandler = (space: any) => {
             const sp = space as Space | undefined
             this.clearIndexCache()
+            this.contactsSearchIndex = createEmptyContactsSearchIndex()
             this.resetFilterScrollTops()
             this.prefetchedUids.clear()
             if (sp) {
@@ -264,7 +276,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             }
         }
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
-        WKSDK.shared().channelManager.addListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelInfoListener)
 
         // 页面重新可见时对已追踪的 AI 在线态做一次自愈重拉：正常情况下在线态靠
         // WKSDK 的 onlineStatus WS 回调实时重渲，但推送若因断连/节流被延迟或丢失，
@@ -301,7 +313,8 @@ export default class ContactsList extends Component<any, ContactsState> {
     componentWillUnmount() {
         this.mounted = false
         ContactsListManager.shared.setRefreshList = undefined
-        WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
         if (typeof document !== 'undefined' && this.visibilityHandler) {
             document.removeEventListener('visibilitychange', this.visibilityHandler)
@@ -320,8 +333,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         if (uids.length === 0) return
         await Promise.all(
             uids.map((uid) =>
-                WKSDK.shared().channelManager
-                    .fetchChannelInfo(new Channel(uid, ChannelTypePerson))
+                fetchImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson))
                     .catch(() => undefined)
             )
         )
@@ -345,6 +357,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 myGroups: myGroups || [],
                 loading: false,
             }, () => {
+                this.rebuildContactsSearchIndex()
                 this.clearIndexCache()
                 this.rebuildIndex()
                 // 「已添加AI」列表数量有界，数据就绪时整批预取一次在线态。
@@ -357,6 +370,15 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private clearIndexCache() {
         this.indexCache.clear()
+    }
+
+    private rebuildContactsSearchIndex() {
+        this.contactsSearchIndex = buildContactsSearchIndex({
+            spaceMembers: this.state.spaceMembers,
+            spaceBots: this.state.spaceBots,
+            myGroups: this.state.myGroups,
+            currentUid: WKApp.loginInfo.uid || "",
+        })
     }
 
     private resetFilterScrollTops() {
@@ -373,8 +395,8 @@ export default class ContactsList extends Component<any, ContactsState> {
             if (this.prefetchedUids.has(uid)) continue
             this.prefetchedUids.add(uid)
             const ch = new Channel(uid, ChannelTypePerson)
-            if (!WKSDK.shared().channelManager.getChannelInfo(ch)) {
-                WKSDK.shared().channelManager.fetchChannelInfo(ch)
+            if (!getImChannelInfo(WKSDK.shared(), ch)) {
+                void fetchImChannelInfo(WKSDK.shared(), ch)
             }
         }
     }
@@ -389,7 +411,8 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     // 复用会话列表/群成员列表同一份在线态判定与文案，渲染在线绿点。
     private renderOnlineBadge(uid: string): React.ReactNode {
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+        const channelInfo = getImChannelInfo(
+            WKSDK.shared(),
             new Channel(normalizeOnlineUid(uid), ChannelTypePerson)
         )
         if (!needShowOnlineStatus(channelInfo)) return null
@@ -484,7 +507,8 @@ export default class ContactsList extends Component<any, ContactsState> {
         const pinyinCache = new Map<string, string>()
         for (const item of items) {
             let name = (item.remark || item.name || '').replace(/\*\*/g, '')
-            pinyinCache.set(item.uid, getPinyin(toSimplized(name)).toUpperCase())
+            const cachedPinyin = this.contactsSearchIndex.pinyinByUid.get(item.uid)
+            pinyinCache.set(item.uid, (cachedPinyin || getPinyin(toSimplized(name))).toUpperCase())
         }
 
         // 按拼音排序
@@ -538,12 +562,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
-        const { contacts, groups } = searchContacts(keyword, {
-            spaceMembers: this.state.spaceMembers,
-            spaceBots: this.state.spaceBots,
-            myGroups: this.state.myGroups,
-            currentUid: WKApp.loginInfo.uid || "",
-        })
+        const { contacts, groups } = searchContacts(keyword, this.contactsSearchIndex)
 
         this.setState({
             isSearching: true,
@@ -934,7 +953,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                             const spaceId = WKApp.shared.currentSpaceId
                             if (spaceId) {
                                 WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).then((res: any) => {
-                                    this.setState({ spaceBots: res || [] }, () => this.rebuildIndex())
+                                    this.setState({ spaceBots: res || [] }, () => {
+                                        this.rebuildContactsSearchIndex()
+                                        this.clearIndexCache()
+                                        this.rebuildIndex()
+                                    })
                                 }).catch(() => {})
                             }
                         }}
