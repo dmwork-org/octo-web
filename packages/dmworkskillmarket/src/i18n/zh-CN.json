@@ -57,11 +57,10 @@
   },
   "sort": {
     "ariaLabel": "Skill 排序",
-    "label": "排序：",
     "comprehensive": "综合",
-    "latest": "最新发布",
-    "views": "浏览最多",
-    "downloads": "下载最多"
+    "latest": "最新",
+    "views": "浏览",
+    "downloads": "下载"
   },
   "card": {
     "editAriaLabel": "编辑 {{name}}",
@@ -153,6 +152,7 @@
     "reselect": "重新选择文件",
     "reupload": "重新上传 Skill 包",
     "reuploadShort": "重新上传",
+    "skillName": "技能名",
     "parsed": "已解析 SKILL.md",
     "parsedWithName": "已解析 SKILL.md · 英文名 {{name}}",
     "currentPackage": "当前 Skill 包",

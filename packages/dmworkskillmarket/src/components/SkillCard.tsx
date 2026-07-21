@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { Download, Eye, Pencil, Trash2 } from "lucide-react";
+import { Bot, Download, Eye, Pencil, Trash2 } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { formatCount } from "../utils/format";
@@ -87,8 +87,13 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   const isOwnerCard = Boolean(onEdit || onDelete);
   const descriptionTooltipId = `skill-card-desc-${skill.id}`;
   const displayName = skill.displayName || skill.name;
+  const hasSeparateCreator = Boolean(skill.creatorId && skill.ownerId && skill.creatorId !== skill.ownerId);
+  const creatorId = skill.creatorId || skill.ownerId;
   const creatorName = skill.creatorName || skill.ownerName;
-  const ownerLabel = `@${creatorName}`;
+  const isBotCreator = hasSeparateCreator && creatorId.endsWith("_bot");
+  const ownerLabel = hasSeparateCreator
+    ? (isBotCreator ? creatorName : `@${creatorName} · @${skill.ownerName}`)
+    : `@${skill.ownerName}`;
   const showOwner = skill.visibility !== "public";
   const ariaLabel = showOwner ? `${skill.name} ${ownerLabel}` : skill.name;
   const rawViewCount = skill.viewCount ?? 0;
@@ -117,6 +122,10 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       }),
     });
   }, [descriptionTooltip.visible, skill.description]);
+
+  function hideDescriptionTooltip() {
+    setDescriptionTooltip({ visible: false, style: {} });
+  }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     if (event.target instanceof HTMLElement && event.target.closest("button")) {
@@ -178,11 +187,16 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
             )}
           </div>
           <div className="skill-market-card__meta-row">
-            <span className="skill-market-card__name" title={skill.name}>{skill.name}</span>
+            <span className="skill-market-card__name" title={skill.name}>
+              {skill.name}
+            </span>
             {showOwner && (
               <>
-                <span className="skill-market-card__meta-separator">·</span>
-                <span className="skill-market-card__owner" title={ownerLabel}>{ownerLabel}</span>
+                {!isBotCreator && <span className="skill-market-card__meta-separator">·</span>}
+                <span className="skill-market-card__owner" title={ownerLabel}>
+                  {isBotCreator && <Bot className="skill-market-card__owner-bot-icon" size={13} aria-hidden="true" />}
+                  {ownerLabel}
+                </span>
               </>
             )}
           </div>
@@ -240,27 +254,50 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           </span>
         </div>
         <div className="skill-market-card__footer-actions">
-          {(onEdit || onDelete) && (
-            <div className="skill-market-card__actions">
+          {!isOwnerCard && onInstall && (
+            <button
+              type="button"
+              className="skill-market-card__install"
+              onClick={() => {
+                hideDescriptionTooltip();
+                onInstall(skill);
+              }}
+            >
+              {t("skillMarket.card.install")}
+            </button>
+          )}
+          {isOwnerCard && (
+            <>
               {onEdit && (
-                <button type="button" aria-label={t("skillMarket.card.editAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.edit")} onClick={() => onEdit(skill)}>
+                <button
+                  type="button"
+                  className="skill-market-card__action-button"
+                  aria-label={t("skillMarket.card.editAriaLabel", { values: { name: skill.name } })}
+                  title={t("skillMarket.common.edit")}
+                  onClick={() => {
+                    hideDescriptionTooltip();
+                    onEdit(skill);
+                  }}
+                >
                   <Pencil size={15} />
                 </button>
               )}
               {onDelete && (
-                <button type="button" className="is-danger" aria-label={t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.delete")} onClick={() => onDelete(skill)}>
+                <button
+                  type="button"
+                  className="skill-market-card__action-button is-danger"
+                  aria-label={t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } })}
+                  title={t("skillMarket.common.delete")}
+                  onClick={() => {
+                    hideDescriptionTooltip();
+                    onDelete(skill);
+                  }}
+                >
                   <Trash2 size={15} />
                 </button>
               )}
-            </div>
+            </>
           )}
-          <button
-            type="button"
-            className="skill-market-card__install"
-            onClick={() => onInstall?.(skill)}
-          >
-            {t("skillMarket.card.install")}
-          </button>
         </div>
       </div>
     </article>
