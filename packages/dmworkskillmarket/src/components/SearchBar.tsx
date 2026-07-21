@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Search, SlidersHorizontal } from "lucide-react";
+import { Check, Search, SlidersHorizontal, X } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import { getSkillTags } from "../api/skillApi";
 
@@ -111,6 +111,11 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       onSelectedTagsChange?.([]);
     }
 
+    function clearSearch() {
+      onChange("");
+      inputRef.current?.focus();
+    }
+
     return (
       <div ref={rootRef} className="skill-market-search">
         <div className="skill-market-search__control">
@@ -124,6 +129,17 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
             aria-label={placeholder}
             autoFocus={autoFocus}
           />
+          {value && (
+            <button
+              type="button"
+              className="skill-market-search__clear"
+              aria-label={t("skillMarket.filter.clear")}
+              title={t("skillMarket.filter.clear")}
+              onClick={clearSearch}
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          )}
           {tagEnabled && (
             <div className="skill-market-tag-filter">
               <button

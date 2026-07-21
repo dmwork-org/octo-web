@@ -62,10 +62,51 @@ describe("SkillCard", () => {
     expect(screen.queryByText("@我")).not.toBeInTheDocument();
   });
 
-  it("supports keyboard open and icon actions without opening the card", () => {
+  it("shows creator and owner when they are different", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "developer",
+          ownerName: "Developer",
+          creatorId: "bot-1",
+          creatorName: "CI Bot",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("@CI Bot · @Developer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper @CI Bot · @Developer" })).toBeInTheDocument();
+  });
+
+  it("uses a bot icon instead of @ for bot creators", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "developer",
+          ownerName: "Developer",
+          creatorId: "publisher_bot",
+          creatorName: "Publisher Bot",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Publisher Bot")).toBeInTheDocument();
+    expect(screen.queryByText("@Publisher Bot · @Developer")).not.toBeInTheDocument();
+    expect(screen.queryByText("@Developer")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper Publisher Bot" })).toBeInTheDocument();
+  });
+
+  it("supports keyboard open and exposed owner actions without opening the card", () => {
     const onOpen = vi.fn();
     const onEdit = vi.fn();
     const onDelete = vi.fn();
+    const onInstall = vi.fn();
 
     render(
       <SkillCard
@@ -74,11 +115,15 @@ describe("SkillCard", () => {
         onOpen={onOpen}
         onEdit={onEdit}
         onDelete={onDelete}
+        onInstall={onInstall}
       />,
     );
 
     fireEvent.keyDown(screen.getByRole("button", { name: "ci-helper @我" }), { key: "Enter" });
     expect(onOpen).toHaveBeenCalledWith(skill);
+
+    expect(screen.queryByRole("button", { name: "安装" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "更多" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "编辑 ci-helper" }));
     expect(onEdit).toHaveBeenCalledWith(skill);
@@ -91,6 +136,7 @@ describe("SkillCard", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "编辑 ci-helper" }), { key: "Enter" });
     fireEvent.keyDown(screen.getByRole("button", { name: "删除 ci-helper" }), { key: " " });
     expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onInstall).not.toHaveBeenCalled();
   });
 
   it("shows the full description tooltip only when the description is truncated", async () => {
@@ -106,6 +152,27 @@ describe("SkillCard", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent(skill.description);
 
     fireEvent.mouseLeave(description);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("hides the description tooltip before using owner actions", async () => {
+    render(
+      <SkillCard
+        skill={skill}
+        categories={categories}
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    );
+
+    const description = screen.getByText(skill.description);
+    Object.defineProperty(description, "scrollHeight", { configurable: true, value: 80 });
+    Object.defineProperty(description, "clientHeight", { configurable: true, value: 42 });
+
+    fireEvent.mouseEnter(description);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(skill.description);
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 ci-helper" }));
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 

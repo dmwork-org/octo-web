@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Box, FileArchive, Loader2, XCircle } from "lucide-react";
+import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag } from "../utils/format";
+import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 
 interface EditSkillModalProps {
@@ -40,6 +41,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     [categories],
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const iconInputRef = useRef<HTMLInputElement | null>(null);
   const tagFieldRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef(false);
   const [name, setName] = useState("");
@@ -158,6 +160,19 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       width: rect.width,
       maxHeight,
     });
+  }
+
+  function handleIconClick() {
+    iconInputRef.current?.click();
+  }
+
+  function handleIconInputClick(event: React.MouseEvent<HTMLInputElement>) {
+    event.currentTarget.value = "";
+  }
+
+  function handleIconFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const f = event.currentTarget.files?.[0];
+    if (f) setIconCropFile(f);
   }
 
   function requestClose() {
@@ -412,13 +427,22 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
               <span>{error}</span>
             </div>
           )}
-          <div className="skill-market-upload-file">
-            <FileArchive size={18} />
-            <div>
-              <strong>{uploadedFile?.name ?? skill?.fileName}</strong>
-              <span>{uploadedFile ? t("skillMarket.upload.newVersionParsedWithName", { values: { name } }) : t("skillMarket.upload.currentPackageWithName", { values: { name } })}</span>
+          <div className="skill-market-upload-file skill-market-upload-file--identity">
+            <span className="skill-market-upload-file__identity-icon" aria-hidden="true">
+              <Box size={16} />
+            </span>
+            <div className="skill-market-upload-file__identity">
+              <span>{t("skillMarket.upload.skillName")}</span>
+              <strong title={name}>{name}</strong>
             </div>
-            <button type="button" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reupload")}</button>
+            <button
+              type="button"
+              aria-label={t("skillMarket.upload.reupload")}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={14} aria-hidden="true" />
+              {t("skillMarket.upload.reuploadShort")}
+            </button>
             <input
               ref={fileInputRef}
               aria-label={t("skillMarket.upload.selectNewFileAriaLabel")}
@@ -478,22 +502,35 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
 
           <div className="skill-market-form__icon-row">
-            <label className="skill-market-icon-upload" title={t("skillMarket.form.uploadIcon")}>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/svg+xml"
-                onChange={(event) => {
-                  const f = event.target.files?.[0];
-                  if (f) setIconCropFile(f);
-                  event.target.value = "";
-                }}
-              />
+            <button
+              type="button"
+              className="skill-market-icon-upload"
+              title={t("skillMarket.form.uploadIcon")}
+              onClick={handleIconClick}
+              aria-label={t("skillMarket.form.uploadIcon")}
+            >
               {iconPreview ? (
                 <img src={iconPreview} alt="icon" />
+              ) : name ? (
+                <span
+                  className="skill-market-icon-upload__default"
+                  style={{ background: getSkillAvatarColor(name) }}
+                >
+                  {getSkillAvatarText(name)}
+                </span>
               ) : (
-                <Box size={24} />
+                <ImagePlus size={24} />
               )}
-            </label>
+            </button>
+            <input
+              ref={iconInputRef}
+              className="skill-market-icon-upload__input"
+              type="file"
+              accept="image/*"
+              multiple={false}
+              onClick={handleIconInputClick}
+              onChange={handleIconFileChange}
+            />
             <label>
               <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
               <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />

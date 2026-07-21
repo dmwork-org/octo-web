@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
+  ArrowDown,
   Bot,
   ChevronDown,
   PackageOpen,
@@ -25,11 +26,11 @@ import SkillDetailModal from "../components/SkillDetailModal";
 type TabId = "skills" | "mine";
 
 const TOAST_DURATION = 3000;
-const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string }> = [
+const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boolean }> = [
   { value: "comprehensive", labelKey: "skillMarket.sort.comprehensive" },
   { value: "latest", labelKey: "skillMarket.sort.latest" },
-  { value: "views", labelKey: "skillMarket.sort.views" },
-  { value: "downloads", labelKey: "skillMarket.sort.downloads" },
+  { value: "downloads", labelKey: "skillMarket.sort.downloads", descending: true },
+  { value: "views", labelKey: "skillMarket.sort.views", descending: true },
 ];
 
 export default function SkillListPage() {
@@ -237,50 +238,45 @@ export default function SkillListPage() {
         }
       >
         {!mine && (
-          <>
-            <CategoryChips
-              categories={list.categories}
-              activeId={list.categoryId}
-              onChange={list.setCategoryId}
-            />
-            <div
-              className="skill-market-sort"
-              aria-label={t("skillMarket.sort.ariaLabel")}
-            >
-              <span className="skill-market-sort__label">
-                {t("skillMarket.sort.label")}
-              </span>
-              <div className="skill-market-sort__options">
-                {SORT_OPTIONS.map((option, index) => (
-                  <React.Fragment key={option.value}>
-                    {index > 0 && (
-                      <span className="skill-market-sort__separator">·</span>
-                    )}
-                    <button
-                      type="button"
-                      className={
-                        sort === option.value ? "is-active" : undefined
-                      }
-                      onClick={() => setSort(option.value)}
-                    >
-                      {t(option.labelKey)}
-                    </button>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-          </>
+          <CategoryChips
+            categories={list.categories}
+            activeId={list.categoryId}
+            onChange={list.setCategoryId}
+          />
         )}
       </section>
 
       <main className="skill-market-content">
         {!list.loading && !list.error && (
-          <div className="skill-market-result-summary" aria-live="polite">
-            <span className="skill-market-result-summary__total">
+          <div className="skill-market-result-summary">
+            <span className="skill-market-result-summary__total" aria-live="polite">
               {t("skillMarket.list.totalCount", {
                 values: { count: list.total },
               })}
             </span>
+            {!mine && (
+              <div
+                className="skill-market-sort"
+                aria-label={t("skillMarket.sort.ariaLabel")}
+              >
+                <div className="skill-market-sort__options">
+                  {SORT_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={
+                        sort === option.value ? "is-active" : undefined
+                      }
+                      aria-pressed={sort === option.value}
+                      onClick={() => setSort(option.value)}
+                    >
+                      <span>{t(option.labelKey)}</span>
+                      {option.descending && <ArrowDown size={12} aria-hidden="true" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {list.loading && (

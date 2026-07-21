@@ -22,13 +22,13 @@ export default function IconCropModal({ visible, file, onCancel, onConfirm }: Ic
     }, "image/png");
   }
 
-  if (!file) return null;
-
   return (
     <WKModal
       title={t("skillMarket.crop.title")}
       visible={visible}
       onCancel={onCancel}
+      width={460}
+      zIndex={1100}
       className="skill-market-crop-modal"
       footer={
         <div className="skill-market-crop-modal__footer">
@@ -38,28 +38,32 @@ export default function IconCropModal({ visible, file, onCancel, onConfirm }: Ic
       }
     >
       <div className="skill-market-crop-editor">
-        <AvatarEditor
-          ref={editorRef}
-          image={file}
-          width={200}
-          height={200}
-          border={40}
-          borderRadius={16}
-          color={[0, 0, 0, 0.4]}
-          scale={scale}
-          rotate={0}
-        />
-        <label className="skill-market-crop-scale">
-          <span>{t("skillMarket.crop.scale")}</span>
-          <input
-            type="range"
-            min="1"
-            max="3"
-            step="0.05"
-            value={scale}
-            onChange={(e) => setScale(Number(e.target.value))}
-          />
-        </label>
+        {file && (
+          <>
+            <AvatarEditor
+              ref={editorRef}
+              image={file}
+              width={200}
+              height={200}
+              border={40}
+              borderRadius={16}
+              color={[0, 0, 0, 0.4]}
+              scale={scale}
+              rotate={0}
+            />
+            <label className="skill-market-crop-scale">
+              <span>{t("skillMarket.crop.scale")}</span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.05"
+                value={scale}
+                onChange={(e) => setScale(Number(e.target.value))}
+              />
+            </label>
+          </>
+        )}
       </div>
     </WKModal>
   );

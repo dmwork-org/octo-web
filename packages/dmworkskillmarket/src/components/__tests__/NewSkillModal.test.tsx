@@ -12,6 +12,17 @@ const categories: Category[] = [
 ];
 
 vi.mock("../../api/skillApi");
+vi.mock("react-avatar-editor", async () => {
+  const React = await import("react");
+  const AvatarEditor = React.forwardRef((_props: unknown, ref: React.ForwardedRef<{ getImageScaledToCanvas: () => HTMLCanvasElement }>) => {
+    React.useImperativeHandle(ref, () => ({
+      getImageScaledToCanvas: () => document.createElement("canvas"),
+    }));
+    return React.createElement("canvas", { "data-testid": "avatar-editor" });
+  });
+  AvatarEditor.displayName = "AvatarEditorMock";
+  return { default: AvatarEditor };
+});
 
 const selectZipLabel = /选择 Skill 包文件|skillMarket\.upload\.selectFileAriaLabel/;
 const displayNamePlaceholder = /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
@@ -115,6 +126,33 @@ describe("NewSkillModal", () => {
     });
     expect(onCreated).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("opens the hidden icon file input and shows the crop dialog after selecting an image", async () => {
+    const { container } = render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [skillFile()] },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("skill-pack.skill")).toBeInTheDocument();
+    });
+
+    const iconInput = container.querySelector<HTMLInputElement>(".skill-market-icon-upload__input");
+    expect(iconInput).toBeTruthy();
+    const clickSpy = vi.spyOn(iconInput!, "click").mockImplementation(() => undefined);
+
+    fireEvent.click(screen.getByRole("button", { name: /上传图标|skillMarket\.form\.uploadIcon/ }));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(iconInput!, {
+      target: { files: [new File(["png"], "icon.png", { type: "image/png" })] },
+    });
+
+    expect(screen.getByRole("dialog", { name: /裁剪图标|skillMarket\.crop\.title/ })).toBeInTheDocument();
   });
 
   it("disables create until required fields are filled", async () => {
