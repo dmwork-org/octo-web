@@ -70,8 +70,14 @@ import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
-import { isMessageReactionEnabled } from "./Service/featureFlags";
-import { reactionPickerOverlay, enablePointerTracking } from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
+import { canWriteMessageReaction } from "./Service/featureFlags";
+import {
+  disablePointerTracking,
+  enablePointerTracking,
+  reactionPickerOverlay,
+} from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
+import { messageReactionController } from "./features/messageReaction/runtime";
+import { isMessageReactionChannelSupported } from "./features/messageReaction/controller";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast } from "@douyinfe/semi-ui";
 import { DefaultEmojiService } from "./Service/EmojiService";
@@ -894,35 +900,49 @@ export default class BaseModule implements IModule {
 
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reaction",
-      (message) => {
-        // feature flag gate（默认关，详见 Service/featureFlags.ts）。
-        if (!isMessageReactionEnabled()) {
+      (message, context) => {
+        if (
+          !canWriteMessageReaction() ||
+          !isMessageReactionChannelSupported(message.channel.channelType)
+        ) {
           return null;
         }
-        // demo 阶段 ReactionSlot 只接入了 TextCell（纯文本消息），右键入口同口径
-        // 仅放行 text，避免在 RichText 等未渲染 summary 的消息上选表情后 store
-        // 更新却无处回显。放开更多消息类型时，需同步在对应 cell 渲染 ReactionSlot。
-        if (message.contentType !== MessageContentType.text) {
+        // 服务端本期只接受纯文本；尚未拿到服务端 message_id 的本地待发送消息也不展示。
+        if (message.contentType !== MessageContentType.text || !message.messageID) {
           return null;
         }
         return {
           title: t("base.module.contextMenus.react"),
           onClick: () => {
-            reactionPickerOverlay.openAtLastPointer(
-              message.messageID || message.clientMsgNo
-            );
+            reactionPickerOverlay.openAtLastPointer({
+              messageId: message.messageID,
+              selectedKeys: messageReactionController.selectedKeys(message),
+              onSelect: (emoji) => {
+                void messageReactionController.toggle(
+                  message,
+                  emoji,
+                  context.channel()
+                );
+              },
+            });
           },
         };
       },
       1200
     );
 
-    // 仅在 feature flag 打开时安装 reaction picker 的全局指针追踪（右键菜单项
-    // onClick 拿不到坐标，需靠它定位 picker）。flag 关时不安装 → 生产会话零全局
-    // 副作用，兑现「flag OFF = 运行时 no-op」。DEV 改 localStorage 后刷新会重跑此处。
-    if (isMessageReactionEnabled()) {
-      enablePointerTracking();
-    }
+    // appconfig 可在运行时切换 write：开放时启用右键定位，收紧时立刻拆除监听并
+    // 关闭已打开的 picker。BaseModule 与应用同生命周期，因此只需注册一次。
+    const syncReactionPointerTracking = () => {
+      if (canWriteMessageReaction()) {
+        enablePointerTracking();
+        return;
+      }
+      disablePointerTracking();
+      reactionPickerOverlay.close();
+    };
+    syncReactionPointerTracking();
+    WKApp.remoteConfig.addConfigChangeListener(syncReactionPointerTracking);
 
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.forward",
