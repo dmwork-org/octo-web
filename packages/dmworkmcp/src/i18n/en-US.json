@@ -87,6 +87,7 @@
     "clear": "Clear"
   },
   "card": {
+    "officialPublisher": "Official publisher",
     "matchReason": {
       "name": "Matched name",
       "description": "Matched summary",

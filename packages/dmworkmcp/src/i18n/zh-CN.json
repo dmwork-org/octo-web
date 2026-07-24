@@ -87,6 +87,7 @@
     "clear": "清空"
   },
   "card": {
+    "officialPublisher": "官方发布",
     "matchReason": {
       "name": "命中名称",
       "description": "命中简介",
