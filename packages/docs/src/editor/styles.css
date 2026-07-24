@@ -4016,3 +4016,385 @@ div:has(> .octo-bubble-menu),
 div:has(> .octo-link-bubble) {
   z-index: 50;
 }
+
+/* ── New-HTML (embedded bot DM) flow ──
+   Components consume the shared semantic theme tokens; layout remains on the 4px grid. */
+.octo-html-create-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: transparent;
+}
+.octo-html-create-modal::backdrop {
+  background: color-mix(in srgb, var(--wk-text-primary) 36%, transparent);
+}
+/* UI-SPEC §4.10: legal Modal width 640, radius 12px, min-height 232. */
+.octo-html-create-modal {
+  width: 100%;
+  max-width: 640px;
+  min-height: 232px;
+  display: flex;
+  flex-direction: column;
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  border: none;
+  padding: 0;
+  border-radius: 12px;
+  box-shadow: var(--wk-shadow-lg);
+  box-sizing: border-box;
+}
+/* Header 56px, 16px padding, H3 16/24 semibold (UI-SPEC §4.10 / §2.2). */
+.octo-html-create-header {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--wk-border-default);
+}
+.octo-html-create-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--wk-brand-primary);
+}
+.octo-html-create-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+.octo-html-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-html-create-label {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--wk-text-primary);
+}
+/* Composer-like textarea: 8px radius (NOT capsule), Alpha border, focus ring via Alpha. */
+.octo-html-create-textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-strong);
+  border-radius: 8px;
+}
+.octo-html-create-textarea::placeholder {
+  color: var(--wk-text-tertiary);
+}
+.octo-html-create-textarea:focus-visible {
+  outline: none;
+  border-color: var(--wk-text-tertiary);
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
+}
+.octo-html-create-preview {
+  min-height: 320px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+.octo-html-create-counter {
+  align-self: flex-end;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-text-tertiary);
+}
+.octo-html-create-hint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--wk-text-secondary);
+}
+.octo-html-create-error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-color-danger);
+}
+.octo-html-create-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--wk-color-danger);
+}
+/* Bot radio list: 8px card radius items, selected uses AI-purple alpha (a bot = AI accent). */
+.octo-html-create-bot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.octo-html-create-bot-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.octo-html-create-bot-item:hover {
+  background: var(--wk-bg-hover);
+}
+.octo-html-create-bot-item:has(input:checked) {
+  background: var(--wk-bg-selected);
+  border-color: var(--wk-border-glow);
+}
+.octo-html-create-bot-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.octo-html-create-bot-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--wk-text-primary);
+}
+.octo-html-create-bot-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-text-secondary);
+}
+.octo-html-create-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-html-create-add-files {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: 9999px;
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.octo-html-create-add-files:hover {
+  background: var(--wk-bg-hover);
+}
+.octo-html-create-add-files:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
+}
+.octo-html-create-add-files-icon {
+  flex: 0 0 auto;
+}
+.octo-html-create-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.octo-html-create-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wk-text-primary);
+}
+.octo-html-create-file-size {
+  flex: 0 0 auto;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+.octo-html-create-file-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+}
+.octo-html-create-file-remove:hover {
+  background: var(--wk-border-default);
+  color: var(--wk-text-primary);
+}
+/* Footer actions use regular 32px buttons so every action reads as a button, not plain text. */
+.octo-html-create-footer {
+  margin-top: auto;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid var(--wk-border-default);
+}
+.octo-html-create-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.octo-html-create-prerequisite-hint {
+  margin: 0;
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: right;
+}
+.octo-html-create-footer .octo-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: 9999px;
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.octo-html-create-footer .octo-tb-btn:hover:not(:disabled) {
+  background: var(--wk-bg-hover);
+}
+.octo-html-create-footer .octo-tb-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
+}
+/* Primary submit: opaque brand black, white text, full-round (UI-SPEC §4.1). */
+.octo-html-create-footer .octo-html-create-submit {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+  padding: 0 16px;
+}
+.octo-html-create-submit:hover:not(:disabled) {
+  background: var(--wk-brand-primary-hover);
+  border-color: var(--wk-brand-primary-hover);
+}
+.octo-html-create-submit:disabled {
+  background: var(--wk-bg-active);
+  border-color: transparent;
+  color: var(--wk-text-tertiary);
+  cursor: not-allowed;
+}
+
+/* ── Docs right-pane bot chat shell (plan Task 5) ── */
+.octo-docs-bot-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--wk-bg-surface);
+}
+.octo-docs-bot-chat-header {
+  flex: 0 0 auto;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--wk-border-default);
+}
+.octo-docs-bot-chat-avatar {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wk-text-on-brand);
+  background: var(--wk-color-accent);
+}
+.octo-docs-bot-chat-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.octo-docs-bot-chat-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--wk-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-docs-bot-chat-context {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-color-accent);
+}
+.octo-docs-bot-chat-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+}
+.octo-docs-bot-chat-close:hover {
+  background: var(--wk-border-default);
+  color: var(--wk-text-primary);
+}
+.octo-docs-bot-chat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.octo-docs-bot-chat-status {
+  padding: 8px 16px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-text-secondary);
+}
+.octo-docs-bot-chat-status[data-state='failed'] {
+  color: var(--wk-color-danger);
+}

@@ -117,6 +117,8 @@ import {
 } from "./Messages/ThreadCreated";
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
+import { DocumentShareCardContent } from "./Messages/DocumentShareCard/DocumentShareCardContent";
+import { DocumentShareCardCell } from "./Messages/DocumentShareCard";
 import { parseThreadChannelId } from "./Service/Thread";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 import {
@@ -315,6 +317,8 @@ export default class BaseModule implements IModule {
             return ApproveGroupMemberCell;
           case 15: // 智能总结卡片
             return SummaryCardCell;
+          case MessageContentTypeConst.docShareCard: // 文档转发卡片
+            return DocumentShareCardCell;
           case 98:
             return SignalMessageCell;
           default:
@@ -390,6 +394,10 @@ export default class BaseModule implements IModule {
     );
     // 智能总结卡片
     registerCurrentImMessageContent(15, () => new SummaryCardContent());
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.docShareCard,
+      () => new DocumentShareCardContent()
+    );
 
     // 富文本（图文混排）
     registerCurrentImMessageContent(
