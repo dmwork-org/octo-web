@@ -54,6 +54,12 @@ import MessageInput, {
   EditorContentBlock,
 } from "../MessageInput";
 import { SendResultDetail } from "../MessageInput/sendFlow";
+import {
+  tryConsumeInitialCompose,
+  type ComposeHost,
+  type InitialCompose,
+  type InitialComposeState,
+} from "./initialCompose";
 import { BotCommand } from "../SlashCommandMenu";
 import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
@@ -117,6 +123,7 @@ import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPrev
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
+  finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "./richTextMixedSend";
 import {
@@ -416,6 +423,17 @@ export interface ConversationProps {
   inputNotice?: React.ReactNode;
   /** 当前会话发送完成后的回调。 */
   onMessageSent?: () => void;
+  /**
+   * 一次性初始编排（plan Task 4）：挂载/就绪后按 restoreDraft → addPendingAttachments → send
+   * 顺序装入并可自动发送恰好一次。同一 requestId 只消费一次；已有草稿/待发送附件则拒绝覆盖。
+   */
+  initialCompose?: InitialCompose;
+  /** 初始编排状态变化回调（prepared/sent/failed）。 */
+  onInitialComposeStateChange?: (
+    requestId: string,
+    state: InitialComposeState,
+    reason?: string
+  ) => void;
   /** 当前正在预览的文件消息 ID（用于文件卡片激活态） */
   activePreviewMessageId?: string | null;
 }
@@ -475,7 +493,12 @@ export class Conversation
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
-  ) => void;
+  ) => void | Promise<void>;
+  // plan Task 4: instance-level one-shot guard so a re-render / remount / prop re-pass of the
+  // SAME requestId never re-loads or re-sends the initial compose (§5 risk 1).
+  private _consumedComposeIds: Set<string> = new Set();
+  private _initialComposeGeneration = 0;
+  private _initialComposeMounted = false;
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
@@ -1265,10 +1288,10 @@ export class Conversation
     return this._messageInputContext?.getAttachmentFiles() || [];
   }
 
-  addPendingAttachments(
+  async addPendingAttachments(
     files: File[],
     source: "paste" | "upload" = "upload"
-  ): string | null {
+  ): Promise<string | null> {
     const BLOCKED_EXTENSIONS = [
       "exe",
       "bat",
@@ -1322,7 +1345,7 @@ export class Conversation
 
     // 调用编辑器的 addAttachment 方法插入附件节点
     if (this._addAttachmentFn) {
-      this._addAttachmentFn(incoming, source);
+      await this._addAttachmentFn(incoming, source);
     }
     return null;
   }
@@ -1335,6 +1358,47 @@ export class Conversation
   clearPendingAttachments(): void {
     // 附件现在由编辑器管理，清空编辑器内容时会自动清除
     // 此方法保留以兼容接口
+  }
+
+  /**
+   * 尝试消费一次性 initialCompose（plan Task 4）。
+   *
+   * 在 MessageInput 就绪（onContext 设好 _messageInputContext / _addAttachmentFn）后、以及收到新
+   * requestId 的 componentDidUpdate 中调用。真正的原子装入 + 去重逻辑在 initialCompose.ts 里，
+   * 这里只把 Conversation 的 MessageInput/附件能力适配成 ComposeHost。绝不绕过 MessageInput 直接 sendMessage。
+   */
+  private tryConsumeInitialCompose(): void {
+    const compose = this.props.initialCompose;
+    if (!compose) return;
+    if (this._consumedComposeIds.has(compose.requestId)) return;
+    // 未就绪（onContext 尚未回调）时不消费，等待下一次 ready-retry。
+    if (!this._messageInputContext) return;
+
+    const generation = this._initialComposeGeneration;
+    const channelKey = `${this.props.channel.channelID}:${this.props.channel.channelType}`;
+    const isLive = () =>
+      this._initialComposeMounted &&
+      generation === this._initialComposeGeneration &&
+      this.props.initialCompose?.requestId === compose.requestId &&
+      `${this.props.channel.channelID}:${this.props.channel.channelType}` === channelKey;
+    const host: ComposeHost = {
+      isReady: () => !!this._messageInputContext,
+      isLive,
+      currentDraftText: () => this._messageInputContext?.text() ?? "",
+      pendingAttachmentCount: () => this.getPendingAttachments().length,
+      restoreDraft: (text: string) => this._messageInputContext?.restoreDraft(text),
+      // 复用唯一附件权威校验（扩展名/100MB 总量），失败返回错误描述。
+      addPendingAttachments: (files: File[]) => this.addPendingAttachments(files),
+      // 经 MessageInput 发送（与回车发送同一路径），保留上传/ACK/失败保留语义。
+      send: () => this._messageInputContext?.send(),
+    };
+
+    void tryConsumeInitialCompose(
+      compose,
+      host,
+      this._consumedComposeIds,
+      this.props.onInitialComposeStateChange
+    );
   }
 
   channel(): Channel {
@@ -1407,6 +1471,7 @@ export class Conversation
   }
 
   componentDidMount() {
+    this._initialComposeMounted = true;
     const { channel, onContext } = this.props;
     if (onContext) {
       onContext(this);
@@ -1505,7 +1570,26 @@ export class Conversation
     this.vm.markUnread();
   }
 
+  componentDidUpdate(prevProps: ConversationProps) {
+    // 收到新的 initialCompose.requestId 时再次尝试消费（plan Task 4）。ready 前只记录 pending：
+    // tryConsumeInitialCompose 内部已判断 _messageInputContext 是否 ready 与 requestId 是否已消费，
+    // 所以相同 requestId 的重渲染不会重发。
+    const prev = prevProps.initialCompose?.requestId;
+    const next = this.props.initialCompose?.requestId;
+    const channelChanged =
+      prevProps.channel.channelID !== this.props.channel.channelID ||
+      prevProps.channel.channelType !== this.props.channel.channelType;
+    if (channelChanged || prev !== next) {
+      this._initialComposeGeneration += 1;
+    }
+    if (next && next !== prev) {
+      this.tryConsumeInitialCompose();
+    }
+  }
+
   componentWillUnmount() {
+    this._initialComposeMounted = false;
+    this._initialComposeGeneration += 1;
     if (this._matterSendMessageHandler) {
       WKApp.mittBus.off(
         "wk:matter-created-from-input",
@@ -2533,7 +2617,7 @@ export class Conversation
     if (this._dragDepth === 0) this.dragEnd();
   }
 
-  private handleConversationDrop(event: React.DragEvent): void {
+  private async handleConversationDrop(event: React.DragEvent): Promise<void> {
     // 无论拖入的是什么，drop 都强制复位计数与遮罩，杜绝遮罩残留。
     this._dragDepth = 0;
     this.dragEnd();
@@ -2541,7 +2625,7 @@ export class Conversation
     event.preventDefault();
 
     const items = Array.from(event.dataTransfer.items);
-    const files = Array.from(event.dataTransfer.files);
+    const files: File[] = Array.from(event.dataTransfer.files);
     if (files.length === 0) return; // types 声称有文件但实际取不到，安全兜底
     const hasDirectory = items.length
       ? items.some((it) => {
@@ -2553,7 +2637,7 @@ export class Conversation
       Toast.error(t("base.conversation.upload.folderUnsupported"));
       return;
     }
-    const err = this.addPendingAttachments(files);
+    const err = await this.addPendingAttachments(files);
     if (err) Toast.error(err);
   }
 
@@ -2886,13 +2970,13 @@ export class Conversation
                         addFn: (
                           files: File[],
                           source?: "paste" | "upload"
-                        ) => void
+                        ) => void | Promise<void>
                       ) => {
                         // 存储 addAttachment 方法，供外部调用
                         this._addAttachmentFn = addFn;
                       }}
-                      onAddPendingAttachments={(files, source) => {
-                        const err = this.addPendingAttachments(files, source);
+                      onAddPendingAttachments={async (files, source) => {
+                        const err = await this.addPendingAttachments(files, source);
                         if (err) {
                           Toast.error(err);
                           return false;
@@ -2953,6 +3037,9 @@ export class Conversation
                           ctx.insertText(this._pendingInsertText);
                           this._pendingInsertText = undefined;
                         }
+                        // MessageInput 就绪（context + _addAttachmentFn 已设）后才尝试一次性初始编排，
+                        // 避免在 componentDidMount 时 onContext / _addAttachmentFn 尚未 ready 就发送（plan Task 4）。
+                        this.tryConsumeInitialCompose();
                       }}
                       toolbar={this.chatToolbarUI()}
                       context={this}
@@ -3286,11 +3373,12 @@ export class Conversation
                               remoteDraftAtSend
                             );
                           }
-                          this.props.onMessageSent?.();
-                          return {
-                            editorConsumed: mixedSent,
+                          return finishRichTextMixedSend(
+                            anyMessageSent,
+                            mixedSent,
                             consumedTopIds,
-                          };
+                            this.props.onMessageSent
+                          );
                         }
 
                         for (const { id, file } of topFilesToSend) {
@@ -3364,7 +3452,6 @@ export class Conversation
                                 remoteDraftAtSend
                               );
                             }
-                            this.props.onMessageSent?.();
                             // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
                             // 第二轮)：
                             //   • editorConsumed=mixedSent：混排失败时保留编辑器
@@ -3372,10 +3459,12 @@ export class Conversation
                             //   • consumedTopIds：本次已发出的顶部附件 id。即使
                             //     混排失败，这些文件也已发出，让 MessageInput 只
                             //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
-                            return {
-                              editorConsumed: mixedSent,
+                            return finishRichTextMixedSend(
+                              anyMessageSent,
+                              mixedSent,
                               consumedTopIds,
-                            };
+                              this.props.onMessageSent
+                            );
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
@@ -3444,7 +3533,7 @@ export class Conversation
                             remoteDraftAtSend
                           );
                         }
-                        this.props.onMessageSent?.();
+                        if (anyMessageSent) this.props.onMessageSent?.();
                         // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
                         // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
                         // 保留草稿可重试。
