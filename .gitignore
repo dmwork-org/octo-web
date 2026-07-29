@@ -36,6 +36,9 @@ yarn-error.log*
 # turbo
 .turbo
 
+# CI-only checkout of closed-source enterprise modules — never commit
+/.enterprise/
+
 # generated i18n scan reports (baseline/config stay tracked)
 .i18n/reports/
 
