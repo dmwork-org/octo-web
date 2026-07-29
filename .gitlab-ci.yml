@@ -20,8 +20,8 @@ variables:
   PROD_ENV: prod
   ENTERPRISE_MODULES_REPO_URL: "git@codex.mlamp.cn:dmwork/octo-web-enterprise/octo-enterprise-modules.git"
   ENTERPRISE_LOOP_REPO_URL: "git@codex.mlamp.cn:dmwork/octo-web-enterprise/octo-loop-module.git"
-  ENTERPRISE_MODULES_REF: "main"
-  ENTERPRISE_LOOP_REF: "main"
+  ENTERPRISE_MODULES_REF: "test"
+  ENTERPRISE_LOOP_REF: "test"
   ENTERPRISE_MODULES_ENTRY_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/src/loop.ts"
   ENTERPRISE_HTML_HEAD_PATH_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/html/head.html"
   ENTERPRISE_FS_ALLOW_IN_IMAGE: "/app:/app/.enterprise/octo-enterprise-modules:/app/.enterprise/octo-loop-module:/app/apps/web/node_modules"
