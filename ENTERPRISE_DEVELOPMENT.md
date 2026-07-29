@@ -112,7 +112,7 @@ GitLab test/tag 打包已经按 Docker build context 限制做了专门处理：
 默认策略：
 
 - `test`：`ENABLE_ENTERPRISE_MODULES=true`，默认使用 `ENTERPRISE_MODULES_REF=test` 和 `ENTERPRISE_LOOP_REF=test`。`octo-enterprise-modules/test` 与 `octo-loop-module/test` 承载企业模块测试环境内容；日常迭代先进入私有仓 `test` 分支，验证通过后再进入各自稳定分支。
-- `prod tag`：`package_tag` 是手动 job。推 tag 后需要在 tag pipeline 里手动运行 `package_tag`，并显式设置 `ENTERPRISE_MODULES_REF` 和 `ENTERPRISE_LOOP_REF` 为企业仓已确认的 tag 或 commit SHA；如果两个私有仓 ref 仍是 `main` 会直接失败。确需临时用 main 时，必须显式设置 `ALLOW_ENTERPRISE_MAIN_FOR_TAG=true`。
+- `prod tag`：`package_tag` 是手动 job。当前暂时沿用全局默认 `ENTERPRISE_MODULES_REF=main` 和 `ENTERPRISE_LOOP_REF=main`；企业仓 tag/commit 自动读取策略后续单独设计。
 - `develop`：默认不启用企业模块，避免无关分支依赖私有仓。
 
 ## Test 与生产发布流程
@@ -140,9 +140,9 @@ test 环境 =
 
 ### 生产 tag
 
-生产 tag 构建不能默认取企业仓 `main`。原因是 `main` 会继续变化，同一个 `octo-web` tag 在不同时间重跑可能得到不同产物。
+当前生产 tag 构建暂时默认取企业仓 `main`，用于保持现有发布行为。该策略不是长期方案，因为 `main` 会继续变化，同一个 `octo-web` tag 在不同时间重跑可能得到不同产物。
 
-生产发布时应在 `package_tag` 手动 job 中指定：
+后续应单独设计生产企业模块版本策略，例如在 `package_tag` 手动 job 中指定：
 
 ```text
 ENTERPRISE_MODULES_REF=<octo-enterprise-modules 的 tag 或 commit SHA>
