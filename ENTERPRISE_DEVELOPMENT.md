@@ -117,9 +117,8 @@ GitLab test/tag 打包已经按 Docker build context 限制做了专门处理：
 
 私有仓认证：
 
-- 优先使用 `ENTERPRISE_REPO_TOKEN` clone `codex.mlamp.cn/dmwork/octo-web-enterprise/*`。
-- 如果没有 `ENTERPRISE_REPO_TOKEN`，会尝试复用 `CODE_TOKEN`。
-- 如果两个 token 都没有，则退回 SSH clone URL，要求 runner 已配置访问 `git@codex.mlamp.cn` 的 deploy key。
+- 使用组级 `ENTERPRISE_TOKEN` 读取 `codex.mlamp.cn/dmwork/octo-web-enterprise/*`，token 需要 `read_repository` 权限。
+- 不复用 `CODE_TOKEN` 读取企业仓，避免 deploy-files token 权限不足时在 clone 阶段失败。
 
 私有仓 checkout 方式需要按实际代码托管确认。如果使用 GitHub Actions 且两个私有仓是标准 `owner/repo` 形式，可以用：
 
@@ -130,14 +129,14 @@ GitLab test/tag 打包已经按 Docker build context 限制做了专门处理：
   with:
     repository: <owner>/<octo-enterprise-modules-repo>
     path: octo-enterprise-modules
-    token: ${{ secrets.ENTERPRISE_REPO_TOKEN }}
+    token: ${{ secrets.ENTERPRISE_TOKEN }}
     ref: main
 
 - uses: actions/checkout@v4
   with:
     repository: <owner>/<octo-loop-module-repo>
     path: octo-loop-module
-    token: ${{ secrets.ENTERPRISE_REPO_TOKEN }}
+    token: ${{ secrets.ENTERPRISE_TOKEN }}
     ref: main
 ```
 

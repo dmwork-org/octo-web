@@ -178,9 +178,9 @@ argocd_sync:
           exit 1
         fi
 
-        ENTERPRISE_REPO_AUTH_TOKEN="${ENTERPRISE_REPO_TOKEN:-}"
+        ENTERPRISE_REPO_AUTH_TOKEN="${ENTERPRISE_TOKEN:-}"
         if [ -z "$ENTERPRISE_REPO_AUTH_TOKEN" ]; then
-          echo "Missing ENTERPRISE_REPO_TOKEN. CI cannot fetch private enterprise modules with CODE_TOKEN."
+          echo "Missing ENTERPRISE_TOKEN. CI cannot fetch private enterprise modules."
           exit 1
         fi
         rm -rf .enterprise
