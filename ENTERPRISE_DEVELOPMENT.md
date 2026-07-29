@@ -111,9 +111,47 @@ GitLab test/tag 打包已经按 Docker build context 限制做了专门处理：
 
 默认策略：
 
-- `test`：`ENABLE_ENTERPRISE_MODULES=true`，默认使用 `ENTERPRISE_MODULES_REF=main` 和 `ENTERPRISE_LOOP_REF=main`，保证 #1145 同步后的第一次 test 部署能恢复 loop/personal。
-- `prod tag`：`package_tag` 是手动 job。推 tag 后需要在 tag pipeline 里手动运行 `package_tag`，并显式设置 `ENTERPRISE_MODULES_REF` 和 `ENTERPRISE_LOOP_REF` 为 tag 或 commit SHA；如果两个私有仓 ref 仍是 `main` 会直接失败。确需临时用 main 时，必须显式设置 `ALLOW_ENTERPRISE_MAIN_FOR_TAG=true`。
+- `test`：`ENABLE_ENTERPRISE_MODULES=true`，默认使用 `ENTERPRISE_MODULES_REF=test` 和 `ENTERPRISE_LOOP_REF=test`。`octo-enterprise-modules/test` 与 `octo-loop-module/test` 承载企业模块测试环境内容；日常迭代先进入私有仓 `test` 分支，验证通过后再进入各自稳定分支。
+- `prod tag`：`package_tag` 是手动 job。推 tag 后需要在 tag pipeline 里手动运行 `package_tag`，并显式设置 `ENTERPRISE_MODULES_REF` 和 `ENTERPRISE_LOOP_REF` 为企业仓已确认的 tag 或 commit SHA；如果两个私有仓 ref 仍是 `main` 会直接失败。确需临时用 main 时，必须显式设置 `ALLOW_ENTERPRISE_MAIN_FOR_TAG=true`。
 - `develop`：默认不启用企业模块，避免无关分支依赖私有仓。
+
+## Test 与生产发布流程
+
+企业能力由多个仓共同装配，发布时需要明确每个仓的来源：
+
+```text
+test 环境 =
+  octo-web/test
++ octo-enterprise-modules/test
++ octo-loop-module/test
+
+生产包 =
+  octo-web tag
++ octo-enterprise-modules tag 或 commit SHA
++ octo-loop-module tag 或 commit SHA
+```
+
+### Test 环境
+
+- `octo-web/test` 默认拉取 `octo-enterprise-modules/test` 和 `octo-loop-module/test`。
+- `octo-loop-module` 的日常业务迭代先合入自己的 `test` 分支，测试环境随 `octo-web/test` 部署装配验证。
+- `octo-enterprise-modules/test` 只维护企业入口聚合；当前本轮默认入口仍是 `src/loop.ts`，不要把 docs 装配混入 loop/personal 验证。
+- 当企业模块测试通过并准备上线时，再按各私有仓自己的发布策略进入稳定分支或打 tag。
+
+### 生产 tag
+
+生产 tag 构建不能默认取企业仓 `main`。原因是 `main` 会继续变化，同一个 `octo-web` tag 在不同时间重跑可能得到不同产物。
+
+生产发布时应在 `package_tag` 手动 job 中指定：
+
+```text
+ENTERPRISE_MODULES_REF=<octo-enterprise-modules 的 tag 或 commit SHA>
+ENTERPRISE_LOOP_REF=<octo-loop-module 的 tag 或 commit SHA>
+```
+
+这两个 ref 不要求和 `octo-web` tag 同名，也不要求彼此同名。它们只需要是各自仓库里已确认可发布的固定快照。
+
+如果后续要减少手工输入，可以扩展 CI：生产未显式配置 ref 时自动读取各企业仓最新 tag；显式配置时优先使用配置值。但无论如何，生产默认不应使用 `main`。
 
 私有仓认证：
 
