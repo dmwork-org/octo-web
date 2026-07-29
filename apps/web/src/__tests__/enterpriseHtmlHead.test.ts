@@ -62,6 +62,7 @@ describe("enterprise modules slot", () => {
     const resolveId = plugin.resolveId as (id: string) => string | undefined;
     const load = plugin.load as (id: string) => string | undefined;
 
+    expect(plugin.config?.({}, { command: "build", mode: "production" })).toBeUndefined();
     const resolved = resolveId("virtual:octo-enterprise-modules");
     expect(resolved).toBe("\0virtual:octo-enterprise-modules");
     expect(load(resolved!)).toContain("registerEnterpriseModules");
@@ -143,6 +144,44 @@ describe("enterprise modules slot", () => {
         },
       },
     });
+  });
+
+  it("dedupes host packages only when enterprise assembly is enabled", () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-root-"));
+    const entryDir = path.join(rootDir, "enterprise");
+    const entry = path.join(entryDir, "loop.ts");
+    fs.mkdirSync(entryDir, { recursive: true });
+    fs.writeFileSync(entry, "export const marker = true", "utf-8");
+
+    const plugin = enterpriseModulesPlugin(entry, rootDir);
+    const config = plugin.config?.({}, { command: "build", mode: "production" }) as {
+      resolve?: { dedupe?: string[] };
+    };
+
+    expect(config.resolve?.dedupe).toContain("lucide-react");
+    expect(config.resolve?.dedupe).toContain("@tiptap/react");
+  });
+
+  it("aliases @octo/base from the monorepo root when enterprise assembly is enabled", () => {
+    const rootDir = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-workspace-")),
+      "apps/web",
+    );
+    const baseEntry = path.resolve(rootDir, "../../packages/dmworkbase/src/index.tsx");
+    const entryDir = path.join(rootDir, "enterprise");
+    const entry = path.join(entryDir, "loop.ts");
+    fs.mkdirSync(path.dirname(baseEntry), { recursive: true });
+    fs.mkdirSync(entryDir, { recursive: true });
+    fs.writeFileSync(baseEntry, "export const marker = true", "utf-8");
+    fs.writeFileSync(entry, "export const marker = true", "utf-8");
+
+    const plugin = enterpriseModulesPlugin(entry, rootDir);
+    const config = plugin.config?.({}, { command: "build", mode: "production" }) as {
+      resolve?: { alias?: Array<{ find: RegExp; replacement: string }> };
+    };
+
+    const baseAlias = config.resolve?.alias?.find((alias) => alias.find.test("@octo/base"));
+    expect(baseAlias?.replacement).toBe(baseEntry);
   });
 
   it("keeps the monorepo workspace root allowed during enterprise dev", () => {

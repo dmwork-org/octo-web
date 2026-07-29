@@ -7,6 +7,7 @@
     "dev:all": "turbo run dev --parallel",
     "dev-ele": "turbo run dev-ele --parallel",
     "build": "turbo run build",
+    "build:enterprise": "bash scripts/ci-enterprise-build.sh",
     "build-ele": "turbo run build && turbo run build-ele",
     "build-ele:mac": "turbo run build && turbo run build-ele:mac",
     "build-ele:win": "turbo run build && turbo run build-ele:win",
@@ -24,6 +25,7 @@
     "i18n:baseline": "node scripts/i18n-scan.mjs baseline",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",
+    "dev:enterprise": "bash scripts/dev-enterprise.sh",
     "new:worktree": "bash scripts/new-worktree.sh",
     "cleanup:worktree": "bash scripts/cleanup-worktree.sh"
   },
