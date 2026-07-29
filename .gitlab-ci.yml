@@ -222,6 +222,7 @@ argocd_sync:
           exit 1
         fi
         rm -rf .enterprise/octo-enterprise-modules/.git .enterprise/octo-loop-module/.git
+        ln -s .. .enterprise/octo-web
 
         if [ ! -f ".enterprise/octo-enterprise-modules/src/loop.ts" ]; then
           echo "Missing enterprise loop entry: .enterprise/octo-enterprise-modules/src/loop.ts"
