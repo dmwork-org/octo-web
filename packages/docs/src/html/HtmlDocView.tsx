@@ -133,6 +133,7 @@ export function resolveHtmlDocAnchorText(
 ): string | null {
   if (!anchor) return null
   if (anchor.kind === 'text') return truncateAnchorText(anchor.text)
+  if (anchor.kind !== 'element') return null
   if (!doc) return null
   try {
     const el = doc.querySelector(`[data-odoc-aid="${cssAttrValue(anchor.aid)}"]`)
@@ -720,7 +721,8 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               space={space}
               isAuthor={isAuthor}
               slug={effectiveSlug}
-              version={version}
+              listVersion={version}
+              mutationVersion={meta?.version}
               pendingAnchor={pendingAnchor}
               resolveAnchorText={resolveAnchorText}
               onClearPendingAnchor={() => setPendingAnchor(null)}
