@@ -203,6 +203,24 @@ export {
 } from "./Service/OidcConfig";
 export type { OidcProviderConfig } from "./Service/OidcConfig";
 
+function oidcProvidersEqual(
+  a: OidcProviderConfig[],
+  b: OidcProviderConfig[]
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    if (!other) return false;
+    return (
+      item.id === other.id &&
+      item.name === other.name &&
+      item.authorizePath === other.authorizePath &&
+      item.accountUrl === other.accountUrl &&
+      item.resetPasswordUrl === other.resetPasswordUrl
+    );
+  });
+}
+
 // StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,
 // 不拖 App.tsx 的重依赖链路, EmojiToolbar 的 vitest 可以直接测 parse 的边界情况。
 import {
@@ -313,27 +331,28 @@ export class WKRemoteConfig {
    */
   oidcProviders: OidcProviderConfig[] = [];
   requestSuccess: boolean = false;
+  requestFailed: boolean = false;
   private retryCount: number = 0;
   private maxRetries: number = 5; // 最大重试次数
-  // listeners 仅在 appconfig 首次成功时触发, 用来通知像登录页这种在首屏前就渲染、
-  // 而其内容(SSO 按钮文案/可见性)依赖 appconfig 字段的组件去 re-render。
+  // listeners 在 appconfig 首次完成(成功或重试耗尽失败)时触发, 用来通知像登录页这种
+  // 在首屏前就渲染、而其内容(SSO 按钮文案/可见性)依赖 appconfig 字段的组件去 re-render。
   // 不在每次失败重试上 fire, 避免重复刷新。
   private listeners: Array<() => void> = [];
   private configChangeListeners: Array<() => void> = [];
 
   /**
-   * addListener 订阅 appconfig **首次** 加载完成事件——只 fire 一次 (后续重连/手动 refetch 不再触发)。
+   * addListener 订阅 appconfig **首次** 完成事件——只 fire 一次 (后续重连/手动 refetch 不再触发)。
    * 返回 unsubscribe 函数, 调用方在卸载时务必调用。
    *
-   * 调用方契约: 订阅前应先检查 requestSuccess——已 true 时跳过订阅, 自行处理初始状态。
-   * 这里在 requestSuccess 已为 true 时返回 noop 是防御性兜底, 不构成「at-least-once 必通知」的语义。
+   * 调用方契约: 订阅前应先检查 requestSuccess / requestFailed——已完成时跳过订阅, 自行处理初始状态。
+   * 这里在已完成时返回 noop 是防御性兜底, 不构成「at-least-once 必通知」的语义。
    *
    * 为什么不在已加载时同步调一次 cb 来给「at-least-once」: cb 通常是 forceUpdate / setState,
    * 在调用方的 componentDidMount 同步栈里触发是 React 反模式; 用 microtask 又得给 cb 加
    * unmount 防护。当前唯一调用方 (Login) 已自检 requestSuccess, 不值得为此引入复杂度。
    */
   addListener(cb: () => void): () => void {
-    if (this.requestSuccess) {
+    if (this.requestSuccess || this.requestFailed) {
       return () => {
         /* noop */
       };
@@ -395,6 +414,10 @@ export class WKRemoteConfig {
       setTimeout(() => {
         this.startRequestConfig();
       }, delay);
+    } else if (!this.requestSuccess && !this.requestFailed) {
+      this.requestFailed = true;
+      console.warn("[WKRemoteConfig] requestConfig failed after max retries");
+      this.notifyListeners();
     }
   }
 
@@ -410,7 +433,10 @@ export class WKRemoteConfig {
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
+      const previousRequestFailed = this.requestFailed;
+      const previousOidcProviders = this.oidcProviders;
       this.requestSuccess = true;
+      this.requestFailed = false;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
       this.messagesSearchOn = parseRemoteBool(result["messages_search_on"]);
@@ -448,7 +474,9 @@ export class WKRemoteConfig {
         previousDocsOn !== this.docsOn ||
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn ||
-        previousDriveOn !== this.driveOn
+        previousDriveOn !== this.driveOn ||
+        previousRequestFailed !== this.requestFailed ||
+        !oidcProvidersEqual(previousOidcProviders, this.oidcProviders)
       ) {
         this.notifyConfigChangeListeners();
       }
