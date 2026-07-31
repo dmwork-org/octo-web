@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '../../../__tests__/harness';
+import { render, act } from '../../../__tests__/harness';
 
 // Semi barrel drags in jsdom-hostile deps; stub the primitives InviteModal +
 // its nested OrgPickerModal use. The mocked Modal only renders its OK button
@@ -57,22 +57,25 @@ vi.mock('../../../hooks/useMembers', () => ({ useMembers: vi.fn() }));
 
 import { useOrgSearch } from '../../../hooks/useOrgSearch';
 import { useMembers } from '../../../hooks/useMembers';
+import { WKApp } from '@octo/base';
 import InviteModal from '../index';
 
 beforeEach(() => {
   addMembers.mockReset();
   vi.mocked(useOrgSearch).mockReset();
   vi.mocked(useMembers).mockReset();
-  vi.mocked(useOrgSearch).mockImplementation((spaceId?: string) => ({
-    // Space-scoped candidates: switching spaceId must swap the offered users,
-    // so Space A's picks can't even be seen (let alone selected) under Space B.
-    candidates:
-      spaceId === 'space-B'
-        ? [{ uid: 'u2', name: 'Bob' }]
-        : [{ uid: 'u1', name: 'Alice' }],
+  vi.mocked(useOrgSearch).mockImplementation(() => ({
+    // The picker roster is the caller's octo-space roster (host-scoped, fetched
+    // once via space-changed) — it does NOT vary with the drive spaceId. Cross-
+    // space safety comes from clearing selection + closing the picker on switch,
+    // not from swapping candidates, so offer a stable roster here.
+    candidates: [{ uid: 'u1', name: 'Alice' }, { uid: 'u2', name: 'Bob' }],
     loading: false,
     query: '',
     search: vi.fn(),
+    error: false,
+    incomplete: false,
+    retry: vi.fn(),
   }));
   vi.mocked(useMembers).mockReturnValue({
     members: [],
@@ -127,12 +130,13 @@ describe('InviteModal ↔ OrgPicker cross-space safety', () => {
     click(getByRole('button', { name: '__toB__' }));
     expect(queryByRole('button', { name: '__ok__' })).toBeNull();
 
-    // Reopen in Space B: only Space B members are offered — Alice (Space A) is
-    // no longer visible or selectable, and confirm starts disabled.
+    // Reopen after the switch: selection was cleared, so confirm starts disabled
+    // and Space A's pick (u1) is not carried over. The roster is the same octo-
+    // space roster (host-scoped), so both users stay offered — the anti-leak
+    // guarantee is the cleared selection, not a swapped candidate list.
     click(getByRole('button', { name: 'drive.invite.pickMembers' }));
-    expect(queryByRole('button', { name: 'Alice' })).toBeNull();
-    expect(queryByRole('button', { name: 'Bob' })).not.toBeNull();
     expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(queryByRole('button', { name: 'Bob' })).not.toBeNull();
 
     // Prove no cross-space leak: pick Bob (u2) in B and confirm.
     click(getByRole('button', { name: 'Bob' }));
@@ -143,6 +147,25 @@ describe('InviteModal ↔ OrgPicker cross-space safety', () => {
     for (const call of addMembers.mock.calls) {
       expect(call[0]).not.toContain('u1');
     }
+  });
+
+  it('clears the picker selection on a host space-changed so a stale pick is not submitted to the new tenant', () => {
+    const { getByRole, click } = render(<Harness />);
+
+    // Open the picker (drive space unchanged) and select Alice (u1).
+    click(getByRole('button', { name: 'drive.invite.pickMembers' }));
+    click(getByRole('button', { name: 'Alice' }));
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(false);
+
+    // Host octo-space switch fires while the picker is open with a live selection.
+    // The API interceptor would send the NEW host X-Space-Id at request time, so a
+    // carried-over uid would be added to the wrong tenant — selection must clear
+    // synchronously on the same event.
+    act(() => WKApp.mittBus.emit('space-changed'));
+
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
+    click(getByRole('button', { name: '__ok__' }));
+    expect(addMembers).not.toHaveBeenCalled();
   });
 
   it('forces the picker shut when the parent modal hides (does not reopen on its own)', () => {

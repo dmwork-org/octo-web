@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useI18n } from '@octo/base';
+import { useI18n, WKApp } from '@octo/base';
 import { Modal, Input, Spin, Tag } from '@douyinfe/semi-ui';
 import { Check, Search } from 'lucide-react';
 import { useOrgSearch } from '../../hooks/useOrgSearch';
@@ -29,7 +29,7 @@ export interface OrgPickerModalProps {
  */
 export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }: OrgPickerModalProps) {
   const { t } = useI18n();
-  const { candidates, loading, query, search } = useOrgSearch(spaceId);
+  const { candidates, loading, query, search, error, incomplete, retry } = useOrgSearch();
   const { members } = useMembers(spaceId ?? null, visible);
   const [selected, setSelected] = useState<Record<string, OrgCandidate>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -41,17 +41,34 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
     return map;
   }, [members]);
 
-  // Reset all space-scoped state whenever the picker opens/closes or the target
-  // space changes. Clearing `selected` on a spaceId change is the guard that
-  // stops Space A's picks from being confirmed against Space B; re-running the
-  // (empty) search when visible refreshes the candidate list + query for the new
-  // space instead of leaving Space A's stale results behind. The search is gated
-  // on `visible` so a mounted-but-hidden picker doesn't fire an org query on
-  // every space switch.
+  // Reset picker-local state whenever it opens/closes or the target drive space
+  // changes. Clearing `selected` on a spaceId change is the guard that stops
+  // Space A's picks from being confirmed against Space B. On becoming visible we
+  // either retry a failed roster load or, for a good cache, just reset the local
+  // query filter — reopening a successfully-cached picker never re-fetches
+  // (search('') is a purely local reset; the roster is loaded once by
+  // useOrgSearch and reloaded only on the host `space-changed` event). Gating on
+  // `visible` skips this for a mounted-but-hidden picker.
   useEffect(() => {
     setSelected({});
-    if (visible) search('');
+    if (!visible) return;
+    if (error) retry();
+    else search('');
   }, [visible, spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A host octo-space switch (drive `spaceId` unchanged) reloads the roster in
+  // useOrgSearch but leaves this modal's `selected` untouched. Subscribe to the
+  // same host event and clear the selection synchronously, so a stale pick from
+  // the previous tenant can't be confirmed into the new space — the API
+  // interceptor injects the latest X-Space-Id at request time, so a stale uid
+  // would be added to the wrong space. Mounted for the modal's whole lifetime
+  // (the picker is always mounted, hidden or not); loading also gates confirm
+  // below, covering the reload in-flight window.
+  useEffect(() => {
+    const handler = () => setSelected({});
+    WKApp.mittBus.on('space-changed', handler);
+    return () => WKApp.mittBus.off('space-changed', handler);
+  }, []);
 
   const toggle = useCallback(
     (c: OrgCandidate) => {
@@ -69,17 +86,17 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
   const selectedUids = Object.keys(selected);
 
   const handleConfirm = async () => {
-    // `!visible` guards against a stale confirm firing after a space switch has
-    // hidden the picker (the parent also clears selection on spaceId change).
-    if (!visible || selectedUids.length === 0 || submitting) return;
+    // Guards against a stale confirm: `!visible` (a space switch hid the picker),
+    // and `loading` (a host space-changed is reloading the roster — block the
+    // in-flight window so a pre-switch selection can't be submitted mid-reload).
+    if (!visible || selectedUids.length === 0 || submitting || loading) return;
     setSubmitting(true);
     await onConfirm(selectedUids);
     setSubmitting(false);
     onClose();
   };
 
-  const label = (c: OrgCandidate) => c.name || c.username || c.uid;
-  const sub = (c: OrgCandidate) => c.username || c.email || c.phone || '';
+  const label = (c: OrgCandidate) => c.name || c.uid;
   const roleLabel = (r: DriveRole) => t(ROLE_LABEL_KEY[r] ?? ROLE_LABEL_KEY.custom);
 
   return (
@@ -93,7 +110,7 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
         selectedUids.length ? `${t('drive.org.confirm')} (${selectedUids.length})` : t('drive.org.confirm')
       }
       cancelText={t('drive.common.cancel')}
-      okButtonProps={{ disabled: selectedUids.length === 0 }}
+      okButtonProps={{ disabled: selectedUids.length === 0 || loading }}
       width={480}
     >
       <Input
@@ -103,10 +120,20 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
         placeholder={t('drive.org.searchPlaceholder')}
         autoFocus
       />
+      {incomplete && !loading && !error && (
+        <div className="drive-org__notice">{t('drive.org.incomplete')}</div>
+      )}
       <div className="drive-org__list">
         {loading ? (
           <div className="drive-org__center">
             <Spin />
+          </div>
+        ) : error ? (
+          <div className="drive-org__center drive-org__error">
+            <span className="drive-org__empty">{t('drive.org.loadFailed')}</span>
+            <button type="button" className="drive-org__retry" onClick={retry}>
+              {t('drive.org.retry')}
+            </button>
           </div>
         ) : candidates.length === 0 ? (
           <div className="drive-org__center drive-org__empty">
@@ -130,7 +157,6 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
               >
                 <span className="drive-org__check">{on && <Check size={16} />}</span>
                 <span className="drive-org__name">{label(c)}</span>
-                {sub(c) && <span className="drive-org__sub">{sub(c)}</span>}
                 {joined && (
                   <span className="drive-org__joined">
                     <Tag size="small" color="grey">
