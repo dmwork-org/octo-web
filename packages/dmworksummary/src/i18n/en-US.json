@@ -391,6 +391,14 @@
     },
     "detail": {
         "defaultTitle": "Summary details",
+        "abstractTitle": "AI summary",
+        "versionPreviewTitle": "Viewing historical version V{{version}}",
+        "versionPreviewDesc": "The content below is a read-only snapshot of this version. Restore it as a new version to keep editing.",
+        "versionPreviewBack": "Back to current",
+        "versionRecords": "Version history",
+        "versionRetentionHint": "Keeps the latest {{count}} versions",
+        "versionPanelClose": "Close version history",
+        "tocTitle": "On this page",
         "submitSuccess": "Submitted",
         "submitFailed": "Failed to submit",
         "regenerateStarted": "Regeneration started",
@@ -528,6 +536,8 @@
         "continueRefine": "Continue refining"
     },
     "summaryCard": {
+        "agentType": "Agent summary",
+        "quickType": "Quick summary",
         "createdBy": "Created by {{name}}",
         "deleteTitle": "Confirm deletion",
         "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",
@@ -573,6 +583,8 @@
         "jumpToOriginal": "Open original →",
         "source": "Source: {{source}}",
         "sourceDefault": "Unknown source",
+        "multipleSources": "Multiple sources",
+        "referenceTag": "Citation [{{index}}]",
         "member": "Member: {{name}}"
     },
     "share": {
