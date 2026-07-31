@@ -232,22 +232,13 @@ describe('share / invite / org', () => {
     expect(inst.post).toHaveBeenCalledWith('/v1/drive/invites/tok/accept', undefined);
   });
 
-  it('searchOrgUser GETs /org/search with an empty q to list team members', async () => {
+  it('listOrgMembers GETs /org/members (space scoped by the X-Space-Id header)', async () => {
     inst.get.mockResolvedValue(ok({ candidates: [{ uid: 'u1' }, { uid: 'u2' }], total: 2 }));
-    const res = await driveApi.searchOrgUser({ q: '   ' });
-    expect(inst.get).toHaveBeenCalledWith('/v1/drive/org/search', {
-      params: { q: '   ' },
+    const res = await driveApi.listOrgMembers();
+    expect(inst.get).toHaveBeenCalledWith('/v1/drive/org/members', {
+      params: {},
     });
     expect(res.total).toBe(2);
-  });
-
-  it('searchOrgUser GETs /org/search for a non-empty query', async () => {
-    inst.get.mockResolvedValue(ok({ candidates: [{ uid: 'u1' }], total: 1 }));
-    const res = await driveApi.searchOrgUser({ q: 'bob', limit: 20 });
-    expect(inst.get).toHaveBeenCalledWith('/v1/drive/org/search', {
-      params: { q: 'bob', limit: '20' },
-    });
-    expect(res.total).toBe(1);
   });
 });
 
@@ -290,6 +281,23 @@ describe('auth-header interceptor', () => {
     expect(config.headers.token).toBe('test-token-abc');
     expect(config.headers['X-Space-Id']).toBe('space-123');
     expect(config.headers['Accept-Language']).toBeTruthy();
+  });
+
+  it('reads the LATEST host X-Space-Id at request time, not a value captured earlier (F3)', () => {
+    // The org-members fetch is scoped only by this header, so a host space switch
+    // between two requests must be reflected — the interceptor reads
+    // WKApp.shared.currentSpaceId on each call rather than closing over it.
+    const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
+    const onRequest = requestUse.mock.calls[0][0];
+    const original = WKApp.shared.currentSpaceId;
+    try {
+      WKApp.shared.currentSpaceId = 'space-A';
+      expect(onRequest({ headers: {} }).headers['X-Space-Id']).toBe('space-A');
+      WKApp.shared.currentSpaceId = 'space-B';
+      expect(onRequest({ headers: {} }).headers['X-Space-Id']).toBe('space-B');
+    } finally {
+      WKApp.shared.currentSpaceId = original;
+    }
   });
 
   it('logs out on a 401 from a normal drive API', async () => {

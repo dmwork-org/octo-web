@@ -243,10 +243,6 @@ export interface AcceptInviteResult {
 export interface OrgCandidate {
   uid: string;
   name?: string;
-  username?: string;
-  email?: string;
-  /** masked upstream: front3 + **** + last4 */
-  phone?: string;
 }
 
 // ─── Request bodies ─────────────────────────────────────────────────────────
@@ -350,12 +346,6 @@ export interface MountableDocsParams {
   space_id: string;
   page?: number;
   page_size?: number;
-}
-
-export interface OrgSearchParams {
-  q: string;
-  space_id?: string;
-  limit?: number;
 }
 
 // ─── List / composite responses ──────────────────────────────────────────────
