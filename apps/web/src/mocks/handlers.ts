@@ -4,8 +4,10 @@
 // 本文件 re-export 供 apps/web/src/mocks/browser.ts 消费.
 import { chatBaselineHandlers } from "../../e2e-kit/msw-handlers/chat-baseline";
 import { mcpOfficialHandlers } from "../../e2e-kit/msw-handlers/mcp-official";
+import { getEnterpriseMockHandlers } from "virtual:octo-enterprise-modules";
 
 export const handlers = [
+  ...getEnterpriseMockHandlers(),
   ...mcpOfficialHandlers,
   ...chatBaselineHandlers,
 ];

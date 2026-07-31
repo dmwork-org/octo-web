@@ -21,4 +21,5 @@ declare module "virtual:octo-enterprise-modules" {
 
   export function registerEnterpriseModules(context: EnterpriseModulesContext): void;
   export function getEnterpriseStandaloneHandlers(): EnterpriseStandaloneHandler[];
+  export function getEnterpriseMockHandlers(): unknown[];
 }

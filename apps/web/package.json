@@ -39,6 +39,8 @@
     "electron:build:all": "electron-builder -mw -c",
     "test": "vitest run",
     "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts",
+    "test:e2e:loop-bridge": "../../node_modules/.bin/playwright test --config=e2e-kit/playwright.bridge.config.ts",
+    "test:e2e:docs-bridge": "E2E_MODULE_NAME=docs E2E_PORT=3002 E2E_BASE_URL=http://localhost:3002 VITE_DISABLE_BUILTIN_DOCS=1 ../../node_modules/.bin/playwright test --config=e2e-kit/playwright.bridge.config.ts",
     "test:e2e:bind": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts e2e-kit/tests/bind/bind.spec.ts",
     "test:e2e:bind:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
     "test:e2e:standalone": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts e2e-kit/tests/standalone-doc/standalone-doc.spec.ts",

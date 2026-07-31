@@ -74,6 +74,7 @@ function createEnterpriseModulesVirtualModule(entries: string[]): string {
     return [
       "export function registerEnterpriseModules(_context) {}",
       "export function getEnterpriseStandaloneHandlers() { return [] }",
+      "export function getEnterpriseMockHandlers() { return [] }",
     ].join("\n");
   }
 
@@ -83,6 +84,7 @@ function createEnterpriseModulesVirtualModule(entries: string[]): string {
       `  registerEnterpriseModules as registerEnterpriseModules${index},`,
       `  getEnterpriseStandaloneHandlers as getEnterpriseStandaloneHandlers${index}`,
       `} from ${JSON.stringify(entry)};`,
+      `import * as enterpriseEntry${index} from ${JSON.stringify(entry)};`,
     ].join("\n")
   );
   const registerCalls = entries.map((_, index) => `  registerEnterpriseModules${index}(context);`);
@@ -92,6 +94,20 @@ function createEnterpriseModulesVirtualModule(entries: string[]): string {
     `    throw new Error(${JSON.stringify(`[vite] enterprise entry must return an array from getEnterpriseStandaloneHandlers(): ${entry}`)});`,
     "  }",
     `  handlers.push(...entryHandlers${index});`,
+  ]);
+  const mockHandlerCalls = entries.flatMap((entry, index) => [
+    `  const getMockHandlers${index} = enterpriseEntry${index}.getEnterpriseMockHandlers;`,
+    `  if (getMockHandlers${index} === undefined) {`,
+    "    // no-op",
+    `  } else if (typeof getMockHandlers${index} !== "function") {`,
+    `    throw new Error(${JSON.stringify(`[vite] enterprise entry must export getEnterpriseMockHandlers as a function when present: ${entry}`)});`,
+    "  } else {",
+    `    const entryMockHandlers${index} = getMockHandlers${index}();`,
+    `    if (!Array.isArray(entryMockHandlers${index})) {`,
+    `      throw new Error(${JSON.stringify(`[vite] enterprise entry must return an array from getEnterpriseMockHandlers(): ${entry}`)});`,
+    "    }",
+    `    handlers.push(...entryMockHandlers${index});`,
+    "  }",
   ]);
 
   return [
@@ -104,6 +120,12 @@ function createEnterpriseModulesVirtualModule(entries: string[]): string {
     "export function getEnterpriseStandaloneHandlers() {",
     "  const handlers = [];",
     ...standaloneHandlerCalls,
+    "  return handlers;",
+    "}",
+    "",
+    "export function getEnterpriseMockHandlers() {",
+    "  const handlers = [];",
+    ...mockHandlerCalls,
     "  return handlers;",
     "}",
   ].join("\n");

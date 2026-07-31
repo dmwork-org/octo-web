@@ -76,7 +76,9 @@ WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
 WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
 WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
-WKApp.shared.registerModule(new DocsModule()); // Docs module
+if (import.meta.env.VITE_DISABLE_BUILTIN_DOCS !== "1") {
+  WKApp.shared.registerModule(new DocsModule()); // Docs module
+}
 registerEnterpriseModules({
   registerModule: (module) => WKApp.shared.registerModule(module),
 });
