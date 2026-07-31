@@ -4,6 +4,7 @@ workflow:
     - if: '$CI_COMMIT_TAG'
 
 stages:
+  - verify
   - package
   - sync
   - deploy
@@ -25,6 +26,29 @@ variables:
   # 聚合入口。docs 拆分落地后改为 src/index.ts 即可，无需动脚本。
   ENTERPRISE_MODULES_ENTRY_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/src/loop.ts"
   ENTERPRISE_HTML_HEAD_PATH_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/html/head.html"
+
+# ============================================================
+# lockfile_check: 校验 pnpm-lock.yaml 与各 package.json 是否一致
+#
+# Dockerfile 里的 pnpm install --frozen-lockfile 已经会做这件事，但那是
+# 镜像构建第 6 层，要等 90 秒才报错，且埋在几百行 BuildKit 输出里。
+# 这里提前到 verify stage，0.3 秒给出同样的结论。
+#
+# 触发场景：develop/test 互相合并时 pnpm-lock.yaml 冲突被解到了一边，
+# 而 package.json 留在另一边 —— 两边各自合法，合起来对不上。
+# ============================================================
+lockfile_check:
+  stage: verify
+  tags:
+    - tke-deepmining-runner
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/node:v22.13.0-pnpm
+  variables:
+    GIT_DEPTH: 1
+  script:
+    # 与 Dockerfile 保持同一套 registry 和 pnpm 版本，避免结论不一致
+    - npm config set registry https://registry.npmmirror.com
+    - npm install -g pnpm@10 --force
+    - pnpm install --frozen-lockfile --lockfile-only
 
 # ============================================================
 # sync_code: 同步部署配置到 deploy-files 仓库（所有分支）
@@ -233,7 +257,13 @@ argocd_sync:
         # 拉取一个企业仓并把它加进 Vite 的 fs.allow 白名单。
         fetch_enterprise_repo() {
           if ! download_enterprise_archive "dmwork%2Focto-web-enterprise%2F$1" "$2" ".enterprise/$1" "$1"; then
-            echo "Enterprise archive download failed: $1@$2. Check ENTERPRISE_TOKEN read_api/read_repository access."
+            echo "Enterprise archive download failed: $1@$2"
+            if [ -n "${CI_COMMIT_TAG:-}" ]; then
+              echo "Releasing $CI_COMMIT_TAG requires every enterprise repo to carry the same tag:"
+              echo "  git -C $1 tag $CI_COMMIT_TAG <commit> && git push origin $CI_COMMIT_TAG"
+              echo "Alternatively, override $1's ref when starting this job."
+            fi
+            echo "If the ref does exist, check ENTERPRISE_TOKEN read_api/read_repository access."
             exit 1
           fi
           rm -rf ".enterprise/$1/.git"
@@ -294,11 +324,22 @@ package_tag:
   only:
     - tags
   when: manual
+  # 阻塞式人工确认：不点就停在 package stage，sync_code 不会先跑。
+  # 没有这一条，manual job 默认 allow_failure: true，推 tag 的瞬间
+  # sync_code 就把 deploy-files 的 prod manifest 改成了该 tag —— 而镜像
+  # 还没构建，甚至可能永远构建不出来。此时任何人在 ArgoCD 点一次 sync
+  # 就会让生产去拉一个不存在的镜像。
+  allow_failure: false
   variables:
     PUSH_IMAGE_PATH: $CONTAINER_IMAGE:$CI_COMMIT_TAG
     PUSH_IMAGE_LATEST: "$CONTAINER_IMAGE:latest"
     DEPLOY_ENV: "prod"
     ENABLE_ENTERPRISE_MODULES: "true"
+    # 企业仓按同名 tag 装配，与 package_test 用 "test" 对称。
+    # 发版时三个仓打同一个版本号，这里就不需要人工填任何变量；
+    # 需要临时指向某个 commit 时，仍可在点 ▶ 的对话框里覆盖。
+    ENTERPRISE_MODULES_REF: "$CI_COMMIT_TAG"
+    ENTERPRISE_LOOP_REF: "$CI_COMMIT_TAG"
 
 # ============================================================
 # develop 分支打包（Staging 环境）
