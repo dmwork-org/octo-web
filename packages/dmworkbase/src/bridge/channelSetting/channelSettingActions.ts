@@ -15,9 +15,12 @@ import {
 } from "../../Service/ChannelSettingService";
 import { EndpointID, SubscriberStatus } from "../../Service/Const";
 import {
+  clearCurrentImChannelSubscribersLocallyRemoved,
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
   getCurrentImChannelSubscribers,
+  getCurrentImChannelSubscribersCacheRaw,
+  markCurrentImChannelSubscribersLocallyRemoved,
   notifyCurrentImSubscriberChangeListeners,
   setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
@@ -40,6 +43,9 @@ export interface ChannelSettingActionRuntime {
     uid: string
   ): Promise<ChannelSettingSubscriber | undefined>;
   getCurrentChannelSubscribers(channel: Channel): ChannelSettingSubscriber[];
+  getCurrentChannelSubscribersRaw(
+    channel: Channel
+  ): ChannelSettingSubscriber[] | undefined;
   findConversation(channel: Channel): any | undefined;
   getLoginUid(): string | undefined;
   invokeClearChannelMessages(channel: Channel): void;
@@ -50,6 +56,8 @@ export interface ChannelSettingActionRuntime {
   remarkChannel(channel: Channel, remark: string): Promise<void>;
   saveChannel(channel: Channel, save: boolean): Promise<void>;
   showConversation(channel: Channel): void;
+  clearRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
+  markRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
   notifyCurrentChannelSubscribers(channel: Channel): void;
   setCurrentChannelSubscribers(
     channel: Channel,
@@ -114,6 +122,9 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     getCurrentChannelSubscribers(channel) {
       return getCurrentImChannelSubscribers(channel);
     },
+    getCurrentChannelSubscribersRaw(channel) {
+      return getCurrentImChannelSubscribersCacheRaw(channel);
+    },
     findConversation(channel) {
       return findCurrentImConversation(channel);
     },
@@ -150,6 +161,12 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     showConversation(channel) {
       WKApp.endpoints.showConversation(channel);
     },
+    clearRemovedChannelSubscribers(channel, uids) {
+      clearCurrentImChannelSubscribersLocallyRemoved(channel, uids);
+    },
+    markRemovedChannelSubscribers(channel, uids) {
+      markCurrentImChannelSubscribersLocallyRemoved(channel, uids);
+    },
     notifyCurrentChannelSubscribers(channel) {
       notifyCurrentImSubscriberChangeListeners(channel);
     },
@@ -184,6 +201,22 @@ async function refreshChannelStateAfterMemberMutation(
   uids: string[]
 ) {
   let shouldNotifySubscribers = false;
+  let notifiedLocalRemoval = false;
+
+  if (action === "removeSubscribers") {
+    const cachePatchedBeforeSync =
+      await patchSubscriberCacheAfterMemberMutation(
+        runtime,
+        channel,
+        action,
+        uids
+      );
+    if (cachePatchedBeforeSync) {
+      runtime.notifyCurrentChannelSubscribers(channel);
+      notifiedLocalRemoval = true;
+    }
+    runtime.markRemovedChannelSubscribers(channel, uids);
+  }
 
   try {
     await runtime.syncCurrentChannelSubscribers(channel);
@@ -203,7 +236,7 @@ async function refreshChannelStateAfterMemberMutation(
     shouldNotifySubscribers = true;
   }
 
-  if (shouldNotifySubscribers) {
+  if (shouldNotifySubscribers && (!notifiedLocalRemoval || cachePatched)) {
     runtime.notifyCurrentChannelSubscribers(channel);
   }
 
@@ -248,11 +281,14 @@ async function patchSubscriberCacheAfterMemberMutation(
     return false;
   }
 
-  const currentSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const currentSubscribers =
+    runtime.getCurrentChannelSubscribersRaw(channel) ||
+    runtime.getCurrentChannelSubscribers(channel) ||
+    [];
 
   if (action === "removeSubscribers") {
     const nextSubscribers = currentSubscribers.filter(
-      (subscriber) => !targetUids.has(subscriber?.uid)
+      (subscriber) => !targetUids.has(subscriber?.uid ?? "")
     );
     if (nextSubscribers.length !== currentSubscribers.length) {
       runtime.setCurrentChannelSubscribers(channel, nextSubscribers);
@@ -282,7 +318,10 @@ async function patchSubscriberCacheAfterMemberMutation(
     return false;
   }
 
-  const latestSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const latestSubscribers =
+    runtime.getCurrentChannelSubscribersRaw(channel) ||
+    runtime.getCurrentChannelSubscribers(channel) ||
+    [];
   const nextSubscribers = [...latestSubscribers];
   let changed = false;
 
@@ -318,6 +357,7 @@ export async function addChannelSettingSubscribers(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.addSubscribers(params.channel, params.uids);
+  runtime.clearRemovedChannelSubscribers(params.channel, params.uids);
   await refreshChannelStateAfterMemberMutation(
     runtime,
     params.channel,
