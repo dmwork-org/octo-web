@@ -5,10 +5,14 @@ import {
   ChannelInfo,
   ChannelTypePerson,
   ChannelTypeGroup,
+  ConversationAction,
   ReminderType,
 } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
-import { parseThreadChannelId } from "../../Service/Thread";
+import {
+  isEffectivelyMuted,
+  parseThreadChannelId,
+} from "../../Service/Thread";
 import React, { Component } from "react";
 import { Tag, Toast } from "@douyinfe/semi-ui";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
@@ -47,6 +51,7 @@ import {
   muteChannelSetting,
   topChannelSetting,
 } from "../../bridge/channelSetting/channelSettingActions";
+import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── 在线态判定/渲染 helper ──────────────────────────────────────────────
@@ -125,12 +130,10 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
   const isThread =
     conversationWrap.channel.channelType === ChannelTypeCommunityTopic;
 
-  // effectiveMute 对齐后端 allowPush 降级逻辑：
-  // - 子区有显式设置（thread.mute != null）→ 只看子区自身
-  // - 子区未设置（thread.mute == null）→ 继承父群组 mute
-  // - 群组：只看自身 mute
+  // 列表、标题与通知共用同一份有效静音语义：父群静音时 Thread 不能单独解除。
   const parentGroupNo = isThread
-    ? (channelInfo?.orgData?.parentGroupNo as string | undefined)
+    ? (channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+      parseThreadChannelId(conversationWrap.channel.channelID)?.groupNo
     : undefined;
   const parentChannelInfo = parentGroupNo
     ? getImChannelInfo(
@@ -138,14 +141,11 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
         new Channel(parentGroupNo, ChannelTypeGroup)
       )
     : undefined;
-  const threadRawMute = isThread
-    ? (channelInfo?.orgData?.thread as any)?.mute as number | null | undefined
-    : undefined;
-  const effectiveMute = isThread
-    ? threadRawMute != null
-      ? threadRawMute === 1          // 显式设置：只看子区自身
-      : !!(parentChannelInfo?.mute)  // 未设置：继承父群
-    : !!(channelInfo?.mute);         // 群组：只看自身
+  const effectiveMute = isEffectivelyMuted({
+    isThread,
+    channelInfo,
+    parentChannelInfo,
+  });
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -721,15 +721,11 @@ export default class ConversationList extends Component<
     const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
       (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
     );
-    // 子区静音继承父群（与 CompactGroupItem 保持一致）：显式设置看自身，未设置看父群
-    const threadRawMute = isThread
-      ? ((channelInfo?.orgData?.thread as any)?.mute as number | null | undefined)
-      : undefined;
-    const effectiveMute = isThread
-      ? threadRawMute != null
-        ? threadRawMute === 1
-        : !!parentChannelInfo?.mute
-      : !!channelInfo?.mute;
+    const effectiveMute = isEffectivelyMuted({
+      isThread,
+      channelInfo,
+      parentChannelInfo,
+    });
     // 非 compact 下子区按 design v3.1 走扁平时间序，左侧用父频道头像，
     // 不再套 .wk-conversationlist-item-thread（避免缩进 + 树形连接线视觉嵌套）。
     const avatarChannel = isThread && parentChannel ? parentChannel : conversationWrap.channel;
@@ -1297,11 +1293,36 @@ export default class ConversationList extends Component<
                 icon: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
                 onClick: () => {
                   if (!channel) return;
-                  WKApp.apiClient.put("conversation/clearUnread", {
-                    channel_id: channel.channelID,
-                    channel_type: channel.channelType,
-                    unread: 0,
-                  });
+                  void WKApp.apiClient
+                    .put("conversation/clearUnread", {
+                      channel_id: channel.channelID,
+                      channel_type: channel.channelType,
+                      unread: 0,
+                    })
+                    .then(() => {
+                      conv.conversation.unread = 0;
+                      if (
+                        WKApp.shared.currentSpaceId &&
+                        channel.channelType === ChannelTypePerson &&
+                        conv.conversation.extra?.spaceUnread !== undefined
+                      ) {
+                        conv.conversation.extra.spaceUnread = 0;
+                      }
+                      WKSDK.shared().conversationManager.notifyConversationListeners(
+                        conv.conversation,
+                        ConversationAction.update
+                      );
+                      getBrowserUnreadConversationSync().publish({
+                        accountId: WKApp.loginInfo.uid,
+                        spaceId: WKApp.shared.currentSpaceId || "",
+                        channelId: channel.channelID,
+                        channelType: channel.channelType,
+                        unread: 0,
+                      });
+                    })
+                    .catch(() => {
+                      // Keep the current unread state when the server rejects the clear.
+                    });
                 },
               });
             }
@@ -1347,22 +1368,20 @@ export default class ConversationList extends Component<
             }
 
             // 5. 免打扰 / 关闭免打扰
-            // 菜单标题跟 effectiveMute（用户看到的静音状态）保持一致：
-            // 子区：有显式设置看自身；未设置继承父群
-            // 群组：只看自身
+            // 菜单标题与列表、标题、通知使用同一份有效静音状态。
             const menuIsThread = channel?.channelType === ChannelTypeCommunityTopic
             const menuParentGroupNo = menuIsThread
-              ? (channelInfo?.orgData?.parentGroupNo as string | undefined)
+              ? (channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+                parseThreadChannelId(channel?.channelID || "")?.groupNo
               : undefined
             const menuParentChannelInfo = menuParentGroupNo
               ? getImChannelInfo(WKSDK.shared(), new Channel(menuParentGroupNo, ChannelTypeGroup))
               : undefined
-            const menuRawMute = menuIsThread
-              ? (channelInfo?.orgData?.thread as any)?.mute as number | null | undefined
-              : undefined
-            const menuEffectiveMute = menuIsThread
-              ? menuRawMute != null ? menuRawMute === 1 : !!(menuParentChannelInfo?.mute)
-              : !!(channelInfo?.mute)
+            const menuEffectiveMute = isEffectivelyMuted({
+              isThread: menuIsThread,
+              channelInfo,
+              parentChannelInfo: menuParentChannelInfo,
+            })
             menus.push({
               title: menuEffectiveMute
                 ? t("base.conversationList.context.unmute")
