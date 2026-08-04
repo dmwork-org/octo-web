@@ -151,6 +151,7 @@ export interface DocForwardGrantResult {
   granted: number
   failed: number
   failures?: string[]
+  rejected?: string[]
 }
 
 /**
@@ -175,9 +176,9 @@ export interface HostDocForward {
   updatedAt?: string
   canGrant: boolean
   disabledReason?: string
-  defaultRole?: 'reader' | 'writer'
-  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  defaultRole?: 'reader' | 'commenter' | 'writer'
+  grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }
 
 /** Minimal surface of the host's WKBase context the docs bridge touches. */
@@ -215,12 +216,12 @@ export interface OpenDocForwardOptions {
   /** Grey-out hint for non-grantors. */
   disabledReason?: string
   /** Default grant role when the switch is on (defaults to 'reader'). */
-  defaultRole?: 'reader' | 'writer'
+  defaultRole?: 'reader' | 'commenter' | 'writer'
   /** Modal title shown at the top of the conversation-select dialog. */
   modalTitle?: string
   /** docs-injected grant executor; host awaits it before sending. */
-  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }
 
 /**
