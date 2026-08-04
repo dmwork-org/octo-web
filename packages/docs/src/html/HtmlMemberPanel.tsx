@@ -4,7 +4,7 @@ import { canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { MemberPicker } from '../members/MemberPicker.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
-import { listGrants, addGrant, removeGrant, type HtmlGrant } from './htmlGrantsApi.ts'
+import { listGrants, addGrant, removeGrant, type HtmlGrant, type HtmlGrantRole } from './htmlGrantsApi.ts'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
@@ -93,13 +93,16 @@ export function HtmlMemberPanel({
   const localAccessRequests = useAccessRequests(docId, sharedAccessRequests ? false : canManageBackend)
   const accessRequests = sharedAccessRequests ?? localAccessRequests
 
-  // reader is the only grantable role today; MemberPicker returns a Role but we
-  // pin it to reader before calling the backend.
-  async function onAdd(uids: string[]) {
+  // Grantable roles on the HTML grants path: reader/commenter/writer. admin is NOT grantable here
+  // (backend AddGrant refuses admin — admin identity is owned by creator_uid), matching the
+  // docs-backend forward/access contract. The picker returns the chosen role per add.
+  async function onAdd(uids: string[], role: Role) {
+    if (role === 'admin') return
+    const grantRole: HtmlGrantRole = role
     setError(null)
     setBusy(true)
     try {
-      for (const uid of uids) await addGrant(slug, uid.trim(), 'reader')
+      for (const uid of uids) await addGrant(slug, uid.trim(), grantRole)
       await refresh()
     } catch {
       setError(t('docs.member.errorAdd'))
@@ -170,8 +173,9 @@ export function HtmlMemberPanel({
             space={space}
             existingUids={existingUids}
             hideUids={new Set([creatorUid].filter(Boolean) as string[])}
-            roles={['reader']}
-            onAdd={(uids: string[], _role: Role) => onAdd(uids)}
+            roles={['reader', 'commenter', 'writer']}
+            defaultRole="reader"
+            onAdd={(uids: string[], role: Role) => onAdd(uids, role)}
             busy={busy}
           />
           {error && <p className="octo-member-error">{error}</p>}
@@ -182,7 +186,12 @@ export function HtmlMemberPanel({
       {role != null && canManageBackend && (
         <div className="octo-member-section">
           <h4 className="octo-member-subtitle">{t('docs.member.inviteTitle')}</h4>
-          <InvitePanel docId={docId} role={role} allowedRoles={['reader']} />
+          <InvitePanel
+            docId={docId}
+            role={role}
+            allowedRoles={['reader', 'commenter', 'writer']}
+            defaultRole="reader"
+          />
         </div>
       )}
 
@@ -195,7 +204,7 @@ export function HtmlMemberPanel({
           approve={accessRequests.approve}
           deny={accessRequests.deny}
           displayName={(uid) => names.get(uid) || uid}
-          allowedRoles={['reader']}
+          allowedRoles={['reader', 'commenter', 'writer']}
         />
       )}
 
@@ -209,12 +218,15 @@ export function HtmlMemberPanel({
           )}
           {rows.map((m) => {
             const isOwner = m.source === 'owner'
+            // Non-owner rows render their actual granted role label (reader/commenter/writer);
+            // the owner row uses the fixed owner badge and carries the 'author' sentinel role.
+            const roleLabel = m.role !== 'author' ? t(`docs.role.${m.role}`) : ''
             return (
               <div className="octo-member-row" key={m.uid}>
                 <span className="octo-uid">
                   {names.get(m.uid) || m.uid}{' '}
                   {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                  {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {t('docs.role.reader')}</small>}
+                  {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {roleLabel}</small>}
                 </span>
                 {!isOwner && (
                   <button

@@ -4,6 +4,7 @@ import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { clearMemberNameCache } from './memberNames.ts'
 import { MemberPicker } from './MemberPicker.tsx'
+import type { Role } from '../auth/roles.ts'
 
 let wk: ReturnType<typeof createMockWKApp>
 
@@ -89,7 +90,7 @@ describe('MemberPicker (Problem 1)', () => {
     expect(addBtn.disabled).toBe(true)
   })
 
-  it('offers all three roles when roles prop is omitted (rich-doc: zero regression)', async () => {
+  it('preserves the three baseline roles when roles prop is omitted', async () => {
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
     await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
     const options = screen.getAllByRole('option') as HTMLOptionElement[]
@@ -115,19 +116,91 @@ describe('MemberPicker (Problem 1)', () => {
     expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'reader')
   })
 
-  it('falls back to the three default roles when roles={[]} (empty is a no-op, not a foot-gun)', async () => {
+  it('falls back to the four default roles when roles={[]} (empty is a no-op, not a foot-gun)', async () => {
     const onAdd = vi.fn()
     render(<MemberPicker space="s_1" existingUids={new Set()} roles={[]} onAdd={onAdd} />)
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
     const roleOptions = (screen.getAllByRole('option') as HTMLElement[]).filter(
       (o) => o.tagName === 'OPTION',
     ) as HTMLOptionElement[]
-    // Dropdown is non-empty (falls back to the three defaults) instead of rendering zero options.
+    // Dropdown is non-empty (falls back to the four defaults) instead of rendering zero options.
     expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'writer', 'admin'])
     // add() submits a valid Role ('writer' default), never undefined.
     fireEvent.click(screen.getByText('Ada Lovelace'))
     fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
     expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'writer')
+  })
+
+  it('supports a scoped reader default without changing the offered roles', async () => {
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} roles={['reader', 'commenter', 'writer']} defaultRole="reader" onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'reader')
+  })
+
+  it('reconciles a selected writer when rerendered with reader-only roles', async () => {
+    const onAdd = vi.fn()
+    const { rerender } = render(
+      <MemberPicker space="s_1" existingUids={new Set()} roles={['reader', 'writer']} onAdd={onAdd} />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    rerender(<MemberPicker space="s_1" existingUids={new Set()} roles={['reader']} onAdd={onAdd} />)
+    expect((document.querySelector('.octo-member-picker-actions select') as HTMLSelectElement).value).toBe('reader')
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'reader')
+  })
+
+  it('uses a changed valid default, then the first role when the default is invalid', async () => {
+    const onAdd = vi.fn()
+    const { rerender } = render(
+      <MemberPicker space="s_1" existingUids={new Set()} roles={['writer']} onAdd={onAdd} />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    rerender(<MemberPicker space="s_1" existingUids={new Set()} roles={['reader', 'commenter']} defaultRole="commenter" onAdd={onAdd} />)
+    expect((document.querySelector('.octo-member-picker-actions select') as HTMLSelectElement).value).toBe('commenter')
+    rerender(<MemberPicker space="s_1" existingUids={new Set()} roles={['reader']} defaultRole="admin" onAdd={onAdd} />)
+    expect((document.querySelector('.octo-member-picker-actions select') as HTMLSelectElement).value).toBe('reader')
+  })
+
+  it('follows a changed valid default even when the current role remains allowed', async () => {
+    const onAdd = vi.fn()
+    const props = {
+      space: 's_1',
+      existingUids: new Set<string>(),
+      roles: ['reader', 'commenter'] as Role[],
+      onAdd,
+    }
+    const { rerender } = render(<MemberPicker {...props} defaultRole="reader" />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+
+    rerender(<MemberPicker {...props} defaultRole="commenter" />)
+
+    expect((document.querySelector('.octo-member-picker-actions select') as HTMLSelectElement).value).toBe('commenter')
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'commenter')
+  })
+
+  it('preserves a user-selected allowed role when the default is unchanged', async () => {
+    const onAdd = vi.fn()
+    const props = {
+      space: 's_1',
+      existingUids: new Set<string>(),
+      roles: ['reader', 'commenter'] as Role[],
+      defaultRole: 'reader' as Role,
+      onAdd,
+    }
+    const { rerender } = render(<MemberPicker {...props} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    const select = document.querySelector('.octo-member-picker-actions select') as HTMLSelectElement
+    fireEvent.change(select, { target: { value: 'commenter' } })
+
+    rerender(<MemberPicker {...props} roles={[...props.roles]} />)
+
+    expect(select.value).toBe('commenter')
   })
 })
 
