@@ -7,8 +7,10 @@ import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { PptDocView } from '../ppt/PptDocView.tsx'
+import { resolveSameOriginPath } from './StandaloneDocPage.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
+import { CreatePptModal } from '../ppt/CreatePptModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
 import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
 import { isBoardDoc, isBoardIdLocally, persistBoardScene, rememberBoard } from '../board/boardStore.ts'
@@ -20,6 +22,7 @@ import {
   DEFAULT_DOC_FOLDER,
   DEFAULT_DOC_ID,
   DOC_TARGET_STORAGE_KEY,
+  PPT_CREATE_ENABLED,
 } from '../config.ts'
 import { createDoc, deleteDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -524,17 +527,23 @@ function DocsList({
   /** Open the "new HTML (embedded bot DM)" flow (plan Task 6). Menu-only; never calls createDoc. */
   onCreateHtml: () => void
   /**
-   * Open the "new slides (html_ppt)" flow. R1 (XIN-1501) is entry-only: this opens a "coming soon"
-   * notice — live create + template picker land in R2 with `POST /api/v1/ppt/docs`. Menu-only;
-   * never calls createDoc (a Bento deck is not a rich-text doc).
+   * Open the "new slides (html_ppt)" flow. Behind the R2 flag this opens the four-template picker
+   * (POST /api/v1/ppt/docs); with the flag off it opens the R1 "coming soon" notice. Menu-only;
+   * never calls createDoc (a Bento deck is not a rich-text doc). Receives the PERSISTENT caret button
+   * that opened the menu so the modal can restore focus to it on close (the menu item itself unmounts
+   * on click, so it is not a valid restore target — R2-F1).
    */
-  onCreatePpt: () => void
+  onCreatePpt: (opener?: HTMLElement | null) => void
   reloadToken?: number
   /** uids of every bot in the space; a row whose ownerId is here shows a bot badge. */
   botUids: Set<string>
 }): React.ReactElement {
   const [creating, setCreating] = useState(false)
   const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
+  // The persistent "new" split-button caret. Handed to onCreatePpt so the picker restores focus HERE
+  // on close: the dropdown menu item that fires onCreatePpt unmounts the instant it is clicked, so it
+  // cannot be the restore target — the caret persists across the menu open/close and can (R2-F1).
+  const caretRef = useRef<HTMLButtonElement>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const boardImportInputRef = useRef<HTMLInputElement>(null)
   // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top. Pin is a
@@ -1000,6 +1009,7 @@ function DocsList({
             </button>
             <button
               type="button"
+              ref={caretRef}
               aria-label={t('docs.list.newMenu')}
               title={t('docs.list.newMenu')}
               disabled={creating}
@@ -1054,16 +1064,19 @@ function DocsList({
               <span className="octo-docs-new-menu-icon" aria-hidden="true"><HtmlRowIcon /></span>
               {t('docs.list.newHtml')}
             </button>
-            {/* New slides (html_ppt). R1 (XIN-1501) is entry + routing shell only: this opens a
-                "coming soon" notice rather than creating a deck. Live create + the 4-template picker
-                (POST /api/v1/ppt/docs) land in R2 — like the HTML entry, it NEVER calls createDoc. */}
+            {/* New slides (html_ppt). Independent peer AFTER "HTML" — opens the four-template
+                picker (POST /api/v1/ppt/docs) behind the R2 flag, or the R1 coming-soon notice when
+                off. Like the HTML entry it only closes the menu + calls onCreatePpt; it NEVER
+                calls createDoc, so no empty deck is precreated. */}
             <button
               type="button"
               className="octo-docs-new-menu-item"
               disabled={creating}
               onClick={() => {
                 setNewMenuAt(null)
-                onCreatePpt()
+                // Hand the picker the PERSISTENT caret (not this menu item, which unmounts as the menu
+                // closes on the line above) as its focus-restore target — R2-F1.
+                onCreatePpt(caretRef.current)
               }}
             >
               <span className="octo-docs-new-menu-icon" aria-hidden="true"><PptRowIcon /></span>
@@ -1472,10 +1485,14 @@ export function DocsHome() {
   // closes the other). A ref mirrors the draft so the NavRail re-entry handler can re-mount the
   // SAME chat (same requestId) without a stale closure and without re-sending (§5 risk 1).
   const [htmlModalOpen, setHtmlModalOpen] = useState(false)
-  // R1 (XIN-1501) "new slides" entry: the caret-menu item is wired but live create + the template
-  // picker land in R2 (POST /api/v1/ppt/docs). Until then the entry opens this "coming soon" notice
-  // — it NEVER creates a doc, so a Bento deck is never mis-minted as a rich-text placeholder.
-  const [pptComingSoonOpen, setPptComingSoonOpen] = useState(false)
+  // "New slides" (html_ppt) entry. When the R2 flag is ON this opens the real four-template picker
+  // (POST /api/v1/ppt/docs); when OFF it falls back to the R1 "coming soon" notice (no regression).
+  // Either way it NEVER calls createDoc — a Bento deck is never mis-minted as a rich-text placeholder.
+  const [pptModalOpen, setPptModalOpen] = useState(false)
+  // The persistent element that opened the PPT picker (the DocsList caret button), handed in via
+  // onCreatePpt and forwarded to CreatePptModal as its focus-restore target (R2-F1). A ref, not state:
+  // it only needs to be readable inside the modal's open/close effects, and must not trigger a render.
+  const pptOpenerRef = useRef<HTMLElement | null>(null)
   const [htmlChatDraft, setHtmlChatDraft] = useState<HtmlCreationDraft | null>(null)
   const htmlChatDraftRef = useRef<HtmlCreationDraft | null>(null)
   useEffect(() => {
@@ -1633,6 +1650,31 @@ export function DocsHome() {
     [openHtmlChat],
   )
 
+  // "New slides" create succeeded: navigate to the PPT editor route the BACKEND returned, and
+  // NOWHERE else. We deliberately do NOT build a route, open the doc through openDoc, or fall
+  // through to any editor shell — trusting the backend route verbatim preserves the R1
+  // no-fallthrough contract (a Bento deck never reaches the Tiptap editor / Hocuspocus path).
+  //
+  // Open-redirect guard (P1-1) + same-origin NORMALISE (P2-1): the route is attacker-influenceable
+  // (a compromised/misbehaving backend could return a `javascript:` or cross-origin `editorUrl`), and
+  // it is fed straight to window.location.assign. resolveSameOriginPath resolves it against the
+  // current origin and returns a clean rooted path for a same-origin ABSOLUTE or relative url — so a
+  // backend that returns `http://<origin>/ppt/d/x` (or `d/x`) is accepted instead of dead-ending —
+  // while cross-origin / scheme-relative / `javascript:` still return null. On null we do NOT navigate
+  // and do NOT close the picker; returning false lets the modal surface its non-retriable message.
+  //
+  // Ordering (P2-2): navigate FIRST, close AFTER. If assign throws (e.g. a sandboxed embed forbids
+  // top-level navigation), the exception propagates into onSubmit's catch and the still-OPEN modal can
+  // show it. Closing first would setError on an unmounted modal — a silent no-op / soft-lock.
+  const onPptCreated = useCallback((editorUrl: string): boolean => {
+    if (typeof window === 'undefined') return false
+    const target = resolveSameOriginPath(editorUrl)
+    if (target === null) return false
+    window.location.assign(target)
+    setPptModalOpen(false)
+    return true
+  }, [])
+
   const backToList = useCallback(() => {
     setSelectedDocId(null)
     setSelectedDocType(undefined)
@@ -1645,6 +1687,7 @@ export function DocsHome() {
     setHtmlChatDraft(null)
     htmlChatDraftRef.current = null
     setHtmlModalOpen(false)
+    setPptModalOpen(false)
     // Invalidate any in-flight unknown-kind open (openDoc → getDoc still pending). Without this,
     // a Space switch (this is also the onSpaceChanged reconciler) leaves latestOpenRef pointing at
     // the previous Space's docId, so a late getDoc resolve would pass the `latestOpenRef === docId`
@@ -2078,6 +2121,30 @@ export function DocsHome() {
   // Production (routeRight present): the editor lives in the host's main pane; this route
   // slot renders ONLY the resident list (left). Tests / standalone (no routeRight): render
   // the inline CSS split-pane (left list + right editor) so the layout still works.
+  //
+  // The "New slides" modal is built once and reused across both layouts (only one renders at a
+  // time). Behind the R2 flag it is the live four-template picker; with the flag off it is the R1
+  // "coming soon" notice, so an OFF build never regresses the R1 entry.
+  const pptModal = PPT_CREATE_ENABLED ? (
+    <CreatePptModal
+      open={pptModalOpen}
+      spaceId={space}
+      folderId={folder}
+      triggerRef={pptOpenerRef}
+      onClose={() => setPptModalOpen(false)}
+      onCreated={onPptCreated}
+    />
+  ) : (
+    <ConfirmModal
+      open={pptModalOpen}
+      title={t('docs.ppt.createTitle')}
+      message={t('docs.ppt.createComingSoon')}
+      confirmLabel={t('docs.ppt.createComingSoonOk')}
+      cancelLabel={t('docs.ppt.createComingSoonOk')}
+      onConfirm={() => setPptModalOpen(false)}
+      onCancel={() => setPptModalOpen(false)}
+    />
+  )
   if (routeRight) {
     return (
       <div className="octo-doc octo-docs-list-only octo-theme">
@@ -2088,7 +2155,10 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
-          onCreatePpt={() => setPptComingSoonOpen(true)}
+          onCreatePpt={(opener) => {
+            pptOpenerRef.current = opener ?? null
+            setPptModalOpen(true)
+          }}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
@@ -2099,15 +2169,7 @@ export function DocsHome() {
           onClose={() => setHtmlModalOpen(false)}
           onSubmit={onSubmitHtml}
         />
-        <ConfirmModal
-          open={pptComingSoonOpen}
-          title={t('docs.ppt.createTitle')}
-          message={t('docs.ppt.createComingSoon')}
-          confirmLabel={t('docs.ppt.createComingSoonOk')}
-          cancelLabel={t('docs.ppt.createComingSoonOk')}
-          onConfirm={() => setPptComingSoonOpen(false)}
-          onCancel={() => setPptComingSoonOpen(false)}
-        />
+        {pptModal}
       </div>
     )
   }
@@ -2122,7 +2184,10 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
-          onCreatePpt={() => setPptComingSoonOpen(true)}
+          onCreatePpt={(opener) => {
+            pptOpenerRef.current = opener ?? null
+            setPptModalOpen(true)
+          }}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
@@ -2145,15 +2210,7 @@ export function DocsHome() {
         onClose={() => setHtmlModalOpen(false)}
         onSubmit={onSubmitHtml}
       />
-      <ConfirmModal
-        open={pptComingSoonOpen}
-        title={t('docs.ppt.createTitle')}
-        message={t('docs.ppt.createComingSoon')}
-        confirmLabel={t('docs.ppt.createComingSoonOk')}
-        cancelLabel={t('docs.ppt.createComingSoonOk')}
-        onConfirm={() => setPptComingSoonOpen(false)}
-        onCancel={() => setPptComingSoonOpen(false)}
-      />
+      {pptModal}
     </div>
   )
 }

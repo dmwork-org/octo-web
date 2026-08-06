@@ -1436,7 +1436,7 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
-  it('shows the "new slides" caret-menu entry that opens the R1 coming-soon notice without creating a doc', async () => {
+  it('shows the "new slides" caret-menu entry that opens the R2 template picker without precreating a doc', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     const calls: Array<{ method: string; url: string }> = []
@@ -1454,12 +1454,194 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     fireEvent.click(screen.getByText('docs.list.newPpt'))
 
-    // R1: a "coming soon" notice appears — no doc is created and no editor/PPT surface opens.
-    await waitFor(() => expect(screen.getByText('docs.ppt.createComingSoon')).toBeTruthy())
+    // R2 (flag ON): the four-template picker opens — no doc is created and no editor/PPT surface
+    // opens (the deck is minted only on submit, via POST /api/v1/ppt/docs, never here).
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    expect(screen.getAllByRole('radio')).toHaveLength(4)
     expect(screen.queryByTestId('editor-shell')).toBeNull()
     expect(screen.queryByTestId('ppt-doc-view')).toBeNull()
-    // The entry must NOT call createDoc (a Bento deck is never minted through the rich-doc path).
+    // Opening the picker must NOT call createDoc or the ppt create endpoint — nothing is precreated.
     expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
+    expect(calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(false)
+  })
+
+  // ── R2-F1: focus returns to the PERSISTENT caret after the picker closes ───
+  // Drives the REAL wiring — DocsList caret → dropdown menu → 新建幻灯片 menu item → CreatePptModal →
+  // close — not a hand-focused trigger. This is the path the previous CreatePptModal unit tests never
+  // exercised: they mounted a persistent trigger and focused it directly, so restore always "worked",
+  // while the real app captured `document.activeElement` — the dropdown menu item, which UNMOUNTS the
+  // instant it is clicked (the menu closes as it opens the modal). Restoring to that detached node
+  // silently no-ops and focus is stranded on <body>. The fix hands the modal the persistent caret to
+  // restore to instead; these tests assert focus lands back on that caret after Esc and after Cancel.
+  async function openPickerFromCaretMenu(): Promise<HTMLElement> {
+    const caret = screen.getByLabelText('docs.list.newMenu')
+    caret.focus() // the real user/AT focuses the caret before it is activated
+    fireEvent.click(caret)
+    // The dropdown menu item takes focus when activated (real browsers focus a clicked button); mirror
+    // that so document.activeElement is the menu item at click time — the exact pre-condition of the
+    // R2-F1 defect. jsdom's fireEvent.click does NOT move focus, so we set it explicitly.
+    const item = screen.getByRole('button', { name: 'docs.list.newPpt' })
+    item.focus()
+    expect(document.activeElement).toBe(item)
+    fireEvent.click(item)
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    // The menu item that opened the modal is now gone — it can never be a valid restore target, and
+    // (with it detached) document.activeElement has fallen back to <body>.
+    expect(screen.queryByText('docs.list.newPpt')).toBeNull()
+    expect(item.isConnected).toBe(false)
+    return caret
+  }
+
+  const pptListResponder = (method: string, url: string) => {
+    if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+    return { data: {}, status: 200 }
+  }
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Esc', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    const { container } = render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    // Esc on the native <dialog> fires a cancel event, routed to onClose (modal closes).
+    const dialogEl = container.querySelector('dialog') as HTMLDialogElement
+    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
+    // Reproduce the real-browser race: focus falls to <body> after the close, before the restore lands.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    // The post-close restore lands on the PERSISTENT caret — not the detached menu item, not <body>.
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Cancel', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.cancel' }))
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
+  // ── R2-F1 P1-1: open-redirect — a backend editorUrl is gated before navigation ─────────────
+  // onPptCreated fed window.location.assign the backend editorUrl after only an emptiness check, so
+  // a compromised/misbehaving backend could bounce the user to a `javascript:` or cross-origin URL.
+  // The create flow now runs the returned route through the repo's same-origin guard before assign.
+  it('R2-F1 P1-1: does NOT navigate when the backend returns an unsafe (cross-origin) editorUrl', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A hostile absolute cross-origin route — must be rejected, never navigated to.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: 'https://evil.example.com/steal' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // The create round-trip completes, but the unsafe route is refused: no navigation happens and
+    // the picker stays open. Because the cross-origin route is NON-retriable (a retry reuses the same
+    // Idempotency-Key → the backend returns the same refused route), the modal shows its distinct
+    // non-retriable message and DISABLES Create — not the generic retriable error (P2-1).
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(true),
+    )
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.unavailable')).toBeTruthy())
+    expect(assignSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  it('R2-F1 P1-1: navigates for a safe same-origin editorUrl (happy path preserved)', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/ppt/d/new_deck'))
+  })
+
+  // ── R2-F1 P2-2: navigate BEFORE closing the picker ─────────────────────────
+  // onPptCreated used to setPptModalOpen(false) and THEN window.location.assign(editorUrl). When
+  // assign throws (a sandboxed embed can forbid top-level navigation), the exception propagates into
+  // CreatePptModal.onSubmit's catch, which calls setError — but on an ALREADY-CLOSED modal, so the
+  // error never renders and the user is soft-locked on a silent no-op. Assigning FIRST keeps the
+  // modal open when assign throws, so the failure surfaces and the create stays retriable.
+  it('R2-F1 P2-2: keeps the picker open and surfaces the error when navigation throws (assign before close)', async () => {
+    const throwingAssign = vi.fn(() => {
+      throw new Error('navigation blocked (sandboxed embed)')
+    })
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: throwingAssign },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A perfectly safe same-origin route — the only failure here is that assign itself throws.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // assign was attempted (navigate-first), but it threw…
+    await waitFor(() => expect(throwingAssign).toHaveBeenCalledWith('/ppt/d/new_deck'))
+    // …and because the close runs only AFTER a successful assign, the picker is still open and the
+    // error is visible + retriable — not a silently-closed soft-lock.
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(false)
   })
 
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
