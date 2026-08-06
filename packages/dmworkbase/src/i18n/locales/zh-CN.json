@@ -36,6 +36,7 @@
   "conversationList.externalGroup": "外部群",
   "conversationList.justNow": "刚刚",
   "conversationList.mentionMarker": "@我",
+  "conversationList.unreadPriorityMarker": "未读",
   "conversationList.minutesAgoShort": "{{count}}分钟",
   "conversationList.toggleThreads": "展开或收起子区",
   "profileOnlineStatus.online": "在线",
