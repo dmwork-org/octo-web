@@ -77,6 +77,7 @@ import {
   persistStandaloneReturn,
   consumeStandaloneReturn,
   withReturnSid,
+  resolveSameOriginPath,
   STANDALONE_RETURN_KEY,
 } from './StandaloneDocPage.tsx'
 
@@ -803,6 +804,65 @@ describe('XIN-501 — preflight addresses the doc space from the link ?sp, never
     expect(wk.shared.currentSpaceId).toBe('space-doc')
     const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
     expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+  })
+})
+
+describe('resolveSameOriginPath — PPT editorUrl normalise (P2-1)', () => {
+  const origin = window.location.origin
+
+  it('normalises a same-origin ABSOLUTE url to a rooted path (the P2-1 accept case)', () => {
+    expect(resolveSameOriginPath(`${origin}/ppt/d/abc`)).toBe('/ppt/d/abc')
+    // query + hash are preserved.
+    expect(resolveSameOriginPath(`${origin}/ppt/d/abc?sp=1#s2`)).toBe('/ppt/d/abc?sp=1#s2')
+  })
+
+  it('accepts a rooted-relative path and a bare-relative path (resolved against origin root)', () => {
+    expect(resolveSameOriginPath('/ppt/d/abc?sp=1')).toBe('/ppt/d/abc?sp=1')
+    // A bare-relative value that isSameOriginPath would REJECT is normalised to a rooted path here.
+    expect(resolveSameOriginPath('d/abc')).toBe('/d/abc')
+  })
+
+  it('rejects cross-origin / scheme-relative / javascript / control-char / empty values', () => {
+    for (const bad of [
+      'https://evil.example.com/steal', // cross-origin absolute
+      '//evil.example.com', // scheme-relative → off-origin
+      'javascript:alert(1)', // script payload (opaque origin)
+      '/\n/evil.example.com', // newline smuggles //host past the URL parser
+      '/\t/evil.example.com', // tab → same
+      '', // empty
+    ]) {
+      expect(resolveSameOriginPath(bad)).toBeNull()
+    }
+    expect(resolveSameOriginPath(null)).toBeNull()
+    expect(resolveSameOriginPath(undefined)).toBeNull()
+  })
+
+  it('collapses leading-slash runs so a normalised path can never be scheme-relative (P1-1)', () => {
+    // Each input parses same-origin, but its pathname begins with `//` (or resolves to one via
+    // dot-segments / backslash smuggling). Handing that back verbatim lets location.assign()
+    // re-parse it as SCHEME-RELATIVE and bounce cross-origin. The guard must return a single-rooted
+    // path that stays same-origin when re-parsed.
+    const rows = [
+      `${origin}//evil.example.com/steal`, // absolute same-origin, pathname `//evil…`
+      `${origin}/\\/evil.example.com/steal`, // backslash → `/` in special schemes → `//evil…`
+      '/..//evil.example.com/steal', // rooted; `/..` clamps to root, leaving `//evil…`
+      '/a/../..//evil.example.com', // rooted; dot-segments collapse to `//evil…`
+    ]
+    for (const raw of rows) {
+      const result = resolveSameOriginPath(raw)
+      expect(result).not.toBeNull()
+      // Exactly one leading slash — not scheme-relative.
+      expect(result!.startsWith('//')).toBe(false)
+      expect(result!.startsWith('/')).toBe(true)
+      // Re-parsing the returned value (as location.assign would) stays on the current origin.
+      expect(new URL(result!, origin).origin).toBe(origin)
+    }
+  })
+
+  it('rejects non-http(s) same-origin protocols (e.g. blob:) whose pathname is not a real page path', () => {
+    // blob:<origin>/… reports a matching origin, but its pathname is the whole inner URL, so it is
+    // not a navigable rooted path. Only http/https page schemes are accepted.
+    expect(resolveSameOriginPath(`blob:${origin}/550e8400-e29b-41d4-a716-446655440000`)).toBeNull()
   })
 })
 
