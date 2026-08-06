@@ -1616,6 +1616,82 @@ body.octo-row-resizing {
   border-radius: 8px;
   padding: 4px;
 }
+
+.octo-member-picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.octo-member-picker-expand {
+  align-self: flex-start;
+  margin-left: var(--wk-sp-8, 32px);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  border: 0;
+  border-radius: var(--wk-r-full, 9999px);
+  background: transparent;
+  color: var(--octo-muted);
+  font-size: 12px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+  cursor: pointer;
+}
+
+.octo-member-picker-expand:hover {
+  background: var(--wk-brand-alpha-06, rgba(28, 28, 35, 0.06));
+  color: var(--octo-text, #1c1c23);
+}
+
+.octo-member-picker-expand:focus-visible {
+  outline: 2px solid var(--wk-brand-alpha-20, rgba(28, 28, 35, 0.2));
+  outline-offset: 1px;
+}
+
+/* Decorative chevron for the Bot expander (no functional emoji; rotates on expand). */
+.octo-member-picker-chevron {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.15s ease;
+}
+.octo-member-picker-expand[aria-expanded='true'] .octo-member-picker-chevron {
+  transform: rotate(180deg);
+}
+
+.octo-member-picker-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px) var(--wk-sp-1, 4px) var(--wk-sp-8, 32px);
+  border-radius: var(--wk-r-xs, 3px);
+  font-size: 13px;
+}
+
+.octo-member-picker-bot:not(.is-preview):hover {
+  background: var(--wk-brand-alpha-04, rgba(28, 28, 35, 0.04));
+}
+
+.octo-member-picker-bot input:focus-visible {
+  outline: 2px solid var(--wk-brand-alpha-20, rgba(28, 28, 35, 0.2));
+  outline-offset: 1px;
+}
+
+/* Read-only Bot preview under an unselected person: muted, non-interactive. */
+.octo-member-picker-bot.is-preview {
+  color: var(--octo-muted);
+  cursor: default;
+}
+.octo-member-picker-bot.is-preview input {
+  cursor: not-allowed;
+}
+
+.octo-member-picker-bot-creator {
+  color: var(--octo-muted);
+  font-size: 12px;
+}
 .octo-member-picker-empty {
   color: var(--octo-muted, #8a919e);
   font-size: 13px;
@@ -4047,6 +4123,25 @@ body.octo-row-resizing {
   font-size: 13px;
 }
 
+.octo-access-request-bots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: stretch;
+}
+
+.octo-access-request-bots-label {
+  color: var(--octo-muted);
+  font-size: 12px;
+}
+
+.octo-access-request-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
 .octo-access-request-submitted {
   margin-top: 12px;
   color: var(--octo-muted, #86909c);
@@ -4135,6 +4230,25 @@ body.octo-row-resizing {
   opacity: 0.6;
   cursor: default;
   background: var(--octo-accent, #3370ff);
+}
+
+/* Secondary escape hatch next to Retry when the owned-Bot set is unknown: subordinate to the primary
+   (one primary per action group) but still a real, focusable button. */
+.octo-access-request-self-only {
+  align-self: flex-start;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--octo-accent);
+  background: transparent;
+  border: none;
+}
+.octo-access-request-self-only:hover:not(:disabled) {
+  color: var(--octo-active-fg-hover);
+  text-decoration: underline;
+}
+.octo-access-request-self-only:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* Sheet toolbar: left-align the Univer ribbon toolbar (the icon row) instead of
