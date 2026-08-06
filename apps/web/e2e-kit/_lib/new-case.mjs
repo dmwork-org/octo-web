@@ -73,8 +73,6 @@ const MOCK_IM_IMPORT_PATH = "_kit/mock-im-runtime";
 const SANITY_IMPORT_PATH = "_lib/sanity";
 const HANDLERS_IMPORT_ROOT = "msw-handlers";
 
-const E2E_ROOT_BASENAME = "e2e-kit";
-
 const USE_MOCK_IM = false; // 项目装了 mock-im-wksdk optional 后, 改成 true
 const USE_SANITY = true;
 const FMT_CMD = null; // 例: ["pnpm", "exec", "prettier", "--write"]
@@ -128,35 +126,16 @@ if (!/^[a-z][a-z0-9-]*$/.test(slug)) {
 
 const moduleName = args.flags.module || null;
 const subModule = args.flags.submodule || null;
-if (args.flags.tags === true) {
-  console.error("--tags 需要值, 例如 --tags '@p1 @summary'");
-  process.exit(1);
-}
 const inputTags = String(args.flags.tags || "").trim();
 const inputTagList = inputTags.split(/\s+/).filter(Boolean);
 
-function isValidTag(tag) {
-  return /^@[A-Za-z0-9][A-Za-z0-9-]*$/.test(tag);
-}
-
 function isModuleLikeTag(tag, caseId) {
   return (
-    isValidTag(tag) &&
+    tag.startsWith("@") &&
     tag !== `@${caseId}` &&
     !["@p0", "@p1", "@p2", "@visual"].includes(tag) &&
     !/^@p[0-2]-/.test(tag)
   );
-}
-
-const invalidTags = inputTagList.filter((t) => !isValidTag(t));
-if (invalidTags.length > 0) {
-  console.error(`非法 tag: ${invalidTags.join(" ")}. tag 必须形如 @summary / @summary-list / @p1`);
-  process.exit(1);
-}
-const priorityTags = inputTagList.filter((t) => ["@p0", "@p1", "@p2"].includes(t));
-if (new Set(priorityTags).size > 1) {
-  console.error(`优先级 tag 只能有一个, 收到: ${[...new Set(priorityTags)].join(" ")}`);
-  process.exit(1);
 }
 
 // lint-spec-format 会强制 Tags 里有 module tag. 这里提前 fail-fast,
@@ -224,8 +203,7 @@ const testPath = resolve(testDir, testFileName);
 const handlerPath = resolve(HANDLERS_DIR, handlerFileName);
 
 const specRelForHeader = [
-  E2E_ROOT_BASENAME,
-  "case-specs",
+  relative(REPO_ROOT, CASE_SPECS_DIR),
   ...(moduleName ? [moduleName] : []),
   ...(subModule ? [subModule] : []),
   specFileName,
@@ -299,8 +277,8 @@ import { test, expect } from "${sharedRoot}${FIXTURES_IMPORT_PATH}";
 ${withHttpMock ? `import { ${registerFnName} } from "${sharedRoot}${HANDLERS_IMPORT_ROOT}/${caseId.toLowerCase()}-${slug}";\n` : ""}${withImSeed ? `import { installMockImRuntime } from "${sharedRoot}${MOCK_IM_IMPORT_PATH}";\n` : ""}${USE_SANITY ? `import { startRequestMonitor, sanityCheck } from "${sharedRoot}${SANITY_IMPORT_PATH}";\n` : ""}
 ${USE_SANITY ? `
 const sanityConfig = {
-  realHosts: ["<PROJECT_REAL_HOST>"],
-  apiPrefixRe: /^\\/(api|v1)(\\/|$)/,
+  realHosts: ["127.0.0.1:9", "mock.e2e.local"],
+  apiPrefixRe: /^\\/(api|summary\\/api)(\\/|$)/,
   loginPathRe: /\\/login(\\?|$)/,
 };
 ` : ""}
