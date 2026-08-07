@@ -945,6 +945,10 @@
     "createComingSoonOk": "Got it",
     "viewTitle": "Slides",
     "previewComingSoon": "Slides preview is coming soon.",
+    "editorComingSoon": "The slides editor is coming soon.",
+    "presentComingSoon": "Slides presentation is coming soon.",
+    "loading": "Loading slides…",
+    "loadError": "Couldn't load the slides. Please try again.",
     "create": {
       "title": "New slides",
       "templateLabel": "Choose a template",

@@ -945,6 +945,10 @@
     "createComingSoonOk": "知道了",
     "viewTitle": "幻灯片",
     "previewComingSoon": "幻灯片预览即将上线。",
+    "editorComingSoon": "幻灯片编辑器即将上线。",
+    "presentComingSoon": "幻灯片放映即将上线。",
+    "loading": "正在加载幻灯片…",
+    "loadError": "加载幻灯片失败，请重试。",
     "create": {
       "title": "新建幻灯片",
       "templateLabel": "选择模板",
