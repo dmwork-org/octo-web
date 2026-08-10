@@ -59,7 +59,7 @@ dm__test
 AGENTS.config.local.json
 package-lock.json
 
-# AI/IDE 工件文件（不进仓库）
+# AI/IDE 宸ヤ欢鏂囦欢锛堜笉杩涗粨搴擄級
 .kiro/settings/mcp.json
 **/figma-spec.md
 **/rawdata.txt
@@ -89,8 +89,11 @@ packages/docs/dev/coexist-out/
 packages/docs/dev/multipointer-out/
 packages/docs/dev/colhover-out/
 
-# Loop V1 内部设计文档仅保留在本地 workspace，不纳入版本库
+# Loop V1 鍐呴儴璁捐鏂囨。浠呬繚鐣欏湪鏈湴 workspace锛屼笉绾冲叆鐗堟湰搴?
 docs/loop-v1/
 .omx
+<<<<<<< Updated upstream
 .idea/
+.idea/
+>>>>>>> Stashed changes
 .ftre/

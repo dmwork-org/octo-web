@@ -383,6 +383,14 @@ const getWindowConfig = () => {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: isDevelopment,
+      // The preload bridge is compiled by tsc as multiple CommonJS files
+      // (index.js + notificationListeners.js + shared/ipc-channels.js) with
+      // relative requires. Electron's sandboxed renderer cannot resolve those
+      // (no filesystem in the sandbox) — "module not found: ./notificationListeners".
+      // Keep the renderer isolated (contextIsolation + nodeIntegration:false)
+      // but let the trusted preload run unsandboxed until it is bundled into a
+      // single file (electron-vite style).
+      sandbox: false,
     },
     // frame: !isWin,
   };
