@@ -218,6 +218,8 @@ VITE_ENTERPRISE_FS_ALLOW
 
 GitLab CI 的 Docker build context 是 `octo-web/` 仓库根目录。CI 会先把两个私有仓放到 `octo-web/.enterprise/`，再执行 Docker build；`.enterprise/` 只作为 CI 临时构建输入，不作为源码归属。
 
+Docker enterprise 构建会在 root `pnpm install --frozen-lockfile` 后读取 `.enterprise/octo-enterprise-modules/package.json`，并把企业装配包声明、但 host 当前未声明的运行依赖临时安装到镜像内的 `@octo/web`。这些依赖不会写回 `octo-web` 源码里的 `apps/web/package.json` 或 `pnpm-lock.yaml`，避免后续同步开源 upstream 时反复产生 enterprise-only 依赖冲突。具体 loop/docs/drive 依赖应集中声明在 `octo-enterprise-modules`，不要分散到 host。
+
 示例：
 
 ```bash
