@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useI18n } from '@octo/base';
 import { Button, Dropdown, Spin } from '@douyinfe/semi-ui';
 import { Folder, FileText, File, MoreHorizontal, Download } from 'lucide-react';
@@ -26,12 +26,15 @@ export interface FileListProps {
   canEdit: boolean;
   /** downloader+ — show the share action in the dropdown. */
   canShare: boolean;
+  /** When set, the matching entry row is scrolled into view and flashed. */
+  highlightFileId?: number | null;
 }
 
+/** Per-kind glyph at docs' 16px row-icon size; colour is uniform (see index.css). */
 function EntryIcon({ entry }: { entry: DriveEntry }) {
-  if (entry.type === 'folder') return <Folder size={18} className="drive-file__icon drive-file__icon--folder" />;
-  if (entry.type === 'doc') return <FileText size={18} className="drive-file__icon drive-file__icon--doc" />;
-  return <File size={18} className="drive-file__icon drive-file__icon--blob" />;
+  if (entry.type === 'folder') return <Folder size={16} className="drive-file__icon" />;
+  if (entry.type === 'doc') return <FileText size={16} className="drive-file__icon" />;
+  return <File size={16} className="drive-file__icon" />;
 }
 
 /** Mixed listing of folders, Type-1 docs and Type-2 blobs for one folder. */
@@ -49,8 +52,16 @@ export default function FileList({
   canDownload,
   canEdit,
   canShare,
+  highlightFileId,
 }: FileListProps) {
   const { t } = useI18n();
+  const highlightRowRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (highlightFileId == null) return;
+    const el = highlightRowRef.current;
+    if (el) el.scrollIntoView({ block: 'center' });
+  }, [highlightFileId, entries]);
 
   if (loading) {
     return (
@@ -61,7 +72,7 @@ export default function FileList({
   }
 
   if (entries.length === 0) {
-    return <div className="drive-file-list__center drive-file-list__empty">{t('drive.file.empty')}</div>;
+    return <div className="drive-file-list__empty">{t('drive.file.empty')}</div>;
   }
 
   return (
@@ -75,8 +86,13 @@ export default function FileList({
 
       {entries.map((entry) => {
         const isFolder = entry.type === 'folder';
+        const isHighlight = highlightFileId != null && entry.id === highlightFileId;
         return (
-          <div key={entry.id} className="drive-file-row">
+          <div
+            key={entry.id}
+            ref={isHighlight ? highlightRowRef : undefined}
+            className={`drive-file-row${isHighlight ? ' drive-file-row--flash' : ''}`}
+          >
             <span className="drive-file__name">
               <EntryIcon entry={entry} />
               {isFolder ? (

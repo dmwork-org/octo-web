@@ -13,6 +13,8 @@ export type MittEvents = {
   /** App 回前台(visibilitychange/focus):打开中的会话据此重同步成员列表,
    * 修复合盖/息屏久后 WS 断连期间成员变更 CMD 丢失导致 @ 搜不到新成员(octo-web#567) */
   "wk:app-foreground": undefined;
+  /** 当前会话消息 DOM/滚动位置变化，供待决的多标签页提醒尽早登记前台抑制。 */
+  "wk:message-attention-state-changed": undefined;
   /** 消息 reaction 乐观更新或服务端对账完成，携带 messageId 做局部刷新 */
   "message-reaction-updated": string;
   "wk:pending-thread": {
@@ -60,6 +62,10 @@ export type MittEvents = {
    * 不会自动 remount, 接收方需要主动 reload。
    */
   'wk:nav-menu-activated': { menuId: string };
+  /** The canonical active top-level page changed (including boot, history and config reconciliation). */
+  'wk:active-menu-changed': { menuId?: string };
+  /** Login, logout or account replacement changed the identity that owns page-level state. */
+  'wk:auth-state-changed': undefined;
   /**
    * dmloop 派单(quick-create)后的看板补刷协议。派单是异步的(agent 稍后建 issue,dmloop 暂无 WS 推送):
    * NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
@@ -760,6 +766,20 @@ export default class WKApp extends ProviderListener {
     originChannel?: { channelId: string; channelType: number },
   ) => void;
   static searchChatCandidates?: (params: { keyword?: string; chat_type?: string; space_id?: string }) => Promise<any[]>;
+  // Transfer an IM file message into the drive's personal space. Set by
+  // DriveModule.init(). Absent when the drive module isn't registered or the
+  // `drive_on` remote flag is false — callers must guard on presence.
+  // Returns the resulting drive file coordinates so the caller can flip its UI
+  // state to "view in drive" without a follow-up query.
+  static saveMessageToDrive?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
+  // Query whether an IM file (identified by the (channelType, channelID, msgID)
+  // triple the backend uses to derive its source_key) is already transferred
+  // into the caller's personal drive space. Registered by DriveModule; the chat
+  // file card uses it to switch its icon action between "save" and "view".
+  static checkDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
+  // Open the drive UI and focus/flash a specific file. Registered by DriveModule.
+  // Only the space root is entered — the caller does not thread parent_id.
+  static openDriveFile?: (params: { space_id: string; file_id: number }) => void;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;
   static apiClient = APIClient.shared; // api客户端
@@ -841,6 +861,11 @@ export default class WKApp extends ProviderListener {
   deviceModel: string = ""; // 设备型号
   private remoteConfigForegroundRefreshStarted: boolean = false;
   private lastRemoteConfigForegroundRefreshAt: number = 0;
+  // 幂等登出闸门：token 过期后往往有多个并发请求同时 401，各自触发一次
+  // logoutCallback → logout()。若不加护栏，window.location.replace("/login")
+  // 会被连发多次，且导航是异步的、飞行中的请求继续 reject 继续 logout，
+  // 造成"登录页反复跳转 / 控制台疯狂刷 401"的死循环。首次进入即置位，后续重入直接返回。
+  private _loggingOut: boolean = false;
 
   set notificationIsClose(v: boolean) {
     this._notificationIsClose = v;
@@ -869,8 +894,11 @@ export default class WKApp extends ProviderListener {
     this.deviceName = this.getOSAndVersion();
     this.deviceModel = this.getBrandsFromUserAgent();
 
-    // 暗黑模式已关闭，强制亮色
-    WKApp.config.themeMode = ThemeMode.light;
+    const storedThemeMode = StorageService.shared.getItem("theme-mode");
+    WKApp.config.themeMode =
+      storedThemeMode === `${ThemeMode.dark}` || storedThemeMode === "dark"
+        ? ThemeMode.dark
+        : ThemeMode.light;
 
     registerImConnectAddressProvider(
       WKSDK.shared(),
@@ -878,6 +906,7 @@ export default class WKApp extends ProviderListener {
     );
 
     WKApp.endpoints.addOnLogin(() => {
+      WKApp.mittBus.emit("wk:auth-state-changed");
       this.startMain();
     });
 
@@ -1068,10 +1097,15 @@ export default class WKApp extends ProviderListener {
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
+    WKApp.mittBus.emit("wk:auth-state-changed");
   }
 
   // 登出
   logout() {
+    // 幂等守卫：并发 401 会重复调用本方法，只允许第一次真正执行清理与跳转，
+    // 后续重入直接返回，避免 window.location.replace 被连发导致的反复跳转/刷屏。
+    if (this._loggingOut) return;
+    this._loggingOut = true;
     this.clearLocalLoginState();
     window.location.replace("/login");
   }

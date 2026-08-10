@@ -151,6 +151,7 @@ export interface DocForwardGrantResult {
   granted: number
   failed: number
   failures?: string[]
+  rejected?: string[]
 }
 
 /**
@@ -175,9 +176,9 @@ export interface HostDocForward {
   updatedAt?: string
   canGrant: boolean
   disabledReason?: string
-  defaultRole?: 'reader' | 'writer'
-  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  defaultRole?: 'reader' | 'commenter' | 'writer'
+  grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }
 
 /** Minimal surface of the host's WKBase context the docs bridge touches. */
@@ -215,12 +216,12 @@ export interface OpenDocForwardOptions {
   /** Grey-out hint for non-grantors. */
   disabledReason?: string
   /** Default grant role when the switch is on (defaults to 'reader'). */
-  defaultRole?: 'reader' | 'writer'
+  defaultRole?: 'reader' | 'commenter' | 'writer'
   /** Modal title shown at the top of the conversation-select dialog. */
   modalTitle?: string
   /** docs-injected grant executor; host awaits it before sending. */
-  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }
 
 /**
@@ -239,6 +240,19 @@ export interface SpaceMemberLite {
   avatar?: string
   /** True for an AI/robot member (host `robot === 1`); absent when unknown. */
   isBot?: boolean
+  /** Creator of a Space Bot; used to build the grant-time user -> Bot snapshot. */
+  creatorUid?: string
+  /**
+   * True when this Bot's grantability rests on a trusted, viewer-scoped provenance the caller can
+   * vouch for: a Space MEMBER Bot (from queryMembers) or one the current user OWNS (owner-scoped
+   * GET /robot/owned_bots). The Space-Bot catalog (GET /robot/space_bots) is NOT viewer-scoped and
+   * carries no such vouch, so a catalog-ONLY Bot without a resolvable creator MUST NOT become a
+   * grantable standalone candidate. Friendship is NOT such a provenance either: a merely
+   * friend-added Bot owned by someone else must never carry this stamp. Absent → no independent
+   * provenance; the Bot is only offered when it nests under a visible creator (or is already
+   * granted, in which case it shows disabled).
+   */
+  safeStandalone?: boolean
 }
 
 /**

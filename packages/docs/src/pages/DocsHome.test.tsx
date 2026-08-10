@@ -7,14 +7,34 @@ import {
   fireEvent,
   act,
   createEvent,
-} from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { setWKApp } from '../octoweb/index.ts'
-import { createMockWKApp } from '../octoweb/mock.ts'
-import { resolveDocTarget, clearDocTarget, readDocFromHistory, DocsHome } from './DocsHome.tsx'
-import { captureDocTargetDeepLink, CLI_REFERENCE_URL, httpUrlOr } from '../config.ts'
-import zhLocale from '../i18n/zh-CN.json'
-import enLocale from '../i18n/en-US.json'
+} from "@testing-library/react";
+import type { ReactNode } from "react";
+import { setWKApp } from "../octoweb/index.ts";
+import { createMockWKApp } from "../octoweb/mock.ts";
+import {
+  resolveDocTarget,
+  clearDocTarget,
+  readDocFromHistory,
+  DocsHome,
+} from "./DocsHome.tsx";
+import {
+  captureDocTargetDeepLink,
+  CLI_REFERENCE_URL,
+  httpUrlOr,
+} from "../config.ts";
+import zhLocale from "../i18n/zh-CN.json";
+import enLocale from "../i18n/en-US.json";
+import { titleContextStore } from "@octo/base";
+
+// The caret-menu "New slides" entry is hidden by default now (PPT_ENTRY_ENABLED, default OFF), but
+// the html_ppt create wiring it drives is still shipped and must stay covered. This file pins the
+// ENTRY on — keeping every other config export real via importActual — so the picker / focus-restore
+// / open-redirect assertions below keep exercising the real menu path. The default-OFF behaviour
+// (entry absent from the dropdown) is covered in DocsHome.pptEntryOff.test.tsx.
+vi.mock('../config.ts', async () => {
+  const actual = await vi.importActual<typeof import('../config.ts')>('../config.ts')
+  return { ...actual, PPT_ENTRY_ENABLED: true }
+})
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
 // render tests exercise target-resolution / navigation without mounting the real editor.
@@ -77,6 +97,17 @@ vi.mock('../html/HtmlDocView.tsx', () => ({
   ),
 }))
 
+// Bento slide-deck (html_ppt) read-only surface. Mocked so a routing test can assert an html_ppt
+// row/target lands here and NEVER on the Tiptap editor-shell (the no-fallback contract, XIN-1501).
+vi.mock('../ppt/PptDocView.tsx', () => ({
+  PptDocView: (props: { docId: string; slug?: string }) => (
+    <div data-testid="ppt-doc-view">
+      <span data-testid="ppt-doc">{props.docId}</span>
+      <span data-testid="ppt-slug">{props.slug ?? ''}</span>
+    </div>
+  ),
+}))
+
 // Replace the embedded bot-DM shell (pulls @octo/base Conversation + WKSDK) with a marker so the
 // new-HTML flow is testable without a live IM channel. Surfaces the bot uid, requestId and part of
 // the auto-sent task text, plus the onClose affordance (plan Task 6).
@@ -114,8 +145,9 @@ let pushStateSpy: ReturnType<typeof vi.fn>
 const realLocation = window.location
 
 beforeEach(() => {
-  window.sessionStorage.clear()
-  window.localStorage.clear()
+  titleContextStore.clear("docs");
+  window.sessionStorage.clear();
+  window.localStorage.clear();
   // jsdom's window.location.assign is non-configurable and throws "Not implemented" on call.
   // Swap in a minimal stub exposing only what DocsHome touches (search + assign) so the
   // open / back navigations are observable without a real page load.
@@ -812,6 +844,33 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(calls.some((c) => c.method === 'get' && c.url === '/docs/h_known')).toBe(false)
   })
 
+  it('opens a persisted html_ppt doc directly into PptDocView on refresh (NO Tiptap editor fallback, NO getDoc round-trip)', async () => {
+    // No-fallback contract (XIN-1501): a stored docType='html_ppt' must open the read-only
+    // PptDocView on first paint. It must NEVER fall through to the collab EditorShell (a Bento
+    // deck has no Yjs payload) and must not take a getDoc detour that could default it to 'doc'.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'p_known', docType: 'html_ppt' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // PptDocView mounts immediately from the stored kind — never the rich-text editor.
+    expect(screen.getByTestId('ppt-doc-view')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // No per-doc getDoc round-trip (which could have defaulted an unknown kind to the editor).
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/p_known')).toBe(false)
+  })
+
   it('opens a persisted sheet doc directly into SheetView on refresh (no getDoc round-trip)', async () => {
     // Same whitelist fix also covers sheet, which the reviewer flagged as missing alongside html.
     window.sessionStorage.setItem(
@@ -1162,11 +1221,21 @@ describe('DocsHome — list-open shell selection by docType (XIN-58)', () => {
 
     fireEvent.click(screen.getByText('Shared X'))
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
-    expect(screen.queryByTestId('board-shell')).toBeNull()
-    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(false)
-  })
+    await waitFor(() =>
+      expect(screen.getByTestId("editor-shell")).toBeTruthy()
+    );
+    expect(screen.getByTestId("editor-doc").textContent).toBe("d_x");
+    expect(screen.queryByTestId("board-shell")).toBeNull();
+    expect(calls.some((c) => c.method === "get" && c.url === "/docs/d_x")).toBe(
+      false
+    );
+    await waitFor(() =>
+      expect(titleContextStore.get("docs")).toEqual({
+        primaryTitle: "Shared X",
+        moduleTitle: "docs.menu.title",
+      })
+    );
+  });
 
   it('unknown kind (list omits docType, non-creator) resolves a board via getDoc → board shell', async () => {
     // The core regression: registry is empty (non-creator) and the list row has no docType, yet
@@ -1303,6 +1372,286 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
       docType: 'html',
       octoDocSlug: 'octo-html-report',
     })
+  })
+
+  it('opens an existing html_ppt row into the read-only PptDocView (never the editor, no per-doc lookup)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              {
+                docId: 'ppt_row',
+                title: 'Quarterly Deck',
+                ownerId: 'u_owner',
+                role: 'admin',
+                docType: 'html_ppt',
+              },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Quarterly Deck')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Quarterly Deck'))
+
+    await waitFor(() => expect(screen.getByTestId('ppt-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('ppt-doc').textContent).toBe('ppt_row')
+    // Bento slide-deck: it must NOT open the rich-text editor / sheet (no-fallback contract).
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('sheet-view')).toBeNull()
+    // The list row already carried docType='html_ppt' — no authoritative getDoc round-trip.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/ppt_row')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'ppt_row',
+      docType: 'html_ppt',
+    })
+  })
+
+  it('resolves an unknown-kind row to PptDocView via getDoc when the backend reports html_ppt (no editor fallback)', async () => {
+    // The list API omitted docType, so the row opens with an UNKNOWN kind and defers to getDoc.
+    // A backend docType='html_ppt' must resolve to PptDocView, NOT default to the Tiptap editor.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/ppt_shared') {
+        return { data: { docId: 'ppt_shared', title: 'Shared Deck', role: 'admin', docType: 'html_ppt' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: { total: 1, items: [{ docId: 'ppt_shared', title: 'Shared Deck', ownerId: 'u_owner', role: 'admin' }] },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Shared Deck')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared Deck'))
+
+    // getDoc resolved html_ppt → the read-only PPT surface, never the rich-text editor.
+    await waitFor(() => expect(screen.getByTestId('ppt-doc-view')).toBeTruthy())
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('shows the "new slides" caret-menu entry that opens the R2 template picker without precreating a doc', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+
+    // Open the split "New" dropdown and choose "New slides".
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newPpt'))
+
+    // R2 (flag ON): the four-template picker opens — no doc is created and no editor/PPT surface
+    // opens (the deck is minted only on submit, via POST /api/v1/ppt/docs, never here).
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    expect(screen.getAllByRole('radio')).toHaveLength(4)
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('ppt-doc-view')).toBeNull()
+    // Opening the picker must NOT call createDoc or the ppt create endpoint — nothing is precreated.
+    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
+    expect(calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(false)
+  })
+
+  // ── R2-F1: focus returns to the PERSISTENT caret after the picker closes ───
+  // Drives the REAL wiring — DocsList caret → dropdown menu → 新建幻灯片 menu item → CreatePptModal →
+  // close — not a hand-focused trigger. This is the path the previous CreatePptModal unit tests never
+  // exercised: they mounted a persistent trigger and focused it directly, so restore always "worked",
+  // while the real app captured `document.activeElement` — the dropdown menu item, which UNMOUNTS the
+  // instant it is clicked (the menu closes as it opens the modal). Restoring to that detached node
+  // silently no-ops and focus is stranded on <body>. The fix hands the modal the persistent caret to
+  // restore to instead; these tests assert focus lands back on that caret after Esc and after Cancel.
+  async function openPickerFromCaretMenu(): Promise<HTMLElement> {
+    const caret = screen.getByLabelText('docs.list.newMenu')
+    caret.focus() // the real user/AT focuses the caret before it is activated
+    fireEvent.click(caret)
+    // The dropdown menu item takes focus when activated (real browsers focus a clicked button); mirror
+    // that so document.activeElement is the menu item at click time — the exact pre-condition of the
+    // R2-F1 defect. jsdom's fireEvent.click does NOT move focus, so we set it explicitly.
+    const item = screen.getByRole('button', { name: 'docs.list.newPpt' })
+    item.focus()
+    expect(document.activeElement).toBe(item)
+    fireEvent.click(item)
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    // The menu item that opened the modal is now gone — it can never be a valid restore target, and
+    // (with it detached) document.activeElement has fallen back to <body>.
+    expect(screen.queryByText('docs.list.newPpt')).toBeNull()
+    expect(item.isConnected).toBe(false)
+    return caret
+  }
+
+  const pptListResponder = (method: string, url: string) => {
+    if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+    return { data: {}, status: 200 }
+  }
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Esc', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    const { container } = render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    // Esc on the native <dialog> fires a cancel event, routed to onClose (modal closes).
+    const dialogEl = container.querySelector('dialog') as HTMLDialogElement
+    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
+    // Reproduce the real-browser race: focus falls to <body> after the close, before the restore lands.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    // The post-close restore lands on the PERSISTENT caret — not the detached menu item, not <body>.
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Cancel', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.cancel' }))
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
+  // ── R2-F1 P1-1: open-redirect — a backend editorUrl is gated before navigation ─────────────
+  // onPptCreated fed window.location.assign the backend editorUrl after only an emptiness check, so
+  // a compromised/misbehaving backend could bounce the user to a `javascript:` or cross-origin URL.
+  // The create flow now runs the returned route through the repo's same-origin guard before assign.
+  it('R2-F1 P1-1: does NOT navigate when the backend returns an unsafe (cross-origin) editorUrl', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A hostile absolute cross-origin route — must be rejected, never navigated to.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: 'https://evil.example.com/steal' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // The create round-trip completes, but the unsafe route is refused: no navigation happens and
+    // the picker stays open. Because the cross-origin route is NON-retriable (a retry reuses the same
+    // Idempotency-Key → the backend returns the same refused route), the modal shows its distinct
+    // non-retriable message and DISABLES Create — not the generic retriable error (P2-1).
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(true),
+    )
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.unavailable')).toBeTruthy())
+    expect(assignSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  it('R2-F1 P1-1: navigates for a safe same-origin editorUrl (happy path preserved)', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/ppt/d/new_deck?sp=demo'))
+  })
+
+  // ── R2-F1 P2-2: navigate BEFORE closing the picker ─────────────────────────
+  // onPptCreated used to setPptModalOpen(false) and THEN window.location.assign(editorUrl). When
+  // assign throws (a sandboxed embed can forbid top-level navigation), the exception propagates into
+  // CreatePptModal.onSubmit's catch, which calls setError — but on an ALREADY-CLOSED modal, so the
+  // error never renders and the user is soft-locked on a silent no-op. Assigning FIRST keeps the
+  // modal open when assign throws, so the failure surfaces and the create stays retriable.
+  it('R2-F1 P2-2: keeps the picker open and surfaces the error when navigation throws (assign before close)', async () => {
+    const throwingAssign = vi.fn(() => {
+      throw new Error('navigation blocked (sandboxed embed)')
+    })
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: throwingAssign },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A perfectly safe same-origin route — the only failure here is that assign itself throws.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // assign was attempted (navigate-first), but it threw…
+    await waitFor(() => expect(throwingAssign).toHaveBeenCalledWith('/ppt/d/new_deck?sp=demo'))
+    // …and because the close runs only AFTER a successful assign, the picker is still open and the
+    // error is visible + retriable — not a silently-closed soft-lock.
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(false)
   })
 
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
@@ -1868,6 +2217,7 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     { docId: 'd_sheet', title: 'A Sheet', ownerId: 'u_o', role: 'admin', docType: 'sheet', viewedAt: '2026-07-15T05:00:00.000Z' },
     { docId: 'd_board', title: 'A Board', ownerId: 'u_o', role: 'admin', docType: 'board', viewedAt: '2026-07-15T04:00:00.000Z' },
     { docId: 'd_html', title: 'A Web Page', ownerId: 'u_o', role: 'admin', docType: 'html', octoDocSlug: 'sp/fd/html-slug', viewedAt: '2026-07-15T03:00:00.000Z' },
+    { docId: 'd_ppt', title: 'A Slide Deck', ownerId: 'u_o', role: 'admin', docType: 'html_ppt', viewedAt: '2026-07-15T02:30:00.000Z' },
   ]
 
   function mountList() {
@@ -1904,6 +2254,13 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     await waitFor(() => expect(screen.getByText('A Web Page')).toBeTruthy())
     // The html row carries its own aria-label/title on the row icon (HtmlRowIcon).
     expect(screen.getByLabelText('docs.list.kindHtml')).toBeTruthy()
+  })
+
+  it('renders the html_ppt row with its own kindPpt icon (distinct from doc/sheet/board/html)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Slide Deck')).toBeTruthy())
+    // The slide-deck row carries its own aria-label/title on the row icon (PptRowIcon).
+    expect(screen.getByLabelText('docs.list.kindPpt')).toBeTruthy()
   })
 
   it('shows the type filter on both tabs and drives a multi-select OR request', async () => {
@@ -2873,5 +3230,130 @@ describe('DocsHome — "?" agent CLI onboarding help (Mininglamp-OSS/octo-docs-b
     // Dialog closes and focus is restored to the trigger (no keyboard dead-end).
     expect(screen.queryByTestId('onboarding-help-prompt')).toBeNull()
     expect(document.activeElement).toBe(screen.getByTestId('onboarding-help-btn'))
+  })
+})
+
+// 复制文档链接 / 转发 in the row context menu (owner request 2026-08-06). 转发 REUSES the existing
+// unit — `startDocForward`, the same bridge the document header uses — so these cases assert the
+// wiring reaches it with the right payload rather than testing a reimplementation. 删除 was dropped
+// from this menu on 2026-08-07 (too easy to mis-click next to 转发); the last case guards its absence.
+describe('DocsHome — row context menu: 复制文档链接 / 转发', () => {
+  const ROWS = [
+    { docId: 'd_a', title: 'Alpha', ownerId: 'u_self', role: 'admin', updatedAt: '2026-08-01T00:00:00Z' },
+    { docId: 'd_b', title: 'Beta', ownerId: 'u_other', role: 'reader', updatedAt: '2026-08-02T00:00:00Z' },
+  ]
+  const mount = async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: ROWS.length, items: ROWS }, status: 200 }
+      }
+      if (method === 'delete') return { data: {}, status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+    return wk
+  }
+
+  it('forwards through the same bridge the document header uses, with this row’s payload', async () => {
+    const wk = await mount()
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.forward.entry'))
+    // startDocForward → openDocForward: assert the payload the host receives.
+    expect(wk.openDocForwardCalls).toHaveLength(1)
+    const call = wk.openDocForwardCalls[0]
+    expect(call.docId).toBe('d_a')
+    expect(call.title).toBe('Alpha')
+    // admin on own doc ⇒ may grant, exactly as the header entry computes it.
+    expect(call.canGrant).toBe(true)
+  })
+
+  it('carries each row’s own kind, so a sheet/board forwards as a sheet/board card', async () => {
+    // Regression (Jerry-Xin, PR #1288): the call omitted `kind`, which startDocForward defaults to
+    // 'doc' — so forwarding a sheet or board row produced a wrong-kind DocumentShareCard (the card
+    // keys its icon and preview off `kind`). The doc-row case above cannot catch this: 'doc' is the
+    // very default that hid the bug.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 3,
+            items: [
+              { docId: 'd_sheet', title: 'Sheet row', ownerId: 'u_self', role: 'admin', docType: 'sheet' },
+              { docId: 'd_board', title: 'Board row', ownerId: 'u_self', role: 'admin', docType: 'board' },
+              { docId: 'd_html', title: 'Html row', ownerId: 'u_self', role: 'admin', docType: 'html' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Sheet row')).toBeTruthy())
+
+    const forwardRow = (title: string) => {
+      fireEvent.contextMenu(screen.getByText(title).closest('button')!)
+      fireEvent.click(screen.getByText('docs.forward.entry'))
+    }
+
+    forwardRow('Sheet row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('sheet')
+
+    forwardRow('Board row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('board')
+
+    // `html` has no counterpart in StartDocForwardInput.kind, so it falls back to 'doc' — the same
+    // value the omitted-kind path used, so those rows are unchanged by this fix.
+    forwardRow('Html row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('doc')
+  })
+
+  it('copies the document address for ANY role, without minting an invite', async () => {
+    // Owner decision 2026-08-07: 复制链接 now means the address. It replaced an invite-minting entry
+    // that was admin-only (createInvite → backend requires admin), which left a reader — the person
+    // most likely to want to point a colleague at a doc — with no way to copy it at all, and handed
+    // admins a link that silently GRANTED reader access instead of the address they asked for.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const wk = await mount()
+
+    // 'Beta' is role: 'reader' — the case the old admin gate excluded entirely.
+    fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)
+    fireEvent.click(screen.getByText('docs.list.copyDocLink'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    const copied = writeText.mock.calls[0][0] as string
+    // The doc's own address (buildDocLink), not an invite token.
+    expect(copied).toContain('/d/d_b')
+    // Pin the Space query too — without this the case would still pass if `space` were dropped.
+    expect(copied).toContain('sp=')
+    expect(copied).not.toContain('invite')
+    // And no request was made: minting an invite is what the old entry did.
+    expect(
+      wk.apiClient.calls.filter((c: { url: string }) => c.url.includes('invite')),
+    ).toHaveLength(0)
+  })
+
+  // Owner decision 2026-08-07: no 删除 in the row context menu — a destructive action one stray
+  // right-click away from 转发 is too easy to hit by mistake. Deleting stays inside the document,
+  // behind the shells' own ≡ menu. This case is the guard so it does not drift back in.
+  it('never offers 删除 in the row menu, not even to an admin on their own doc', async () => {
+    const wk = await mount()
+    // 'Alpha' is ownerId u_self + role admin — the most privileged row in the fixture.
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+
+    expect(screen.getByText('docs.list.copyDocLink')).toBeTruthy()
+    expect(screen.getByText('docs.forward.entry')).toBeTruthy()
+    expect(screen.queryByText('docs.sheet.deleteFile')).toBeNull()
+    // No confirm dialog is reachable from here either.
+    expect(screen.queryByText('docs.doc.deleteConfirm')).toBeNull()
+    expect(screen.queryByText('docs.sheet.deleteConfirm')).toBeNull()
+    // And nothing in this menu can issue a DELETE.
+    expect(wk.apiClient.calls.filter((c: { method: string }) => c.method === 'delete')).toHaveLength(0)
   })
 })

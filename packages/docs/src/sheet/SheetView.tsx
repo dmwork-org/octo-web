@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CollabSheet, type CollabSheetOptions } from './CollabSheet.ts'
 import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
-import { type Role, canManage } from '../auth/roles.ts'
+import { type Role, canComment, canManage } from '../auth/roles.ts'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { SheetVersionPanel } from './SheetVersionPanel.tsx'
 import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetCommentPanel.tsx'
@@ -42,6 +42,7 @@ import {
   DeleteIcon,
   type DocMoreMenuItem,
 } from '../editor/DocMoreMenu.tsx'
+import { DocGuide } from '../editor/DocGuide.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
@@ -272,14 +273,25 @@ export function SheetView(props: SheetViewProps) {
 
   // Right-click "评论" menu item: open an inline compose bubble next to the cell (the
   // sheet counterpart of the doc editor's selection bubble), instead of the side panel.
+  // WRITE affordance — commenter+ only; reader may view markers/panel but never composes.
   useEffect(() => {
     if (!sheet) return
+    if (!canComment(role)) {
+      sheet.setCommentMenuHandler(null)
+      return
+    }
     sheet.setCommentMenuHandler(() => {
       const a = sheet.getActiveCellAnchor()
       if (a) setComposer(a)
     })
     return () => sheet.setCommentMenuHandler(null)
-  }, [sheet])
+  }, [sheet, role])
+
+  // Runtime downgrade (e.g. writer/commenter → reader via a stateless role frame) must close any
+  // open inline composer so a pre-opened bubble can't be used to write after the role dropped.
+  useEffect(() => {
+    if (!canComment(role)) setComposer(null)
+  }, [role])
 
   // Load the real title so it's editable (docs have an inline DocTitle; the sheet
   // reuses the same rename REST endpoint). Also lift ownerId + createdAt for the ≡ menu head.
@@ -722,6 +734,10 @@ export function SheetView(props: SheetViewProps) {
         />
         <div className="octo-doc-header-right">
           {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} names={names} />}
+          {/* Bot 操作指引: how to drive THIS surface from octo-cli, and where the bundled skill docs
+              live. Sits to the LEFT of 评论 with the other document actions (the ≡ menu was tried
+              and rejected as too hidden). Not role-gated: reading the guide needs no rights. */}
+          <DocGuide kind="sheet" space={space} docId={docId} title={title} />
           <button type="button" className={tb('comments')} aria-pressed={panel === 'comments'} onClick={() => toggle('comments')}>
             💬 {t('docs.toolbar.comments')}
           </button>
@@ -755,7 +771,7 @@ export function SheetView(props: SheetViewProps) {
 
       <div style={{ flex: '1 1 auto', position: 'relative', minHeight: 0 }}>
         <div ref={containerRef} className="octo-sheet-container" style={{ position: 'absolute', inset: 0 }} />
-        {composer && (
+        {composer && canComment(role) && (
           <SheetCommentComposer
             anchor={composer}
             spaceId={space}

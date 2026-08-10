@@ -23,7 +23,7 @@ const bundles = ['dev', 'prod'].map((mode) => ({
   ),
 }))
 
-describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, zhCN }) => {
+describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ mode, source, zhCN }) => {
   it('defaults to straight and emits a real three-point path only for curved arrows', () => {
     expect(source).toMatch(/currentItemArrowType[\s\S]{0,80}(?:ARROW_TYPE|\w+)\.sharp/)
     expect(source).toMatch(/currentItemRoundness[\s\S]{0,40}["']sharp["']/)
@@ -38,6 +38,20 @@ describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, z
     expect(source).toContain('Arrow type')
     expect(source).toContain('toolBar.extraTools')
     expect(source).toContain('toolBar.mermaidToExcalidraw')
+    expect(zhCN).toContain('nextResult')
+    expect(zhCN).toContain('previousResult')
+    expect(zhCN).toContain('elementLink')
+    expect(zhCN).toContain('emptyWebEmbed')
+    expect(zhCN).toMatch(/excalidrawLib:\s*["']\\u7D20\\u6750\\u5E93["']/)
+    expect(zhCN).not.toMatch(/excalidrawLib:\s*["']Excalidraw/)
+  })
+
+  it('renders the database toolbar preview with the same single rim seam as the canvas shape', () => {
+    // Canvas geometry has one top-rim seam. A second middle seam made the toolbar preview look like
+    // a different database shape even though the created canvas element was correct.
+    expect(source).toContain('M4 6c0-3 16-3 16 0v12c0 3-16 3-16 0ZM4 6c0 3 16 3 16 0')
+    expect(source).not.toContain('M4 12c0 2 16 2 16 0')
+    expect(source).not.toContain('m-16 6c0 2 16 2 16 0')
   })
 
   it('renders merged shape and line primaries without caret controls', () => {
@@ -47,15 +61,39 @@ describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, z
     expect(source).not.toContain('toolbar-lines-caret')
   })
 
-  it('activates the defaults and opens the matching flyout in one click', () => {
-    expect(source).toMatch(/(?:selectShape|h)\("rectangle"\)[\s\S]{0,40}(?:setShapeOpen|l)\((?:true|!0)\)/)
-    expect(source).toMatch(/(?:selectLine|u)\("arrow"\)[\s\S]{0,40}(?:setLineOpen|d)\((?:true|!0)\)/)
+  it('opens all 21 shapes directly and opens the matching line flyout in one click', () => {
+    // Primary buttons are pure toggles: opening a flyout must not preselect rectangle/arrow.
+    expect(source).toMatch(/toolbar-shapes"[\s\S]{0,260}(?:setShapeOpen|\bl)\((?:nextOpen|\w+)\)[\s\S]{0,80}(?:setLineOpen|\bd)\((?:false|!1)\)/)
+    expect(source).toMatch(/toolbar-lines"[\s\S]{0,260}(?:setLineOpen|\bd)\((?:nextOpen|\w+)\)[\s\S]{0,80}(?:setShapeOpen|\bl)\((?:false|!1)\)/)
+    expect(source).not.toMatch(/toolbar-shapes"[\s\S]{0,260}(?:selectShape|\bh)\("rectangle"\)/)
+    expect(source).not.toMatch(/toolbar-lines"[\s\S]{0,260}(?:selectLine|\bu)\("arrow"\)/)
     expect(source).toContain('toolbar-shapes-flyout')
     expect(source).toContain('toolbar-lines-flyout')
+    expect(source).toMatch(/shapeFlyout\.map/)
+    expect(source).not.toContain('toolbar-shapes-expand')
+    expect(source).not.toContain('toolbar-shapes-collapse')
+    expect(source).not.toContain('shapeExpanded')
+    expect(source).not.toContain('compactShapeSlots')
+    expect(source).not.toContain('data-expanded')
+    expect(source).toMatch(/toolbar-shapes"[\s\S]{0,260}aria-expanded/)
+    expect(source).toMatch(/toolbar-shapes"[\s\S]{0,280}aria-controls["']?:\s*["']toolbar-shapes-flyout["']/)
+    expect(source).toMatch(/toolbar-lines"[\s\S]{0,260}aria-expanded/)
+    expect(source).toMatch(/toolbar-lines"[\s\S]{0,280}aria-controls["']?:\s*["']toolbar-lines-flyout["']/)
     expect(source).toMatch(/(?:createPortal|gg)\(/)
     expect(source).toMatch(/position:\s*"fixed"/)
+    // The flyouts are portalled to document.body, outside Excalidraw's CSS-variable scope. Mirror
+    // the existing More tools surface with its resolved opaque theme colours, text, padding, and
+    // island shadow so the native flyouts do not look brighter than the adjacent dropdown.
+    expect(source).toMatch(/background:\s*(?:appState\.theme|\w+\.theme)\s*===\s*"dark"\s*\?\s*"#232329"\s*:\s*"#ffffff"/)
+    expect(source).toMatch(/color:\s*(?:appState\.theme|\w+\.theme)\s*===\s*"dark"\s*\?\s*"#e3e3e8"\s*:\s*"#1b1b1f"/)
+    expect(source).toMatch(/border:\s*0/)
+    expect(source).toMatch(/boxShadow:\s*"0px 0px 0\.9310142993927002px 0px rgba\(0, 0, 0, 0\.17\), 0px 0px 3\.1270833015441895px 0px rgba\(0, 0, 0, 0\.08\), 0px 7px 14px 0px rgba\(0, 0, 0, 0\.05\)"/)
+    expect(source).toMatch(/padding:\s*8/)
     expect(source).toMatch(/document\.addEventListener\("keydown"/)
     expect(source).toMatch(/document\.addEventListener\("pointerdown"/)
+    // Historical inverted triangles remain readable through geometry helpers but are intentionally
+    // absent from the current 21-item toolbar and its icon switch.
+    expect(source).not.toMatch(/["']inverted-triangle["']\s*:\s*(?:\/\*[^*]*\*\/\s*)?(?:jsx\w*|K)\(/)
   })
 
   it('lays out the ten primary slots in the fixed 1-0 order', () => {
@@ -144,7 +182,26 @@ describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, z
     expect(source).not.toMatch(/transformHandleType\.includes\("e"\)\s*\|\|\s*transformHandleType\.includes\("w"\)/)
   })
 
-  it('clears a shape variant centrally whenever a non-shape tool becomes active', () => {
+  it('draws one basic-style shape and then returns to selection', () => {
+    // Shape presets apply basic style directly to the one element being created. They never mutate
+    // persisted currentItem* defaults, so opening the flyout cannot restyle later line/text tools.
+    expect(source).toMatch(/__octoBasicShapeStyle/)
+    expect(source).toMatch(/strokeWidth:\s*[^,?]+\?\s*1\s*:/)
+    expect(source).toMatch(/strokeStyle:\s*[^,?]+\?\s*"solid"\s*:/)
+    expect(source).toMatch(/roughness:\s*[^,?]+\?\s*0\s*:/)
+    expect(source).not.toMatch(/setAppState\(\{[^}]*currentItemStrokeWidth:\s*1/)
+
+    // Shapes are intentionally one-shot: unlocked tools return to selection after the first draw.
+    expect(source).toMatch(/setActiveTool\(\{[\s\S]{0,120}locked:\s*(?:false|!1)[\s\S]{0,20}\}\)/)
+    expect(source).not.toMatch(/__octoBasicShapeStyle[\s\S]{0,180}locked:\s*(?:true|!0)/)
+
+    // Once a custom element owns nativeShapeKind, creation immediately drops the transient preset.
+    // Completion then runs the public selection transition in a setState callback, after the current
+    // pointer-up state batch, so no later update in that batch can re-arm the custom tool.
+    expect(source).toMatch(/getOctoNativeShapeElementProps|\w+\(\w+\)[\s\S]{0,100}__octoShapeVariant\s*=\s*null/)
+    expect(source).toMatch(/(?:newElement\w*|\w+)\??\.customData\??\.nativeShapeKind/)
+    expect(source).toMatch(/setState\([^)]*newElement:\s*null[\s\S]{0,120}\(\)\s*=>\s*\{?[\s\S]{0,80}setActiveTool\(\{\s*type:\s*"selection",\s*locked:\s*(?:false|!1)/)
+    expect(source).toMatch(/\.type\s*===\s*"selection"\s*\?\s*\{[\s\S]{0,60}locked:\s*(?:false|!1)/)
     expect(source).toMatch(/\["rectangle",\s*"diamond",\s*"ellipse"\]\.includes\([^)]+\.type\)[\s\S]{0,60}__octoShapeVariant\s*=\s*null/)
   })
 
@@ -158,6 +215,14 @@ describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, z
   })
 
 
+  it('keeps shape, line, and more-tools flyouts mutually exclusive', () => {
+    // Opening either native flyout closes More tools first; opening More tools closes both native
+    // flyouts. This prevents the portalled shape row from overlapping the dropdown menu.
+    expect(source).toMatch(/toolbar-shapes"[\s\S]{0,320}(?:setIsExtraToolsMenuOpen|\bB)\((?:false|!1)\)[\s\S]{0,120}(?:setShapeOpen|\bl)\((?:nextOpen|\w+)\)[\s\S]{0,80}(?:setLineOpen|\bd)\((?:false|!1)\)/)
+    expect(source).toMatch(/toolbar-lines"[\s\S]{0,320}(?:setIsExtraToolsMenuOpen|\bB)\((?:false|!1)\)[\s\S]{0,120}(?:setLineOpen|\bd)\((?:nextOpen|\w+)\)[\s\S]{0,80}(?:setShapeOpen|\bl)\((?:false|!1)\)/)
+    expect(source).toMatch(/App-toolbar__extra-tools-trigger[\s\S]{0,320}onToggle:[\s\S]{0,220}(?:setShapeOpen|\bl)\((?:false|!1)\)[\s\S]{0,100}(?:setLineOpen|\bd)\((?:false|!1)\)/)
+  })
+
   it('restores the complete more-tools dropdown at the toolbar end', () => {
     const extraTools = source.indexOf('toolbar-extra-tools')
     const eraser = source.indexOf('renderTool("eraser", "0")') >= 0
@@ -167,26 +232,42 @@ describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, z
     expect(extraTools).toBeGreaterThan(eraser)
     expect(source).toContain('App-toolbar__extra-tools-trigger')
     expect(source).toContain('App-toolbar__extra-tools-dropdown')
+    expect(source).toMatch(/aria-label[\s\S]{0,160}toolbar-extra-tools|toolbar-extra-tools[\s\S]{0,160}aria-label/)
     expect(source).toContain('toolbar-frame')
     expect(source).toContain('toolbar-search')
     // The redundant canvas-colour entry is removed from 更多工具 — slot 9 owns it now.
     expect(source).not.toContain('toolbar-more-canvas-color')
     expect(source).toContain('toolbar-reset-canvas')
-    // The approved menu uses a pure circular reset arrow. ZoomResetIcon is a magnifier-reset glyph
-    // with an unwanted diagonal handle, while UndoIcon is only a one-turn back arrow.
-    const resetItem = source.slice(Math.max(0, source.indexOf('toolbar-reset-canvas') - 600), source.indexOf('toolbar-reset-canvas') + 80)
-    expect(resetItem).toContain('M4 8a8 8 0 1 1 0 8')
-    expect(resetItem).toContain('M4 4v4h4')
-    expect(resetItem).not.toMatch(/ZoomResetIcon|TrashIcon|UndoIcon|icon:sy|icon:Vn|icon:Jd/)
-    expect(source).toContain('Generate')
+    expect(source).toMatch(/margin:\s*["']6px 0["'][\s\S]{0,120}fontWeight:\s*600[\s\S]{0,120}Generate/)
     expect(source).toContain('toolbar-mermaid')
-    expect(source).toContain('toolBar.mermaidToExcalidraw')
-    const resetMenuItem = source.slice(Math.max(0, source.indexOf('toolbar-reset-canvas') - 800), source.indexOf('toolbar-reset-canvas') + 100)
-    expect(resetMenuItem).toMatch(/CtrlOrCmd\+Delete/)
-    const mermaidMenuItem = source.slice(Math.max(0, source.indexOf('toolbar-mermaid') - 500), source.indexOf('toolbar-mermaid') + 100)
-    expect(mermaidMenuItem).toContain('Shift+M')
-    expect(source).toContain('toolbar-magicframe')
-    expect(source).toContain('plugins.diagramToCode')
+    expect(source).toMatch(/toolbar-mermaid[\s\S]{0,260}Shift\+M|Shift\+M[\s\S]{0,260}toolbar-mermaid/)
+    expect(source).toMatch(/toolbar-mermaid[\s\S]{0,300}mermaidToExcalidraw|mermaidToExcalidraw[\s\S]{0,300}toolbar-mermaid/)
+    // Preserve Excalidraw's original DropdownMenu composition and styling. The production bundle
+    // may bind Trigger/Content/Item implementations directly because static component properties
+    // can be removed by the host app's second tree-shaking pass; dev keeps the original properties.
+    const extraToolsBlock = source.slice(
+      Math.max(0, source.indexOf('App-toolbar__extra-tools-trigger') - 500),
+      source.indexOf('toolbar-mermaid') + 500,
+    )
+    expect(extraToolsBlock).toMatch(/children:\s*(?:extraToolsIcon|octoExtraToolsIcon|[A-Za-z_$][\w$]*)/)
+    expect(extraToolsBlock).not.toContain('M5 12a2 2 0 1 0 0 .01M12 12a2 2 0 1 0 0 .01M19 12a2 2 0 1 0 0 .01')
+    expect(extraToolsBlock).toMatch(/(?:(?:DropdownMenu_default\.Trigger|DropdownMenuTrigger_default)|\biI)\s*,\s*\{[^}]*App-toolbar__extra-tools-trigger/)
+    expect(extraToolsBlock).toMatch(/(?:(?:DropdownMenu_default\.Content|DropdownMenuContent_default)|\bhI)\s*,\s*\{[^}]*App-toolbar__extra-tools-dropdown/)
+    expect(extraToolsBlock.match(/(?:(?:DropdownMenu_default\.Item|DropdownMenuItem_default)|\bTt)\s*,\s*\{/g)).toHaveLength(4)
+    expect(source).toContain('dropdown-menu-container')
+    // Keep the menu in the toolbar's native positioning context. Moving this one menu to body
+    // breaks the original right/below anchoring unless the complete dropdown positioning system moves too.
+    expect(extraToolsBlock).not.toMatch(/(?:createPortal|gg)\([\s\S]{0,200}document\.body/)
+    expect(extraToolsBlock).not.toMatch(/width:\s*190|position:\s*["']fixed["']/)
+    expect(source).not.toContain('toolbar-more-canvas-color')
+  })
+
+  it('localizes icon-only search controls and sidebar tabs', () => {
+    expect(source).toMatch(/search\.nextResult[\s\S]{0,100}aria-label|aria-label[\s\S]{0,100}search\.nextResult/)
+    expect(source).toMatch(/search\.previousResult[\s\S]{0,100}aria-label|aria-label[\s\S]{0,100}search\.previousResult/)
+    expect(source).toMatch(/search\.title[\s\S]{0,120}aria-label|aria-label[\s\S]{0,120}search\.title/)
+    expect(source).toMatch(/toolBar\.library[\s\S]{0,120}aria-label|aria-label[\s\S]{0,120}toolBar\.library/)
+    expect(source).not.toContain('library.title')
   })
 
   it('localizes delayed toolbar hints and lists only the current 1-0 mapping in keyboard help', () => {

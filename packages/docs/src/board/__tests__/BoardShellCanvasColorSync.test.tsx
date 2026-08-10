@@ -116,6 +116,7 @@ vi.mock('../BoardCanvasColorControl.tsx', () => ({
 }))
 
 vi.mock('../boardStore.ts', () => ({
+  hasSavedBoardViewport: () => false,
   loadBoardScene: () => null,
   persistBoardScene: () => true,
   clearBoardScene: () => {},
@@ -344,7 +345,7 @@ describe('BoardShell — Octo context-menu integration', () => {
     expect(screen.queryByTestId('main-menu-trigger')).toBeNull()
     expect(canvas.onContextMenu).toBeTruthy()
 
-    canvas.executeAction.mockImplementation((name: string) => {
+    canvas.executeActionWithHostFeedback.mockImplementation(async (name: string) => {
       canvas.onChange?.([{ id: 'pasted', version: 1 }], canvas.appState, {})
       return name === 'paste'
     })
@@ -364,9 +365,61 @@ describe('BoardShell — Octo context-menu integration', () => {
     expect(menu.textContent).not.toContain('docs.board.contextMenu.selectAll')
 
     fireEvent.click(screen.getByRole('menuitem', { name: /docs\.board\.contextMenu\.paste/ }))
-    expect(canvas.executeAction).toHaveBeenCalledWith('paste')
-    expect(handleLocalChange).toHaveBeenCalledWith([{ id: 'pasted', version: 1 }], {})
-    expect(screen.queryByRole('menu')).toBeNull()
+    await vi.waitFor(() => {
+      expect(canvas.executeActionWithHostFeedback).toHaveBeenCalledWith('paste')
+      expect(handleLocalChange).toHaveBeenCalledWith([{ id: 'pasted', version: 1 }], {})
+      expect(octoToast.success).toHaveBeenCalledWith('docs.board.contextMenu.pasteSuccess')
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
+    expect(canvas.executeAction).not.toHaveBeenCalled()
+  })
+
+  it('keeps the menu open and reports a rejected context-menu paste', async () => {
+    const { session } = makeSession(true, 'writer')
+    canvas.availableActions.add('paste')
+    canvas.executeActionWithHostFeedback.mockResolvedValue(false)
+    await renderBoard(session)
+
+    act(() => {
+      canvas.onContextMenu?.({
+        event: new MouseEvent('contextmenu', { clientX: 80, clientY: 90 }),
+        type: 'canvas',
+        sceneX: 120,
+        sceneY: 140,
+        selectedElementIds: {},
+      })
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /docs\.board\.contextMenu\.paste/ }))
+
+    await vi.waitFor(() => {
+      expect(octoToast.error).toHaveBeenCalledWith('docs.board.contextMenu.pasteFailed')
+    })
+    expect(octoToast.success).not.toHaveBeenCalled()
+    expect(screen.getByRole('menu')).toBeTruthy()
+  })
+
+  it('keeps the menu open and reports a context-menu paste exception', async () => {
+    const { session } = makeSession(true, 'writer')
+    canvas.availableActions.add('paste')
+    canvas.executeActionWithHostFeedback.mockRejectedValue(new Error('clipboard denied'))
+    await renderBoard(session)
+
+    act(() => {
+      canvas.onContextMenu?.({
+        event: new MouseEvent('contextmenu', { clientX: 80, clientY: 90 }),
+        type: 'canvas',
+        sceneX: 120,
+        sceneY: 140,
+        selectedElementIds: {},
+      })
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /docs\.board\.contextMenu\.paste/ }))
+
+    await vi.waitFor(() => {
+      expect(octoToast.error).toHaveBeenCalledWith('docs.board.contextMenu.pasteFailed')
+    })
+    expect(octoToast.success).not.toHaveBeenCalled()
+    expect(screen.getByRole('menu')).toBeTruthy()
   })
 
   it('uses the post-hit-test element selection for an Alt+right-click comment anchor', async () => {
@@ -758,7 +811,7 @@ describe('BoardShell — Octo context-menu integration', () => {
     expect(octoToast.success).not.toHaveBeenCalled()
   })
 
-  it('keeps reader comments and safe copy/export/link actions while hiding mutations', async () => {
+  it('keeps a reader’s safe copy/export/link actions while hiding comment + mutation actions', async () => {
     const { session } = makeSession(true, 'reader')
     canvas.appState.selectedElementIds = { 'shape-1': true }
     canvas.elements = [
@@ -789,7 +842,8 @@ describe('BoardShell — Octo context-menu integration', () => {
     })
 
     const menu = await screen.findByRole('menu')
-    expect(menu.textContent).toContain('docs.board.comment.contextMenu')
+    // A reader may VIEW comments but not create them: the comment entry is gone (canComment=false).
+    expect(menu.textContent).not.toContain('docs.board.comment.contextMenu')
     for (const action of ['copy', 'copyAsPng', 'copyAsSvg', 'copyText', 'copyElementLink']) {
       expect(menu.textContent).toContain(`docs.board.contextMenu.${action}`)
     }

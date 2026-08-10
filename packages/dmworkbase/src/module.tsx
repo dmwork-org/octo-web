@@ -119,7 +119,16 @@ import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
 import { DocumentShareCardContent } from "./Messages/DocumentShareCard/DocumentShareCardContent";
 import { DocumentShareCardCell } from "./Messages/DocumentShareCard";
-import { parseThreadChannelId } from "./Service/Thread";
+import { isEffectivelyMuted, parseThreadChannelId } from "./Service/Thread";
+import {
+  getBrowserSingleAlertCoordinator,
+  isConversationChannelVisible,
+  isMessageElementVisible,
+  isSameMessageAttentionSession,
+  shouldSuppressImmediateAlert,
+  type MessageAttentionSessionContext,
+} from "./features/notifications";
+
 import { canShowRevokeMenu } from "./Service/revokePermission";
 import {
   addCurrentImChannelInfoListener,
@@ -577,6 +586,11 @@ export default class BaseModule implements IModule {
     });
 
     addCurrentImMessageListener((message: Message) => {
+      const attentionContext: MessageAttentionSessionContext = {
+        accountId: WKApp.loginInfo.uid,
+        spaceId: WKApp.shared.currentSpaceId || "",
+        loginToken: WKApp.loginInfo.token,
+      };
       if (TypingManager.shared.hasTyping(message.channel)) {
         TypingManager.shared.removeTyping(message.channel);
       }
@@ -592,22 +606,7 @@ export default class BaseModule implements IModule {
           break;
       }
 
-      if (this.allowNotify(message)) {
-        let from = "";
-        if (message.channel.channelType === ChannelTypeGroup) {
-          const fromChannelInfo = getCurrentImChannelInfo(
-            new Channel(message.fromUID, ChannelTypePerson)
-          );
-          if (fromChannelInfo) {
-            from = `${fromChannelInfo?.orgData.displayName}: `;
-          }
-        }
-        this.sendNotification(
-          message,
-          `${from}${message.content.conversationDigest}`
-        );
-        this.tipsAudio();
-      }
+      this.scheduleMessageAttention(message, attentionContext);
     });
 
     addCurrentImChannelInfoListener((channelInfo: ChannelInfo) => {
@@ -699,6 +698,177 @@ export default class BaseModule implements IModule {
     }
   }
 
+  /**
+   * The synchronous check below only selects the render-delay fast path. The
+   * final suppression decision is made by the async main-process query in
+   * processMessageAttention.
+   */
+  private isElectronEnvironment(): boolean {
+    return !!(window as any).__POWERED_ELECTRON__;
+  }
+
+  private scheduleMessageAttention(
+    message: Message,
+    context: MessageAttentionSessionContext
+  ): void {
+    const viewportScope = {
+      channelId: message.channel.channelID,
+      channelType: message.channel.channelType,
+    };
+    const needsRenderedMessageCheck =
+      WKApp.currentMenuId === "chat" &&
+      document.visibilityState === "visible" &&
+      this.isWindowActuallyFocused() &&
+      isConversationChannelVisible(viewportScope) &&
+      typeof requestAnimationFrame === "function";
+    // Wait for the incoming-message render before asking whether this exact message entered
+    // the viewport. An open conversation alone is not enough: users reading history must still
+    // receive attention for a new message below the fold.
+    if (needsRenderedMessageCheck) {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(
+          () => void this.processMessageAttention(message, context)
+        )
+      );
+      return;
+    }
+    window.setTimeout(
+      () => void this.processMessageAttention(message, context),
+      0
+    );
+  }
+
+  private async processMessageAttention(
+    message: Message,
+    context: MessageAttentionSessionContext
+  ): Promise<void> {
+    const coordinator = getBrowserSingleAlertCoordinator();
+    if (!context.accountId || !this.isAttentionContextCurrent(context)) return;
+    const claim = {
+      accountId: context.accountId,
+      messageId: message.messageID || undefined,
+      clientMsgNo: message.clientMsgNo || undefined,
+    };
+    const initiallyVisible = await this.isIncomingMessageVisible(message);
+    if (!this.isAttentionContextCurrent(context)) return;
+    if (initiallyVisible) {
+      // Commit a terminal suppression before any background tab can turn the
+      // shared pending record into an alert.
+      await coordinator.claimOnly(claim);
+      return;
+    }
+    if (!this.allowNotify(message)) return;
+
+    let from = "";
+    if (message.channel.channelType === ChannelTypeGroup) {
+      const fromChannelInfo = getCurrentImChannelInfo(
+        new Channel(message.fromUID, ChannelTypePerson)
+      );
+      const displayName = fromChannelInfo?.orgData?.displayName;
+      if (displayName) {
+        from = `${displayName}: `;
+      }
+    }
+    await coordinator.runOnce({
+      ...claim,
+      shouldSuppress: async () => {
+        // A stale context must abstain rather than commit a terminal suppression.
+        // Another window may still be active for this account/message claim.
+        if (!this.isAttentionContextCurrent(context)) return false;
+        const visible = await this.isIncomingMessageVisible(message);
+        if (!this.isAttentionContextCurrent(context)) return false;
+        return visible;
+      },
+      subscribeSuppressionChanges: (listener) =>
+        this.subscribeMessageAttentionChanges(listener),
+      isStillEligible: () =>
+        this.isAttentionContextCurrent(context) && this.allowNotify(message),
+      alert: () => {
+        if (!this.isAttentionContextCurrent(context)) return;
+        void this.sendNotification(
+          message,
+          `${from}${message.content.conversationDigest}`
+        );
+        this.tipsAudio();
+      },
+    });
+  }
+
+  private isAttentionContextCurrent(
+    context: MessageAttentionSessionContext
+  ): boolean {
+    return isSameMessageAttentionSession(context, {
+      accountId: WKApp.loginInfo.uid,
+      spaceId: WKApp.shared.currentSpaceId || "",
+      loginToken: WKApp.loginInfo.token,
+    });
+  }
+
+  private subscribeMessageAttentionChanges(listener: () => void): () => void {
+    let stopped = false;
+    const schedule = () => {
+      if (stopped) return;
+      // Focus/visibility state is already updated when its event fires, and a
+      // background tab normally already has the message DOM. Check now so a
+      // late foreground transition can beat the shared commit deadline.
+      listener();
+      if (typeof requestAnimationFrame !== "function") {
+        return;
+      }
+      // Route/conversation changes may commit their DOM after the mitt event;
+      // recheck after paint for that case.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!stopped) listener();
+        });
+      });
+    };
+    WKApp.mittBus.on("wk:app-foreground", schedule);
+    WKApp.mittBus.on("wk:active-menu-changed", schedule);
+    WKApp.mittBus.on("wk:message-attention-state-changed", schedule);
+    return () => {
+      stopped = true;
+      WKApp.mittBus.off("wk:app-foreground", schedule);
+      WKApp.mittBus.off("wk:active-menu-changed", schedule);
+      WKApp.mittBus.off("wk:message-attention-state-changed", schedule);
+    };
+  }
+
+  /**
+   * Synchronous heuristic used only to select the render-delay fast path.
+   * The Electron main-process query remains the source of truth for the final
+   * notification suppression decision.
+   */
+  private isWindowActuallyFocused(): boolean {
+    if (this.isElectronEnvironment()) {
+      // In Electron: treat window as unfocused if document is hidden,
+      // regardless of what document.hasFocus() reports.
+      if (document.visibilityState !== "visible") {
+        return false;
+      }
+    }
+    return document.hasFocus();
+  }
+
+  private async isIncomingMessageVisible(message: Message): Promise<boolean> {
+    const viewportScope = {
+      channelId: message.channel.channelID,
+      channelType: message.channel.channelType,
+    };
+    const currentConversation = isConversationChannelVisible(viewportScope);
+    const windowFocused = await notificationUtil.isWindowFocused();
+    return shouldSuppressImmediateAlert({
+      chatModuleActive: WKApp.currentMenuId === "chat",
+      documentVisible: document.visibilityState === "visible",
+      windowFocused,
+      currentConversation,
+      newMessageVisible:
+        currentConversation &&
+        message.messageSeq > 0 &&
+        isMessageElementVisible(message.messageSeq, document, viewportScope),
+    });
+  }
+
   allowNotify(message: Message) {
     if (WKApp.shared.notificationIsClose) {
       // 用户关闭了通知
@@ -728,20 +898,17 @@ export default class BaseModule implements IModule {
 
     // 已屏蔽（免打扰）的 channel 不播提示音、不发通知
     const channelInfo = getCurrentImChannelInfo(message.channel);
-    if (channelInfo?.mute) {
-      return false;
-    }
+    const isThread = message.channel.channelType === ChannelTypeCommunityTopic;
     // 子区消息：额外检查父群聊 mute
-    const parentGroupNo = channelInfo?.orgData?.parentGroupNo as
-      | string
-      | undefined;
-    if (parentGroupNo) {
-      const parentChannelInfo = getCurrentImChannelInfo(
-        new Channel(parentGroupNo, ChannelTypeGroup)
-      );
-      if (parentChannelInfo?.mute) {
-        return false;
-      }
+    const parentGroupNo = isThread
+      ? (channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+        parseThreadChannelId(message.channel.channelID)?.groupNo
+      : undefined;
+    const parentChannelInfo = parentGroupNo
+      ? getCurrentImChannelInfo(new Channel(parentGroupNo, ChannelTypeGroup))
+      : undefined;
+    if (isEffectivelyMuted({ isThread, channelInfo, parentChannelInfo })) {
+      return false;
     }
 
     return true;
@@ -957,6 +1124,9 @@ export default class BaseModule implements IModule {
       "contextmenus.forward",
       (message, context) => {
         if (WKApp.shared.notSupportForward.includes(message.contentType)) {
+          return null;
+        }
+        if (message.contentType === MessageContentTypeConst.threadCreated) {
           return null;
         }
 

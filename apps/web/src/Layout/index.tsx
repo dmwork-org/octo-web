@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
 import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
+import { IconInfoCircle } from '@douyinfe/semi-icons';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
@@ -13,7 +14,7 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath } from "@octo/docs";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, PptEditorPage, PptPresentPage, parsePptEditorDocId, isPptEditorPath, parsePptPresentDocId, isPptPresentPath, parsePresentVersion } from "@octo/docs";
 import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
@@ -336,26 +337,28 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
 
     showUpdateUI(manifest: UpdateManifest) {
       const notifyID =  NotificationUI.info({
-            title: t("app.layout.update.newVersion", { values: { version: manifest.version } }),
+            className: "wk-octo-notification",
+            icon: <IconInfoCircle className="wk-octo-notification__icon" />,
+            title: <span className="wk-octo-notification__title">{t("app.layout.update.newVersion", { values: { version: manifest.version } })}</span>,
             duration: 0,
             content: (
-                <>
-                    <div>{manifest.body}</div>
-                    <div style={{ marginTop: 8 }}>
-                        <Button onClick={ async () => {
+                <div className="wk-octo-notification__content">
+                    <div className="wk-octo-notification__body">{manifest.body}</div>
+                    <div className="wk-octo-notification__actions">
+                        <Button className="wk-octo-notification__action" onClick={ async () => {
                            // install complete, restart app
                            if(await os.platform() !== "darwin") {
                                 await installUpdate()
                             }
                           await relaunch()
                         }}>{t("base.common.update")}</Button>
-                        <Button onClick={()=>{
+                        <Button className="wk-octo-notification__action" onClick={()=>{
                             NotificationUI.close(notifyID)
-                        }} type="secondary" style={{ marginLeft: 20 }}>
+                        }} type="secondary">
                             {t("app.layout.update.later")}
                         </Button>
                     </div>
-                </>
+                </div>
             ),
         })
     }
@@ -469,6 +472,42 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // Anonymous: fall through to the login screen (below) without navigating away.
         }
 
+        // html_ppt peer surfaces (R3-F1, XIN-1495): two full-window Bento routes that live OUTSIDE
+        // the app shell and are intercepted exactly like `/d/:docId` above — so a PPT deep link
+        // lands on the PPT surface and NEVER falls through to the rich-text editor / app-shell list
+        // (the R1 no-fallthrough contract). Both consume live backend source, so the pages keep that
+        // behind PPT_SOURCE_ENABLED (default OFF until backend R3-B1 merges) and show a gated shell
+        // meanwhile; the host still routes to them. Session handling mirrors the standalone branch:
+        // load/recover the octo session, render when signed in, else stash the return target and fall
+        // through to login so the user bounces back after sign-in.
+        //
+        //   - `/ppt/d/:docId`         → peer editor route (namespace-claimed; a malformed id renders
+        //                               the PPT not-found shell, not the app shell).
+        //   - `/docs/:docId/present`  → present route (`?version=latest|N`); only this exact shape is
+        //                               claimed, so every other `/docs...` path keeps the app shell.
+        const isPptEditor = isPptEditorPath(window.location.pathname);
+        const isPptPresent = isPptPresentPath(window.location.pathname);
+        if (isPptEditor || isPptPresent) {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            if (WKApp.loginInfo.token) {
+                if (isPptEditor) {
+                    const pptDocId = parsePptEditorDocId(window.location.pathname);
+                    return <PptEditorPage docId={pptDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
+                }
+                const presentDocId = parsePptPresentDocId(window.location.pathname);
+                const presentVersion = parsePresentVersion(window.location.search);
+                return <PptPresentPage docId={presentDocId} version={presentVersion} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
+            }
+            // Anonymous: stash the exact target so the post-login flow bounces the user back to the
+            // PPT surface, then fall through to the login screen without navigating away.
+            persistStandaloneReturn();
+        }
+
         // Drive share landing (`/drive/s/:token`, PR#1146 N2). Access requires a
         // valid Octo session — any signed-in Octo user may open a share (they need
         // not belong to the file's Space), but external/anonymous visitors may not.
@@ -537,8 +576,15 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
             if (WKApp.loginInfo.token) {
                 applyStandaloneSummarySpaceFromQuery();
-                const standaloneTaskNo = parseStandaloneSummaryTaskNo(window.location.pathname);
-                return <SummaryDetailPage taskId={standaloneTaskNo ?? undefined} />;
+                const standaloneTaskNo = parseStandaloneSummaryTaskNo(
+                    window.location.pathname
+                );
+                return (
+                    <SummaryDetailPage
+                        taskId={standaloneTaskNo ?? undefined}
+                        emitSelection
+                    />
+                );
             }
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.

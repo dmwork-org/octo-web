@@ -13,6 +13,11 @@
     "build-ele:win": "turbo run build && turbo run build-ele:win",
     "build-ele:linux": "turbo run build && turbo run build-ele:linux",
     "build-ele:linux-arm64": "turbo run build && turbo run build-ele:linux-arm64",
+    "build-ele:enterprise": "bash scripts/ci-enterprise-electron-build.sh",
+    "build-ele:enterprise:mac": "bash scripts/ci-enterprise-electron-build.sh mac",
+    "build-ele:enterprise:win": "bash scripts/ci-enterprise-electron-build.sh win",
+    "build-ele:enterprise:linux": "bash scripts/ci-enterprise-electron-build.sh linux",
+    "build-ele:enterprise:linux-arm64": "bash scripts/ci-enterprise-electron-build.sh linux-arm64",
     "bootstrap": "yarn install",
     "clean": "turbo run clean && rimraf node_modules .turbo",
     "lint": "turbo run lint",
@@ -25,6 +30,8 @@
     "i18n:baseline": "node scripts/i18n-scan.mjs baseline",
     "verify:excalidraw-patch": "node scripts/verify-excalidraw-patch.mjs",
     "verify:excalidraw-build": "node scripts/verify-excalidraw-build.mjs",
+    "verify:excalidraw-development-input": "node scripts/verify-excalidraw-development-input.mjs",
+    "verify:excalidraw-production-input": "node scripts/verify-excalidraw-production-input.mjs",
     "verify:web-build-cache-key": "node scripts/verify-web-build-cache-key.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",
@@ -64,20 +71,5 @@
     "remark-math": "^6.0.0",
     "zxcvbn": "^4.4.2"
   },
-  "packageManager": "pnpm@10.32.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ],
-    "overrides": {
-      "@tiptap/core": "3.22.2",
-      "@tiptap/suggestion": "3.22.2",
-      "lodash-es": "^4.18.1",
-      "nanoid": "^3.3.11",
-      "react-error-overlay": "6.0.9"
-    },
-    "patchedDependencies": {
-      "@excalidraw/excalidraw@0.18.1": "patches/@excalidraw__excalidraw@0.18.1.patch"
-    }
-  }
+  "packageManager": "pnpm@10.32.0"
 }

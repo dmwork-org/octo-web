@@ -224,21 +224,27 @@ describe('share / invite / org', () => {
     });
   });
 
-  it('accessShareByToken hits the public route, omitting body when no password', async () => {
+  it('accessShareByToken hits the authed share-token route, omitting body when no password', async () => {
     inst.post.mockResolvedValue(ok({ file_id: 1 }));
     await driveApi.accessShareByToken('tok');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/access', undefined);
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/access', undefined);
     await driveApi.accessShareByToken('tok', 'pw');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/access', { password: 'pw' });
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/access', { password: 'pw' });
   });
 
-  it('downloadShareByToken POSTs the public download route, omitting body when no password', async () => {
+  it('downloadShareByToken POSTs the authed share-token download route, omitting body when no password', async () => {
     inst.post.mockResolvedValue(ok({ url: 'https://s/dl', filename: 'a.txt', content_type: 'text/plain' }));
     const res = await driveApi.downloadShareByToken('tok');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/download', undefined);
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/download', undefined);
     expect(res.url).toBe('https://s/dl');
     await driveApi.downloadShareByToken('tok', 'pw');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/download', { password: 'pw' });
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/download', { password: 'pw' });
+  });
+
+  it('revokeShare DELETEs /shares/:id — the owner-side sibling of the token routes', async () => {
+    inst.delete.mockResolvedValue(ok(undefined));
+    await driveApi.revokeShare('sh1');
+    expect(inst.delete).toHaveBeenCalledWith('/v1/drive/shares/sh1');
   });
 
   it('acceptInvite POSTs /invites/:token/accept', async () => {
@@ -326,15 +332,17 @@ describe('auth-header interceptor', () => {
     logout.mockRestore();
   });
 
-  it('does NOT log out on a share-route 401 carrying a business code (B1)', async () => {
+  it('does NOT log out on a share-token 401 carrying a business code (B1)', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     const onError = responseUse.mock.calls[0][1];
     // Every share business code, on both share endpoints, is left for the page
     // to classify — the share rejected the caller, the octo session is fine.
+    // A query string must not break the path match.
     for (const url of [
-      '/v1/drive/public/shares/tok/access',
-      '/v1/drive/public/shares/tok/download',
+      '/v1/drive/shares/tok/access',
+      '/v1/drive/shares/tok/download',
+      '/v1/drive/shares/tok/access?x=1',
     ]) {
       for (const code of ['password_required', 'wrong_password', 'share_expired', 'not_found']) {
         await expect(
@@ -346,7 +354,36 @@ describe('auth-header interceptor', () => {
     logout.mockRestore();
   });
 
-  it('DOES log out on a share-route 401 that is a session failure, not a share code (B1)', async () => {
+  it('the share-token exemption is anchored — owner-side and near-miss paths still log out', async () => {
+    const logout = vi.spyOn(WKApp.shared, 'logout');
+    const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
+    const onError = responseUse.mock.calls[0][1];
+    // Only `${BASE}/shares/:token/access|download` is exempt. The owner-side
+    // siblings that share the prefix (list/create `/shares`, revoke
+    // `/shares/:id`), a near-miss prefix, a nested extra segment and a
+    // trailing slash are all genuine session 401s → global logout.
+    const notExempt = [
+      '/v1/drive/shares',
+      '/v1/drive/shares?page=1',
+      '/v1/drive/shares/sh1',
+      '/v1/drive/shares/tok/access/',
+      '/v1/drive/shares/tok/access/extra',
+      '/v1/drive/sharesX/tok/access',
+      '/v1/drive/public/shares/tok/access',
+      '/v1/driveX/shares/tok/access',
+      '/other/shares/tok/access',
+      '/v1/drive/shares//access',
+    ];
+    for (const url of notExempt) {
+      await expect(
+        onError({ response: { status: 401, data: { error: 'not_found' } }, config: { url } }),
+      ).rejects.toBeDefined();
+    }
+    expect(logout).toHaveBeenCalledTimes(notExempt.length);
+    logout.mockRestore();
+  });
+
+  it('DOES log out on a share-token 401 that is a session failure, not a share code (B1)', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     const onError = responseUse.mock.calls[0][1];
@@ -356,13 +393,13 @@ describe('auth-header interceptor', () => {
     await expect(
       onError({
         response: { status: 401, data: { error: 'unauthorized' } },
-        config: { url: '/v1/drive/public/shares/tok/access' },
+        config: { url: '/v1/drive/shares/tok/access' },
       }),
     ).rejects.toBeDefined();
     await expect(
       onError({
         response: { status: 401 },
-        config: { url: '/v1/drive/public/shares/tok/download' },
+        config: { url: '/v1/drive/shares/tok/download' },
       }),
     ).rejects.toBeDefined();
     expect(logout).toHaveBeenCalledTimes(2);
@@ -376,7 +413,7 @@ describe('auth-header interceptor', () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     inst.post.mockRejectedValue({
       response: { status: 401, data: { error: 'wrong_password', message: 'bad password' } },
-      config: { url: '/v1/drive/public/shares/tok/access' },
+      config: { url: '/v1/drive/shares/tok/access' },
     });
     await expect(driveApi.accessShareByToken('tok', 'nope')).rejects.toMatchObject({
       code: 'wrong_password',
@@ -384,7 +421,7 @@ describe('auth-header interceptor', () => {
     });
     inst.post.mockRejectedValue({
       response: { status: 401, data: { error: 'share_expired', message: 'expired' } },
-      config: { url: '/v1/drive/public/shares/tok/download' },
+      config: { url: '/v1/drive/shares/tok/download' },
     });
     await expect(driveApi.downloadShareByToken('tok')).rejects.toMatchObject({
       code: 'share_expired',
@@ -472,5 +509,130 @@ describe('putToPresignedUrl — M-3 credential isolation', () => {
     expect(config.validateStatus).toBeTypeOf('function');
     expect(config.validateStatus(500)).toBe(true);
     expect(config.validateStatus(200)).toBe(true);
+  });
+});
+
+// ─── IM → drive transferred-state wire contract ────────────────────────────
+//
+// Pin the cross-service contract that the "already saved to my drive" check
+// depends on. There is no codegen / OpenAPI between octo-drive and octo-web,
+// so the frontend blind-reconstructs the backend's `source_key` from the IM
+// message triple; any silent drift (delimiter, field order, id-field name,
+// Space-prefix stripping) would fail 100% of lookups with no runtime signal.
+// These tests give the contract CI-time enforcement.
+//
+// Backend anchor: octo-drive
+//   - internal/modules/imtransfer/service.go `buildSourceKey`
+//   - db/migrations/007_add_file_source_key.up.sql
+//   - internal/modules/imtransfer/api.go   POST /blobs/im-transferred/batch
+import {
+  imTransferredSourceKey,
+  normaliseImChannelID,
+} from '../../bridge/types';
+import { isDriveTransferSupportedChannel } from '@octo/base';
+
+describe('IM -> drive transferred-state wire contract (source_key)', () => {
+  it('transferFromIm POSTs /blobs/transfer-from-im with the IM message triple', async () => {
+    inst.post.mockResolvedValue(ok({ id: 42, space_id: 'sp_personal', parent_id: 0 }));
+    const req = {
+      im_group_no: 'group_abc',
+      im_channel_type: 2,
+      im_msg_id: '17012345678901234',
+      target_space_id: '',
+      target_parent_id: 0,
+    };
+    await driveApi.transferFromIm(req);
+    // Full body pin: any field rename / drop / added-required field on either
+    // side must update both — that is the point of this assertion.
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/transfer-from-im', {
+      im_group_no: 'group_abc',
+      im_channel_type: 2,
+      im_msg_id: '17012345678901234',
+      target_space_id: '',
+      target_parent_id: 0,
+    });
+  });
+
+  it('checkImTransferredBatch POSTs /blobs/im-transferred/batch with items[] triples', async () => {
+    const sourceKeyA = '2#group_abc#111';
+    const sourceKeyB = '1#peer_uid_xyz#222';
+    inst.post.mockResolvedValue(ok({
+      results: {
+        [sourceKeyA]: { file_id: 42, space_id: 'sp_personal', parent_id: 0 },
+        [sourceKeyB]: { file_id: 43, space_id: 'sp_personal', parent_id: 0 },
+      },
+    }));
+    const items = [
+      { im_group_no: 'group_abc',    im_channel_type: 2, im_msg_id: '111' },
+      { im_group_no: 'peer_uid_xyz', im_channel_type: 1, im_msg_id: '222' },
+    ];
+    const res = await driveApi.checkImTransferredBatch(items);
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/im-transferred/batch', { items });
+    expect(res[sourceKeyA]).toEqual({ file_id: 42, space_id: 'sp_personal', parent_id: 0 });
+    expect(res[sourceKeyB]).toEqual({ file_id: 43, space_id: 'sp_personal', parent_id: 0 });
+  });
+
+  // Direct pin of the `source_key = "${channelType}#${channelID}#${msgID}"`
+  // format. The frontend rebuilds this string in module.tsx
+  // (`checkDriveTransferred` and `flushBatch`) to look up each card's status.
+  // If the backend ever changes the delimiter or field order, that lookup
+  // silently returns null for every card and every saved file shows
+  // "Save to Drive" forever, with no error / warning / failing test —
+  // the silent-total-failure mode the reviewer flagged.
+  it('imTransferredSourceKey pins `${channelType}#${channelID}#${msgID}` format', () => {
+    expect(imTransferredSourceKey({
+      im_channel_type: 2,
+      im_group_no: 'g_abc',
+      im_msg_id: '17012345678901234',
+    })).toBe('2#g_abc#17012345678901234');
+
+    // Sub-thread composite channelID uses '____' as separator, which never
+    // collides with the source_key delimiter '#'.
+    expect(imTransferredSourceKey({
+      im_channel_type: 5,
+      im_group_no: 'group_xyz____2084892300504207360',
+      im_msg_id: '42',
+    })).toBe('5#group_xyz____2084892300504207360#42');
+
+    // Person (DM): channelType=1. The im_group_no here is expected to be
+    // pre-normalised (bare peer uid, no Space prefix); see normaliseImChannelID.
+    expect(imTransferredSourceKey({
+      im_channel_type: 1,
+      im_group_no: 'peer_uid_xyz',
+      im_msg_id: '42',
+    })).toBe('1#peer_uid_xyz#42');
+  });
+
+  it('normaliseImChannelID strips Space prefix only for Person channelType', () => {
+    const prefixed = 's0a1b2c3d4e5f60718293a4b5c6d7e8f9_alice';
+    const bare = 'alice';
+    // Person (channelType=1): strip the s<32-hex>_ Space prefix so backends
+    // that key on the bare uid (octo-server `GetFakeChannelIDWith`,
+    // `AreSpaceMembers`, `IsFriend`) match.
+    expect(normaliseImChannelID(1, prefixed)).toBe(bare);
+    // No prefix -> no-op.
+    expect(normaliseImChannelID(1, bare)).toBe(bare);
+    // Group / CommunityTopic: pass through unchanged (backend accepts prefixed
+    // IDs for those paths per Service/ChannelSettingService.ts).
+    expect(normaliseImChannelID(2, 'group_abc')).toBe('group_abc');
+    expect(normaliseImChannelID(5, 'group_xyz____2084892300504207360')).toBe('group_xyz____2084892300504207360');
+    // Malformed / not-quite-prefix strings are left untouched.
+    expect(normaliseImChannelID(1, 's_alice')).toBe('s_alice');
+    expect(normaliseImChannelID(1, 'salice')).toBe('salice');
+  });
+
+  it('isDriveTransferSupportedChannel gates to Person/Group/CommunityTopic only', () => {
+    // Supported: 1=Person, 2=Group, 5=CommunityTopic.
+    expect(isDriveTransferSupportedChannel(1)).toBe(true);
+    expect(isDriveTransferSupportedChannel(2)).toBe(true);
+    expect(isDriveTransferSupportedChannel(5)).toBe(true);
+    // Unsupported (must not render the icon or fire the query):
+    // 3 = ChannelTypeCustomerService is a live channel type in this repo,
+    // and any future addition must be opted-in explicitly.
+    expect(isDriveTransferSupportedChannel(3)).toBe(false);
+    expect(isDriveTransferSupportedChannel(0)).toBe(false);
+    expect(isDriveTransferSupportedChannel(4)).toBe(false);
+    expect(isDriveTransferSupportedChannel(6)).toBe(false);
+    expect(isDriveTransferSupportedChannel(999)).toBe(false);
   });
 });

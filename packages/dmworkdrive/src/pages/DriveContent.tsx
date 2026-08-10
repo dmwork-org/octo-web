@@ -100,6 +100,15 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     setMemberModalOpen(false);
   }, [activeSpaceId]);
 
+  // Clear the row flash ~2s after focusFile lands, so the CSS animation stops
+  // and the row returns to its normal state. Re-arms on every new highlight.
+  const highlightFileId = vm.highlightFileId;
+  useEffect(() => {
+    if (highlightFileId == null) return;
+    const timer = window.setTimeout(() => vm.clearHighlight(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [highlightFileId, vm]);
+
   const openFolder = useCallback((entry: DriveEntry) => {
     vm.enterFolder(entry.id, entry.name);
   }, [vm]);
@@ -152,6 +161,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           )}
           {canEdit && (
             <Button
+              className="drive-btn"
               icon={<FolderPlus size={16} />}
               disabled={!hasSpace}
               onClick={() => setFolderModalOpen(true)}
@@ -163,6 +173,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
               unmount/remove is editor+ and lives in the file row menu. */}
           {canUpload && (
             <Button
+              className="drive-btn"
               icon={<FilePlus2 size={16} />}
               disabled={!hasSpace}
               onClick={() => setMountModalOpen(true)}
@@ -172,6 +183,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           )}
           {canManage && (
             <Button
+              className="drive-btn"
               icon={<UserPlus size={16} />}
               onClick={() => setInviteModalOpen(true)}
             >
@@ -180,6 +192,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           )}
           {canManage && (
             <Button
+              className="drive-btn"
               icon={<Users size={16} />}
               onClick={() => setMemberModalOpen(true)}
             >
@@ -211,6 +224,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             canDownload={canDownload}
             canEdit={canEdit}
             canShare={canShare}
+            highlightFileId={highlightFileId}
           />
         )}
         {truncatedTotal !== null && (

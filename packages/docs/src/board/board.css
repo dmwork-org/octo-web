@@ -52,15 +52,58 @@
   display: flex;
 }
 .octo-board-live-canvas {
+  position: relative;
+  display: flex;
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
+
+/* The shared drawer is absolutely positioned, so without reserving its width Excalidraw still
+   measures the full canvas and centres the toolbar underneath the opaque drawer. BoardShell applies
+   this class only after measuring that the remaining canvas can preserve Excalidraw's desktop UI;
+   compact or short canvases keep the drawer as an overlay. */
+.octo-board-canvas--drawer-reserved .octo-board-live-canvas {
+  flex: 0 1 auto;
+  width: calc(100% - var(--octo-doc-drawer-width, 360px));
+}
+
 .octo-board-canvas .excalidraw {
   width: 100%;
   height: 100%;
+}
+
+/* Selected database cylinders expose one app-owned geometry handle. Keeping it outside Excalidraw's
+   transform-handle registry avoids treating this custom parameter as a resize operation while the
+   scene update still follows the normal undo/persistence/collaboration path. */
+.octo-board-database-rim-handle {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--color-primary, #6965db);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: ns-resize;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+}
+
+.octo-board-database-rim-handle:hover,
+.octo-board-database-rim-handle:focus-visible {
+  width: 16px;
+  height: 16px;
+  outline: none;
+}
+
+body.octo-board-database-rim-dragging,
+body.octo-board-database-rim-dragging * {
+  cursor: ns-resize !important;
+  user-select: none !important;
 }
 
 /* Loading / error placeholder centred in the canvas area. */
@@ -427,14 +470,6 @@ body[theme-mode='dark'] .octo-board-context-menu,
   background: var(--octo-bg-1, #202124);
   box-shadow: 0 8px 28px rgb(0 0 0 / 40%);
 }
-.octo-board-live-canvas {
-  position: relative;
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
-
 /* Selection comment affordance mirrors the document bubble: a compact pill near the target, while
    composing reuses the sheet comment popover dimensions and actions. */
 .octo-board-selection-comment-button {

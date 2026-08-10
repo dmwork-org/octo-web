@@ -7,35 +7,35 @@ export interface BoardContextMenuItem {
   shortcut?: string
   destructive?: boolean
   separatorBefore?: boolean
-  onSelect: () => void
+  onSelect: () => void | Promise<boolean>
 }
 
 interface BoardContextMenuProps {
   left: number
   top: number
   items: BoardContextMenuItem[]
-  bounds?: BoardCommentOverlayBounds
+  bounds: BoardCommentOverlayBounds
   onClose: () => void
 }
 
 const MENU_EDGE_GAP = 8
+const MENU_MIN_USABLE_HEIGHT = 40
 
 /** Host-owned, localized replacement for Excalidraw's generic context menu. */
 export function BoardContextMenu({ left, top, items, bounds, onClose }: BoardContextMenuProps): ReactElement {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left, top })
-  const availableHeight = bounds
-    ? Math.max(0, bounds.bottom - bounds.top - MENU_EDGE_GAP * 2)
-    : undefined
+  // Keep at least one action row reachable during transient zero-size layout measurements.
+  const availableHeight = Math.max(MENU_MIN_USABLE_HEIGHT, bounds.bottom - bounds.top - MENU_EDGE_GAP * 2)
 
   useLayoutEffect(() => {
     const menu = ref.current
-    if (!menu || !bounds) {
+    if (!menu) {
       setPosition({ left, top })
       return
     }
     const width = menu.offsetWidth
-    const height = Math.min(menu.scrollHeight, availableHeight ?? menu.scrollHeight)
+    const height = Math.min(menu.scrollHeight, availableHeight)
     const minLeft = bounds.left + MENU_EDGE_GAP
     const minTop = bounds.top + MENU_EDGE_GAP
     const maxLeft = Math.max(minLeft, bounds.right - width - MENU_EDGE_GAP)
@@ -73,6 +73,8 @@ export function BoardContextMenu({ left, top, items, bounds, onClose }: BoardCon
       role="menu"
       style={{ left: position.left, top: position.top, maxHeight: availableHeight }}
       onPointerDown={(event) => event.stopPropagation()}
+      // Let the browser perform native overflow scrolling (including deltaMode handling), while
+      // keeping the wheel event away from Excalidraw's canvas pan/zoom handler.
       onWheel={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return
@@ -98,7 +100,15 @@ export function BoardContextMenu({ left, top, items, bounds, onClose }: BoardCon
             role="menuitem"
             className={item.destructive ? 'is-destructive' : undefined}
             onClick={() => {
-              item.onSelect()
+              const result = item.onSelect()
+              if (result instanceof Promise) {
+                void result.then((shouldClose) => {
+                  if (shouldClose) onClose()
+                }).catch(() => {
+                  // The action owns user-facing error feedback. Keep the menu open for retry.
+                })
+                return
+              }
               onClose()
             }}
           >

@@ -107,6 +107,32 @@ pnpm build:enterprise
 
 该脚本会检查 `octo-enterprise-modules` 和 `octo-loop-module` 是否已经在 `octo-web` sibling 目录，并默认使用 `octo-enterprise-modules/src/loop.ts`。它只负责装配和构建，不负责 clone 私有仓或决定私有仓 ref。
 
+### 桌面端企业打包
+
+普通桌面打包命令 `pnpm build-ele:*` 不会主动启用企业模块。需要打带 enterprise slot 的桌面包时，使用：
+
+```bash
+pnpm build-ele:enterprise
+pnpm build-ele:enterprise:mac
+pnpm build-ele:enterprise:win
+pnpm build-ele:enterprise:linux
+pnpm build-ele:enterprise:linux-arm64
+```
+
+桌面企业打包与 Web 企业构建使用同一套入口规则：`VITE_ENTERPRISE_MODULES_ENTRY` 指向哪些 `octo-enterprise-modules` entry，Vite 只会 import 这些 entry；entry 没有 import/register 的私有模块不会进入包。
+
+默认入口仍是：
+
+```bash
+VITE_ENTERPRISE_MODULES_ENTRY=$(dirname "$PWD")/octo-enterprise-modules/src/loop.ts
+```
+
+需要组合多个企业入口时，用平台 path delimiter 分隔，例如 macOS/Linux：
+
+```bash
+VITE_ENTERPRISE_MODULES_ENTRY="../octo-enterprise-modules/src/loop.ts:../octo-enterprise-modules/src/drive.ts" pnpm build-ele:enterprise:mac
+```
+
 GitLab test/tag 打包已经按 Docker build context 限制做了专门处理：CI 会把私有仓 clone 到 `octo-web/.enterprise/`，再把它们复制进镜像构建上下文。该目录已加入 `.gitignore`，仅作为 CI 临时目录，不作为源码归属。
 
 默认策略：
@@ -191,6 +217,8 @@ VITE_ENTERPRISE_FS_ALLOW
 ```
 
 GitLab CI 的 Docker build context 是 `octo-web/` 仓库根目录。CI 会先把两个私有仓放到 `octo-web/.enterprise/`，再执行 Docker build；`.enterprise/` 只作为 CI 临时构建输入，不作为源码归属。
+
+Docker enterprise 构建会在 root `pnpm install --frozen-lockfile` 后读取 `.enterprise/octo-enterprise-modules/package.json`，并把企业装配包声明、但 host 当前未声明的运行依赖临时安装到镜像内的 `@octo/web`。这些依赖不会写回 `octo-web` 源码里的 `apps/web/package.json` 或 `pnpm-lock.yaml`，避免后续同步开源 upstream 时反复产生 enterprise-only 依赖冲突。具体 loop/docs/drive 依赖应集中声明在 `octo-enterprise-modules`，不要分散到 host。
 
 示例：
 
