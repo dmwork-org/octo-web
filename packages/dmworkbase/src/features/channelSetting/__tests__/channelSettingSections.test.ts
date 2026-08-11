@@ -2,7 +2,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { ChannelTypeCommunityTopic } from "../../../Service/Const";
+import { ChannelTypeCommunityTopic, GroupRole } from "../../../Service/Const";
 import { ThreadStatus } from "../../../Service/Thread";
 import { GroupStatusDisband } from "../../../Utils/groupDisband";
 import { updateChannelSettingMyGroupNickname } from "../../../bridge/channelSetting/channelSettingActions";
@@ -387,8 +387,12 @@ describe("channel setting section builders", () => {
         orgData: {
           avatar_text: "研发",
           avatar_color: "5",
+          is_upload_avatar: 1,
           is_named: 1,
         },
+      },
+      subscriberOfMe: {
+        role: GroupRole.owner,
       },
     });
     const rows = buildGroupProfileRows({
@@ -404,6 +408,8 @@ describe("channel setting section builders", () => {
     expect(view.props.initialAvatarText).toBe("研发");
     expect(view.props.initialColorIndex).toBe(5);
     expect(view.props.isNamedGroup).toBe(true);
+    expect(view.props.isUploadedAvatar).toBe(true);
+    expect(view.props.canClearUploadedAvatar).toBe(true);
     expect(view.props.showUpload).toBe(true);
   });
 
