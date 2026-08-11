@@ -4,7 +4,8 @@
   },
   "common": {
     "confirm": "Confirm",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "retry": "Retry"
   },
   "space": {
     "personal": "Personal",
@@ -41,6 +42,16 @@
   },
   "copy": {
     "title": "Copy to"
+  },
+  "saveModal": {
+    "title": "Save to drive",
+    "selectSpace": "Choose target space",
+    "noSubfolder": "No subfolders here",
+    "folderTruncated": "Showing the first 200 folders; drill into a subfolder to keep browsing"
+  },
+  "contextMenus": {
+    "saveToDrive": "Save to drive…",
+    "viewInDrive": "View in drive"
   },
   "delete": {
     "title": "Confirm deletion",
@@ -177,6 +188,8 @@
     "renamed": "Renamed",
     "moved": "Moved",
     "copied": "Copied",
-    "deleted": "Deleted"
+    "deleted": "Deleted",
+    "saveToDriveSuccess": "Saved to Drive",
+    "spaceNotFound": "Space no longer exists or you lost access"
   }
 }
