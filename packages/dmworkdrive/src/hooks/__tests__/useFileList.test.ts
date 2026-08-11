@@ -25,10 +25,10 @@ function entry(id: number, name: string, type: FileType): DriveEntry {
   };
 }
 
-function resp(entries: DriveEntry[]): BrowseResponse {
+function resp(entries: DriveEntry[], total?: number): BrowseResponse {
   return {
     entries,
-    page: { page_size: 200, page_index: 1, total: entries.length, data: entries },
+    page: { page_size: 200, page_index: 1, total: total ?? entries.length, data: entries },
     filter: { type: 'all', source: 'all' },
   };
 }
@@ -105,5 +105,131 @@ describe('useFileList', () => {
       await Promise.resolve();
     });
     expect(result.current.entries).toEqual([]);
+  });
+
+  it('clears error and truncatedTotal on transition to no-space', async () => {
+    // A failed browse in space A followed by a reset to no-space would
+    // otherwise leave the "Failed to load" banner rendered against a state
+    // where no browse applies. Verify the !spaceId branch clears both.
+    vi.mocked(api.browse).mockRejectedValueOnce(new Error('boom'));
+    const { result, rerender } = renderHook(
+      (props: { sp: string | null }) => useFileList(props.sp, 0),
+      { sp: 'A' as string | null },
+    );
+    await waitFor(() => expect(result.current.error).toBe('boom'));
+
+    rerender({ sp: null });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.entries).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.truncatedTotal).toBeNull();
+  });
+
+  describe('truncatedTotal', () => {
+    it('is null when the response fully fits within PAGE_SIZE', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([entry(1, 'a.pdf', 'blob')], 1));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.truncatedTotal).toBeNull();
+    });
+
+    it('is set when the server reports a total larger than the returned list', async () => {
+      // 200 rows returned, server says 350 total → capped view.
+      const rows = Array.from({ length: 200 }, (_, i) =>
+        entry(i + 1, `f${i}.pdf`, 'blob'),
+      );
+      vi.mocked(api.browse).mockResolvedValue(resp(rows, 350));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.truncatedTotal).toBe(350);
+    });
+  });
+
+  describe('type filter', () => {
+    it('starts at "all" and passes type=undefined', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([]));
+      renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(1));
+      expect(api.browse).toHaveBeenCalledWith(
+        { space_id: 'sp', parent_id: 0, page_size: 200 },
+        expect.anything(),
+      );
+    });
+
+    it('setFilter triggers a fresh fetch with the type param', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      act(() => result.current.setFilter('folder'));
+      await waitFor(() =>
+        expect(api.browse).toHaveBeenLastCalledWith(
+          { space_id: 'sp', parent_id: 0, type: 'folder', page_size: 200 },
+          expect.anything(),
+        ),
+      );
+    });
+
+    it('clears stale entries synchronously on context change even when the new fetch rejects (P1-2)', async () => {
+      // Bot review round-10 P1-2: switching filter/space/folder while
+      // a previous listing is on screen used to keep the previous
+      // listing visible if the new fetch rejected — same file rows
+      // under a different filter/breadcrumb, fully actionable. Guard:
+      // the useEffect keyed on load clears entries SYNCHRONOUSLY on
+      // context change, so a rejected new-context browse yields an
+      // empty list + error, not a mixed view.
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp([entry(1, 'a.pdf', 'blob')]))
+        .mockRejectedValueOnce(new Error('boom'));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.entries).toHaveLength(1));
+
+      act(() => result.current.setFilter('folder'));
+      // Between the setFilter call and the reject, entries MUST clear
+      // synchronously so the caller can't wire delete/move handlers
+      // to the previous filter's rows under the new filter's UI.
+      await waitFor(() => expect(result.current.error).toBe('boom'));
+      expect(result.current.entries).toEqual([]);
+    });
+
+    it('a stale reload() bound to a previous context is dropped without touching abortRef (P1-1)', async () => {
+      // Bot review round-10 P1-1: a batch-delete onOk (or MoveModal
+      // onConfirm) captures reload() bound to the CURRENT context. If
+      // the user switches space while the batch runs, the captured
+      // reload() fires against space A after space B's browse has
+      // started. Without the pre-abort contextRef guard, A's reload
+      // would abort B's in-flight browse and claim the newest seq,
+      // then A's response would land under B's breadcrumb.
+      //
+      // Test: capture a reload() in space A, switch to B, invoke the
+      // captured reload — assert that B's second browse call is NOT
+      // aborted (i.e. no extra browse fires from the stale reload,
+      // and B's entries land intact).
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp([entry(1, 'a-file', 'blob')])) // A initial
+        .mockResolvedValueOnce(resp([entry(2, 'b-file', 'blob')])); // B initial after switch
+
+      const { result, rerender } = renderHook(
+        (props: { sp: string }) => useFileList(props.sp, 0),
+        { sp: 'A' },
+      );
+      await waitFor(() => expect(result.current.entries[0]?.id).toBe(1));
+
+      // Capture reload() from A (equivalent to what a modal onOk closure
+      // would hold).
+      const staleReloadFromA = result.current.reload;
+
+      // Switch to B.
+      rerender({ sp: 'B' });
+      await waitFor(() => expect(result.current.entries[0]?.id).toBe(2));
+
+      // Now the stale A reload fires. It MUST no-op — no third browse
+      // call, entries stay as B's.
+      act(() => staleReloadFromA());
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(vi.mocked(api.browse)).toHaveBeenCalledTimes(2);
+      expect(result.current.entries[0]?.id).toBe(2);
+    });
   });
 });

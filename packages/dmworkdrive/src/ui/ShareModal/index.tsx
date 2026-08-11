@@ -6,6 +6,7 @@ import { useShare } from '../../hooks/useShare';
 import type { DriveEntry } from '../../bridge/types';
 import { buildShareLink } from '../../utils/links';
 import { Toast } from '../../utils/toast';
+import { copyToClipboard } from '@octo/base';
 import './index.css';
 
 export interface ShareModalProps {
@@ -64,12 +65,12 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
         return;
       }
       setLink(url);
-      try {
-        await navigator.clipboard?.writeText(url);
-        if (!cancelled) setCopied(true);
-      } catch {
-        // Clipboard blocked (non-secure ctx); the link is still shown to copy.
-      }
+      // Best-effort auto-copy on open. Uses the shared @octo/base
+      // copyToClipboard helper (iOS-safe + execCommand fallback for
+      // plain-HTTP LAN deployments). Failure is quiet — the user can
+      // still hit the Copy button (same helper) or select the input.
+      const ok = await copyToClipboard(url);
+      if (!cancelled && ok) setCopied(true);
     })();
 
     return () => {
@@ -84,12 +85,14 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
 
   const handleCopy = async () => {
     if (!link) return;
-    try {
-      await navigator.clipboard?.writeText(link);
+    const ok = await copyToClipboard(link);
+    if (ok) {
       setCopied(true);
       Toast.success(t('drive.share.copied'));
-    } catch {
-      Toast.error(link);
+    } else {
+      // Both clipboard APIs failed (rare — sandboxed iframe / permission block).
+      // Show the link so the user can select and copy manually.
+      Toast.error(t('drive.share.copyFailed'));
     }
   };
 

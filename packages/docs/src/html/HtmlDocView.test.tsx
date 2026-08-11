@@ -65,6 +65,7 @@ async function waitForFrame(container: HTMLElement): Promise<HTMLIFrameElement> 
 }
 
 beforeEach(() => {
+  sessionStorage.clear()
   delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
   ;(window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: boolean }).__OCTO_HTML_SOURCE_DIFF_ENABLED__ = true
 })
@@ -347,6 +348,7 @@ describe('HtmlDocView — read-only rendering', () => {
     await waitForFrame(container)
     expect(String(spy.mock.calls[0][0])).toBe('/docs-html/d/published-slug/v/v7')
   })
+
 
   it('shows a loading state before the fetch resolves', async () => {
     let resolve!: (r: Response) => void
