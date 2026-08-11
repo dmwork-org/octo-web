@@ -132,7 +132,7 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
-      dedupe: ["react", "react-dom"],
+      dedupe: ["react", "react-dom", "wukongimjssdk"],
     },
     build: {
       outDir: "build",
