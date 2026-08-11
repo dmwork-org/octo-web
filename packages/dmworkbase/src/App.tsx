@@ -74,8 +74,8 @@ export type MittEvents = {
    * plus the resulting drive coordinates so listeners can update in place
    * without a follow-up backend call. FileCell subscribes and setState on a
    * matching source_key so its icon flips the moment ANY save path wins,
-   * regardless of which entry the user used. See dmworkdrive/module.tsx
-   * driveTransferredCache.
+   * regardless of which entry the user used. The private Drive module owns
+   * the producer-side transferred cache.
    */
   'wk:drive-transferred-changed': {
     sourceKey: string;
