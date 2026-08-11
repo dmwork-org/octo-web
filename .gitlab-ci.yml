@@ -23,8 +23,9 @@ variables:
   # 未覆盖的沿用此处默认值（package_test 覆盖为 test）。
   ENTERPRISE_MODULES_REF: "main"
   ENTERPRISE_LOOP_REF: "main"
-  # 聚合入口。docs 拆分落地后改为 src/index.ts 即可，无需动脚本。
-  ENTERPRISE_MODULES_ENTRY_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/src/loop.ts"
+  ENTERPRISE_DRIVE_REF: "main"
+  # 企业入口列表。多个入口用镜像内 Linux path delimiter ":" 分隔。
+  ENTERPRISE_MODULES_ENTRY_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/src/loop.ts:/app/.enterprise/octo-enterprise-modules/src/drive.ts"
   ENTERPRISE_HTML_HEAD_PATH_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/html/head.html"
 
 # ============================================================
@@ -203,6 +204,7 @@ argocd_sync:
       if [ "${ENABLE_ENTERPRISE_MODULES:-false}" = "true" ]; then
         ENTERPRISE_MODULES_REF="${ENTERPRISE_MODULES_REF:-main}"
         ENTERPRISE_LOOP_REF="${ENTERPRISE_LOOP_REF:-main}"
+        ENTERPRISE_DRIVE_REF="${ENTERPRISE_DRIVE_REF:-main}"
 
         # tag 构建必须钉死每个企业仓的 ref，任何一个停在 main 都拒绝发版。
         assert_pinned_for_tag() {
@@ -214,6 +216,7 @@ argocd_sync:
         if [ -n "${CI_COMMIT_TAG:-}" ] && [ "${ALLOW_ENTERPRISE_MAIN_FOR_TAG:-false}" != "true" ]; then
           assert_pinned_for_tag ENTERPRISE_MODULES_REF "$ENTERPRISE_MODULES_REF"
           assert_pinned_for_tag ENTERPRISE_LOOP_REF "$ENTERPRISE_LOOP_REF"
+          assert_pinned_for_tag ENTERPRISE_DRIVE_REF "$ENTERPRISE_DRIVE_REF"
         fi
 
         ENTERPRISE_AUTH_TOKEN="${ENTERPRISE_TOKEN:-}"
@@ -274,6 +277,7 @@ argocd_sync:
         # >>> 新增企业仓（如 docs）时，只需在此加一行 + 上面加一个 *_REF 变量 <<<
         fetch_enterprise_repo octo-enterprise-modules "$ENTERPRISE_MODULES_REF"
         fetch_enterprise_repo octo-loop-module "$ENTERPRISE_LOOP_REF"
+        fetch_enterprise_repo octo-drive-module "$ENTERPRISE_DRIVE_REF"
 
         ENTERPRISE_FS_ALLOW="${ENTERPRISE_FS_ALLOW}:/app/apps/web/node_modules"
 
@@ -281,11 +285,26 @@ argocd_sync:
         ln -s .. .enterprise/octo-web
 
         # 聚合入口必须存在，路径由 ENTERPRISE_MODULES_ENTRY_IN_IMAGE 单点决定。
-        ENTERPRISE_ENTRY_LOCAL=".enterprise/${ENTERPRISE_MODULES_ENTRY_IN_IMAGE#/app/.enterprise/}"
-        if [ ! -f "$ENTERPRISE_ENTRY_LOCAL" ]; then
-          echo "Missing enterprise entry: $ENTERPRISE_ENTRY_LOCAL"
-          exit 1
-        fi
+        # 镜像内运行环境是 Linux，多个入口使用 ":" 分隔。
+        ENTERPRISE_ENTRY_REMAINING="$ENTERPRISE_MODULES_ENTRY_IN_IMAGE"
+        while [ -n "$ENTERPRISE_ENTRY_REMAINING" ]; do
+          case "$ENTERPRISE_ENTRY_REMAINING" in
+            *:*)
+              ENTERPRISE_ENTRY_IN_IMAGE="${ENTERPRISE_ENTRY_REMAINING%%:*}"
+              ENTERPRISE_ENTRY_REMAINING="${ENTERPRISE_ENTRY_REMAINING#*:}"
+              ;;
+            *)
+              ENTERPRISE_ENTRY_IN_IMAGE="$ENTERPRISE_ENTRY_REMAINING"
+              ENTERPRISE_ENTRY_REMAINING=""
+              ;;
+          esac
+          [ -z "$ENTERPRISE_ENTRY_IN_IMAGE" ] && continue
+          ENTERPRISE_ENTRY_LOCAL=".enterprise/${ENTERPRISE_ENTRY_IN_IMAGE#/app/.enterprise/}"
+          if [ ! -f "$ENTERPRISE_ENTRY_LOCAL" ]; then
+            echo "Missing enterprise entry: $ENTERPRISE_ENTRY_LOCAL"
+            exit 1
+          fi
+        done
 
         export VITE_ENTERPRISE_MODULES_ENTRY="$ENTERPRISE_MODULES_ENTRY_IN_IMAGE"
         export VITE_ENTERPRISE_FS_ALLOW="$ENTERPRISE_FS_ALLOW"
@@ -340,6 +359,7 @@ package_tag:
     # 需要临时指向某个 commit 时，仍可在点 ▶ 的对话框里覆盖。
     ENTERPRISE_MODULES_REF: "$CI_COMMIT_TAG"
     ENTERPRISE_LOOP_REF: "$CI_COMMIT_TAG"
+    ENTERPRISE_DRIVE_REF: "$CI_COMMIT_TAG"
 
 # ============================================================
 # develop 分支打包（Staging 环境）
@@ -367,6 +387,7 @@ package_test:
     ENABLE_ENTERPRISE_MODULES: "true"
     ENTERPRISE_MODULES_REF: "test"
     ENTERPRISE_LOOP_REF: "test"
+    ENTERPRISE_DRIVE_REF: "test"
 
 # ============================================================
 # 构建成功通知（develop + test + tags）
