@@ -321,6 +321,26 @@ describe('auth-header interceptor', () => {
     }
   });
 
+  it('always overwrites the X-Space-Id header with the host tab, even when a caller pre-sets a different value', () => {
+    // X-Space-Id identifies the TENANT space to the drive RequireSpace middleware,
+    // NOT the drive-space uuid a body payload targets. If a caller pre-set the
+    // header (an older save-to-drive path did), the interceptor MUST still
+    // clobber it back to the host tab, or RequireSpace would reverse-check the
+    // wrong tenant space against octo-server's MySpaces and 403 the whole
+    // request. Drive space uuids travel in the body; the backend service layer
+    // resolves them itself.
+    const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
+    const onRequest = requestUse.mock.calls[0][0];
+    const original = WKApp.shared.currentSpaceId;
+    try {
+      WKApp.shared.currentSpaceId = 'host-space';
+      const config = onRequest({ headers: { 'X-Space-Id': 'looks-like-a-drive-uuid' } });
+      expect(config.headers['X-Space-Id']).toBe('host-space');
+    } finally {
+      WKApp.shared.currentSpaceId = original;
+    }
+  });
+
   it('logs out on a 401 from a normal drive API', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
@@ -542,8 +562,8 @@ describe('IM -> drive transferred-state wire contract (source_key)', () => {
       target_parent_id: 0,
     };
     await driveApi.transferFromIm(req);
-    // Full body pin: any field rename / drop / added-required field on either
-    // side must update both — that is the point of this assertion.
+    // Empty target_space_id → plain post (2-arg call); the request interceptor
+    // fills X-Space-Id with the host tab's current space by default.
     expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/transfer-from-im', {
       im_group_no: 'group_abc',
       im_channel_type: 2,
@@ -551,6 +571,42 @@ describe('IM -> drive transferred-state wire contract (source_key)', () => {
       target_space_id: '',
       target_parent_id: 0,
     });
+    // No per-request config → no X-Space-Id override was set.
+    const call = inst.post.mock.calls[0];
+    expect(call.length).toBe(2);
+  });
+
+  it('transferFromIm passes target_space_id in the request body only — no X-Space-Id override', async () => {
+    inst.post.mockResolvedValue(ok({ id: 99, space_id: 'sp_shared', parent_id: 0 }));
+    const req = {
+      im_group_no: 'group_abc',
+      im_channel_type: 2,
+      im_msg_id: '17012345678901234',
+      target_space_id: 'sp_shared',
+      target_parent_id: 42,
+    };
+    await driveApi.transferFromIm(req);
+    // target_space_id (a DRIVE space uuid) travels in the body — the drive
+    // service resolves it in its own space table via assertUploader. It must
+    // NOT be threaded into X-Space-Id: RequireSpace would then reverse-check
+    // the drive uuid against octo-server's MySpaces (tenant spaces) and 403.
+    // Callsite is a plain 2-arg post; the interceptor fills X-Space-Id with
+    // the host tab's tenant space, same as any other body-scoped drive call.
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/transfer-from-im', req);
+    const call = inst.post.mock.calls[0];
+    expect(call.length).toBe(2);
+  });
+
+  it('getAncestors GETs /files/:id/ancestors and unwraps .ancestors', async () => {
+    inst.get.mockResolvedValue(ok({ ancestors: [{ id: 10, name: 'A' }, { id: 20, name: 'B' }] }));
+    const res = await driveApi.getAncestors(42);
+    expect(inst.get).toHaveBeenCalledWith('/v1/drive/files/42/ancestors', { params: {} });
+    expect(res).toEqual([{ id: 10, name: 'A' }, { id: 20, name: 'B' }]);
+  });
+
+  it('getAncestors returns [] for a root file (empty ancestors response)', async () => {
+    inst.get.mockResolvedValue(ok({ ancestors: [] }));
+    expect(await driveApi.getAncestors(1)).toEqual([]);
   });
 
   it('checkImTransferredBatch POSTs /blobs/im-transferred/batch with items[] triples', async () => {

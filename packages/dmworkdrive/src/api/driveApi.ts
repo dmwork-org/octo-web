@@ -31,6 +31,7 @@ import type {
   PrepareUploadReq,
   ConfirmUploadReq,
   TransferFromImReq,
+  DriveAncestor,
   CreateShareReq,
   CreateInviteReq,
   DriveRole,
@@ -78,6 +79,13 @@ function resolveBaseURL(): string {
 }
 
 // Inject auth headers at request time (so the token stays fresh after refresh).
+// X-Space-Id is ALWAYS the host tab's tenant space — this header identifies
+// the octo tenant to the RequireSpace middleware, not the drive space the
+// operation targets. Drive spaces (personal/shared uuids) travel in request
+// bodies (e.g. transferFromIm.target_space_id) and the backend service layer
+// resolves them itself. An earlier version pre-set X-Space-Id to the drive
+// target_space_id and it 403'd because RequireSpace's MySpaces upstream
+// returned tenant spaces, not drive spaces.
 driveAxios.interceptors.request.use((config) => {
   config.baseURL = resolveBaseURL();
   config.headers = config.headers ?? {};
@@ -422,7 +430,22 @@ export async function deleteBlob(blobId: number): Promise<void> {
 }
 
 export async function transferFromIm(req: TransferFromImReq): Promise<TransferResult> {
+  // target_space_id travels in the body — the drive service resolves it in
+  // its own space table (via imtransfer.Service.assertUploader). X-Space-Id
+  // is the tenant space (host tab), unrelated to drive space uuids, and is
+  // filled by the request interceptor. Do NOT thread target_space_id into
+  // X-Space-Id: RequireSpace would then check drive-space membership
+  // against octo-server's MySpaces (tenant spaces) and 403.
   return post<TransferResult>('/blobs/transfer-from-im', req);
+}
+
+/** Root-first folder path from a target file's owning space root to its
+ *  immediate parent — powers the "在云盘中查看" jump when the file lives
+ *  in a deep folder in any space. Empty array when parent_id=0 (root).
+ *  See DriveAncestor doc. */
+export async function getAncestors(fileId: number): Promise<DriveAncestor[]> {
+  const data = await get<{ ancestors: DriveAncestor[] }>(`/files/${fileId}/ancestors`);
+  return data.ancestors ?? [];
 }
 
 // Wire types for the IM -> drive transferred-state check now live in

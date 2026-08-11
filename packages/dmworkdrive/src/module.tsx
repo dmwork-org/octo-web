@@ -1,18 +1,23 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import {
   WKApp,
   ChatPage,
   Menus,
   i18n,
   t as translate,
+  MessageContentTypeConst,
+  isDriveTransferSupportedChannel,
 } from '@octo/base';
 import type { IModule } from '@octo/base';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
-import { DriveVM } from './pages/DriveVM';
-import { transferFromIm, checkImTransferredBatch } from './api/driveApi';
+import { DriveVM, useDriveVM } from './pages/DriveVM';
+import { transferFromIm, checkImTransferredBatch, getAncestors } from './api/driveApi';
 import type { ImTransferredEntry } from './api/driveApi';
 import { imTransferredSourceKey, normaliseImChannelID } from './bridge/types';
+import SaveToDriveModal from './ui/SaveToDriveModal';
+import { Toast } from './utils/toast';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -21,6 +26,12 @@ import zhCN from './i18n/zh-CN.json';
 let _initialized = false;
 /** `space-changed` subscription, kept for HMR teardown. */
 let _spaceChangedHandler: (() => void) | null = null;
+/** `wk:auth-state-changed` subscription, kept for HMR teardown. Bound alongside
+ *  `space-changed` so both flush the drive-transferred cache on tenant/user
+ *  swaps (see review PR #1322 non-blocking finding: the cache used to survive
+ *  identity changes and could feed stale synchronous state to the right-click
+ *  menu until the next backend batch overwrote it). */
+let _authStateChangedHandler: (() => void) | null = null;
 /** remoteConfig (drive_on) listeners, kept so a repeat init drops them before rebinding. */
 let _configUnsubscribers: Array<() => void> = [];
 
@@ -31,6 +42,10 @@ if (import.meta.hot) {
       WKApp.mittBus.off('space-changed', _spaceChangedHandler);
       _spaceChangedHandler = null;
     }
+    if (_authStateChangedHandler) {
+      WKApp.mittBus.off('wk:auth-state-changed', _authStateChangedHandler);
+      _authStateChangedHandler = null;
+    }
     for (const unsub of _configUnsubscribers) unsub();
     _configUnsubscribers = [];
   });
@@ -40,6 +55,195 @@ if (import.meta.hot) {
 // per module load; the `/drive` route factory and the menu's onPress both close
 // over it so the two WKViewQueue subtrees stay in sync.
 const vm = new DriveVM();
+
+// ---------------------------------------------------------------------------
+// Drive-transferred cache (module-scope singleton, spans FileCell lifetimes).
+// ---------------------------------------------------------------------------
+// Single source of truth for "has THIS IM file been saved to any drive space
+// I can see?" across every entry point (file-card icon, right-click menu,
+// picker modal). Keyed by the wire `source_key`
+// (channelType#channelID#msgID) so the key matches the backend storage key and
+// the request payload without an extra translation step.
+//
+// Why a module singleton, not React state:
+//   - Icon lives inside a FileCell (component state) — one per rendered
+//     message. Right-click menu is registered via WKApp.endpoints as a plain
+//     factory with no component instance to read state from. Both entry
+//     points must agree, and the agreement must survive scroll-out unmounts
+//     (the same file scrolls back into view later — the cache prevents a
+//     re-batch and prevents a stale "unsaved" flicker on the second mount
+//     before the async check resolves).
+//   - Cross-cutting event bus (WKApp.mittBus 'wk:drive-transferred-changed')
+//     is the fan-out: any write to this cache emits, subscribers (FileCell)
+//     setState so their icons and dropdowns update in place.
+//
+// Design choice: NO "list of locations". Product decision — a chat file is
+// either saved (any single canonical winner returned by backend
+// LookupBatchAcrossMySpaces' tie-break: personal > freshest shared) or not.
+// Existing entry points do not offer "save AGAIN elsewhere" once saved;
+// moving/copying is a drive-app concern, not IM's. Simplification comes from
+// that product invariant, not a tech shortcut.
+type DriveTransferredEntry = { file_id: number; space_id: string; parent_id: number };
+type DriveTransferredState =
+  | { status: 'unknown' } // never checked or check failed — treat as unsaved for UI
+  | { status: 'notfound' } // backend confirmed no drive row
+  | { status: 'saved'; entry: DriveTransferredEntry };
+const driveTransferredCache = new Map<string, DriveTransferredState>();
+
+// Per-key monotonic write generation. Every write bumps its key's counter;
+// `seedDriveCache` refuses to overwrite when the write it was based on
+// (the batch RTT it was issued for) is older than a subsequent
+// `markDriveSaved`. Without this guard, a save that landed BEFORE a
+// pre-save batch RTT resolved would be silently downgraded to `notfound`
+// when the batch response arrived, and the right-click menu (which reads
+// the cache synchronously via getDriveTransferred) would flip back to
+// "存到云盘…" while the icon still shows "在云盘中查看". Reviewer flagged
+// this as the stale-seed downgrade race (Octo-Q PR #1322 P2). Note the
+// dual constraint: batch-seeded `notfound` MUST still be able to
+// overwrite a stale `saved` (that's how drive-side deletes reflect on
+// next FileCell mount, per c1f3071d), so a blanket "never downgrade"
+// isn't correct. Generation-based ordering is.
+const driveWriteGen = new Map<string, number>();
+
+function nextWriteGen(sourceKey: string): number {
+  const next = (driveWriteGen.get(sourceKey) ?? 0) + 1;
+  driveWriteGen.set(sourceKey, next);
+  return next;
+}
+
+// Identity epoch — bumped by every tenant / auth change. Each in-flight batch
+// captures the epoch at enqueue time; if the response arrives after a
+// clear() the epochs disagree and seedDriveCache/waiter resolvers drop the
+// stale-identity payload rather than repopulating the fresh session's cache
+// with the previous tenant's drive coordinates (Jerry-Xin round-2 blocking
+// on PR #1322). Clearing driveTransferredCache alone is not enough — an
+// old-identity batch that resolves AFTER the clear would seed right back in.
+let driveIdentityEpoch = 0;
+function bumpDriveIdentityEpoch(): void {
+  driveIdentityEpoch++;
+}
+
+function readDriveCache(sourceKey: string): DriveTransferredState {
+  return driveTransferredCache.get(sourceKey) ?? { status: 'unknown' };
+}
+
+/** Write a `saved` entry into the cache and broadcast the flip. Used by every
+ *  save path (icon quick-save, picker save) and by the batch-lookup response
+ *  handler. Idempotent: repeated writes with the same entry stay 'saved' and
+ *  still emit — a FileCell that mounted after the last emission wouldn't have
+ *  received it, so we don't dedupe. Bumps the per-key write gen so later
+ *  in-flight batch responses can't overwrite this. */
+function markDriveSaved(sourceKey: string, entry: DriveTransferredEntry): void {
+  nextWriteGen(sourceKey);
+  driveTransferredCache.set(sourceKey, { status: 'saved', entry });
+  WKApp.mittBus.emit('wk:drive-transferred-changed', { sourceKey, entry });
+}
+
+/** Store the batch-lookup result: `saved` for hits, `notfound` for misses.
+ *  Called from flushBatch AFTER the API response — the batch is the primary
+ *  cache filler on first render of a chat file list. Emits on a `saved` seed
+ *  so any FileCell whose async check landed after another card's cache-hit
+ *  render still picks up the answer.
+ *
+ *  Skips the write if a `markDriveSaved` landed on this key while the batch
+ *  RTT was in flight (the `issuedAtGen` argument captures the write-gen at
+ *  enqueue time; if the current gen has moved past it a save has since won
+ *  and the batch's answer is stale). This preserves the c1f3071d guarantee
+ *  that a `notfound` seed CAN overwrite a stale `saved` (drive-side delete
+ *  refresh) — the check is generation-based, not "never downgrade". */
+function seedDriveCache(sourceKey: string, issuedAtGen: number, entry: ImTransferredEntry | null): void {
+  const currentGen = driveWriteGen.get(sourceKey) ?? 0;
+  if (currentGen > issuedAtGen) {
+    // A markDriveSaved committed after this batch was issued. Drop the
+    // seed rather than downgrade the freshly-saved state.
+    return;
+  }
+  nextWriteGen(sourceKey);
+  if (entry) {
+    const compact: DriveTransferredEntry = {
+      file_id: entry.file_id,
+      space_id: entry.space_id,
+      parent_id: entry.parent_id,
+    };
+    driveTransferredCache.set(sourceKey, { status: 'saved', entry: compact });
+    WKApp.mittBus.emit('wk:drive-transferred-changed', { sourceKey, entry: compact });
+  } else {
+    driveTransferredCache.set(sourceKey, { status: 'notfound' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SaveToDriveModalHost — subscribes to DriveVM so the picker survives cold
+// start (user never opened Drive this session → vm.spaces starts empty and
+// arrives asynchronously after `loadSpaces()` resolves). Without this
+// wrapper the one-shot ReactDOM.render used to snapshot vm.spaces at portal-
+// creation time, and post-load list updates never re-rendered the picker —
+// the space dropdown stayed empty and Confirm stayed disabled forever
+// (Jerry-Xin review 2026-08-10 blocking finding on PR #1322).
+//
+// Behaviour:
+//   - `useDriveVM(vm)` triggers `vm.ensureLoaded()` on mount AND re-renders
+//     the host whenever the VM notifies.
+//   - Before spaces have arrived, render a small centred spinner in a
+//     `<Modal>` shell so the user can still cancel; do NOT render the real
+//     picker yet — its Confirm button would be disabled with no explanation.
+//   - Once spaces are present, render the real picker with the current
+//     activeSpaceId as default (matches vm.ensureLoaded's post-load state).
+//
+// The host receives the callbacks unchanged from saveMessageToDriveAt; it
+// does not know about the race guard, the cache, or the transfer POST.
+// ---------------------------------------------------------------------------
+interface SaveToDriveModalHostProps {
+  vm: DriveVM;
+  onClose: () => void;
+  onConfirm: (targetSpaceId: string, targetParentId: number) => Promise<boolean>;
+}
+function SaveToDriveModalHost({ vm, onClose, onConfirm }: SaveToDriveModalHostProps): JSX.Element {
+  const live = useDriveVM(vm);
+  // Failure state: `listSpaces` failed under cold-start conditions, so
+  // `spaces` is [], `spacesLoading` is false, and `spacesError` is set. The
+  // earlier version only branched on `spaces.length === 0`, which meant the
+  // spinner shell rendered forever with only a `Toast.error` to signal the
+  // problem (Octo-Q round-2 P2). Give the user an explicit error card with
+  // a Retry action so a transient network blip doesn't dead-end the picker.
+  if (live.spaces.length === 0 && live.spacesError) {
+    return (
+      <SaveToDriveModal
+        visible
+        spaces={[]}
+        defaultSpaceId={null}
+        spacesError={live.spacesError}
+        onRetry={() => void live.loadSpaces()}
+        onClose={onClose}
+        onConfirm={onConfirm}
+      />
+    );
+  }
+  if (live.spaces.length === 0) {
+    // Cold-start loading shell: spaces haven't arrived yet. The modal shell
+    // stays mounted so Cancel is clickable; the host re-renders once
+    // vm.notifyListener fires.
+    return (
+      <SaveToDriveModal
+        visible
+        spaces={[]}
+        defaultSpaceId={null}
+        spacesLoading
+        onClose={onClose}
+        onConfirm={onConfirm}
+      />
+    );
+  }
+  return (
+    <SaveToDriveModal
+      visible
+      spaces={live.spaces}
+      defaultSpaceId={live.activeSpaceId}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  );
+}
 
 // NOTE: the share (`/drive/s/:token`) and invite (`/drive/invite/:token`)
 // landing pages are intercepted by the host Layout (apps/web) as standalone
@@ -110,6 +314,90 @@ export default class DriveModule implements IModule {
       'en-US': enUS,
     });
 
+    // Right-click on a supported chat file message → "存到云盘…" / "在云盘中查看".
+    // Visibility gate FULLY mirrors the file card's icon
+    // (dmworkbase/Messages/File/index.tsx isMessagePersisted + display gates):
+    // driveOn remoteConfig ON, message is a File, channel type supports
+    // drive transfer, server messageID landed, and status===Normal (not
+    // Wait/Fail). The handler runs against every registered message type,
+    // so these early guards keep the menu list from getting a spurious
+    // entry for text/image/reply messages. Once the gates pass we ALSO
+    // read the cross-path saved-state cache synchronously
+    // (WKApp.getDriveTransferred): a known-saved file offers a "在云盘中查看"
+    // jump (no "save again" — issue #1321 Alternatives Considered
+    // deliberately rejects a re-save entry: the backend
+    // (target_space_id, ref_id) idempotency key silently returns the
+    // original row, so a second save into a different folder appears to
+    // do nothing). Unknown/notfound falls back to "存到云盘…" via the
+    // picker; that unknown branch is only reachable when the mount-time
+    // batch hasn't resolved yet, in which case a saved file's icon also
+    // still shows "存到云盘" pending the flip.
+    WKApp.endpoints.registerMessageContextMenus(
+      'contextmenus.driveSave',
+      (message) => {
+        if (!WKApp.remoteConfig?.driveOn) return null;
+        if (message.contentType !== MessageContentTypeConst.file) return null;
+        if (!isDriveTransferSupportedChannel(message.channel.channelType)) return null;
+        // Full parity with the icon's isMessagePersisted() gate
+        // (dmworkbase/Messages/File/index.tsx): the icon requires BOTH a
+        // server messageID (send-ack landed) AND status===Normal (not
+        // Wait/Fail). The earlier version checked only messageID, so a
+        // send-in-flight or send-failed message still offered the menu
+        // entry — the backend would then 404 on the empty/foreign
+        // im_msg_id. Reviewer yujiawei round-2 P2-4 on PR #1322.
+        if (!message.messageID) return null;
+        // MessageStatus.Normal === 1 (Wait=0, Normal=1, Fail=2 per
+        // wukongimjssdk lib/model.d.ts). Inlined as a numeric literal
+        // rather than imported: dmworkdrive doesn't declare `wukongimjssdk`
+        // as a dependency (the plugin talks to WKApp / mittBus surfaces only),
+        // and adding a runtime import here breaks the isolated web build
+        // Rolldown pass ("failed to resolve import 'wukongimjssdk'").
+        if (message.status !== 1) return null;
+        // Two-state menu: mirror the icon. If the cache says the file is
+        // already saved somewhere the caller can reach, offer "在云盘中查看"
+        // that jumps to the winner. Otherwise (notfound / unknown) offer
+        // the picker. Unknown is treated as "may not be saved" — safer
+        // default: never hide the save entry when we don't know.
+        const known = WKApp.getDriveTransferred?.({
+          im_group_no: message.channel.channelID,
+          im_channel_type: message.channel.channelType,
+          im_msg_id: message.messageID,
+        });
+        if (known) {
+          return {
+            title: translate('drive.contextMenus.viewInDrive'),
+            onClick: () => {
+              WKApp.openDriveFile?.({
+                space_id: known.space_id,
+                file_id: known.file_id,
+                parent_id: known.parent_id,
+              });
+            },
+          };
+        }
+        return {
+          title: translate('drive.contextMenus.saveToDrive'),
+          onClick: () => {
+            const save = WKApp.saveMessageToDriveAt;
+            if (!save) return;
+            void save({
+              im_group_no: message.channel.channelID,
+              im_channel_type: message.channel.channelType,
+              im_msg_id: message.messageID,
+            }).catch(() => {
+              // Cancel or backend failure: swallow — the picker's inner
+              // handler already surfaced the failure via Toast.error and
+              // keeps the modal open for retry; a plain cancel is a no-op.
+              // Success toasts fire inside onConfirm (see Toast.success on
+              // the transferFromIm success path), so this outer .catch has
+              // nothing to add.
+            });
+          },
+        };
+      },
+      100000, // put the entry LAST — dmworkbase uses up to 99999
+    );
+
     // Bridge for the chat file card's "save to Drive" action. Backend accepts
     // an empty target_space_id and defaults to the caller's personal space,
     // so we don't pre-resolve it (one fewer round-trip). Person channelIDs
@@ -119,14 +407,172 @@ export default class DriveModule implements IModule {
     // Callers hand raw `message.channel.channelID`; this is the single
     // normalisation point for the drive-transfer path (see bridge/types).
     WKApp.saveMessageToDrive = async ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
+      const normalised = normaliseImChannelID(im_channel_type, im_group_no);
+      // Snapshot the identity epoch BEFORE the POST so a tenant/auth
+      // switch mid-flight (space-changed / wk:auth-state-changed → clear
+      // + bumpDriveIdentityEpoch) makes this write skip the cache/emit.
+      // Otherwise the response would repopulate the fresh session's cache
+      // with the previous identity's drive coordinates and mittBus would
+      // flip a FileCell to "view in drive" pointing at the old tenant's
+      // file — reviewer Jerry-Xin / yujiawei / Octo-Q round-4 P2. The
+      // caller still gets the entry back so the icon path's own setState
+      // shows optimistic success (they can retry on next mount / refresh
+      // if the tenant switch made the drive-side row inaccessible).
+      const savedAtEpoch = driveIdentityEpoch;
       const result = await transferFromIm({
-        im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
+        im_group_no: normalised,
         im_channel_type,
         im_msg_id,
         target_space_id: '',
         target_parent_id: 0,
       });
-      return { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+      const entry = { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+      // Fan out to the cache + mittBus so the message's own FileCell icon
+      // and any other subscribers (e.g. the right-click menu factory next
+      // time it opens) all see the saved state without a round-trip —
+      // ONLY when the identity hasn't switched during the RTT.
+      if (driveIdentityEpoch === savedAtEpoch) {
+        const sourceKey = imTransferredSourceKey({
+          im_channel_type,
+          im_group_no: normalised,
+          im_msg_id,
+        });
+        markDriveSaved(sourceKey, entry);
+      }
+      return entry;
+    };
+
+    // Save-with-picker: same trigger, but the caller wants to choose target
+    // space + folder rather than the default personal-space-root fallback.
+    // Renders SaveToDriveModal into its own detached DOM node so its inner
+    // Semi `<Modal>` is the ONLY modal in the tree — do NOT use
+    // WKBase.showGlobalModal here: that helper wraps `body` in another
+    // Semi `<Modal>`, and stacking our own Modal inside it produced the
+    // "two boxes stacked" bug the owner reported. The picker is a full
+    // modal already, so it gets its own portal mount and cleans up on
+    // resolve/reject/cancel. Resolves when the user confirms and the
+    // transfer POST returns, rejects on cancel or backend failure.
+    WKApp.saveMessageToDriveAt = ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
+      return new Promise<{ file_id: number; space_id: string; parent_id: number }>((resolve, reject) => {
+        // The host wrapper does its own ensureLoaded via useDriveVM.
+        const host = document.createElement('div');
+        host.setAttribute('data-role', 'drive-save-modal-host');
+        document.body.appendChild(host);
+        let settled = false;
+        const cleanup = (): void => {
+          try {
+            ReactDOM.unmountComponentAtNode(host);
+          } catch {
+            // ignore — component may have already unmounted
+          }
+          host.remove();
+        };
+        const done = (fn: () => void): void => {
+          if (settled) return;
+          settled = true;
+          fn();
+          cleanup();
+        };
+        const normalised = normaliseImChannelID(im_channel_type, im_group_no);
+        const sourceKey = imTransferredSourceKey({
+          im_channel_type,
+          im_group_no: normalised,
+          im_msg_id,
+        });
+        // Race guard: if the file was saved via ANOTHER path (icon quick-save
+        // in a different tab, or a batch-lookup that just resolved) while
+        // this picker was open, don't fire a second transfer. Skip
+        // straight to resolve with the cached entry so the caller's happy-
+        // path (icon flip + open-drive jump) still runs.
+        const cached = readDriveCache(sourceKey);
+        if (cached.status === 'saved') {
+          done(() => resolve(cached.entry));
+          return;
+        }
+        ReactDOM.render(
+          <SaveToDriveModalHost
+            vm={vm}
+            onClose={() => done(() => reject(new Error('save-to-drive cancelled')))}
+            onConfirm={async (targetSpaceId, targetParentId) => {
+              // Second race check — the picker was open long enough for
+              // another path to win. Behaves like the pre-open guard: use
+              // the cached entry, close the modal, don't POST.
+              const now = readDriveCache(sourceKey);
+              if (now.status === 'saved') {
+                done(() => resolve(now.entry));
+                return true;
+              }
+              try {
+                // Snapshot the identity epoch BEFORE the POST — same
+                // stale-identity guard as saveMessageToDrive; picker
+                // sessions can straddle a tenant switch too. See
+                // saveMessageToDrive above for the full rationale.
+                const savedAtEpoch = driveIdentityEpoch;
+                const result = await transferFromIm({
+                  im_group_no: normalised,
+                  im_channel_type,
+                  im_msg_id,
+                  target_space_id: targetSpaceId,
+                  target_parent_id: targetParentId,
+                });
+                const entry = { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+                if (driveIdentityEpoch !== savedAtEpoch) {
+                  // Tenant switched during the transfer POST. Don't
+                  // repopulate the fresh session's cache with the old
+                  // identity's coordinates, don't emit the fan-out, and
+                  // don't toast success (the "saved to drive" claim
+                  // would be misleading under the new identity). Silently
+                  // resolve the outer promise so the caller's cleanup
+                  // still runs; nothing else on the fresh session's UI
+                  // was ever wired to this file.
+                  done(() => resolve(entry));
+                  return true;
+                }
+                markDriveSaved(sourceKey, entry);
+                // Success toast — matches the icon path's Toast.success at
+                // dmworkbase/Messages/File/index.tsx (i18n key
+                // `base.messageFile.saveToDriveSuccess`) so both entry
+                // points give the user the same "yes it landed" signal
+                // (Jerry-Xin / yujiawei / Octo-Q round-2: the module.tsx
+                // comment used to claim the modal owns success toasts, but
+                // no Toast.success actually fired — silence on the happy
+                // path was as confusing as the earlier silence on failure).
+                Toast.success(translate('drive.toast.saveToDriveSuccess'));
+                done(() => resolve(entry));
+                return true;
+              } catch (err) {
+                // Deliberately do NOT reject the outer promise here — the
+                // modal stays open for the user to retry (a 403 typically
+                // means the picked space's rank changed between listSpaces
+                // and the POST). If we rejected, a later successful retry
+                // could not fulfil an already-settled promise. Only cancel
+                // (onClose above) rejects. Surface the failure inline via
+                // toast so the click isn't silent (Jerry-Xin review non-
+                // blocking finding on PR #1322).
+                const msg = (err as Error)?.message || translate('drive.toast.opFailed');
+                Toast.error(msg);
+                return false;
+              }
+            }}
+          />,
+          host,
+        );
+      });
+    };
+
+    // Synchronous cache probe — see WKApp.getDriveTransferred JSDoc. Right-
+    // click menu factory needs a "known-so-far" answer at menu-open time.
+    WKApp.getDriveTransferred = ({ im_group_no, im_channel_type, im_msg_id }) => {
+      if (!im_group_no || !im_msg_id) return undefined;
+      const sourceKey = imTransferredSourceKey({
+        im_channel_type,
+        im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
+        im_msg_id,
+      });
+      const state = readDriveCache(sourceKey);
+      if (state.status === 'saved') return state.entry;
+      if (state.status === 'notfound') return null;
+      return undefined;
     };
 
     // Chat file card mount-time check: has this IM file already been transferred?
@@ -141,6 +587,15 @@ export default class DriveModule implements IModule {
     // storage key `${channelType}#${channelID}#${msgID}`.
     let pendingBatch: Map<string, {
       item: { im_group_no: string; im_channel_type: number; im_msg_id: string };
+      // Write-gen snapshot at enqueue time. If a save on this same key
+      // commits before the batch response returns, the current gen will
+      // be > issuedAtGen and seedDriveCache will drop the stale seed.
+      issuedAtGen: number;
+      // Identity epoch snapshot at enqueue time. Guards against
+      // tenant/auth change during the batch RTT — cache is cleared on
+      // the switch, but this in-flight response would otherwise repopulate
+      // it with the previous tenant's drive coordinates.
+      issuedAtEpoch: number;
       waiters: Array<{
         resolve: (v: ImTransferredEntry | null) => void;
         reject: (err: unknown) => void;
@@ -156,7 +611,25 @@ export default class DriveModule implements IModule {
       checkImTransferredBatch(items)
         .then((results) => {
           for (const [key, entry] of batch) {
+            // Identity check: if the tenant/user switched during the RTT,
+            // this response is answering under the previous identity and
+            // MUST NOT populate the fresh session's cache. Resolve the
+            // waiter with `null` (safer than throwing — FileCell will
+            // simply not flip to saved; a fresh mount under the new
+            // identity re-issues the check with the new epoch).
+            if (entry.issuedAtEpoch !== driveIdentityEpoch) {
+              for (const w of entry.waiters) w.resolve(null);
+              continue;
+            }
             const found = results[key] ?? null;
+            // Fill the module-level cache BEFORE resolving waiters: FileCell
+            // resolvers consume the resolved entry directly, but the cache
+            // must be up-to-date for concurrent synchronous readers
+            // (right-click menu factory via getDriveTransferred) that race
+            // with this microtask. Emits on 'saved' via seedDriveCache.
+            // The per-key gen check inside seedDriveCache guards against a
+            // save that landed while this RTT was in flight.
+            seedDriveCache(key, entry.issuedAtGen, found);
             for (const w of entry.waiters) w.resolve(found);
           }
         })
@@ -188,13 +661,28 @@ export default class DriveModule implements IModule {
           im_channel_type: msg.im_channel_type,
           im_msg_id: msg.im_msg_id,
         };
-        if (!pendingBatch) pendingBatch = new Map();
         const sourceKey = imTransferredSourceKey(item);
+        // Deliberately NO cache short-circuit here — every FileCell mount
+        // must hit the backend so a drive-side delete (or any other tab's
+        // save/delete) is reflected on the next entry into a chat window.
+        // The cache is a WRITE-THROUGH sink for cross-component broadcast
+        // (mittBus + right-click menu's synchronous read), not a read-side
+        // freshness gate. Batch coalescing (queueMicrotask below) still
+        // dedupes concurrent same-key checks so a screen of messages
+        // resolves in one HTTP round-trip.
+        if (!pendingBatch) pendingBatch = new Map();
         const existing = pendingBatch.get(sourceKey);
         if (existing) {
           existing.waiters.push({ resolve, reject });
         } else {
-          pendingBatch.set(sourceKey, { item, waiters: [{ resolve, reject }] });
+          // Snapshot the current write-gen for this key. If a save on this
+          // key wins before the batch RTT returns, seedDriveCache will
+          // observe (driveWriteGen[key] > issuedAtGen) and drop the seed.
+          // Also snapshot the identity epoch so a tenant switch during
+          // the RTT invalidates this entry (see flushBatch).
+          const issuedAtGen = driveWriteGen.get(sourceKey) ?? 0;
+          const issuedAtEpoch = driveIdentityEpoch;
+          pendingBatch.set(sourceKey, { item, issuedAtGen, issuedAtEpoch, waiters: [{ resolve, reject }] });
         }
         if (!flushScheduled) {
           flushScheduled = true;
@@ -208,12 +696,15 @@ export default class DriveModule implements IModule {
     // mount the RIGHT file view and let the VM focus/flash the target file.
     // switchToMenuById intentionally does not popToRoot (shared left stack),
     // and only syncs the route — it does not mount contentRight, so we still
-    // call mountDriveContent explicitly. IM-transfer callers only produce files
-    // at the personal-space root, so no parent_id is threaded through.
-    WKApp.openDriveFile = ({ space_id, file_id }: { space_id: string; file_id: number }) => {
+    // call mountDriveContent explicitly. When the file lives in a nested
+    // folder (any space, including a shared one — cross-space save-to-drive
+    // saves the file at any depth), pass parent_id so DriveVM.focusFile can
+    // pull the ancestor chain and rebuild the breadcrumb; parent_id=0/undefined
+    // = space root (the personal-space-root case that always worked).
+    WKApp.openDriveFile = ({ space_id, file_id, parent_id }: { space_id: string; file_id: number; parent_id?: number }) => {
       WKApp.switchToMenuById?.('drive');
       mountDriveContent();
-      vm.focusFile(space_id, file_id);
+      void vm.focusFile(space_id, file_id, parent_id);
     };
 
     // `/drive` renders the space rail into contentLeft. hostShell keeps
@@ -262,8 +753,30 @@ export default class DriveModule implements IModule {
     // showing the previous tenant's spaces/breadcrumb while requests already
     // carry the new X-Space-Id. Reset + reload the shared VM. Mirrors the
     // sister modules' `space-changed` subscription (dmworksummary/module.tsx).
-    _spaceChangedHandler = () => vm.reset();
+    // Also flush the drive-transferred cache — the right-click menu factory
+    // reads this synchronously; leaving stale entries survives a tenant
+    // swap and can show "在云盘中查看" for a file the new identity does not
+    // own. Backend batches will refill on the next FileCell mount.
+    // (Jerry-Xin review 2026-08-10 non-blocking finding on PR #1322.)
+    _spaceChangedHandler = () => {
+      driveTransferredCache.clear();
+      driveWriteGen.clear();
+      bumpDriveIdentityEpoch();
+      vm.reset();
+    };
     WKApp.mittBus.on('space-changed', _spaceChangedHandler);
+
+    // Same cache-flush contract, tighter trigger: login/logout/account
+    // replacement (`wk:auth-state-changed`). This runs alongside the
+    // space-changed handler because the events don't fully overlap — a
+    // pure re-auth on the same tenant fires wk:auth-state-changed without
+    // space-changed, and we still need a clean cache.
+    _authStateChangedHandler = () => {
+      driveTransferredCache.clear();
+      driveWriteGen.clear();
+      bumpDriveIdentityEpoch();
+    };
+    WKApp.mittBus.on('wk:auth-state-changed', _authStateChangedHandler);
 
     // appconfig is fetched asynchronously, so at init() driveOn is usually still
     // the default false. Refresh the NavRail whenever drive_on resolves/changes
