@@ -1573,11 +1573,11 @@ export function DocsHome() {
   useEffect(() => {
     htmlChatDraftRef.current = htmlChatDraft
   }, [htmlChatDraft])
-  // Tracks which html-chat requestIds have already triggered their ONE first auto-send. On a
+  // Tracks which html-chat requestIds have already been handed off for their ONE first auto-send. On a
   // nav-reentry / restore the Conversation is a NEW instance (its instance-level _consumedComposeIds
   // is empty), so without this guard the same requestId would auto-send a SECOND time (reviewer P1
-  // double-send). We consult this set to force autoSend=false on any restore of an already-fired
-  // requestId; only the FIRST openHtmlChat sends (plan Task 6 step 4 / §5 risk 1).
+  // double-send). Consumption is irreversible before an imperative route handoff (or at first
+  // inline mount), rather than waiting for the asynchronous onMessageSent ACK.
   const htmlComposeFiredRef = useRef<Set<string>>(new Set())
 
   // uid → display name for the space (feature #8): used to set the awareness user.name so the
@@ -1648,11 +1648,11 @@ export function DocsHome() {
         key={draft.requestId}
         draft={draft}
         autoSend={autoSend}
+        onInitialComposeHandoff={() => {
+          htmlComposeFiredRef.current.add(draft.requestId)
+        }}
         onClose={() => closeHtmlChatRef.current()}
         onMessageSent={() => {
-          // A confirmed send means this requestId has fired its one auto-send; any later restore
-          // must be prefill-only.
-          htmlComposeFiredRef.current.add(draft.requestId)
           scheduleHtmlListRefresh()
         }}
       />
@@ -1695,28 +1695,28 @@ export function DocsHome() {
       htmlChatDraftRef.current = draft
       if (routeRight) {
         try {
+          // Consume before the imperative handoff. Re-entry may happen before Conversation reports
+          // an ACK, but must never receive another auto-send compose for this requestId.
+          htmlComposeFiredRef.current.add(draft.requestId)
           routeRight.replaceToRoot(buildBotChat(draft) as unknown)
         } catch {
-          // ignore — fall back to inline render.
+          // The route did not accept this handoff, so it did not consume auto-send. Keep the draft
+          // and roll back only this request's pre-mark; a later Docs activation can retry it.
+          htmlComposeFiredRef.current.delete(draft.requestId)
         }
       }
     },
     [routeRight, buildBotChat],
   )
 
-  // Modal submit → finalise the draft (requestId + front-end-derived base_url) and open the chat.
-  // crypto.randomUUID() is the one-shot idempotency id; base_url comes ONLY from the app origin
-  // (docsApiBaseUrl), never from user text/attachments (§5.6).
+  // Modal submit → finalise the draft with the front-end-derived base_url and open the chat.
+  // The modal has already assigned the one-shot crypto.randomUUID() requestId so preview, copy and
+  // Conversation handoff share exactly one id; base_url comes ONLY from the app origin (§5.6).
   const onSubmitHtml = useCallback(
-    (partial: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>) => {
-      const requestId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    (partial: Omit<HtmlCreationDraft, 'baseUrl'>) => {
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const draft: HtmlCreationDraft = {
         ...partial,
-        requestId,
         baseUrl: docsApiBaseUrl(origin),
       }
       setHtmlModalOpen(false)
@@ -2147,7 +2147,8 @@ export function DocsHome() {
             ) as unknown,
           )
         } else if (chatDraft) {
-          // Restore the same chat and requestId. A confirmed request omits initialCompose entirely.
+          // Restore the same chat and requestId. A previously handed-off request omits
+          // initialCompose even when its send ACK is still pending (or the send failed).
           const alreadyFired = htmlComposeFiredRef.current.has(chatDraft.requestId)
           routeRight.replaceToRoot(
             buildBotChatRef.current(chatDraft, !alreadyFired) as unknown,
@@ -2245,6 +2246,11 @@ export function DocsHome() {
           publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
           onClose={() => setHtmlModalOpen(false)}
           onSubmit={onSubmitHtml}
+          onCreated={(result) => {
+            setHtmlModalOpen(false)
+            setListReloadToken((value) => value + 1)
+            openDoc(result.docId, 'html', result.slug)
+          }}
         />
         {pptModal}
       </div>
@@ -2286,6 +2292,11 @@ export function DocsHome() {
         publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
         onClose={() => setHtmlModalOpen(false)}
         onSubmit={onSubmitHtml}
+        onCreated={(result) => {
+          setHtmlModalOpen(false)
+          setListReloadToken((value) => value + 1)
+          openDoc(result.docId, 'html', result.slug)
+        }}
       />
       {pptModal}
     </div>
