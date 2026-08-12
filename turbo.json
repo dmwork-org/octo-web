@@ -20,6 +20,11 @@
       "outputs": [
         "build/**"
       ],
+      "env": [
+        "VITE_ENTERPRISE_MODULES_ENTRY",
+        "VITE_ENTERPRISE_HTML_HEAD_PATH",
+        "VITE_ENTERPRISE_FS_ALLOW"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../pnpm-lock.yaml",
