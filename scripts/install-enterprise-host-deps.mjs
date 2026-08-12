@@ -18,10 +18,7 @@ if (packageJsonPaths.length === 0) {
 }
 
 const ignoredSpecPrefixes = ["workspace:", "file:", "link:", "portal:"];
-const hostPackageJsonPaths = [
-  path.join(rootDir, "package.json"),
-  path.join(rootDir, "apps/web/package.json"),
-];
+const hostPackageJsonPaths = [path.join(rootDir, "package.json")];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -97,10 +94,10 @@ if (dryRun) process.exit(0);
 
 const args = [
   "add",
-  "--filter",
-  "@octo/web",
+  "--workspace-root",
   "--ignore-scripts",
   "--no-lockfile",
+  "--config.auto-install-peers=false",
   "--registry=https://registry.npmmirror.com",
   ...missing,
 ];
