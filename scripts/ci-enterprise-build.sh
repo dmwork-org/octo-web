@@ -17,6 +17,18 @@ resolve_from_root() {
   node -e "const path = require('path'); const root = process.argv[1]; const target = process.argv[2]; console.log(path.isAbsolute(target) ? path.resolve(target) : path.resolve(root, target));" "$ROOT" "$file_path"
 }
 
+# On Windows (Git Bash/MSYS), bash pwd yields /e/... style paths that native
+# node/vite cannot resolve. cygpath -m converts them to E:/...; elsewhere
+# cygpath doesn't exist and the path is already native.
+to_win_path() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$path"
+  else
+    echo "$path"
+  fi
+}
+
 discover_local_enterprise_entries() {
   local entries=()
 
@@ -105,13 +117,17 @@ if [[ -z "${VITE_ENTERPRISE_FS_ALLOW:-}" ]]; then
   fi
   allow_paths+=("$ROOT/node_modules")
 
-  VITE_ENTERPRISE_FS_ALLOW="$(IFS="$PATH_DELIMITER"; echo "${allow_paths[*]}")"
+  WINDOWS_ALLOW_PATHS=()
+  for allow_path in "${allow_paths[@]}"; do
+    WINDOWS_ALLOW_PATHS+=("$(to_win_path "$allow_path")")
+  done
+  VITE_ENTERPRISE_FS_ALLOW="$(IFS="$PATH_DELIMITER"; echo "${WINDOWS_ALLOW_PATHS[*]}")"
 else
   IFS="$PATH_DELIMITER" read -r -a FS_ALLOW_ITEMS <<< "$VITE_ENTERPRISE_FS_ALLOW"
   NORMALIZED_FS_ALLOW_ITEMS=()
   for allow_path in "${FS_ALLOW_ITEMS[@]}"; do
     [[ -z "$allow_path" ]] && continue
-    NORMALIZED_FS_ALLOW_ITEMS+=("$(resolve_from_root "$allow_path")")
+    NORMALIZED_FS_ALLOW_ITEMS+=("$(to_win_path "$(resolve_from_root "$allow_path")")")
   done
   VITE_ENTERPRISE_FS_ALLOW="$(IFS="$PATH_DELIMITER"; echo "${NORMALIZED_FS_ALLOW_ITEMS[*]}")"
 fi
