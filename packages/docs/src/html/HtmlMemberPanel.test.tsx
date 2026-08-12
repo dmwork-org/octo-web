@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
+import { clearMemberNameCache } from '../members/memberNames.ts'
 
 // Mock every child component / data hook so this file only asserts the outer section order and
 // gate composition. Each stub carries a stable heading (or testid) so we can locate it without
@@ -274,5 +275,100 @@ describe('HtmlMemberPanel — shared current-members list (author gate)', () => 
     // The real role is shown as static text, not misrepresented as reader.
     expect(adminRow.textContent).toContain('docs.role.admin')
     expect(adminRow.textContent).not.toContain('docs.role.reader')
+  })
+})
+
+// PR C #3: bots group below humans behind a default-collapsed expander, tagged AI. The html panel
+// reads the space directory (spaceMembers isBot flag + /robot/space_bots) for bot classification.
+describe('HtmlMemberPanel — bot section + AI tag + fail-soft (PR C #3)', () => {
+  const listGrants = vi.mocked(htmlGrantsApi.listGrants)
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    clearMemberNameCache()
+    listGrants.mockReset()
+    wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      return { data: {}, status: 200 }
+    }
+  })
+
+  function currentSectionRows(): string[] {
+    const section = screen.getByText('docs.member.currentMembers').closest('.octo-member-section')!
+    return Array.from(section.querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
+  }
+
+  it('groups a bot grant below humans, collapsed by default, with an AI tag', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
+    listGrants.mockResolvedValue([
+      { uid: 'u_human', role: 'writer', source: 'direct' },
+      { uid: 'u_bot', role: 'reader', source: 'direct' },
+    ])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" space="s_1" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    // Collapsed: bot row hidden, expander present.
+    expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(false)
+    fireEvent.click(screen.getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
+    const rows = currentSectionRows()
+    expect(rows.findIndex((r) => r.includes('Human One'))).toBeLessThan(rows.findIndex((r) => r.includes('Bot One')))
+    // Bot row carries the AI badge; human row does not.
+    const section = screen.getByText('docs.member.currentMembers').closest('.octo-member-section')!
+    const botRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) => (r.textContent ?? '').includes('Bot One')) as HTMLElement
+    expect(botRow.querySelector('.octo-member-picker-badge')).toBeTruthy()
+  })
+
+  it('nests a bot grant under its creator row (collapsed) when creator_uid points at a member', async () => {
+    // space_bots now carries creator_uid; u_bot is created by u_human (a grant row) → nest under it.
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) {
+        return { data: [{ uid: 'u_bot', name: 'Bot One', creator_uid: 'u_human' }], status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    listGrants.mockResolvedValue([
+      { uid: 'u_human', role: 'writer', source: 'direct' },
+      { uid: 'u_bot', role: 'reader', source: 'direct' },
+    ])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" space="s_1" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    const section = screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+    const humanRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('Human One'),
+    ) as HTMLElement
+    // Collapsed by default; the expander lives inside the creator's wrapper (nested, not bottom).
+    expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(false)
+    const expander = humanRow.parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    expect(expander).toBeTruthy()
+    fireEvent.click(expander)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
+    expect((humanRow.parentElement!.textContent ?? '').includes('Bot One')).toBe(true)
+  })
+
+  it('drops a bot whose creator is not a grant row into the bottom ownerless fold', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) {
+        return { data: [{ uid: 'u_bot', name: 'Bot One', creator_uid: 'u_stranger' }], status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    listGrants.mockResolvedValue([
+      { uid: 'u_human', role: 'writer', source: 'direct' },
+      { uid: 'u_bot', role: 'reader', source: 'direct' },
+    ])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" space="s_1" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    const section = screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+    const humanRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('Human One'),
+    ) as HTMLElement
+    // Human owns no bots → no nested expander; the single bottom fold carries the orphan bot.
+    expect(humanRow.parentElement!.querySelector('.octo-member-picker-expand')).toBeNull()
+    fireEvent.click(screen.getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
   })
 })
