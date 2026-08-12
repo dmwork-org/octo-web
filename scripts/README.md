@@ -2,6 +2,10 @@
 
 开发工具脚本。
 
+## Windows 说明
+
+`package.json` 中的企业构建/工作流命令（`build:enterprise`、`build-ele:enterprise:*`、`dev:enterprise`、`new:worktree`、`cleanup:worktree`）统一通过 `run-bash-script.mjs` 执行 bash 脚本：在 Windows 上显式探测 Git for Windows 自带的 bash，避开 WSL 的 `C:\Windows\System32\bash.exe`（用它跑构建会进入 Linux 环境导致 node 工具链不匹配而失败）。装了 Git for Windows 即开箱即用；特殊情况可用环境变量 `OCTO_BASH` 显式指定 bash.exe 路径。Linux/macOS 直接使用系统 bash，行为不变。
+
 ## 命令
 
 | 命令 | 说明 |
