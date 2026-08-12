@@ -7,6 +7,7 @@ ENTERPRISE_ROOT="${ENTERPRISE_ROOT:-"$WORKSPACE_ROOT"}"
 ENTERPRISE_MODULES_DIR="${ENTERPRISE_MODULES_DIR:-"$ENTERPRISE_ROOT/octo-enterprise-modules"}"
 ENTERPRISE_LOOP_DIR="${ENTERPRISE_LOOP_DIR:-"$ENTERPRISE_ROOT/octo-loop-module"}"
 ENTERPRISE_DRIVE_DIR="${ENTERPRISE_DRIVE_DIR:-"$ENTERPRISE_ROOT/octo-drive-module"}"
+ENTERPRISE_DOCS_DIR="${ENTERPRISE_DOCS_DIR:-"$ENTERPRISE_ROOT/octo-docs-module"}"
 ENTERPRISE_HTML_HEAD_PATH="${VITE_ENTERPRISE_HTML_HEAD_PATH:-"$ENTERPRISE_MODULES_DIR/html/head.html"}"
 PATH_DELIMITER="$(node -p "require('path').delimiter")"
 AUTO_DISCOVERED_ENTERPRISE_ENTRY="false"
@@ -42,6 +43,11 @@ discover_local_enterprise_entries() {
     DISCOVERED_ENTERPRISE_MODULE_DIRS+=("$ENTERPRISE_DRIVE_DIR")
   fi
 
+  if [[ -d "$ENTERPRISE_DOCS_DIR" && -f "$ENTERPRISE_MODULES_DIR/src/docs.ts" ]]; then
+    entries+=("$ENTERPRISE_MODULES_DIR/src/docs.ts")
+    DISCOVERED_ENTERPRISE_MODULE_DIRS+=("$ENTERPRISE_DOCS_DIR")
+  fi
+
   if [[ ${#entries[@]} -eq 0 ]]; then
     cat >&2 <<EOF
 [ci-enterprise-build] No local enterprise entries were discovered.
@@ -52,6 +58,7 @@ Expected local layout:
     octo-enterprise-modules/
     octo-loop-module/   # optional, enables src/loop.ts
     octo-drive-module/  # optional, enables src/drive.ts
+    octo-docs-module/   # optional, enables src/docs.ts
 
 Set VITE_ENTERPRISE_MODULES_ENTRY explicitly for CI or custom builds.
 EOF
@@ -114,6 +121,7 @@ if [[ -z "${VITE_ENTERPRISE_FS_ALLOW:-}" ]]; then
   else
     [[ "$ENTERPRISE_MODULES_ENTRY" == *"$ENTERPRISE_MODULES_DIR/src/loop.ts"* && -d "$ENTERPRISE_LOOP_DIR" ]] && allow_paths+=("$ENTERPRISE_LOOP_DIR")
     [[ "$ENTERPRISE_MODULES_ENTRY" == *"$ENTERPRISE_MODULES_DIR/src/drive.ts"* && -d "$ENTERPRISE_DRIVE_DIR" ]] && allow_paths+=("$ENTERPRISE_DRIVE_DIR")
+    [[ "$ENTERPRISE_MODULES_ENTRY" == *"$ENTERPRISE_MODULES_DIR/src/docs.ts"* && -d "$ENTERPRISE_DOCS_DIR" ]] && allow_paths+=("$ENTERPRISE_DOCS_DIR")
   fi
   allow_paths+=("$ROOT/node_modules")
 

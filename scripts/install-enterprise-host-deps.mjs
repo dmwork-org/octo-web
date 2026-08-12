@@ -27,6 +27,18 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
 
+function existingPackageJsonPaths(paths) {
+  const existing = [];
+  for (const packageJsonPath of paths) {
+    if (fs.existsSync(packageJsonPath)) {
+      existing.push(packageJsonPath);
+    } else {
+      console.warn(`[enterprise-deps] skip missing package.json: ${path.relative(rootDir, packageJsonPath)}`);
+    }
+  }
+  return existing;
+}
+
 function collectDeclaredDependencies(packageJson) {
   return new Set([
     ...Object.keys(packageJson.dependencies || {}),
@@ -59,7 +71,7 @@ for (const hostPackageJsonPath of hostPackageJsonPaths) {
 }
 
 const dependencies = new Map();
-for (const packageJsonPath of packageJsonPaths) {
+for (const packageJsonPath of existingPackageJsonPaths(packageJsonPaths)) {
   const packageJson = readJson(packageJsonPath);
   for (const [name, spec] of Object.entries(packageJson.dependencies || {})) {
     if (shouldInstallDependency(name, spec) && !dependencies.has(name)) {

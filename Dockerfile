@@ -14,7 +14,12 @@ RUN git config --global url."https://github.com/".insteadOf "git+ssh://git@githu
     git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
 RUN pnpm install --frozen-lockfile --ignore-scripts --registry=https://registry.npmmirror.com
 RUN if [ -n "$VITE_ENTERPRISE_MODULES_ENTRY" ] && [ -d .enterprise ]; then \
-      node scripts/install-enterprise-host-deps.mjs .enterprise/octo-enterprise-modules/package.json; \
+      node scripts/install-enterprise-host-deps.mjs \
+        .enterprise/octo-enterprise-modules/package.json \
+        .enterprise/octo-loop-module/packages/dmloop/package.json \
+        .enterprise/octo-loop-module/packages/dmpersonal/package.json \
+        .enterprise/octo-drive-module/package.json \
+        .enterprise/octo-docs-module/package.json; \
     fi
 
 # 构建
