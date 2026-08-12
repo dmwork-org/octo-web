@@ -4,8 +4,10 @@ workflow:
     - if: '$CI_COMMIT_TAG'
 
 stages:
+  - verify
   - package
   - sync
+  - deploy
   - notify
 
 variables:
@@ -17,6 +19,37 @@ variables:
   DEV_ENV: dev
   TEST_ENV: test
   PROD_ENV: prod
+  # 企业仓 ref。每个企业仓一个变量，可被上游 trigger 以 pipeline variable 覆盖，
+  # 未覆盖的沿用此处默认值（package_test 覆盖为 test）。
+  ENTERPRISE_MODULES_REF: "main"
+  ENTERPRISE_LOOP_REF: "main"
+  ENTERPRISE_DRIVE_REF: "main"
+  # 企业入口列表。多个入口用镜像内 Linux path delimiter ":" 分隔。
+  ENTERPRISE_MODULES_ENTRY_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/src/loop.ts:/app/.enterprise/octo-enterprise-modules/src/drive.ts"
+  ENTERPRISE_HTML_HEAD_PATH_IN_IMAGE: "/app/.enterprise/octo-enterprise-modules/html/head.html"
+
+# ============================================================
+# lockfile_check: 校验 pnpm-lock.yaml 与各 package.json 是否一致
+#
+# Dockerfile 里的 pnpm install --frozen-lockfile 已经会做这件事，但那是
+# 镜像构建第 6 层，要等 90 秒才报错，且埋在几百行 BuildKit 输出里。
+# 这里提前到 verify stage，0.3 秒给出同样的结论。
+#
+# 触发场景：develop/test 互相合并时 pnpm-lock.yaml 冲突被解到了一边，
+# 而 package.json 留在另一边 —— 两边各自合法，合起来对不上。
+# ============================================================
+lockfile_check:
+  stage: verify
+  tags:
+    - tke-deepmining-runner
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/node:v22.13.0-pnpm
+  variables:
+    GIT_DEPTH: 1
+  script:
+    # 与 Dockerfile 保持同一套 registry 和 pnpm 版本，避免结论不一致
+    - npm config set registry https://registry.npmmirror.com
+    - npm install -g pnpm@10 --force
+    - pnpm install --frozen-lockfile --lockfile-only
 
 # ============================================================
 # sync_code: 同步部署配置到 deploy-files 仓库（所有分支）
@@ -102,10 +135,58 @@ sync_code:
       git push --force https://__token__:$CODE_TOKEN@code.mlamp.cn/dm-fa/infra/deploy-files.git HEAD:$TARGET_BRANCH
 
 # ============================================================
+# argocd_sync: sync_code 推送 deploy-files 后，主动触发 ArgoCD 同步
+#   test 分支 → app dmwork-web-test（自动 sync）
+#   git tag   → prod，跳过自动 sync（人工确认）
+#   develop   → 暂不接入
+# ============================================================
+argocd_sync:
+  stage: deploy
+  only:
+    - test
+    - tags
+  tags:
+    - tke-deepmining-runner
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/alpine/curl:8.11.1
+  variables:
+    GIT_STRATEGY: none
+    ARGOCD_SERVER: argocd-server.argocd:80
+  script: |
+    set -e
+
+    if [[ -n "$CI_COMMIT_TAG" ]]; then
+      # prod 环境 — 暂不自动 sync，需人工确认
+      echo "Tag build: skipping auto ArgoCD sync for prod (manual approval required)"
+      exit 0
+    fi
+
+    ARGOCD_APP="dmwork-web-test"
+
+    echo "Syncing ArgoCD app: $ARGOCD_APP"
+    SYNC_RESP=$(curl -s -w "\n%{http_code}" -X POST \
+      "http://$ARGOCD_SERVER/api/v1/applications/$ARGOCD_APP/sync" \
+      -H "Authorization: Bearer $ARGOCD_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"prune":false,"dryRun":false}')
+    HTTP_CODE=$(echo "$SYNC_RESP" | tail -1)
+    echo "Sync HTTP status: $HTTP_CODE"
+
+    if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+      echo "ArgoCD sync failed with HTTP $HTTP_CODE"
+      echo "$SYNC_RESP" | head -5
+      exit 1
+    fi
+    echo "ArgoCD sync triggered ✅ (app: $ARGOCD_APP)"
+
+# ============================================================
 # 打包模板（YAML 锚点，被 package_tag / package_develop / package_test 复用）
 # ============================================================
 .package: &package
   stage: package
+  # 同一环境的镜像构建串行化：企业仓触发与本仓合入可能并发，
+  # 并发会让 *-latest tag 与后续 ArgoCD sync 互相覆盖。
+  # 不加 interruptible —— 本 job 中途 docker push，被取消会留下半推的 tag。
+  resource_group: $DEPLOY_ENV
   tags:
     - tke-deepmining-runner
   image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/docker:20.10.17
@@ -117,7 +198,140 @@ sync_code:
     - echo "$HARBOR_PWD" | docker login $REPOSITORY -u 100028731872 --password-stdin
   script:
     - BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    - docker build --build-arg APP_VERSION=$CI_COMMIT_SHORT_SHA --build-arg ENABLE_ENTERPRISE_SSO=${ENABLE_ENTERPRISE_SSO:-false} -t ${PUSH_IMAGE_PATH} -t ${PUSH_IMAGE_LATEST} -f ./Dockerfile .
+    - |
+      set -eu
+
+      if [ "${ENABLE_ENTERPRISE_MODULES:-false}" = "true" ]; then
+        ENTERPRISE_MODULES_REF="${ENTERPRISE_MODULES_REF:-main}"
+        ENTERPRISE_LOOP_REF="${ENTERPRISE_LOOP_REF:-main}"
+        ENTERPRISE_DRIVE_REF="${ENTERPRISE_DRIVE_REF:-main}"
+
+        # tag 构建必须钉死每个企业仓的 ref，任何一个停在 main 都拒绝发版。
+        assert_pinned_for_tag() {
+          if [ "$2" = "main" ]; then
+            echo "Tag builds must pin $1. Refusing to build prod from main."
+            exit 1
+          fi
+        }
+        if [ -n "${CI_COMMIT_TAG:-}" ] && [ "${ALLOW_ENTERPRISE_MAIN_FOR_TAG:-false}" != "true" ]; then
+          assert_pinned_for_tag ENTERPRISE_MODULES_REF "$ENTERPRISE_MODULES_REF"
+          assert_pinned_for_tag ENTERPRISE_LOOP_REF "$ENTERPRISE_LOOP_REF"
+          assert_pinned_for_tag ENTERPRISE_DRIVE_REF "$ENTERPRISE_DRIVE_REF"
+        fi
+
+        ENTERPRISE_AUTH_TOKEN="${ENTERPRISE_TOKEN:-}"
+        if [ -z "$ENTERPRISE_AUTH_TOKEN" ]; then
+          echo "Missing ENTERPRISE_TOKEN. CI cannot fetch private enterprise modules."
+          exit 1
+        fi
+        if ! command -v wget >/dev/null 2>&1; then
+          echo "wget is required to download enterprise archives but is missing from the build image."
+          exit 1
+        fi
+        rm -rf .enterprise
+        mkdir -p .enterprise
+        ENTERPRISE_FS_ALLOW="/app"
+
+        download_enterprise_archive() {
+          project_id="$1"
+          ref="$2"
+          target_dir="$3"
+          archive_name="$4"
+          archive=".enterprise/${archive_name}.tar.gz"
+          archive_url="https://codex.mlamp.cn/api/v4/projects/${project_id}/repository/archive.tar.gz?sha=${ref}"
+
+          echo "Downloading enterprise archive: ${archive_name}@${ref}"
+          rm -rf "$target_dir" "$archive"
+          mkdir -p "$target_dir"
+          if wget -q --header="PRIVATE-TOKEN: ${ENTERPRISE_AUTH_TOKEN}" -O "$archive" "$archive_url"; then
+            if ! tar -tzf "$archive" >/dev/null 2>&1; then
+              echo "Downloaded enterprise archive is not a valid tar.gz: ${archive_name}@${ref}"
+              rm -rf "$target_dir" "$archive"
+              return 1
+            fi
+            tar -xzf "$archive" -C "$target_dir" --strip-components=1
+            rm -f "$archive"
+            return 0
+          fi
+          rm -rf "$target_dir" "$archive"
+          return 1
+        }
+
+        # 拉取一个企业仓并把它加进 Vite 的 fs.allow 白名单。
+        fetch_enterprise_repo() {
+          if ! download_enterprise_archive "dmwork%2Focto-web-enterprise%2F$1" "$2" ".enterprise/$1" "$1"; then
+            echo "Enterprise archive download failed: $1@$2"
+            if [ -n "${CI_COMMIT_TAG:-}" ]; then
+              echo "Releasing $CI_COMMIT_TAG requires every enterprise repo to carry the same tag:"
+              echo "  git -C $1 tag $CI_COMMIT_TAG <commit> && git push origin $CI_COMMIT_TAG"
+              echo "Alternatively, override $1's ref when starting this job."
+            fi
+            echo "If the ref does exist, check ENTERPRISE_TOKEN read_api/read_repository access."
+            exit 1
+          fi
+          rm -rf ".enterprise/$1/.git"
+          ENTERPRISE_FS_ALLOW="${ENTERPRISE_FS_ALLOW}:/app/.enterprise/$1"
+          echo "Enterprise checkout ready: $1@$2"
+        }
+
+        # >>> 新增企业仓（如 docs）时，只需在此加一行 + 上面加一个 *_REF 变量 <<<
+        fetch_enterprise_repo octo-enterprise-modules "$ENTERPRISE_MODULES_REF"
+        fetch_enterprise_repo octo-loop-module "$ENTERPRISE_LOOP_REF"
+        fetch_enterprise_repo octo-drive-module "$ENTERPRISE_DRIVE_REF"
+
+        ENTERPRISE_FS_ALLOW="${ENTERPRISE_FS_ALLOW}:/app/apps/web/node_modules"
+
+        # 企业仓 tsconfig 用 ../../../octo-web/... 相对 extends，需要 host 以 sibling 形式可见。
+        ln -s .. .enterprise/octo-web
+
+        # 聚合入口必须存在，路径由 ENTERPRISE_MODULES_ENTRY_IN_IMAGE 单点决定。
+        # 镜像内运行环境是 Linux，多个入口使用 ":" 分隔。
+        ENTERPRISE_ENTRY_REMAINING="$ENTERPRISE_MODULES_ENTRY_IN_IMAGE"
+        while [ -n "$ENTERPRISE_ENTRY_REMAINING" ]; do
+          case "$ENTERPRISE_ENTRY_REMAINING" in
+            *:*)
+              ENTERPRISE_ENTRY_IN_IMAGE="${ENTERPRISE_ENTRY_REMAINING%%:*}"
+              ENTERPRISE_ENTRY_REMAINING="${ENTERPRISE_ENTRY_REMAINING#*:}"
+              ;;
+            *)
+              ENTERPRISE_ENTRY_IN_IMAGE="$ENTERPRISE_ENTRY_REMAINING"
+              ENTERPRISE_ENTRY_REMAINING=""
+              ;;
+          esac
+          [ -z "$ENTERPRISE_ENTRY_IN_IMAGE" ] && continue
+          ENTERPRISE_ENTRY_LOCAL=".enterprise/${ENTERPRISE_ENTRY_IN_IMAGE#/app/.enterprise/}"
+          if [ ! -f "$ENTERPRISE_ENTRY_LOCAL" ]; then
+            echo "Missing enterprise entry: $ENTERPRISE_ENTRY_LOCAL"
+            exit 1
+          fi
+        done
+
+        export VITE_ENTERPRISE_MODULES_ENTRY="$ENTERPRISE_MODULES_ENTRY_IN_IMAGE"
+        export VITE_ENTERPRISE_FS_ALLOW="$ENTERPRISE_FS_ALLOW"
+        ENTERPRISE_HEAD_LOCAL=".enterprise/${ENTERPRISE_HTML_HEAD_PATH_IN_IMAGE#/app/.enterprise/}"
+        if [ -f "$ENTERPRISE_HEAD_LOCAL" ]; then
+          export VITE_ENTERPRISE_HTML_HEAD_PATH="$ENTERPRISE_HTML_HEAD_PATH_IN_IMAGE"
+        else
+          export VITE_ENTERPRISE_HTML_HEAD_PATH=""
+        fi
+
+        docker build \
+          --build-arg APP_VERSION="$CI_COMMIT_SHORT_SHA" \
+          --build-arg ENABLE_ENTERPRISE_SSO="${ENABLE_ENTERPRISE_SSO:-false}" \
+          --build-arg VITE_ENTERPRISE_MODULES_ENTRY \
+          --build-arg VITE_ENTERPRISE_HTML_HEAD_PATH \
+          --build-arg VITE_ENTERPRISE_FS_ALLOW \
+          -t "$PUSH_IMAGE_PATH" \
+          -t "$PUSH_IMAGE_LATEST" \
+          -f ./Dockerfile .
+      else
+        docker build \
+          --build-arg APP_VERSION="$CI_COMMIT_SHORT_SHA" \
+          --build-arg ENABLE_ENTERPRISE_SSO="${ENABLE_ENTERPRISE_SSO:-false}" \
+          -t "$PUSH_IMAGE_PATH" \
+          -t "$PUSH_IMAGE_LATEST" \
+          -f ./Dockerfile .
+      fi
     - docker push ${PUSH_IMAGE_PATH}
     - docker push ${PUSH_IMAGE_LATEST}
 
@@ -128,10 +342,24 @@ package_tag:
   <<: *package
   only:
     - tags
+  when: manual
+  # 阻塞式人工确认：不点就停在 package stage，sync_code 不会先跑。
+  # 没有这一条，manual job 默认 allow_failure: true，推 tag 的瞬间
+  # sync_code 就把 deploy-files 的 prod manifest 改成了该 tag —— 而镜像
+  # 还没构建，甚至可能永远构建不出来。此时任何人在 ArgoCD 点一次 sync
+  # 就会让生产去拉一个不存在的镜像。
+  allow_failure: false
   variables:
     PUSH_IMAGE_PATH: $CONTAINER_IMAGE:$CI_COMMIT_TAG
     PUSH_IMAGE_LATEST: "$CONTAINER_IMAGE:latest"
     DEPLOY_ENV: "prod"
+    ENABLE_ENTERPRISE_MODULES: "true"
+    # 企业仓按同名 tag 装配，与 package_test 用 "test" 对称。
+    # 发版时三个仓打同一个版本号，这里就不需要人工填任何变量；
+    # 需要临时指向某个 commit 时，仍可在点 ▶ 的对话框里覆盖。
+    ENTERPRISE_MODULES_REF: "$CI_COMMIT_TAG"
+    ENTERPRISE_LOOP_REF: "$CI_COMMIT_TAG"
+    ENTERPRISE_DRIVE_REF: "$CI_COMMIT_TAG"
 
 # ============================================================
 # develop 分支打包（Staging 环境）
@@ -156,6 +384,10 @@ package_test:
     PUSH_IMAGE_PATH: $CONTAINER_IMAGE:test-$CI_PIPELINE_ID
     PUSH_IMAGE_LATEST: "$CONTAINER_IMAGE:test-latest"
     DEPLOY_ENV: "test"
+    ENABLE_ENTERPRISE_MODULES: "true"
+    ENTERPRISE_MODULES_REF: "test"
+    ENTERPRISE_LOOP_REF: "test"
+    ENTERPRISE_DRIVE_REF: "test"
 
 # ============================================================
 # 构建成功通知（develop + test + tags）

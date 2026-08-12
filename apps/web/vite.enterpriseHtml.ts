@@ -1,9 +1,28 @@
 import fs from "node:fs";
 import path from "node:path";
-import { searchForWorkspaceRoot, type Plugin } from "vite";
+import { searchForWorkspaceRoot, type AliasOptions, type Plugin } from "vite";
 
 const ENTERPRISE_MODULES_ID = "virtual:octo-enterprise-modules";
 const RESOLVED_ENTERPRISE_MODULES_ID = "\0virtual:octo-enterprise-modules";
+const ENTERPRISE_HOST_DEPENDENCIES = [
+  "@douyinfe/semi-icons",
+  "@douyinfe/semi-ui",
+  "@emoji-mart/data",
+  "@tiptap/core",
+  "@tiptap/extension-mention",
+  "@tiptap/extension-placeholder",
+  "@tiptap/pm",
+  "@tiptap/react",
+  "@tiptap/starter-kit",
+  "@tiptap/suggestion",
+  "axios",
+  "emoji-mart",
+  "lucide-react",
+  "react",
+  "react-dom",
+  "react-markdown",
+  "remark-gfm",
+] as const;
 
 export function readEnterpriseHtmlHead(headPath: string | undefined, rootDir: string): string {
   if (!headPath) return "";
@@ -77,7 +96,7 @@ function createEnterpriseModulesVirtualModule(entries: string[]): string {
     `  handlers.push(...entryHandlers${index});`,
   ]);
   const mockHandlerCalls = entries.flatMap((entry, index) => [
-    `  const getMockHandlers${index} = enterpriseEntry${index}.getEnterpriseMockHandlers;`,
+    `  const getMockHandlers${index} = Reflect.get(enterpriseEntry${index}, "getEnterpriseMockHandlers");`,
     `  if (getMockHandlers${index} === undefined) {`,
     "    // no-op",
     `  } else if (typeof getMockHandlers${index} !== "function") {`,
@@ -121,6 +140,79 @@ export function parseEnterpriseFsAllow(allowPaths: string | undefined, rootDir: 
     .map((item) => (path.isAbsolute(item) ? item : path.resolve(rootDir, item)));
 }
 
+function findEnterpriseLoopModuleRoot(extraFsAllow: string[]): string | undefined {
+  return extraFsAllow.find(
+    (allowPath) =>
+      fs.existsSync(path.join(allowPath, "packages/dmloop/src/index.tsx")) &&
+      fs.existsSync(path.join(allowPath, "packages/dmpersonal/src/index.tsx"))
+  );
+}
+
+function findEnterpriseDriveModuleRoot(extraFsAllow: string[]): string | undefined {
+  return extraFsAllow.find((allowPath) => {
+    const packageJsonPath = path.join(allowPath, "package.json");
+    const entryPath = path.join(allowPath, "src/index.tsx");
+    if (!fs.existsSync(packageJsonPath) || !fs.existsSync(entryPath)) return false;
+
+    try {
+      return JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")).name === "@dmwork/drive";
+    } catch {
+      return false;
+    }
+  });
+}
+
+function createEnterpriseModuleAliases(rootDir: string, extraFsAllow: string[]): AliasOptions {
+  const aliases: AliasOptions = [];
+  const baseEntry = path.resolve(rootDir, "../../packages/dmworkbase/src/index.tsx");
+  if (fs.existsSync(baseEntry)) {
+    aliases.push({ find: /^@octo\/base$/, replacement: baseEntry });
+  } else {
+    console.warn(`[vite] enterprise alias skipped: @octo/base entry not found at ${baseEntry}`);
+  }
+
+  const loopModuleRoot = findEnterpriseLoopModuleRoot(extraFsAllow);
+  if (loopModuleRoot) {
+    const loopPackageRoot = path.join(loopModuleRoot, "packages/dmloop");
+    const personalPackageRoot = path.join(loopModuleRoot, "packages/dmpersonal");
+
+    aliases.push(
+      {
+        find: /^@dmwork\/loop$/,
+        replacement: path.join(loopPackageRoot, "src/index.tsx"),
+      },
+      {
+        find: /^@dmwork\/loop\/(.*)$/,
+        replacement: path.join(loopPackageRoot, "$1"),
+      },
+      {
+        find: /^@dmwork\/personal$/,
+        replacement: path.join(personalPackageRoot, "src/index.tsx"),
+      },
+      {
+        find: /^@dmwork\/personal\/(.*)$/,
+        replacement: path.join(personalPackageRoot, "$1"),
+      }
+    );
+  }
+
+  const driveModuleRoot = findEnterpriseDriveModuleRoot(extraFsAllow);
+  if (driveModuleRoot) {
+    aliases.push(
+      {
+        find: /^@dmwork\/drive$/,
+        replacement: path.join(driveModuleRoot, "src/index.tsx"),
+      },
+      {
+        find: /^@dmwork\/drive\/(.*)$/,
+        replacement: path.join(driveModuleRoot, "$1"),
+      }
+    );
+  }
+
+  return aliases;
+}
+
 export function enterpriseModulesPlugin(
   entryPath: string | undefined,
   rootDir: string,
@@ -136,9 +228,15 @@ export function enterpriseModulesPlugin(
     name: "enterprise-modules-slot",
     enforce: "pre",
     config() {
-      if (entryDirs.length === 0 && extraFsAllow.length === 0) return undefined;
+      const enterpriseEnabled = entryDirs.length > 0 || extraFsAllow.length > 0;
+      if (!enterpriseEnabled) return undefined;
+      const alias = createEnterpriseModuleAliases(rootDir, extraFsAllow);
       const allow = Array.from(new Set([searchForWorkspaceRoot(rootDir), ...entryDirs, ...extraFsAllow]));
       return {
+        resolve: {
+          alias,
+          dedupe: [...ENTERPRISE_HOST_DEPENDENCIES],
+        },
         server: {
           fs: {
             allow,

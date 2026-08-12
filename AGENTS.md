@@ -24,6 +24,31 @@
 
 ---
 
+## 企业模块边界：Loop / Personal
+
+`loop` / `personal` 属于闭源企业能力，host 只保留企业模块插槽和通用生命周期。涉及这两块时先读 `ENTERPRISE_DEVELOPMENT.md`。
+
+注意：在 `Mininglamp-OSS/octo-web#1145` 同步进当前分支前，仓库里可能仍有历史 `loop` / `personal` 代码。闭源准备分支不要主动删除这些历史代码，删除由开源同步带入。
+
+目录归属：
+
+- `octo-web/` — 只维护 host 通用插槽、环境变量、CI/Docker 装配、登录后 standalone 回跳等非业务承载能力。
+- `octo-enterprise-modules/` — 只维护企业入口聚合。当前本轮只使用 `src/loop.ts`。
+- `octo-loop-module/` — 维护 `@dmwork/loop` 和 `@dmwork/personal` 的页面、路由、API、UI、i18n、测试。
+
+硬性约束：
+
+- 不要把 `loop` / `personal` 业务代码重新放回 `octo-web/packages/`。
+- 不要在 host 里直接 import 或注册 `@dmwork/loop`、`@dmwork/personal`、`@octo/loop`、`@octo/personal`。
+- 不要新增第二套 loop/personal 菜单、路由或按钮入口；企业模块入口注册后只能有一套用户可见入口。
+- docs 仍然 host-owned；本轮不要把 docs clone、迁移或混入 `loop` / `personal` 企业装配。
+- 本地私有仓和 `octo-web` 同级：`octo-web/`、`octo-enterprise-modules/`、`octo-loop-module/`。不要把私有仓放进 `octo-web` worktree。
+- 在 docs 正式拆分前，企业入口默认使用 `../octo-enterprise-modules/src/loop.ts`，不要用可能聚合 docs 的 `src/index.ts`。
+
+如果要改 loop/personal 业务行为，应在 `octo-loop-module` 做；如果要改企业模块聚合，应在 `octo-enterprise-modules` 做；只有 slot、env、CI、Docker、host shell 生命周期才应改 `octo-web`。
+
+---
+
 ## 新建 UI 组件：建议先写 Story 再接业务
 
 ```

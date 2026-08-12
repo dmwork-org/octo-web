@@ -6,6 +6,10 @@ packages:
 # 不再从 package.json 的 "pnpm" 字段读取，统一迁移到这里。
 onlyBuiltDependencies:
   - esbuild
+  # Electron desktop builds: allow electron / electron-winstaller postinstall
+  # (downloads the Electron binary / selects 7-Zip for winCodeSign).
+  - electron
+  - electron-winstaller
 
 overrides:
   '@tiptap/core': 3.22.2

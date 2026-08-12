@@ -32,6 +32,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
+import { isDriveRootFileNavigation } from "./fileRootGuard";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -48,6 +49,29 @@ let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+
+/* ---------- file:// drive-root navigation guard ---------- */
+
+/**
+ * Attach the file:// drive-root navigation guard to a BrowserWindow.
+ * Intercepts renderer-initiated navigations (will-navigate) that land on a
+ * drive root and redirects back to index.html without minting a new session
+ * sid (omitting the query lets SessionScope fall back to sessionStorage).
+ *
+ * NOTE: This function is only called from production code paths (the else
+ * branch of NODE_ENV checks), so no isDevelopment guard is needed here.
+ */
+function attachFileRootGuard(win: BrowserWindow, indexPath: string): void {
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!isDriveRootFileNavigation(url)) return;
+    event.preventDefault();
+    // Omit query: a new random sid would clobber the established session
+    // (SessionScope.ensureSessionSid gives URL sid priority over storage).
+    win.loadFile(indexPath).catch((err) => {
+      console.error("[file-root-guard] loadFile failed:", err);
+    });
+  });
+}
 // dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
 // 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
 // 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
@@ -203,12 +227,31 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         type: "separator",
       },
       {
-        role: "reload",
         label: "刷新",
+        accelerator: "CmdOrCtrl+R",
+        click: (_item, focusedWindow) => {
+          if (focusedWindow && app.isPackaged) {
+            // Reload the index.html directly instead of letting the browser
+            // reload whatever URL is in the address bar (which under file://
+            // may be a drive root after RouteManager pushState).
+            const indexPath = join(__dirname, "../", "../build/index.html");
+            focusedWindow.loadFile(indexPath).catch(() => {});
+          } else if (focusedWindow) {
+            focusedWindow.reload();
+          }
+        },
       },
       {
-        role: "forceReload",
         label: "强制刷新",
+        accelerator: "CmdOrCtrl+Shift+R",
+        click: (_item, focusedWindow) => {
+          if (focusedWindow && app.isPackaged) {
+            const indexPath = join(__dirname, "../", "../build/index.html");
+            focusedWindow.loadFile(indexPath).catch(() => {});
+          } else if (focusedWindow) {
+            focusedWindow.webContents.reloadIgnoringCache();
+          }
+        },
       },
     ],
   },
@@ -394,6 +437,14 @@ const getWindowConfig = () => {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: isDevelopment,
+      // The preload bridge is compiled by tsc as multiple CommonJS files
+      // (index.js + notificationListeners.js + shared/ipc-channels.js) with
+      // relative requires. Electron's sandboxed renderer cannot resolve those
+      // (no filesystem in the sandbox) — "module not found: ./notificationListeners".
+      // Keep the renderer isolated (contextIsolation + nodeIntegration:false)
+      // but let the trusted preload run unsandboxed until it is bundled into a
+      // single file (electron-vite style).
+      sandbox: false,
     },
     // frame: !isWin,
   };
@@ -422,6 +473,7 @@ const createNewWindow = () => {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
     newWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    attachFileRootGuard(newWindow, WEB_URL);
   }
 
   // 为新窗口设置菜单（Windows 需要）
@@ -456,11 +508,17 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
-  if (NODE_ENV !== "development") {
+  // Hoist WEB_URL to function scope so the file-root guard and other code
+  // can reference it.
+  let WEB_URL: string;
+  if (NODE_ENV === "development") {
+    mainWindow.loadURL(DEV_SERVER_URL);
+  } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
-    const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
+    WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
     mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    // Guard against file:// drive-root navigations (pushState "/" leak).
+    attachFileRootGuard(mainWindow, WEB_URL);
   }
 
   ipcMain.on("screenshots-start", (event, args) => {
