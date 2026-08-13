@@ -313,11 +313,15 @@ export interface OidcUserInitiatedLogoutDeps {
   devPostLogoutRedirectUriOverride: unknown;
   // Side-effects the orchestration performs. Injected so the test asserts
   // the sequence without touching real jsdom navigation.
-  clearLocalLoginState: () => void;
+  clearLocalLoginState: () => void | Promise<void>;
+  // Electron provider cookies must remain available while the hidden
+  // end-session window is navigating. The wrapper performs this cleanup only
+  // after that flow has completed (or the local fallback has taken over).
+  clearElectronAuthSession?: () => void | Promise<void>;
   reloadShell: () => void; // window.location.reload()
   navigateExternal: (url: string) => void; // window.location.href = url
   markPostLogoutCleanup: () => void; // markOidcPostLogoutCleanup()
-  fallbackLogout: () => void; // WKApp.logout()
+  fallbackLogout: () => void | Promise<void>; // WKApp.logout()
   // Injected for testability. Defaults in the wrapper call site.
   requestLogout?: typeof requestOidcLogout;
   createFetcher?: typeof createOidcLogoutFetcher;
@@ -344,7 +348,7 @@ export async function performOidcUserInitiatedLogout(
   };
 
   if (!isOidcLoginProvider(deps.loginProvider) || !deps.token) {
-    deps.fallbackLogout();
+    await deps.fallbackLogout();
     return { kind: "not-oidc" };
   }
 
@@ -370,11 +374,11 @@ export async function performOidcUserInitiatedLogout(
     if (!endSessionUrl) {
       // IdP returned no usable end-session URL. Fall back to local logout so
       // the app is not left mounted in an authenticated state.
-      deps.fallbackLogout();
+      await deps.fallbackLogout();
       return { kind: "no-end-session" };
     }
 
-    deps.clearLocalLoginState();
+    await deps.clearLocalLoginState();
 
     if (deps.env === "desktop-shell") {
       // Keep user-initiated logout inside the desktop app. The main process
@@ -382,7 +386,7 @@ export async function performOidcUserInitiatedLogout(
       // cleared without showing the browser/Web login page to the user.
       const ipcInvoke = deps.ipc?.invoke;
       if (typeof ipcInvoke !== "function") {
-        deps.fallbackLogout();
+        await deps.fallbackLogout();
         return { kind: "desktop-local", url: endSessionUrl };
       }
       const opened = (await ipcInvoke(
@@ -390,9 +394,14 @@ export async function performOidcUserInitiatedLogout(
         endSessionUrl
       )) as { ok?: boolean } | undefined;
       if (opened?.ok !== true) {
-        deps.fallbackLogout();
+        await deps.fallbackLogout();
         return { kind: "desktop-local", url: endSessionUrl };
       }
+      // Do not clear the shell's auth session before IPC_OIDC_OPEN_EXTERNAL:
+      // the hidden BrowserWindow uses the same session and needs the IdP
+      // cookies to complete provider logout. At this point the main process
+      // has finished (or timed out) the end-session navigation.
+      await deps.clearElectronAuthSession?.();
       deps.reloadShell();
       return { kind: "desktop-idp", url: endSessionUrl };
     }
@@ -404,7 +413,7 @@ export async function performOidcUserInitiatedLogout(
     return { kind: "web-redirect", url: endSessionUrl };
   } catch (error) {
     logger.warn("OIDC logout failed, falling back to local logout", error);
-    deps.fallbackLogout();
+    await deps.fallbackLogout();
     return { kind: "logout-error", error };
   }
 }
