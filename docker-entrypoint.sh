@@ -62,6 +62,21 @@ export MARKET_API_URL
 DRIVE_API_URL="${DRIVE_API_URL%/}"
 export DRIVE_API_URL
 
+
+# octo-fleet upstream for the /fleet/api/ location (Loop workspace/runtime
+# pickers in the expert market). Blank by default (503 when unset) — same
+# shape as the hosts above. Set FLEET_API_URL=http://octo-fleet:8080 in the
+# compose stack to enable it. Trailing slash stripped: the location rewrites
+# /fleet/api/* to fleet's native /v1/* and proxy_passes the bare variable, so
+# a trailing slash would produce a double-slash upstream. Must be in the
+# envsubst allowlist below or the literal `${FLEET_API_URL}` would survive
+# into the generated config and defeat the blank-value guard
+# (`if ($fleet_api_url = "")`) — the same failure mode as PR#851's
+# MARKET_API_URL P0.
+: "${FLEET_API_URL:=}"
+FLEET_API_URL="${FLEET_API_URL%/}"
+export FLEET_API_URL
+
 # octo-dap telemetry collector upstream for the `location = /v1/e/b` block. Blank
 # by default (503 when unset) — same shape as the hosts above. Trailing slash
 # stripped: that block rewrites to a fixed `/v1/dap/collect` and proxy_passes
@@ -74,7 +89,7 @@ export DRIVE_API_URL
 TRACK_API_URL="${TRACK_API_URL%/}"
 export TRACK_API_URL
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${TRACK_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${FLEET_API_URL} ${TRACK_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"
