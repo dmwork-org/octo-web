@@ -93,9 +93,21 @@ jobs:
       - name: APIClient request interceptor tests
         run: pnpm --filter @octo/base exec vitest run src/Service/__tests__/APIClient.headers.test.ts
       - name: Electron main-process unit tests
-        run: pnpm --filter @octo/web exec vitest run src-election
+        run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
       - name: Type-check Electron main-process tests
         run: pnpm --filter @octo/web exec tsc -p tsconfig.e.tests.json
+      - name: Build and compile Electron artifact
+        run: |
+          VITE_API_URL=https://api.example.com VITE_OIDC_TRUSTED_ORIGINS=https://idp.example.com pnpm --filter @octo/web run build:electron
+          pnpm --filter @octo/web run compile:electron
+          test -s apps/web/build/electron-config.json
+          node -e 'const c=require("./apps/web/build/electron-config.json"); if (!/^https?:\/\//.test(c.oidcApiOrigin)) process.exit(1)'
+          node -e 'const c=require("./apps/web/build/electron-config.json"); if (!Array.isArray(c.oidcEndSessionOrigins) || !c.oidcEndSessionOrigins.includes("https://idp.example.com")) { console.error("oidcEndSessionOrigins missing IdP origin:", JSON.stringify(c.oidcEndSessionOrigins)); process.exit(1); }'
+          node <<'NODE'
+          const fs = require("fs");
+          const source = fs.readFileSync("apps/web/out-election/preload/index.js", "utf8");
+          if (/\brequire\(["']\.\.?[\\/]/.test(source)) process.exit(1);
+          NODE
       - name: Build
         run: pnpm build
       - name: Lint
