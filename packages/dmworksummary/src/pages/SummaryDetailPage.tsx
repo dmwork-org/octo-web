@@ -56,6 +56,7 @@ import {
     scheduleToParams,
     formatScheduleSummary,
     shouldReactivateOnSave,
+    isReferenceable,
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
@@ -2179,6 +2180,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     /**
+     * 当前后端是否支持「继续优化」：兼容 referenceable 字段缺失的 legacy 路径。
+     * 抽取自原内联表达式（handleContinueRefine + render 按钮），统一调用点。
+     */
+    private canRefineCurrentDetail = (): boolean => {
+        const { detail } = this.state;
+        if (!detail) return false;
+        return isReferenceable(detail);
+    };
+
+    /**
      * 「继续优化」按钮 — 打开一个新的智能总结 chat session,预置引用当前总结。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1: 详情页入口和顶栏「新总结」入口的语义
      * 完全等价 — 都是新起一次 chat 生产工作台,唯一差别是这里预填了引用。
@@ -2192,7 +2203,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      */
     handleContinueRefine = () => {
         const { detail } = this.state;
-        if (!detail || detail.trigger_type !== TriggerType.AGENT) return;
+        if (!detail) return;
+        if (!this.canRefineCurrentDetail()) return;
         const event = new CustomEvent('summary-open-chat-with-reference', {
             detail: {
                 task_id: detail.task_id,
@@ -3938,7 +3950,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                 </div>
                 <div className="summary-detail-header-actions">
-                    {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
+                    {detail && detail.status === TaskStatus.COMPLETED && this.canRefineCurrentDetail() && (
                         <Button
                             data-testid={summaryTestIds.detailContinueRefineBtn}
                             theme="solid"
