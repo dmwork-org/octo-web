@@ -31,6 +31,15 @@ ENV VITE_ENTERPRISE_MODULES_ENTRY=${VITE_ENTERPRISE_MODULES_ENTRY}
 ENV VITE_ENTERPRISE_HTML_HEAD_PATH=${VITE_ENTERPRISE_HTML_HEAD_PATH}
 ENV VITE_ENTERPRISE_FS_ALLOW=${VITE_ENTERPRISE_FS_ALLOW}
 RUN pnpm --filter @octo/web build
+# Enterprise Docs relies on the host-applied Excalidraw patch. Verify the final
+# production bundle, not the patch source or installed package, before publishing.
+RUN case "$VITE_ENTERPRISE_MODULES_ENTRY" in \
+      *octo-enterprise-modules/src/docs.ts*) \
+        grep -Rqs --include='*.js' 'toolbar-shapes-flyout' /app/apps/web/build && \
+        grep -Rqs --include='*.js' 'toolbar-lines-flyout' /app/apps/web/build || \
+        { echo 'Enterprise Docs bundle is missing patched Excalidraw toolbar markers.' >&2; exit 1; } \
+        ;; \
+    esac
 
 # 生成 version.json
 RUN echo "{\"version\":\"${APP_VERSION}\"}" > /app/apps/web/build/version.json
