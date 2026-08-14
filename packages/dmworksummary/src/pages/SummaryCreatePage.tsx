@@ -1,7 +1,9 @@
-import { Sparkles, X, Plus } from "lucide-react";
+import { Sparkles, X, Plus, ChevronDown } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
+    Dropdown,
+    SplitButtonGroup,
     Toast,
     Typography,
     Tag,
@@ -199,11 +201,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        const startBtn = actions.querySelector('.summary-workbench-start-btn');
+        const startGroup = actions.querySelector('.chat-summary-modal-split');
         const actionsWidth = actions.clientWidth;
-        const btnWidth = startBtn ? (startBtn as HTMLElement).offsetWidth : 0;
+        const groupWidth = startGroup ? (startGroup as HTMLElement).offsetWidth : 0;
         const gap = 24;
-        const width = actionsWidth - btnWidth - gap;
+        const width = actionsWidth - groupWidth - gap;
         selectChat.style.width = width + 'px';
         selectChat.style.flex = 'none';
         selectChat.style.maxWidth = width + 'px';
@@ -324,9 +326,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     }
 
     componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {
-        if (prevState.selectedChats !== this.state.selectedChats) {
+        // selectedChats 或 mode 变化都会改变 start-group 宽度（mode=agent 时主按钮隐藏），
+        // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
+        if (prevState.selectedChats !== this.state.selectedChats || prevState.mode !== this.state.mode) {
             this.updateSelectChatWidth();
             this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
+            // Agent→Normal 往返后 textarea 重新挂载（无内联高度），恢复按内容自动增高；
+            // 参与者 chip 区同样重新挂载，需按新宽度重算溢出。
+            this.autoResizeTextarea();
+            this.updateVisibleMemberChipCount();
         }
         if (prevState.selectedMembers !== this.state.selectedMembers) {
             this.setState({ visibleMemberChipCount: 999 }, () => this.updateVisibleMemberChipCount());
@@ -536,9 +544,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     autoResizeTextarea = () => {
         const el = this.textareaRef.current;
         if (!el) return;
-        // 整页模式：input-wrap 有固定 420px 高度，textarea height:100% 填满即可。
-        // 面板模式：input-wrap 无固定高度，需要按内容自动撑开。
-        if (!this.props.embedded) return;
+        // 输入框按内容自动撑开（CSS min/max-height 约束边界，见 index.css）。
         el.style.height = "auto";
         el.style.height = `${el.scrollHeight}px`;
     };
@@ -813,6 +819,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /**
      * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
      * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
+     * 注意：不再清空 selectedMembers —— 静默销毁用户已选的参与者是不可逆的
+     * 数据丢失。participants 泄漏在 payload 边界拦截（handleSaveAsSummary 在
+     * agent 模式下不提交 participants），切回「开始总结」时选择仍然保留。
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
@@ -951,7 +960,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 }));
             }
 
-            if (selectedMembers.length > 0) {
+            // Agent 模式无参与者入口，selectedMembers 只会残留自 normal 模式的选择，
+            // 不应随 agent 保存提交给后端（P1 回归）。泄漏在 payload 边界拦截，
+            // 而不是销毁表单状态——切回 normal 时选择仍然保留。
+            if (this.state.mode !== 'agent' && selectedMembers.length > 0) {
                 params.participants = selectedMembers.map((m) => ({ 
                     user_id: m.user_id,
                     user_name: m.name,
@@ -1072,24 +1084,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
                     <span className="summary-workbench-title">{translate("summary.create.title")}</span>
-                    <div className="summary-workbench-mode-switch">
-                        <button
-                            type="button"
-                            data-testid={summaryTestIds.createNormalTab}
-                            className={`summary-workbench-mode-btn${mode === 'normal' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('normal')}
-                        >
-                            {translate("summary.create.start")}
-                        </button>
-                        <button
-                            type="button"
-                            data-testid={summaryTestIds.createAgentTab}
-                            className={`summary-workbench-mode-btn${mode === 'agent' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('agent')}
-                        >
-                            {translate("summary.create.agentStart")}
-                        </button>
-                    </div>
                 </div>
 
                 {/* Content card */}
@@ -1351,7 +1345,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
                             )}
-                            {/* 选择参与者 */}
+                            {/* 选择参与者（仅普通模式；Agent 模式不提供多人协作入口） */}
+                            {mode !== 'agent' && (
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
                                     <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
@@ -1398,18 +1393,54 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectMembers")}</span>
                                 </button>
                             </div>
+                            )}
                         </div>
-                        <Button
-                            data-testid={summaryTestIds.createSubmit}
-                            theme="solid"
-                            className="summary-workbench-start-btn"
-                            loading={submitting}
-                            disabled={!this.canSubmit() || submitting}
-                            onClick={this.handlePrimaryClick}
-                        >
-                            <Sparkles size={16} />
-                            {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                        </Button>
+                        {/* 右下角：默认「开始总结」主按钮 + 下拉切换总结方式（SplitButtonGroup，与 ChatSummaryNewModal 一致） */}
+                        <SplitButtonGroup className="chat-summary-modal-split">
+                            {mode !== 'agent' && (
+                                <Button
+                                    data-testid={summaryTestIds.createSubmit}
+                                    theme="solid"
+                                    loading={submitting}
+                                    disabled={!this.canSubmit() || submitting}
+                                    onClick={this.handlePrimaryClick}
+                                >
+                                    <Sparkles size={16} />
+                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                                </Button>
+                            )}
+                            <Dropdown
+                                trigger="click"
+                                position="bottomRight"
+                                render={(
+                                    <Dropdown.Menu>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.createNormalTab}
+                                            active={mode !== 'agent'}
+                                            onClick={() => this.handleSelectMode('normal')}
+                                        >
+                                            {translate("summary.create.start")}
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.createAgentTab}
+                                            active={mode === 'agent'}
+                                            onClick={() => this.handleSelectMode('agent')}
+                                        >
+                                            {translate("summary.create.agentStart")}
+                                        </Dropdown.Item>
+                                    </Dropdown.Menu>
+                                )}
+                            >
+                                <Button
+                                    data-testid={summaryTestIds.createModeSwitch}
+                                    theme="solid"
+                                    icon={<ChevronDown size={16} />}
+                                    aria-label={translate("summary.create.switchMode")}
+                                    title={translate("summary.create.switchMode")}
+                                    disabled={submitting}
+                                />
+                            </Dropdown>
+                        </SplitButtonGroup>
                     </div>
                 </div>
 
