@@ -33,13 +33,7 @@ ENV VITE_ENTERPRISE_FS_ALLOW=${VITE_ENTERPRISE_FS_ALLOW}
 RUN pnpm --filter @octo/web build
 # Enterprise Docs relies on the host-applied Excalidraw patch. Verify the final
 # production bundle, not the patch source or installed package, before publishing.
-RUN case "$VITE_ENTERPRISE_MODULES_ENTRY" in \
-      *octo-enterprise-modules/src/docs.ts*) \
-        grep -Rqs --include='*.js' 'toolbar-shapes-flyout' /app/apps/web/build && \
-        grep -Rqs --include='*.js' 'toolbar-lines-flyout' /app/apps/web/build || \
-        { echo 'Enterprise Docs bundle is missing patched Excalidraw toolbar markers.' >&2; exit 1; } \
-        ;; \
-    esac
+RUN sh scripts/verify-enterprise-docs-bundle.sh /app/apps/web/build
 
 # 生成 version.json
 RUN echo "{\"version\":\"${APP_VERSION}\"}" > /app/apps/web/build/version.json
