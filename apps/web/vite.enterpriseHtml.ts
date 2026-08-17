@@ -96,7 +96,7 @@ function createEnterpriseModulesVirtualModule(entries: string[]): string {
     `  handlers.push(...entryHandlers${index});`,
   ]);
   const mockHandlerCalls = entries.flatMap((entry, index) => [
-    `  const getMockHandlers${index} = enterpriseEntry${index}.getEnterpriseMockHandlers;`,
+    `  const getMockHandlers${index} = Reflect.get(enterpriseEntry${index}, "getEnterpriseMockHandlers");`,
     `  if (getMockHandlers${index} === undefined) {`,
     "    // no-op",
     `  } else if (typeof getMockHandlers${index} !== "function") {`,
@@ -148,6 +148,34 @@ function findEnterpriseLoopModuleRoot(extraFsAllow: string[]): string | undefine
   );
 }
 
+function findEnterpriseDriveModuleRoot(extraFsAllow: string[]): string | undefined {
+  return extraFsAllow.find((allowPath) => {
+    const packageJsonPath = path.join(allowPath, "package.json");
+    const entryPath = path.join(allowPath, "src/index.tsx");
+    if (!fs.existsSync(packageJsonPath) || !fs.existsSync(entryPath)) return false;
+
+    try {
+      return JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")).name === "@dmwork/drive";
+    } catch {
+      return false;
+    }
+  });
+}
+
+function findEnterpriseDocsModuleRoot(extraFsAllow: string[]): string | undefined {
+  return extraFsAllow.find((allowPath) => {
+    const packageJsonPath = path.join(allowPath, "package.json");
+    const entryPath = path.join(allowPath, "src/index.ts");
+    if (!fs.existsSync(packageJsonPath) || !fs.existsSync(entryPath)) return false;
+
+    try {
+      return JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")).name === "@dmwork/docs";
+    } catch {
+      return false;
+    }
+  });
+}
+
 function createEnterpriseModuleAliases(rootDir: string, extraFsAllow: string[]): AliasOptions {
   const aliases: AliasOptions = [];
   const baseEntry = path.resolve(rootDir, "../../packages/dmworkbase/src/index.tsx");
@@ -158,29 +186,71 @@ function createEnterpriseModuleAliases(rootDir: string, extraFsAllow: string[]):
   }
 
   const loopModuleRoot = findEnterpriseLoopModuleRoot(extraFsAllow);
-  if (!loopModuleRoot) return aliases;
+  if (loopModuleRoot) {
+    const loopPackageRoot = path.join(loopModuleRoot, "packages/dmloop");
+    const personalPackageRoot = path.join(loopModuleRoot, "packages/dmpersonal");
 
-  const loopPackageRoot = path.join(loopModuleRoot, "packages/dmloop");
-  const personalPackageRoot = path.join(loopModuleRoot, "packages/dmpersonal");
+    aliases.push(
+      {
+        find: /^@dmwork\/loop$/,
+        replacement: path.join(loopPackageRoot, "src/index.tsx"),
+      },
+      {
+        find: /^@dmwork\/loop\/(.*)$/,
+        replacement: path.join(loopPackageRoot, "$1"),
+      },
+      {
+        find: /^@dmwork\/personal$/,
+        replacement: path.join(personalPackageRoot, "src/index.tsx"),
+      },
+      {
+        find: /^@dmwork\/personal\/(.*)$/,
+        replacement: path.join(personalPackageRoot, "$1"),
+      }
+    );
+  }
 
-  aliases.push(
-    {
-      find: /^@dmwork\/loop$/,
-      replacement: path.join(loopPackageRoot, "src/index.tsx"),
-    },
-    {
-      find: /^@dmwork\/loop\/(.*)$/,
-      replacement: path.join(loopPackageRoot, "$1"),
-    },
-    {
-      find: /^@dmwork\/personal$/,
-      replacement: path.join(personalPackageRoot, "src/index.tsx"),
-    },
-    {
-      find: /^@dmwork\/personal\/(.*)$/,
-      replacement: path.join(personalPackageRoot, "$1"),
+  const driveModuleRoot = findEnterpriseDriveModuleRoot(extraFsAllow);
+  if (driveModuleRoot) {
+    aliases.push(
+      {
+        find: /^@dmwork\/drive$/,
+        replacement: path.join(driveModuleRoot, "src/index.tsx"),
+      },
+      {
+        find: /^@dmwork\/drive\/(.*)$/,
+        replacement: path.join(driveModuleRoot, "$1"),
+      }
+    );
+  }
+
+  const docsModuleRoot = findEnterpriseDocsModuleRoot(extraFsAllow);
+  if (docsModuleRoot) {
+    const whiteboardSchemaRoot = path.join(docsModuleRoot, "packages/whiteboard-schema");
+    aliases.push(
+      {
+        find: /^@dmwork\/docs$/,
+        replacement: path.join(docsModuleRoot, "src/index.ts"),
+      },
+      {
+        find: /^@dmwork\/docs\/(.*)$/,
+        replacement: path.join(docsModuleRoot, "$1"),
+      }
+    );
+
+    if (fs.existsSync(path.join(whiteboardSchemaRoot, "src/index.ts"))) {
+      aliases.push(
+        {
+          find: /^@octo\/whiteboard-schema$/,
+          replacement: path.join(whiteboardSchemaRoot, "src/index.ts"),
+        },
+        {
+          find: /^@octo\/whiteboard-schema\/(.*)$/,
+          replacement: path.join(whiteboardSchemaRoot, "$1"),
+        }
+      );
     }
-  );
+  }
 
   return aliases;
 }

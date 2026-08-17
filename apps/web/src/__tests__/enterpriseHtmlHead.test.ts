@@ -184,6 +184,119 @@ describe("enterprise modules slot", () => {
     expect(baseAlias?.replacement).toBe(baseEntry);
   });
 
+  it("aliases the Drive private module when only the drive module is allowed", () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-root-"));
+    const entryDir = path.join(rootDir, "enterprise");
+    const entry = path.join(entryDir, "drive.ts");
+    const assemblyRoot = path.join(rootDir, "octo-enterprise-modules");
+    const assemblyEntry = path.join(assemblyRoot, "src/index.tsx");
+    const driveRoot = path.join(rootDir, "octo-drive-module");
+    const driveEntry = path.join(driveRoot, "src/index.tsx");
+    fs.mkdirSync(entryDir, { recursive: true });
+    fs.mkdirSync(path.dirname(assemblyEntry), { recursive: true });
+    fs.mkdirSync(path.dirname(driveEntry), { recursive: true });
+    fs.writeFileSync(entry, "export const marker = true", "utf-8");
+    fs.writeFileSync(assemblyEntry, "export const enterprise = true", "utf-8");
+    fs.writeFileSync(
+      path.join(driveRoot, "package.json"),
+      JSON.stringify({ name: "@dmwork/drive" }),
+      "utf-8",
+    );
+    fs.writeFileSync(driveEntry, "export const drive = true", "utf-8");
+
+    const plugin = enterpriseModulesPlugin(entry, rootDir, [assemblyRoot, driveRoot]);
+    const config = plugin.config?.({}, { command: "build", mode: "production" }) as {
+      resolve?: { alias?: Array<{ find: RegExp; replacement: string }> };
+    };
+
+    const driveAlias = config.resolve?.alias?.find((alias) => alias.find.test("@dmwork/drive"));
+    const loopAlias = config.resolve?.alias?.find((alias) => alias.find.test("@dmwork/loop"));
+    expect(driveAlias?.replacement).toBe(driveEntry);
+    expect(loopAlias).toBeUndefined();
+  });
+
+  it("aliases the Docs private module when only the docs module is allowed", () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-root-"));
+    const entryDir = path.join(rootDir, "enterprise");
+    const entry = path.join(entryDir, "docs.ts");
+    const assemblyRoot = path.join(rootDir, "octo-enterprise-modules");
+    const assemblyEntry = path.join(assemblyRoot, "src/index.tsx");
+    const docsRoot = path.join(rootDir, "octo-docs-module");
+    const docsEntry = path.join(docsRoot, "src/index.ts");
+    const schemaEntry = path.join(docsRoot, "packages/whiteboard-schema/src/index.ts");
+    fs.mkdirSync(entryDir, { recursive: true });
+    fs.mkdirSync(path.dirname(assemblyEntry), { recursive: true });
+    fs.mkdirSync(path.dirname(docsEntry), { recursive: true });
+    fs.mkdirSync(path.dirname(schemaEntry), { recursive: true });
+    fs.writeFileSync(entry, "export const marker = true", "utf-8");
+    fs.writeFileSync(assemblyEntry, "export const enterprise = true", "utf-8");
+    fs.writeFileSync(
+      path.join(docsRoot, "package.json"),
+      JSON.stringify({ name: "@dmwork/docs" }),
+      "utf-8",
+    );
+    fs.writeFileSync(docsEntry, "export const docs = true", "utf-8");
+    fs.writeFileSync(schemaEntry, "export const schema = true", "utf-8");
+
+    const plugin = enterpriseModulesPlugin(entry, rootDir, [assemblyRoot, docsRoot]);
+    const config = plugin.config?.({}, { command: "build", mode: "production" }) as {
+      resolve?: { alias?: Array<{ find: RegExp; replacement: string }> };
+    };
+
+    const aliases = config.resolve?.alias ?? [];
+    expect(aliases.find((alias) => alias.find.test("@dmwork/docs"))?.replacement).toBe(docsEntry);
+    expect(aliases.find((alias) => alias.find.test("@octo/whiteboard-schema"))?.replacement).toBe(schemaEntry);
+    expect(aliases.find((alias) => alias.find.test("@dmwork/loop"))).toBeUndefined();
+  });
+
+  it("aliases Loop, Personal, Drive, and Docs when all private module roots are allowed", () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-root-"));
+    const entryDir = path.join(rootDir, "enterprise");
+    const entry = path.join(entryDir, "index.ts");
+    const loopRoot = path.join(rootDir, "octo-loop-module");
+    const loopEntry = path.join(loopRoot, "packages/dmloop/src/index.tsx");
+    const personalEntry = path.join(loopRoot, "packages/dmpersonal/src/index.tsx");
+    const driveRoot = path.join(rootDir, "octo-drive-module");
+    const driveEntry = path.join(driveRoot, "src/index.tsx");
+    const docsRoot = path.join(rootDir, "octo-docs-module");
+    const docsEntry = path.join(docsRoot, "src/index.ts");
+    const schemaEntry = path.join(docsRoot, "packages/whiteboard-schema/src/index.ts");
+    fs.mkdirSync(entryDir, { recursive: true });
+    fs.mkdirSync(path.dirname(loopEntry), { recursive: true });
+    fs.mkdirSync(path.dirname(personalEntry), { recursive: true });
+    fs.mkdirSync(path.dirname(driveEntry), { recursive: true });
+    fs.mkdirSync(path.dirname(docsEntry), { recursive: true });
+    fs.mkdirSync(path.dirname(schemaEntry), { recursive: true });
+    fs.writeFileSync(entry, "export const marker = true", "utf-8");
+    fs.writeFileSync(loopEntry, "export const loop = true", "utf-8");
+    fs.writeFileSync(personalEntry, "export const personal = true", "utf-8");
+    fs.writeFileSync(
+      path.join(driveRoot, "package.json"),
+      JSON.stringify({ name: "@dmwork/drive" }),
+      "utf-8",
+    );
+    fs.writeFileSync(driveEntry, "export const drive = true", "utf-8");
+    fs.writeFileSync(
+      path.join(docsRoot, "package.json"),
+      JSON.stringify({ name: "@dmwork/docs" }),
+      "utf-8",
+    );
+    fs.writeFileSync(docsEntry, "export const docs = true", "utf-8");
+    fs.writeFileSync(schemaEntry, "export const schema = true", "utf-8");
+
+    const plugin = enterpriseModulesPlugin(entry, rootDir, [loopRoot, driveRoot, docsRoot]);
+    const config = plugin.config?.({}, { command: "build", mode: "production" }) as {
+      resolve?: { alias?: Array<{ find: RegExp; replacement: string }> };
+    };
+
+    const aliases = config.resolve?.alias ?? [];
+    expect(aliases.find((alias) => alias.find.test("@dmwork/loop"))?.replacement).toBe(loopEntry);
+    expect(aliases.find((alias) => alias.find.test("@dmwork/personal"))?.replacement).toBe(personalEntry);
+    expect(aliases.find((alias) => alias.find.test("@dmwork/drive"))?.replacement).toBe(driveEntry);
+    expect(aliases.find((alias) => alias.find.test("@dmwork/docs"))?.replacement).toBe(docsEntry);
+    expect(aliases.find((alias) => alias.find.test("@octo/whiteboard-schema"))?.replacement).toBe(schemaEntry);
+  });
+
   it("keeps the monorepo workspace root allowed during enterprise dev", () => {
     const entryDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-entry-"));
     const entry = path.join(entryDir, "index.ts");

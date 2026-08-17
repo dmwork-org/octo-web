@@ -20,21 +20,23 @@
       "outputs": [
         "build/**"
       ],
+      "env": [
+        "VITE_ENTERPRISE_MODULES_ENTRY",
+        "VITE_ENTERPRISE_HTML_HEAD_PATH",
+        "VITE_ENTERPRISE_FS_ALLOW"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../pnpm-lock.yaml",
-        "../../patches/@excalidraw__excalidraw@0.18.1.patch",
         "../../packages/dmworkappbot/**",
         "../../packages/dmworkbase/**",
         "../../packages/dmworkcontacts/**",
         "../../packages/dmworkdatasource/**",
-        "../../packages/dmworkdrive/**",
         "../../packages/dmworklogin/**",
+        "../../packages/mail/**",
         "../../packages/dmworkmcp/**",
         "../../packages/dmworkskillmarket/**",
         "../../packages/dmworksummary/**",
-        "../../packages/docs/**",
-        "../../packages/whiteboard-schema/**",
         "!../../packages/**/node_modules/**",
         "!../../packages/**/build/**",
         "!../../packages/**/dist/**",

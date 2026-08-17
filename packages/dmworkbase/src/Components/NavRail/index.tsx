@@ -94,6 +94,7 @@ export default class NavRail extends Component<NavRailProps> {
                                 <button
                                     type="button"
                                     className="wk-navrail__user-avatar"
+                                    data-testid="nav-user-avatar"
                                     title={t("base.navRail.me")}
                                     aria-label={t("base.navRail.me")}
                                     onClick={onAvatarClick}
@@ -117,6 +118,7 @@ export default class NavRail extends Component<NavRailProps> {
                                 label={menus.title}
                                 active={menus.id === currentMenus?.id}
                                 badge={menus.badge && menus.badge > 0 ? menus.badge : undefined}
+                                trackObjectId={menus.routePath}
                                 onClick={() => onMenuClick(menus)}
                             />
                         ))}

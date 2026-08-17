@@ -14,7 +14,12 @@ RUN git config --global url."https://github.com/".insteadOf "git+ssh://git@githu
     git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
 RUN pnpm install --frozen-lockfile --ignore-scripts --registry=https://registry.npmmirror.com
 RUN if [ -n "$VITE_ENTERPRISE_MODULES_ENTRY" ] && [ -d .enterprise ]; then \
-      node scripts/install-enterprise-host-deps.mjs .enterprise/octo-enterprise-modules/package.json; \
+      node scripts/install-enterprise-host-deps.mjs \
+        .enterprise/octo-enterprise-modules/package.json \
+        .enterprise/octo-loop-module/packages/dmloop/package.json \
+        .enterprise/octo-loop-module/packages/dmpersonal/package.json \
+        .enterprise/octo-drive-module/package.json \
+        .enterprise/octo-docs-module/package.json; \
     fi
 
 # 构建
@@ -26,6 +31,9 @@ ENV VITE_ENTERPRISE_MODULES_ENTRY=${VITE_ENTERPRISE_MODULES_ENTRY}
 ENV VITE_ENTERPRISE_HTML_HEAD_PATH=${VITE_ENTERPRISE_HTML_HEAD_PATH}
 ENV VITE_ENTERPRISE_FS_ALLOW=${VITE_ENTERPRISE_FS_ALLOW}
 RUN pnpm --filter @octo/web build
+# Enterprise Docs relies on the host-applied Excalidraw patch. Verify the final
+# production bundle, not the patch source or installed package, before publishing.
+RUN sh scripts/verify-enterprise-docs-bundle.sh /app/apps/web/build
 
 # 生成 version.json
 RUN echo "{\"version\":\"${APP_VERSION}\"}" > /app/apps/web/build/version.json

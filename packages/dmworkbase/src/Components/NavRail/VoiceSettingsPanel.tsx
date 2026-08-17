@@ -7,10 +7,11 @@ import useSpaceFeedbackSetting, {
   acceptVoiceInput,
   disableVoiceInput,
   setSharedVoiceConfig,
-} from '../MessageInput/useSpaceFeedbackSetting';
-import VoiceFeedbackNotice from '../MessageInput/VoiceFeedbackNotice';
+} from '../../features/voice-input/useSpaceFeedbackSetting';
+import VoiceFeedbackNotice from '../../features/voice-input/VoiceFeedbackNotice';
 import WKApp from '../../App';
 import VoiceService from '../../Service/VoiceService';
+import { Dap } from '../../Service/Dap';
 import { useI18n } from '../../i18n';
 import WKButton from '../WKButton';
 import './VoiceSettingsPanel.css';
@@ -25,6 +26,30 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
   const [loading, setLoading] = useState(false);
   const [showNotice, setShowNotice] = useState(false);
   const spaceIdRef = useRef<string>('');
+  const consentGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const invalidateConsent = () => {
+      consentGenerationRef.current += 1;
+      spaceIdRef.current = '';
+      setShowNotice(false);
+      setLoading(false);
+    };
+    WKApp.mittBus.on('space-changed', invalidateConsent);
+    return () => {
+      mountedRef.current = false;
+      consentGenerationRef.current += 1;
+      WKApp.mittBus.off('space-changed', invalidateConsent);
+    };
+  }, []);
+
+  useEffect(() => {
+    // settings_voice_opened:面板挂载 = 打开语音设置一次。原挂在 GET /voice/local-config 的 2xx 通道,
+    // 但该 GET 也被设置页其他子面板/焦点刷新连带调用,请求成功 ≠ 打开语音设置(见二审 P1-3)。
+    Dap.shared.track('settings_voice_opened', {});
+  }, []);
 
   const isVoiceEnabled = spaceSetting?.voice_input_enabled === 1;
   const isFeedbackOn = spaceSetting?.voice_feedback_on === 1;
@@ -74,6 +99,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
     if (!spaceId) return;
 
     if (checked) {
+      consentGenerationRef.current += 1;
       spaceIdRef.current = spaceId;
       setShowNotice(true);
     } else {
@@ -95,14 +121,21 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
   const handleNoticeAccept = useCallback(async (feedbackOn: boolean) => {
     const spaceId = spaceIdRef.current;
     if (!spaceId) return;
+    const consentGeneration = ++consentGenerationRef.current;
+    const isConsentCurrent = () =>
+      mountedRef.current &&
+      consentGenerationRef.current === consentGeneration &&
+      WKApp.shared.currentSpaceId === spaceId;
     setLoading(true);
     try {
-      await acceptVoiceInput(spaceId, feedbackOn);
-      setShowNotice(false);
+      await acceptVoiceInput(spaceId, feedbackOn, isConsentCurrent);
+      if (isConsentCurrent()) setShowNotice(false);
     } catch {
-      Toast.error(t('base.navRail.voiceSettings.operationFailed'));
+      if (isConsentCurrent()) {
+        Toast.error(t('base.navRail.voiceSettings.operationFailed'));
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [t]);
 
@@ -136,6 +169,10 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       await VoiceService.shared.putLocalConfig({ enabled: checked });
       const newConfig = await VoiceService.shared.getConfig();
       setSharedVoiceConfig(newConfig);
+      // 十二审 P2:settings_voice_toggled 从 path 通道(PUT /voice/local-config)移到命令式。原 fetch 规则
+      //   对该 PUT 一律计数,但 handleLocalConfigSave(保存 URL 配置)会原样带上 enabled 再发同一 PUT,
+      //   编辑 endpoint URL 被误计成切换开关。真实「切换」只有此 handleLocalToggle,故仅在此单发。
+      Dap.shared.track('settings_voice_toggled', {});
     } catch {
       setLocalEnabled(prevEnabled);
       Toast.error(t('base.navRail.voiceSettings.operationFailed'));
@@ -376,7 +413,11 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       {showNotice && (
         <VoiceFeedbackNotice
           onAccept={handleNoticeAccept}
-          onCancel={() => setShowNotice(false)}
+          onCancel={() => {
+            consentGenerationRef.current += 1;
+            spaceIdRef.current = '';
+            setShowNotice(false);
+          }}
           feedbackPrivacyUrl={privacyUrl}
           feedbackUserAgreementUrl={agreementUrl}
         />
