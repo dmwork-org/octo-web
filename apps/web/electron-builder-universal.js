@@ -17,6 +17,11 @@ module.exports = {
     // Universal build configuration for electron-builder 26.x
     // Enable ASAR merging for universal builds
     mergeASARs: true,
+    // node-screenshots ships native bindings in architecture-specific package
+    // folders. pnpm/electron-builder can include the same binding path in both
+    // temporary apps, so @electron/universal must not try to lipo those files.
+    x64ArchFiles: "**/node-screenshots-darwin-*/*.node",
+    singleArchFiles: "**/node-screenshots-darwin-*/*",
     // Ensure native modules are unpacked
     asarUnpack: [
       ...baseConfig.asarUnpack,
@@ -32,7 +37,7 @@ module.exports = {
     console.log('   📦 This will create a universal binary that runs natively on both Intel and Apple Silicon Macs');
     console.log('   🔧 Universal build configuration optimized for electron-builder 26.x');
     console.log('   📋 mergeASARs:', module.exports.mac.mergeASARs);
-    console.log('   � Using simplified configuration to avoid native module conflicts');
+    console.log('   Using native module merge rules to avoid universal conflicts');
     return true;
   },
   afterPack: async (context) => {
