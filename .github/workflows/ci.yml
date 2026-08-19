@@ -109,6 +109,7 @@ jobs:
         run: >-
           pnpm --filter @octo/base exec vitest run
           src/Service/__tests__/VoiceSettingsStore.test.ts
+          src/Components/NavRail/__tests__/secondarySettingsPages.test.tsx
           src/features/chat-composer/adapters/voice/useVoiceInput.test.tsx
           src/features/chat-composer/ui/voice/VoiceInputIndicator.test.tsx
           src/Components/VoiceInputButton/VoiceInputButton.test.tsx

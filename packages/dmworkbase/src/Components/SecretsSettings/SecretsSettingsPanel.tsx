@@ -60,7 +60,22 @@ export default function SecretsSettingsPanel({
   );
 
   /** 手动新增：永远是干净的空表单，不带任何预填明文。 */
-  const startCreate = useCallback(() => setEditTarget({ mode: "create" }), []);
+  const startCreate = useCallback(() => setEditTarget((current) => (
+    current?.mode === "create" && current.prefillName === undefined && current.prefillValue === undefined
+      ? current
+      : { mode: "create" }
+  )), []);
+  // Support pointer and keyboard activation; the state update is idempotent
+  // when the browser emits both mousedown and click for one activation.
+  const handleCreateMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    startCreate();
+  }, [startCreate]);
+  const handleCreateClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    startCreate();
+  }, [startCreate]);
   const closeEditor = useCallback(() => setEditTarget(null), []);
 
   const load = useCallback(async () => {
@@ -154,7 +169,8 @@ export default function SecretsSettingsPanel({
             type="button"
             variant="primary"
             icon={<IconPlus />}
-            onClick={(event) => { event.stopPropagation(); startCreate(); }}
+            onMouseDown={handleCreateMouseDown}
+            onClick={handleCreateClick}
           >
             {t("base.secrets.addButton")}
           </WKButton>
@@ -182,7 +198,8 @@ export default function SecretsSettingsPanel({
               type="button"
               variant="primary"
               icon={<IconPlus />}
-              onClick={(event) => { event.stopPropagation(); startCreate(); }}
+              onMouseDown={handleCreateMouseDown}
+              onClick={handleCreateClick}
             >
               {t("base.secrets.empty.action")}
             </WKButton>

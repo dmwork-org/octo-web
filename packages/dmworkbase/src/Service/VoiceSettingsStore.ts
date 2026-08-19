@@ -1,3 +1,5 @@
+import { VOICE_PROTOCOL_VERSION } from "./VoiceProtocol";
+
 export type VoiceShortcut = "alt-right" | "shift-right" | "shift-left" | "disabled";
 export type VoiceSpeakingMode = "toggle" | "hold";
 
@@ -15,7 +17,7 @@ export interface VoiceSettings {
 }
 
 export const VOICE_SETTINGS_KEY = "octo.voice-input.v1";
-export const VOICE_PROTOCOL_VERSION = "1.12";
+export { VOICE_PROTOCOL_VERSION };
 const LEGACY_SERVER_MIGRATION = "legacy-server-config-migrated";
 
 export const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
