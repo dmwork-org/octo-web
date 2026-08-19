@@ -535,7 +535,12 @@ export default class BaseModule implements IModule {
         WKApp.shared.addFriendApply(friendApply);
         // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
         if (!isDocumentFocusScene()) {
-          void this.tipsAudio();
+          void quickMuteStore.getState().then((quickMuteState) => {
+            if (!quickMuteState.active || quickMuteState.scope === "sound") {
+              return this.tipsAudio({ allowDuringQuickMute: true });
+            }
+            return undefined;
+          }).catch(() => this.tipsAudio({ allowDuringQuickMute: true }));
         }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
@@ -721,9 +726,9 @@ export default class BaseModule implements IModule {
     );
   }
 
-  async tipsAudio() {
+  async tipsAudio(options: { allowDuringQuickMute?: boolean } = {}) {
     const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
-    if (quickMuteState?.active) return;
+    if (quickMuteState?.active && !options.allowDuringQuickMute) return;
     Howler.autoUnlock = false;
     if (!this.messageTone) {
       this.messageTone = new Howl({
@@ -833,7 +838,7 @@ export default class BaseModule implements IModule {
             `${from}${message.content.conversationDigest}`
           );
         }
-        if (decision.playSound) await this.tipsAudio();
+        if (decision.playSound) await this.tipsAudio({ allowDuringQuickMute: true });
       },
     });
   }
@@ -847,8 +852,10 @@ export default class BaseModule implements IModule {
     if (!this.allowNotify(message)) return { playSound: false, showPopup: false };
     const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
     if (quickMuteState?.active) {
+      // "sound" = keep sounds only (suppress the popup); the other scope
+      // mutes both sounds and popups.
       return quickMuteState.scope === "sound"
-        ? { playSound: false, showPopup: true }
+        ? { playSound: true, showPopup: false }
         : { playSound: false, showPopup: false };
     }
     return { playSound: true, showPopup: true };
