@@ -5,7 +5,7 @@ import { Mic } from "lucide-react";
 import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoice";
 import type { ChatContextResult } from "../Conversation/chatContext";
 import type { VoiceMode } from "../../Service/VoiceService";
-import { getVoiceShortcut, voiceSettingsStore } from "../../Service/VoiceSettingsStore";
+import { getVoiceShortcut, voiceSettingsStore, voiceShortcutMatches } from "../../Service/VoiceSettingsStore";
 import WKApp from "../../App";
 import { useI18n } from "../../i18n";
 import "./index.css";
@@ -203,8 +203,7 @@ export default function VoiceInputButton({
     if (!isVoiceEnabled || !voiceSettings.enabled) return;
     const configuredShortcut = getVoiceShortcut(voiceSettings, /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows");
     if (configuredShortcut === "disabled") return;
-    const shortcutCode = configuredShortcut === "alt-right" ? "AltRight" : configuredShortcut === "shift-right" ? "ShiftRight" : "ShiftLeft";
-    const modifiersValid = (event: KeyboardEvent) => shortcutCode === "AltRight"
+    const modifiersValid = (event: KeyboardEvent) => configuredShortcut === "alt-right"
       ? !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.getModifierState("AltGraph")
       : !event.altKey && !event.ctrlKey && !event.metaKey;
 
@@ -212,7 +211,7 @@ export default function VoiceInputButton({
       if (!inputRef.current || document.activeElement !== inputRef.current || document.querySelector(".wk-settings-center-modal")) return;
 
       if (
-        e.code === shortcutCode &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         !e.repeat &&
         !e.metaKey &&
         !e.ctrlKey &&
@@ -254,7 +253,7 @@ export default function VoiceInputButton({
         return;
       }
 
-      if (shiftTimerRef.current !== null && e.code !== shortcutCode) {
+      if (shiftTimerRef.current !== null && !voiceShortcutMatches(e, configuredShortcut)) {
         if (
           e.code.startsWith("Control") ||
           e.code.startsWith("Alt") ||
@@ -264,7 +263,7 @@ export default function VoiceInputButton({
           return;
         }
         const isIME =
-          e.code.startsWith("Shift") ||
+          e.key === "Shift" ||
           e.key === "Process" ||
           e.key === "Unidentified" ||
           e.isComposing;
@@ -280,13 +279,13 @@ export default function VoiceInputButton({
 
       if (!isRecordingRef.current && !isInputFocused) return;
 
-      if (e.code === shortcutCode && shiftTimerRef.current !== null) {
+      if (voiceShortcutMatches(e, configuredShortcut) && shiftTimerRef.current !== null) {
         clearShiftTimer();
         return;
       }
 
       if (
-        e.code === shortcutCode &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         shiftRecordingRef.current &&
         !isRecordingRef.current
       ) {
@@ -296,7 +295,7 @@ export default function VoiceInputButton({
       }
 
       if (
-        e.code === shortcutCode &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         shiftRecordingRef.current &&
         isRecordingRef.current
       ) {
