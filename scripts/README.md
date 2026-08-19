@@ -4,7 +4,7 @@
 
 ## Windows 说明
 
-`package.json` 中的企业构建/工作流命令（`build:enterprise`、`build-ele:enterprise:*`、`dev:enterprise`、`new:worktree`、`cleanup:worktree`）统一通过 `run-bash-script.mjs` 执行 bash 脚本：在 Windows 上显式探测 Git for Windows 自带的 bash，避开 WSL 的 `C:\Windows\System32\bash.exe`（用它跑构建会进入 Linux 环境导致 node 工具链不匹配而失败）。装了 Git for Windows 即开箱即用；特殊情况可用环境变量 `OCTO_BASH` 显式指定 bash.exe 路径。Linux/macOS 直接使用系统 bash，行为不变。
+`package.json` 中的企业构建命令（`build:enterprise`、`build-ele:enterprise:*`）由 `enterprise-build.mjs`（纯 Node）执行：路径处理全平台原生，无需 Git Bash，也不存在 MSYS/WSL 路径问题。dev/worktree 命令（`dev:enterprise`、`new:worktree`、`cleanup:worktree`）仍通过 `run-bash-script.mjs` 执行 bash 脚本：在 Windows 上显式探测 Git for Windows 自带的 bash，避开 WSL 的 `C:\Windows\System32\bash.exe`（用它跑构建会进入 Linux 环境导致 node 工具链不匹配而失败）。装了 Git for Windows 即开箱即用；特殊情况可用环境变量 `OCTO_BASH` 显式指定 bash.exe 路径。Linux/macOS 直接使用系统 bash，行为不变。
 
 ## 命令
 
