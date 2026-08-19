@@ -176,12 +176,54 @@ export VITE_ENTERPRISE_MODULES_ENTRY="$ENTERPRISE_MODULES_ENTRY"
 export VITE_ENTERPRISE_HTML_HEAD_PATH="$ENTERPRISE_HTML_HEAD_PATH"
 export VITE_ENTERPRISE_FS_ALLOW
 
+derive_origin() {
+  local raw="$1"
+  node -e "try { console.log(new URL(process.argv[1]).origin) } catch { process.exit(1) }" "$raw"
+}
+
+API_ORIGIN_FOR_ENTERPRISE=""
+if [[ -n "${VITE_API_URL:-}" ]]; then
+  API_ORIGIN_FOR_ENTERPRISE="$(derive_origin "$VITE_API_URL" || true)"
+fi
+
+if [[ -z "${VITE_LOOP_API_BASE:-}" ]]; then
+  LOOP_API_ORIGIN=""
+  if [[ -n "${VITE_FLEET_API_URL:-}" ]]; then
+    LOOP_API_ORIGIN="$(derive_origin "$VITE_FLEET_API_URL" || true)"
+  fi
+  LOOP_API_ORIGIN="${LOOP_API_ORIGIN:-$API_ORIGIN_FOR_ENTERPRISE}"
+  if [[ -n "$LOOP_API_ORIGIN" ]]; then
+    export VITE_LOOP_API_BASE="$LOOP_API_ORIGIN/fleet/api/v1"
+  fi
+fi
+
+if [[ -z "${VITE_OCTO_DOC_BASE:-}" ]]; then
+  DOCS_HTML_ORIGIN=""
+  if [[ -n "${VITE_DOCS_API_URL:-}" ]]; then
+    DOCS_HTML_ORIGIN="$(derive_origin "$VITE_DOCS_API_URL" || true)"
+  fi
+  DOCS_HTML_ORIGIN="${DOCS_HTML_ORIGIN:-$API_ORIGIN_FOR_ENTERPRISE}"
+  if [[ -n "$DOCS_HTML_ORIGIN" ]]; then
+    export VITE_OCTO_DOC_BASE="$DOCS_HTML_ORIGIN/docs-html"
+  fi
+fi
+
 echo "[ci-enterprise-electron-build] VITE_ENTERPRISE_MODULES_ENTRY=$VITE_ENTERPRISE_MODULES_ENTRY"
 if [[ -n "$VITE_ENTERPRISE_HTML_HEAD_PATH" ]]; then
   echo "[ci-enterprise-electron-build] VITE_ENTERPRISE_HTML_HEAD_PATH=$VITE_ENTERPRISE_HTML_HEAD_PATH"
 fi
 echo "[ci-enterprise-electron-build] VITE_ENTERPRISE_FS_ALLOW=$VITE_ENTERPRISE_FS_ALLOW"
+if [[ -n "${VITE_LOOP_API_BASE:-}" ]]; then
+  echo "[ci-enterprise-electron-build] VITE_LOOP_API_BASE=$VITE_LOOP_API_BASE"
+fi
+if [[ -n "${VITE_OCTO_DOC_BASE:-}" ]]; then
+  echo "[ci-enterprise-electron-build] VITE_OCTO_DOC_BASE=$VITE_OCTO_DOC_BASE"
+fi
 echo "[ci-enterprise-electron-build] electron build script=$ELECTRON_BUILD_SCRIPT"
 
 cd "$ROOT"
+if command -v corepack >/dev/null 2>&1; then
+  exec corepack pnpm --filter @octo/web "$ELECTRON_BUILD_SCRIPT"
+fi
+
 exec pnpm --filter @octo/web "$ELECTRON_BUILD_SCRIPT"
