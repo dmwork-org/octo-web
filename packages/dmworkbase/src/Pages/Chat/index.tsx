@@ -1179,6 +1179,7 @@ export class ChatContentPage extends Component<
                       channel.channelType === ChannelTypeGroup &&
                       WKApp.remoteConfig.threadOn && (
                         <div
+                          data-testid="chat-thread-panel-entry"
                           className="wk-chat-conversation-header-right-item"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1213,6 +1214,7 @@ export class ChatContentPage extends Component<
                         </div>
                       )}
                     <div
+                      data-testid="chat-channel-setting-entry"
                       className="wk-chat-conversation-header-right-item"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1603,6 +1605,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     <div className="wk-chat-header-actions">
                       <NavSignalBadge showText />
                       <div
+                        data-testid="chat-global-search-entry"
                         className="wk-chat-header-btn"
                         onClick={() => {
                           vm.showGlobalSearch = true;
@@ -1660,6 +1663,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         }
                       >
                         <div
+                          data-testid="chat-add-entry"
                           className="wk-chat-header-btn"
                           onClick={() => {
                             vm.showAddPopover = !vm.showAddPopover;
