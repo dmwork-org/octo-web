@@ -135,6 +135,7 @@
 .wk-settings-center__resource-qr { display: flex; width: 104px; height: 104px; align-items: center; justify-content: center; margin-top: 16px; padding: 0; border-radius: 8px; background: var(--wk-bg-base); overflow: hidden; }
 .wk-settings-center__resource-qr svg { display: block; width: 104px; height: 104px; }
 .wk-settings-center__resource-qr-placeholder { display: block; width: 100%; height: 100%; border-radius: 4px; background: var(--wk-bg-base); }
+.wk-settings-center__resource-qr-error { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px; text-align: center; }
 .wk-settings-center__resource-card--clients .wk-settings-center__resource-status { margin-top: 8px; }
 .wk-settings-center__resource-card--clients .wk-settings-center__resource-actions { margin-top: 16px; }
 .wk-settings-center__resource-card--resources { align-items: center; }
