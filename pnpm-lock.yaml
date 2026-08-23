@@ -13,7 +13,7 @@ overrides:
 
 patchedDependencies:
   '@excalidraw/excalidraw@0.18.1':
-    hash: eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24
+    hash: 356f864cba13fb9431d91149640ded0b63d2ce9a4501c2a4fa7cdafe1193ac07
     path: patches/@excalidraw__excalidraw@0.18.1.patch
   app-builder-lib@26.8.1:
     hash: 79ecf82dbda2cd9985f1004705d57d6e51017ac92e59062dae27d2a78a3e4a67
