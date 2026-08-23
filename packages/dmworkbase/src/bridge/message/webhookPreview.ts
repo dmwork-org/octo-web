@@ -1,11 +1,15 @@
 import type React from "react";
 import { isSafeUrl } from "../../Utils/security";
 import APIClient from "../../Service/APIClient";
+import { EndpointManager } from "../../Service/Module";
+import { EndpointCategory } from "../../Service/Const";
 import {
   getElectronIpcBridge,
+  getElectronLinksBridge,
   isElectronPowered,
 } from "../../electron/desktopBridge";
 import { IPC_ASK_TRUST_FLEET_HOST } from "../../../../../apps/web/src-election/shared/ipc-channels";
+import { resolveWebOrigin } from "../../Utils/webOrigin";
 
 export interface WebhookIssuePreviewTarget {
   workspaceSlug: string;
@@ -20,19 +24,33 @@ export interface WebhookIssuePreviewTarget {
  */
 const FLEET_PREVIEW_HOSTS = new Set(["im.deepminer.com.cn"]);
 
-function decodePathSegment(value: string): string {
+/**
+ * RFC 3986 unreserved characters plus ~ — the only characters we accept in
+ * a decoded fleet segment. Anything else (encoded separators like %2F/%5C,
+ * CR/LF, .., whitespace) means the decoded value is NOT the same segment the
+ * shape gate matched, so the link is rejected: without this, a crafted
+ * /fleet/a%2F..%2Fb/issues/c%0D%0Ad would pass the 4-segment shape check and
+ * decode into path separators / traversal afterwards.
+ */
+const SAFE_FLEET_SEGMENT_RE = /^[A-Za-z0-9._~-]+$/;
+
+function decodePathSegment(value: string): string | null {
+  let decoded: string;
   try {
-    return decodeURIComponent(value);
+    decoded = decodeURIComponent(value);
   } catch {
-    return "";
+    return null;
   }
+  return SAFE_FLEET_SEGMENT_RE.test(decoded) ? decoded : null;
 }
 
 /**
  * Lazily resolve the trusted fleet origins: the static set plus the origin
  * host (hostname[:port]) of the API the client is talking to (VITE_API_URL at
  * build time). Desktop clients load over file:// where same-origin comparison
- * against window.location is impossible ("null"), so the API host is the only
+ * against window.location is impossible (the origin is not a web origin —
+ * Chromium reports "file://", older specs/jsdom "null"), so the API host is
+ * the only
  * reliable per-deployment baseline; on-prem customers get previews for their
  * own server without hard-coding every customer domain.
  *
@@ -95,6 +113,11 @@ export function parseFleetIssueLinkShape(
   } catch {
     return null;
   }
+  // Reject embedded userinfo (https://evil@trusted-host/…): the host
+  // comparison below would match the trusted host while the serialized
+  // href still carries the userinfo into the preview panel / fallback link.
+  // Userinfo is deprecated in URLs and never legitimate on a fleet link.
+  if (url.username !== "" || url.password !== "") return null;
   if (!isSafeUrl(url.href) || !isFleetIssuePathname(url)) return null;
   const segments = url.pathname.split("/").filter(Boolean);
   const workspaceSlug = decodePathSegment(segments[1] || "");
@@ -149,16 +172,80 @@ export async function askTrustFleetHost(sourceUrl: string): Promise<boolean> {
 
 /**
  * Open a fleet link in the system browser / new tab as the explicit fallback
- * for a rejected trust prompt. Exported so tests can observe the fallback
- * without fighting jsdom's non-configurable window.open.
+ * for a rejected trust prompt. On desktop this goes through the
+ * IPC_OPEN_EXTERNAL_URL bridge (sender-checked, http(s)-only, activation-
+ * independent — window.open after an await has lost user activation and may
+ * be suppressed by popup blockers); on web it falls back to window.open.
+ * Exported so tests can observe the fallback without fighting jsdom's
+ * non-configurable window.open.
  */
 export function openFleetLinkExternal(href: string): void {
+  const linksBridge = getElectronLinksBridge();
+  if (linksBridge) {
+    void linksBridge.openExternal(href).catch(() => {
+      // best-effort: the default action was already cancelled; failing to
+      // re-open must not throw
+    });
+    return;
+  }
   try {
     window.open(href, "_blank", "noopener,noreferrer");
   } catch {
     // noop: caller has already cancelled the default action; failing to
     // re-open must not break the click
   }
+}
+
+/**
+ * Origin of the API the client is talking to (VITE_API_URL at build time),
+ * or "" when unset/malformed. Desktop shells load over file:// where
+ * window.location.origin is not a web origin, so renderer code that builds
+ * absolute URLs for the system browser (doc /d/ links, …) resolves against
+ * this. Thin wrapper over Utils/webOrigin (doc origin when http(s), API
+ * origin otherwise).
+ */
+export function apiUrlOrigin(): string {
+  return resolveWebOrigin(
+    typeof window === "undefined" ? undefined : window.location?.origin,
+    APIClient.shared?.config?.apiURL,
+  );
+}
+
+/**
+ * The fleet preview panel needs a registered renderer (the enterprise Loop
+ * module registers `chatWebhookIssuePreview`). Without one the click would
+ * open a dead "unavailable" panel instead of the link — so in OSS builds the
+ * handler is disabled entirely and fleet links keep their default behaviour
+ * (system browser on desktop / new tab on web). Kept as a function so tests
+ * can control the outcome via EndpointManager.
+ */
+export function isFleetPreviewSupported(): boolean {
+  return (
+    (EndpointManager.shared.getWithCategory(EndpointCategory.chatWebhookIssuePreview)
+      ?.length ?? 0) > 0
+  );
+}
+
+/**
+ * Module-scoped in-flight guard shared by every handler instance. A
+ * per-handler Set (created in the render factory) is rebuilt on each
+ * re-render, which lets a re-render between the click and the trust prompt
+ * resolve re-enter the prompt path and fan out a duplicate preview/fallback.
+ * Keyed on sourceUrl, so the guard is naturally per-link across messages.
+ * A stale entry (IPC never settles, e.g. a wedged dialog) would lock the
+ * link forever, so entries time out after FLEET_PROMPT_TIMEOUT_MS.
+ */
+const pendingFleetPrompts = new Map<string, number>();
+const FLEET_PROMPT_TIMEOUT_MS = 30_000;
+
+function isPendingFleetPrompt(sourceUrl: string): boolean {
+  const startedAt = pendingFleetPrompts.get(sourceUrl);
+  if (startedAt === undefined) return false;
+  if (Date.now() - startedAt > FLEET_PROMPT_TIMEOUT_MS) {
+    pendingFleetPrompts.delete(sourceUrl);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -181,11 +268,15 @@ export function fleetPreviewClickHandler(
   onRejectedFallback: (href: string) => void = openFleetLinkExternal,
 ): ((event: React.MouseEvent) => void) | undefined {
   if (!openPreview) return undefined;
-  // Per-handler in-flight guard: a link whose trust prompt is still being
-  // resolved must not fan out a second prompt / preview / fallback tab on a
-  // repeated click (Firefox dispatches BOTH click and auxclick for a middle
-  // click; impatient users double-click).
-  const pending = new Set<string>();
+  // OSS / any build without a registered preview renderer must not
+  // intercept fleet links (see isFleetPreviewSupported), BUT the handler
+  // must still exist: MessageRow renders its hit-area wrapper only when a
+  // body handler is present, and webhook messages always had that wrapper
+  // before this PR. Returning undefined here would strip the wrapper from
+  // every message in OSS builds (regression). The handler therefore stays
+  // mounted and simply never intercepts — links fall through to their
+  // default behaviour.
+  const previewSupported = isFleetPreviewSupported();
   return (event) => {
     // Filter by event type AND button: `click` must be the primary button (0),
     // `auxclick` must be the middle button (1). Firefox dispatches BOTH
@@ -195,6 +286,18 @@ export function fleetPreviewClickHandler(
     // the context menu (copy link address etc.).
     const isAuxClick = event.type === "auxclick";
     if (isAuxClick ? event.button !== 1 : event.button !== 0) return;
+    // Modifier-key clicks are deliberate browser-navigation gestures
+    // (Cmd/Ctrl-click → new tab, Shift-click → new window, Alt-click →
+    // download): the user explicitly opted out of in-app handling, so the
+    // link must keep its default behaviour untouched.
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
     if (!(event.target instanceof Element)) return;
     const anchor = event.target.closest<HTMLAnchorElement>("a[href]");
     if (!anchor) return;
@@ -203,6 +306,10 @@ export function fleetPreviewClickHandler(
     // Decide the candidate synchronously. Non-fleet links are never touched.
     const target = parseFleetIssueLinkShape(anchor.href, baseUrl);
     if (!target) return;
+    // OSS / no preview renderer: the handler stays mounted (keeps the
+    // hit-area wrapper) but never intercepts — fleet links fall through to
+    // their default behaviour (system browser / new tab).
+    if (!previewSupported) return;
     const staticallyTrusted =
       parseWebhookIssuePreviewTarget(anchor.href, baseUrl) !== null;
     // Web has no trust prompt: an unknown-origin fleet link goes to the
@@ -218,8 +325,8 @@ export function fleetPreviewClickHandler(
       return;
     }
     void (async () => {
-      if (pending.has(target.sourceUrl)) return;
-      pending.add(target.sourceUrl);
+      if (isPendingFleetPrompt(target.sourceUrl)) return;
+      pendingFleetPrompts.set(target.sourceUrl, Date.now());
       try {
         const trusted = await askTrustFleetHost(target.sourceUrl);
         // Explicit fallback rather than "relying on the default action": the
@@ -233,7 +340,7 @@ export function fleetPreviewClickHandler(
         }
         openPreview(target);
       } finally {
-        pending.delete(target.sourceUrl);
+        pendingFleetPrompts.delete(target.sourceUrl);
       }
     })();
   };

@@ -22,7 +22,8 @@ import { join, dirname, basename, extname } from "path";
 import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import { isExternalHttpUrl } from "./externalLink";
+import { decideWindowOpen } from "./externalLink";
+import { isFleetIssuePathShape } from "./fleetTrust";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -49,6 +50,7 @@ import {
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
   IPC_ASK_TRUST_FLEET_HOST,
+  IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -421,7 +423,10 @@ function readFleetTrustedHosts(): string[] {
 
 function writeFleetTrustedHosts(hosts: string[]): void {
   const path = fleetTrustedHostsPath();
-  const tempPath = `${path}.${process.pid}.tmp`;
+  // Unique temp suffix: concurrent rememberFleetTrustedHost calls (different
+  // hosts prompting at the same time) share the same `${pid}.tmp` target and
+  // race on rename; a per-call suffix keeps the atomic-write invariant.
+  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tempPath, JSON.stringify(hosts, null, 2));
   try {
     fs.renameSync(tempPath, path);
@@ -460,7 +465,10 @@ async function promptFleetTrustOnce(
       defaultId: 1, // 默认拒绝
       cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
       noLink: true, // plain buttons, no command-link Enter mapping
-      checkboxLabel: "不再询问此域名",
+      // Allow-only semantics: the checkbox is persisted only when the user
+      // clicks 允许 (rememberFleetTrustedHost runs for response === 0), so
+      // the label must not promise "never ask again" for the reject side.
+      checkboxLabel: "允许并记住此域名",
       checkboxChecked: false,
     });
     if (checkboxChecked && response === 0) {
@@ -508,6 +516,13 @@ function registerFleetTrustHostHandler() {
         return { trusted: false };
       }
       const host = parsedUrl.host;
+      // Re-validate the fleet path shape AND the decoded segment values
+      // BEFORE the remembered-host short-circuit (the renderer checked too,
+      // but the main process is the trust authority): a remembered host must
+      // not mint `trusted: true` for a URL that was never a fleet deep link,
+      // and a percent-encoded separator must not pass the shape gate and
+      // decode into path traversal afterwards.
+      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { trusted: false };
       if (readFleetTrustedHosts().includes(host)) return { trusted: true };
       return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
     }
@@ -576,6 +591,54 @@ const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
 /* ---------- external link router ---------- */
 
 /**
+ * Open an http(s) URL in the system browser from the main process, shared by
+ * the setWindowOpenHandler router and the IPC_OPEN_EXTERNAL_URL bridge.
+ * Logs origin/pathname only — a message-body URL can carry query tokens that
+ * must not end up in logs.
+ *
+ * The URL is parsed exactly once and openExternal receives `parsed.href`:
+ * WHATWG parsing strips embedded tabs/newlines and normalizes the form, so
+ * the OS handler never sees the raw renderer string.
+ */
+function openUrlExternally(rawUrl: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    logExternalUrlRejection(rawUrl);
+    return Promise.resolve(false);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    logExternalUrlRejection(rawUrl);
+    return Promise.resolve(false);
+  }
+  return shell
+    .openExternal(parsed.href)
+    .then(() => true)
+    .catch((error) => {
+      console.warn(
+        `[external-link] openExternal failed (${safeUrlLabel(rawUrl)}):`,
+        error,
+      );
+      return false;
+    });
+}
+
+function logExternalUrlRejection(url: string): void {
+  console.warn(`[external-link] denied non-http(s) URL (${safeUrlLabel(url)})`);
+}
+
+/** Origin + pathname only; never log query or fragment (token leakage). */
+function safeUrlLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "(unparseable)";
+  }
+}
+
+/**
  * Route renderer-initiated window.open / target=_blank to the system browser.
  *
  * Message-body links render as `<a target="_blank" rel="noopener noreferrer">`
@@ -587,16 +650,45 @@ const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
  * renderer and never reach this handler; the explicit rejection fallback
  * (openFleetLinkExternal → window.open) lands here and is routed to the
  * browser, which is exactly the intended "open externally" outcome.
+ *
+ * Everything non-http(s) is denied without reaching the OS. The renderer
+ * features that used the web-era `window.open("about:blank")` dance
+ * (realname verification, global-search doc open) were migrated to the
+ * IPC_OPEN_EXTERNAL_URL bridge, so there is no legitimate about:blank
+ * popup left to exempt — and an allow branch would be a bypass surface
+ * (about:blank documents commit before any will-navigate listener can
+ * cancel them, and javascript:/hash navigations never fire will-navigate).
  */
 function attachExternalLinkRouter(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalHttpUrl(url)) {
-      void shell.openExternal(url).catch((error) => {
-        console.warn(`[external-link] openExternal failed for ${url}:`, error);
-      });
+    if (decideWindowOpen(url) === "open-external") {
+      void openUrlExternally(url);
+    } else {
+      logExternalUrlRejection(url);
     }
     return { action: "deny" };
   });
+}
+
+function registerOpenExternalUrlHandler(): void {
+  ipcMain.handle(
+    IPC_OPEN_EXTERNAL_URL,
+    async (
+      event,
+      url: unknown,
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      const win = resolveTrustedOidcSender(event);
+      if (!win) return { ok: false, reason: "untrusted-sender" };
+      if (typeof url !== "string" || url === "") {
+        return { ok: false, reason: "invalid-url" };
+      }
+      if (decideWindowOpen(url) !== "open-external") {
+        logExternalUrlRejection(url);
+        return { ok: false, reason: "non-http-url" };
+      }
+      return { ok: await openUrlExternally(url) };
+    },
+  );
 }
 
 // A same-document history.pushState changes frame.url without creating a new
@@ -1945,6 +2037,7 @@ app.on("ready", () => {
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
   registerFleetTrustHostHandler();
+  registerOpenExternalUrlHandler();
   registerDesktopSettingsHandlers();
   registerDownloadSettingsHandlers();
   registerDownloadHandler();

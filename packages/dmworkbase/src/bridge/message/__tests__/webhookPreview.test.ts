@@ -6,8 +6,10 @@ import {
   parseWebhookIssuePreviewTarget,
   trustedFleetHosts,
   fleetPreviewClickHandler,
+  isFleetPreviewSupported,
 } from "../webhookPreview";
 import APIClient from "../../../Service/APIClient";
+import { EndpointManager } from "../../../Service/Module";
 import * as desktopBridge from "../../../electron/desktopBridge";
 
 /** A synthetic `click` (button 0) unless overridden. */
@@ -194,6 +196,56 @@ describe("parseFleetIssueLinkShape (structure only, no trust)", () => {
     expect(parseFleetIssueLinkShape("https://example.com/docs/1")).toBeNull();
     expect(parseFleetIssueLinkShape("https://example.com/fleet/a/issues")).toBeNull();
   });
+
+  it("rejects embedded userinfo even on a trusted host", () => {
+    // https://evil@trusted-host/... would pass the host comparison while
+    // carrying the userinfo into the serialized href — reject at the shape
+    // parser so no trust path ever sees it.
+    expect(
+      parseFleetIssueLinkShape(
+        "https://evil@im.deepminer.com.cn/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    expect(
+      parseFleetIssueLinkShape(
+        "https://user:pass@im.deepminer.com.cn/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+  });
+
+  it("rejects percent-encoded separators that would change segments after decoding", () => {
+    // Round-10 P1-1: a 4-segment shape gate is bypassable with encoded
+    // separators — /fleet/a%2F..%2Fb/issues/c%0D%0Ad decodes into path
+    // traversal / CRLF afterwards. Decoded segments must match the safe
+    // allowlist (RFC 3986 unreserved + ~) or the link is rejected.
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/a%2F..%2Fb/issues/c%0D%0Ad",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/..%2F..%2Fadmin/issues/..%2Fsecret",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/team%5C..%5Cadmin/issues/x",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    // legitimate unreserved chars still parse
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/team-a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).not.toBeNull();
+  });
 });
 
 describe("trustedFleetHosts", () => {
@@ -243,6 +295,11 @@ describe("fleetPreviewClickHandler", () => {
     (APIClient.shared.config as unknown as { apiURL: string }).apiURL =
       "https://octo.example/v1/";
     window.__POWERED_ELECTRON__ = false;
+    // The handler is gated on a registered preview renderer
+    // (isFleetPreviewSupported); simulate an enterprise build that has one.
+    vi.spyOn(EndpointManager.shared, "getWithCategory").mockReturnValue([
+      {} as never,
+    ]);
   });
 
   it("opens a trusted Fleet link immediately without prompting", async () => {
@@ -389,6 +446,28 @@ describe("fleetPreviewClickHandler", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it("does not intercept modifier-key clicks (Cmd/Ctrl/Shift/Alt — browser gestures)", async () => {
+    // Round-12 P1-3: modifier clicks are deliberate browser-navigation
+    // gestures (Cmd/Ctrl-click → new tab, Shift-click → new window,
+    // Alt-click → download). The handler must leave them untouched, not
+    // hijack them into the in-app panel.
+    const open = vi.fn();
+    const handler = fleetPreviewClickHandler(open)!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+    for (const mod of [
+      { metaKey: true },
+      { ctrlKey: true },
+      { shiftKey: true },
+      { altKey: true },
+    ]) {
+      handler(clickEvent(anchor, { ...mod, preventDefault }));
+      expect(open).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+  });
+
   it("does not intercept body text or unrelated links, and no preview callback means no handler", async () => {
     const open = vi.fn();
     const body = document.createElement("div");
@@ -404,6 +483,26 @@ describe("fleetPreviewClickHandler", () => {
     expect(fleetPreviewClickHandler(undefined)).toBeUndefined();
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("stays mounted but never intercepts when no preview renderer is registered (OSS build)", async () => {
+    // P1-2 (round-12): the OSS gate must NOT make the handler undefined —
+    // MessageRow renders its hit-area wrapper only when a body handler is
+    // present, and webhook messages always had that wrapper pre-PR. The
+    // handler stays mounted and simply never intercepts.
+    vi.spyOn(EndpointManager.shared, "getWithCategory").mockReturnValue(undefined);
+    const open = vi.fn();
+    const handler = fleetPreviewClickHandler(open);
+    expect(handler).toBeDefined();
+    expect(isFleetPreviewSupported()).toBe(false);
+    const anchor = document.createElement("a");
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+    handler!(clickEvent(anchor, { preventDefault }));
+    await flushAsync();
+    // no interception, no prompt, no preview — default behaviour untouched
+    expect(open).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 
   it("intercepts middle-click (auxclick) on a trusted fleet link", async () => {
