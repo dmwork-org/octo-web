@@ -38,6 +38,7 @@ const child = childProcess.spawn(process.execPath, [viteBin, "build"], {
     ...process.env,
     VITE_ELECTRON_BUILD: "true",
     VITE_API_URL: apiURL,
+    VITE_DOCS_API_URL: process.env.VITE_DOCS_API_URL || viteEnv.VITE_DOCS_API_URL || apiURL,
     VITE_LOOP_API_BASE:
       process.env.VITE_LOOP_API_BASE || (fleetOrigin ? `${fleetOrigin}/fleet/api/v1` : undefined),
     VITE_OCTO_DOC_BASE:
