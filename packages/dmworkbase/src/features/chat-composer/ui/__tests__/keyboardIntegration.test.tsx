@@ -34,18 +34,14 @@ describe("MessageInput keyboard integration", () => {
 
     await waitFor(() =>
       expect(
-        view.container
-          .querySelector(".ProseMirror p")
-          ?.getAttribute("data-placeholder"),
+        view.container.querySelector(".wk-messageinput-placeholder-base")?.textContent,
       ).toContain("Initial room"),
     );
 
     act(() => publishTitle?.("Renamed room"));
     await waitFor(() =>
       expect(
-        view.container
-          .querySelector(".ProseMirror p")
-          ?.getAttribute("data-placeholder"),
+        view.container.querySelector(".wk-messageinput-placeholder-base")?.textContent,
       ).toContain("Renamed room"),
     );
 
