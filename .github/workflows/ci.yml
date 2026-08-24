@@ -90,7 +90,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run workspace unit tests
-        run: pnpm turbo run test --concurrency=1
+        run: pnpm turbo run test --concurrency=1 --filter=!@octo/base
+      - name: Enforce @octo/base coverage threshold
+        run: pnpm --filter @octo/base test:coverage
 
   build:
     needs: [changes]
