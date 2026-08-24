@@ -137,6 +137,25 @@ const ENDPOINT: Record<DocShareKind, string> = {
   sheet: "sheet",
 };
 
+/**
+ * Electron has no Vite proxy, and the docs backend is independent from the IM API.
+ * The normal host client therefore needs an explicit base URL for chat-card previews.
+ * Browser builds keep the relative `/api/v1/` route so nginx/Vite can proxy it.
+ */
+function desktopDocsApiBaseURL(): string | undefined {
+  const isDesktop =
+    typeof window !== "undefined" &&
+    (window.location.protocol === "file:" || import.meta.env.VITE_ELECTRON_BUILD === "true");
+  if (!isDesktop) return undefined;
+  const raw = import.meta.env.VITE_DOCS_API_URL?.trim();
+  if (!raw) return undefined;
+  try {
+    return `${new URL(raw).origin}/api/v1/`;
+  } catch {
+    return undefined;
+  }
+}
+
 async function requestPreview(
   kind: DocShareKind,
   docId: string,
@@ -146,6 +165,7 @@ async function requestPreview(
     const body = await APIClient.shared.get<unknown>(
       `docs/${encodeURIComponent(docId)}/${ENDPOINT[kind]}`,
       {
+        baseURL: desktopDocsApiBaseURL(),
         headers: spaceId ? { "X-Space-Id": spaceId } : undefined,
         param: spaceId ? { sp: spaceId } : undefined,
       } as any,

@@ -160,8 +160,9 @@ export default class APIClient {
         });
     }
 
-     get<T>(path: string, config?: RequestConfig) {
+    get<T>(path: string, config?: RequestConfig) {
        return this.wrapResult<T>(axios.get(path, {
+        baseURL: config?.baseURL,
         params: config?.param,
         headers: config?.headers,
         responseType: config?.responseType,
@@ -173,6 +174,7 @@ export default class APIClient {
     }
     post(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.post(path, data, {
+            baseURL: config?.baseURL,
             headers: config?.headers,
             responseType: config?.responseType,
             timeout: config?.timeout,
@@ -184,6 +186,7 @@ export default class APIClient {
 
     put(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.put(path, data, {
+            baseURL: config?.baseURL,
             params: config?.param,
             headers: config?.headers,
             timeout: config?.timeout,
@@ -194,6 +197,7 @@ export default class APIClient {
 
     patch(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.patch(path, data, {
+            baseURL: config?.baseURL,
             params: config?.param,
             headers: config?.headers,
             timeout: config?.timeout,
@@ -204,6 +208,7 @@ export default class APIClient {
 
     delete(path: string, config?: RequestConfig) {
         return this.wrapResult(axios.delete(path, {
+            baseURL: config?.baseURL,
             params: config?.param,
             data: config?.data,
             headers: config?.headers,
@@ -248,6 +253,8 @@ export class RequestConfig {
     param?: any
     data?:any
     resp?: () => APIResp
+    /** Optional per-request base URL, used by desktop-only independent services. */
+    baseURL?: string
     /**
      * 逐请求显式 HTTP 头，转发给 axios 并由其合并进最终请求头。用于让 per-request 头
      * （如 standalone /d/:docId preflight 的 X-Space-Id）真正上 wire。合并策略见
