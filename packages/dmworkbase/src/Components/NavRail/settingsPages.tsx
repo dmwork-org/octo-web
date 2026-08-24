@@ -21,7 +21,8 @@ import { getDocument } from "../../Service/DocumentService";
 import Checkbox from "../Checkbox";
 import { acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
 import { Dap } from "../../Service/Dap";
-import { openElectronSystemSettings } from "../../electron/desktopBridge";
+import { getElectronLinksBridge, openElectronSystemSettings } from "../../electron/desktopBridge";
+import { resolveWebOrigin } from "../../Utils/webOrigin";
 
 export function SettingsRow({ title, description, trailing, children }: { title: string; description?: React.ReactNode; trailing?: React.ReactNode; children?: React.ReactNode }) { return <div className="wk-settings-center__row"><div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div>{description && <div className="wk-settings-center__row-description">{description}</div>}</div>{children ?? trailing}</div>; }
 
@@ -72,7 +73,7 @@ const mobileUpdaterPaths: Record<string, string> = {
 
 const fetchMobileUpdater = (url: string, init?: RequestInit) => apiFetchJson(url, init);
 
-export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, onAbout, onChangelog, onOpenOnboarding }: { item?: SettingsItem; environment: import("../../Runtime").RuntimeEnvironment; accountCenterUrl?: string; onSecrets?: () => void; onAbout?: () => void; onChangelog?: () => void; onOpenOnboarding?: () => void }) {
+export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, onAbout, onOpenOnboarding }: { item?: SettingsItem; environment: import("../../Runtime").RuntimeEnvironment; accountCenterUrl?: string; onSecrets?: () => void; onAbout?: () => void; onOpenOnboarding?: () => void }) {
   if (item?.id === "general") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.general.title")}><SettingsSection title={t("base.navRail.settingsCenter.section.displayLanguage")}><SettingsRow title={t("base.navRail.settingsCenter.row.language")} description={t("base.navRail.settingsCenter.row.languageDescription")} trailing={<select className="wk-settings-center__demo-select" aria-label={t("base.navRail.settingsCenter.row.language")} value={i18n.getLocale()} onChange={(event) => { const locale = event.target.value as Locale; i18n.setLocale(locale); if (WKApp.shared.isLogined()) void updateUserLanguagePreference(locale).catch(() => Toast.error(t("base.navRail.settingsCenter.value.saveFailed"))); }}><option value="zh-CN">{t("base.navRail.settingsCenter.language.zh")}</option><option value="en-US">{t("base.navRail.settingsCenter.language.en")}</option></select>} /><SettingsRow title={t("base.navRail.settingsCenter.row.darkMode")} description={t("base.navRail.settingsCenter.row.darkModeDescription")} trailing={<SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />} /></SettingsSection></SettingsPageFrame>;
   if (item?.id === "account") return <AccountSettingsPage accountCenterUrl={accountCenterUrl} onSecrets={onSecrets} />;
   if (item?.id === "notifications") {
@@ -83,7 +84,7 @@ export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, o
   if (item?.id === "voice") return <VoiceInputSettingsPage environment={environment} />;
   if (item?.id === "shortcuts") return <ShortcutsSettingsPage environment={environment} />;
   if (item?.id === "devices") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.devices.title")} description={t("base.navRail.settingsCenter.page.devices.description")}><div className="wk-settings-center__resource-sections">{settingsResourceGroups.map((group) => <ResourceSection key={group.titleKey} title={t(group.titleKey)} category={group.category}>{group.resources.map((resource) => <ResourceCard key={resource.id} {...resource} title={t(resource.titleKey)} description={t(resource.descriptionKey)} category={group.category} action={resource.url && resource.actionKey ? <a className={`wk-settings-center__resource-action${group.category === "clients" ? " wk-settings-center__resource-action--client" : ""}`} href={resource.url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />{t(resource.actionKey)}</a> : undefined} />)}</ResourceSection>)}</div></SettingsPageFrame>;
-  if (item?.id === "about") return <AboutSettingsPage onAbout={onAbout} onChangelog={onChangelog} onOpenOnboarding={onOpenOnboarding} />;
+  if (item?.id === "about") return <AboutSettingsPage onAbout={onAbout} onOpenOnboarding={onOpenOnboarding} />;
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.fallback.title")} description={t("base.navRail.settingsCenter.page.fallback.description")}><SettingsRow title={t("base.navRail.settingsCenter.row.placeholder")} description={t("base.navRail.settingsCenter.placeholder")} /></SettingsPageFrame>;
 }
 
@@ -215,8 +216,28 @@ function NotificationsSettingsPage({ environment }: { environment: import("../..
   </SettingsPageFrame>;
 }
 function SettingsPageFrame({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) { return <div className="wk-settings-center__page"><header className="wk-settings-center__page-header"><h2>{title}</h2>{description && <p>{description}</p>}</header><section className="wk-settings-center__section-content">{children}</section></div>; }
-function AboutSettingsPage({ onAbout, onChangelog, onOpenOnboarding }: { onAbout?: () => void; onChangelog?: () => void; onOpenOnboarding?: () => void }) {
-  const externalLink = (label: string, href: string) => <a className="wk-settings-center__external-link" href={href} target="_blank" rel="noreferrer" aria-label={label}><ExternalLink aria-hidden="true" /></a>;
+function AboutSettingsPage({ onAbout, onOpenOnboarding }: { onAbout?: () => void; onOpenOnboarding?: () => void }) {
+  const productManualUrl = "/product-docs";
+  const externalLink = (label: string, href: string) => {
+    const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+      const linksBridge = getElectronLinksBridge();
+      if (!linksBridge) return;
+
+      const webOrigin = resolveWebOrigin(window.location.origin, WKApp.apiClient?.config?.apiURL);
+      let absoluteUrl: string;
+      try {
+        absoluteUrl = new URL(href, webOrigin || undefined).href;
+      } catch {
+        return;
+      }
+      if (!/^https?:$/.test(new URL(absoluteUrl).protocol)) return;
+
+      event.preventDefault();
+      void linksBridge.openExternal(absoluteUrl).catch(() => undefined);
+    };
+
+    return <a className="wk-settings-center__external-link" href={href} target="_blank" rel="noreferrer" aria-label={label} onClick={handleClick}><ExternalLink aria-hidden="true" /></a>;
+  };
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.about.title")}>
     <div className="wk-settings-center__about-identity">
       <img className="wk-settings-center__about-logo" src={octoLogo} alt={t("base.navRail.settingsCenter.about.octoLogoAlt")} />
@@ -225,10 +246,11 @@ function AboutSettingsPage({ onAbout, onChangelog, onOpenOnboarding }: { onAbout
     </div>
     <SettingsSection title={t("base.navRail.settingsCenter.section.help")}>
       <SettingsRow title={t("base.navRail.settingsCenter.row.guide")} trailing={onOpenOnboarding ? <button type="button" className="wk-settings-center__about-icon-button" onClick={onOpenOnboarding} aria-label={t("base.navRail.settingsCenter.row.guide")}><ChevronIcon /></button> : undefined} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.changelog")} description={t("base.navRail.settingsCenter.row.changelogDescription")} trailing={onChangelog ? <button type="button" className="wk-settings-center__about-icon-button" onClick={onChangelog} aria-label={t("base.navRail.settingsCenter.row.changelog")}><ChevronIcon /></button> : undefined} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.feedback")} trailing={externalLink(t("base.navRail.settingsCenter.row.feedback"), "https://github.com/Mininglamp-OSS/octo-web/issues/new")} />
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.productInfo")}>
+      <SettingsRow title={t("base.navRail.settingsCenter.row.productManual")} trailing={externalLink(t("base.navRail.settingsCenter.row.productManual"), productManualUrl)} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.changelog")} trailing={externalLink(t("base.navRail.settingsCenter.row.changelog"), "/changelog")} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.officialWebsite")} trailing={externalLink(t("base.navRail.settingsCenter.row.officialWebsite"), "https://www.mininglamp.com/")} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.openSource")} trailing={externalLink(t("base.navRail.settingsCenter.row.openSource"), "https://github.com/Mininglamp-OSS")} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.license")} trailing={externalLink(t("base.navRail.settingsCenter.row.license"), "https://github.com/Mininglamp-OSS/octo-web/blob/main/LICENSE")} />
@@ -449,7 +471,7 @@ function ResourceCard({ id, title, description, status, category, action }: Reso
   if (category === "clients") {
     return <article className="wk-settings-center__resource-card wk-settings-center__resource-card--clients" data-resource-status={status}>
       <div className="wk-settings-center__client-head"><span className="wk-settings-center__resource-icon" aria-hidden="true"><ResourceBrandIcon id={id} /></span><h4>{title}</h4></div>
-      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`} aria-busy={qrState.status === "loading"}>{qrState.status === "ready" ? <QRCodeSVG value={qrState.downloadUrl} size={104} /> : qrState.status === "loading" ? <Spin /> : <div className="wk-settings-center__resource-qr-error" role="alert"><span>{t("base.navRail.settingsCenter.value.qrLoadFailed")}</span><button type="button" className="wk-settings-center__manage-button" onClick={qrState.retry}>{t("base.navRail.settingsCenter.action.retry")}</button></div>}</div> : <div className="wk-settings-center__client-status">{description}</div>}
+      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`} aria-busy={qrState.status === "loading"}>{qrState.status === "ready" ? <QRCodeSVG value={qrState.downloadUrl} size={104} /> : qrState.status === "loading" ? <Spin /> : <div className="wk-settings-center__resource-qr-error" role="alert"><span>{t("base.navRail.settingsCenter.value.qrLoadFailed")}</span><button type="button" className="wk-settings-center__manage-button" onClick={qrState.retry}>{t("base.navRail.settingsCenter.action.retry")}</button></div>}</div> : <div className="wk-settings-center__client-status"><span>{description}</span>{status === "coming-soon" && <SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />}</div>}
       {action && <div className="wk-settings-center__resource-actions">{action}</div>}
     </article>;
   }

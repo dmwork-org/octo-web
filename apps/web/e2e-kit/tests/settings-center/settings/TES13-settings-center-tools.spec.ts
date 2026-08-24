@@ -22,6 +22,10 @@ test("@TES13 @p1 @settings-center @tools 工具页展示快捷键和资源", asy
   for (const name of ["Android", "iPhone", "Windows", "macOS", "Octo Chrome Extension", "OpenClaw Plugin"]) {
     await expect(content.getByText(name, { exact: true })).toBeVisible();
   }
+  const desktopSection = content.locator("section").filter({ hasText: /^Desktop/ });
+  const desktopCards = desktopSection.locator('[data-resource-status="coming-soon"]');
+  await expect(desktopCards).toHaveCount(2);
+  await expect(desktopCards).toHaveText([/Coming soon/, /Coming soon/]);
   await expect(content).toContainText("Mobile");
   await expect(content).toContainText("Extensions and connections");
   await expect(content).toContainText("Source: ClawHub · GitHub");

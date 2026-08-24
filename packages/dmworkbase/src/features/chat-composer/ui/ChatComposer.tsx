@@ -106,7 +106,6 @@ import type {
   ChatComposerVoiceContext,
 } from "../ports";
 import { getMicrophonePermission, getVoiceShortcut, getVoiceShortcutLabelKey, isMicrophonePermissionUndetectable, refreshMicrophonePermission, subscribeMicrophonePermission, voiceSettingsStore, type VoiceSettings } from "../../../Service/VoiceSettingsStore";
-
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 
 function commonRecoveredTarget(
