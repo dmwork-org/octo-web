@@ -7,6 +7,9 @@ const hoisted = vi.hoisted(() => {
     const apiDelete = vi.fn()
     const mittEmit = vi.fn()
     const deleteChannelInfo = vi.fn()
+    const deleteImChannelInfo = vi.fn((sdk: { channelManager: { deleteChannelInfo: (channel: unknown) => void } }, channel: unknown) => {
+        sdk.channelManager.deleteChannelInfo(channel)
+    })
     const removeConversation = vi.fn()
     // axios doubles: `sharedPost` is the global (interceptor-bearing) axios.post;
     // `isolatedPost` is the post() of the axios.create() instance datasource.ts
@@ -21,6 +24,7 @@ const hoisted = vi.hoisted(() => {
         apiDelete,
         mittEmit,
         deleteChannelInfo,
+        deleteImChannelInfo,
         removeConversation,
         sharedPost,
         isolatedPost,
@@ -60,6 +64,7 @@ vi.mock("@octo/base", () => ({
     GroupRole: {},
     RequestConfig: class {},
     WKApp: hoisted.mockWKApp,
+    deleteImChannelInfo: hoisted.deleteImChannelInfo,
     IncomingWebhookService: {
         list: (groupNo: string, threadShortId?: string) =>
             hoisted.apiGet(threadShortId
