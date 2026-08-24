@@ -51,6 +51,22 @@ describe("fetchDocPreview — kind → endpoint mapping (blocker #2 regression)"
     const cfg = apiGet.mock.calls[0][1] as { headers?: Record<string, string> };
     expect(cfg.headers?.["X-Space-Id"]).toBe("sp_other");
   });
+
+  it("uses the independent docs backend for Electron previews", async () => {
+    vi.stubGlobal("window", { location: { protocol: "file:" } });
+    vi.stubEnv("VITE_ELECTRON_BUILD", "true");
+    vi.stubEnv("VITE_DOCS_API_URL", "https://docs.example.com/base-ignored");
+    apiGet.mockResolvedValueOnce({});
+
+    try {
+      await fetchDocPreview("doc", "d_1", "sp_1");
+      const cfg = apiGet.mock.calls[0][1] as { baseURL?: string };
+      expect(cfg.baseURL).toBe("https://docs.example.com/api/v1/");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("fetchDocPreview — ACL-safe status mapping (blocker #3 / ACL design)", () => {
