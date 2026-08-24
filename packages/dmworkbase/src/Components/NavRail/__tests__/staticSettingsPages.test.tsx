@@ -18,6 +18,7 @@ vi.mock("../../MeInfo", () => ({ MeInfo: () => <div data-testid="me-info" /> }))
 vi.mock("../../../Service/apiFetch", () => ({ apiFetchJson: vi.fn(async () => ({})) }));
 
 import { i18n } from "../../../i18n";
+import { voiceSettingsStore } from "../../../Service/VoiceSettingsStore";
 import { SettingsPage } from "../settingsPages";
 
 const webEnvironment = {
@@ -31,6 +32,7 @@ let container: HTMLDivElement;
 
 beforeEach(() => {
   i18n.setLocale("zh-CN", { notify: false, persist: false });
+  voiceSettingsStore.set({ enabled: true });
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -66,6 +68,12 @@ describe("static settings pages", () => {
     renderPage("shortcuts", { environment: { ...webEnvironment, os: "macos", capabilities: new Set(["voiceInput"]) } });
     expect(container.textContent).toContain("按住说话");
     expect(container.textContent).toContain("右 Option");
+  });
+
+  it("hides voice shortcuts when voice input is disabled", () => {
+    voiceSettingsStore.set({ enabled: false });
+    renderPage("shortcuts", { environment: { ...webEnvironment, os: "macos", capabilities: new Set(["voiceInput"]) } });
+    expect(container.textContent).toBe("");
   });
 
   it("renders device resources and about page actions", async () => {
