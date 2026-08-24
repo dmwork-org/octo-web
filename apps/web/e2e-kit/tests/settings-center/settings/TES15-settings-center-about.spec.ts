@@ -10,6 +10,9 @@ test("@TES15 @p1 @settings-center @about 关于页展示产品信息", async ({ 
 
   await expect(content).toContainText("Help and about");
   await expect(content).toContainText("Current version");
+  await expect(content.locator(".wk-settings-center__about-update-actions")).toBeVisible();
+  await expect(content.getByRole("status")).toContainText("Not checked yet");
+  await expect(content.getByRole("button", { name: "Check for updates" })).toBeVisible();
   for (const label of ["Welcome guide", "Feedback", "Changelog", "Octo website", "Product manual", "Octo open source", "Open-source licenses"]) {
     await expect(content.getByText(label, { exact: true })).toBeVisible();
   }

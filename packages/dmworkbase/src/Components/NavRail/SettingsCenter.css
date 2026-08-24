@@ -61,6 +61,7 @@
 .wk-settings-center__about-copy { display: grid; min-width: 0; gap: 4px; }
 .wk-settings-center__about-copy strong { font-size: 16px; font-weight: 600; }
 .wk-settings-center__about-copy span { color: var(--wk-text-secondary); font-size: 12px; line-height: 1.5; }
+.wk-settings-center__about-update-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .wk-settings-center__about-update { min-height: 32px; padding: 0 12px; border: 1px solid var(--wk-border-default); border-radius: 6px; background: var(--wk-bg-surface); color: var(--wk-text-primary); cursor: pointer; font-size: 13px; white-space: nowrap; }
 .wk-settings-center__about-update:hover { background: var(--wk-bg-base); }
 .wk-settings-center__about-icon-button { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--wk-text-tertiary); cursor: pointer; font-size: 24px; line-height: 1; }
