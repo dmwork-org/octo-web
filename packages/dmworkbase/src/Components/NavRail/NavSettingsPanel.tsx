@@ -3,6 +3,7 @@ import React, { Component } from "react";
 import { Button, Progress, Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { t } from "../../i18n";
+import { isElectronPowered, sendElectronCheckUpdate } from "../../electron/desktopBridge";
 import { checkVersionOnceWithStatus } from "../../Utils/versionChecker";
 import ChangelogMarkdown from "./ChangelogMarkdown";
 import SettingsCenter, { OpenSecretsRequest } from "./SettingsCenter";
@@ -14,7 +15,8 @@ export interface NavSettingsPanelProps {
     showAppUpdate: boolean;
     appUpdateProgress: number;
     showAppUpdateOperation: boolean;
-    lastVersionInfo?: { appVersion: string; updateDesc: string };
+    appUpdateDownloaded?: boolean;
+    lastVersionInfo?: { appVersion: string; updateDesc: string; forceUpdate?: boolean };
     onOpenOnboarding?: () => void;
     onToggleSetting: () => void;
     onSetShowAppVersion: (v: boolean) => void;
@@ -64,12 +66,15 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
             showAppUpdate,
             appUpdateProgress,
             showAppUpdateOperation,
+            appUpdateDownloaded,
             lastVersionInfo,
             onOpenOnboarding,
             onSetShowAppVersion,
             onInstallUpdate,
             onNotifyListener,
         } = this.props;
+        const forceUpdate = Boolean(lastVersionInfo?.forceUpdate);
+        const canCloseUpdateModal = !forceUpdate && !showAppUpdate;
 
         const providerId = WKApp.loginInfo.loginProvider;
         const oidcProvider = providerId ? WKApp.remoteConfig.oidcProviders.find((p) => p.id === providerId) : undefined;
@@ -94,18 +99,25 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                 <WKModal
                     title={t("base.navRail.settingsPanel.updateCheckTitle")}
                     visible={showAppVersion}
-                    options={{ maskClosable: false, closeOnEsc: false }}
-                    onCancel={() => { onSetShowAppVersion(false); onNotifyListener(); }}
+                    options={{ closable: canCloseUpdateModal, maskClosable: false, closeOnEsc: canCloseUpdateModal }}
+                    onCancel={() => {
+                        if (!canCloseUpdateModal) return;
+                        onSetShowAppVersion(false);
+                        onNotifyListener();
+                    }}
                     footer={showAppUpdateOperation ? (
                         <>
-                            <Button theme="solid" type="tertiary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</Button>
-                            <Button theme="solid" type="primary" onClick={onInstallUpdate}>{t("base.common.update")}</Button>
+                            {!forceUpdate && <Button theme="solid" type="tertiary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</Button>}
+                            <Button theme="solid" type="primary" onClick={onInstallUpdate}>
+                                {appUpdateDownloaded ? t("base.common.install") : t("base.common.update")}
+                            </Button>
                         </>
                     ) : undefined}
                 >
                     <div style={{ overflow: "auto", height: 200 }}>
                         {lastVersionInfo && <div className="wk-versioncheckview"><div className="wk-versioncheckview-content"><div className="wk-versioncheckview-updateinfo"><ul>
                             <li>{t("base.navRail.settingsPanel.currentVersion")}: {WKApp.config.appVersion}&nbsp;&nbsp;{t("base.navRail.settingsPanel.targetVersion")}: {lastVersionInfo.appVersion}</li>
+                            {forceUpdate && <li>{t("base.navRail.settingsPanel.forceUpdateRequired")}</li>}
                             <li>{t("base.navRail.settingsPanel.updateContent")}</li>
                             <li><ChangelogMarkdown content={lastVersionInfo.updateDesc} /></li>
                         </ul></div></div></div>}
@@ -117,6 +129,10 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
     }
 
     private checkVersion = async () => {
+        if (isElectronPowered()) {
+            sendElectronCheckUpdate();
+            return;
+        }
         const result = await checkVersionOnceWithStatus();
         if (result.status !== "skipped") this.setState({ aboutUpdateStatus: result });
         if (result.status === "update") Toast.info(`${t("base.navRail.settingsPanel.versionAvailable")}: ${result.version}`);
