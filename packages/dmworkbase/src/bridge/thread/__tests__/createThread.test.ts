@@ -142,6 +142,12 @@ describe("trackSubchannelCreated 关键属性", () => {
     })
   })
 
+  it("does not track when the response has no usable subchannel id", () => {
+    trackSubchannelCreated({} as any, "channel_toolbar", { title: "Topic" })
+
+    expect(hoisted.dapTrack).not.toHaveBeenCalled()
+  })
+
   it("strips a Space prefix from the parent channel_id", () => {
     trackSubchannelCreated({ short_id: "t3" } as any, "channel_toolbar", {
       title: "a".repeat(31),

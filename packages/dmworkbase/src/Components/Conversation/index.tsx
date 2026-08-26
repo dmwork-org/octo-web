@@ -175,6 +175,35 @@ function forwardBlockedMessageKey(error: unknown): string | null {
   return null;
 }
 
+export function classifyAssistantIntentText(text: string | undefined): string {
+  if (!text) return "other";
+  if (/总结|摘要|概括|summariz|summary/i.test(text)) return "summary";
+  if (/分析|解读|analyz|analysis/i.test(text)) return "analysis";
+  if (
+    text.includes("```") ||
+    /写(段|个|一)?代码|代码实现|生成代码|帮我(写|实现).*(函数|方法|代码|脚本)|报错|编译|\bdebug\b|\bfunction\b|\bclass\b|\bdef\b/i.test(text)
+  ) {
+    return "code_gen";
+  }
+  if (text.includes("?") || text.includes("？")) return "qa";
+  return "other";
+}
+
+export async function deleteSelectedConversationMessages(
+  vm: Pick<ConversationVM, "deleteMessages" | "unCheckAllMessages"> & { editOn: boolean },
+  messages: Message[],
+): Promise<void> {
+  if (messages.length === 0) return;
+  try {
+    await vm.deleteMessages(messages);
+    vm.editOn = false;
+    vm.unCheckAllMessages();
+  } catch (error) {
+    Toast.error(t("base.conversation.deleteConfirm.failed"));
+    throw error;
+  }
+}
+
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
  */
@@ -692,31 +721,7 @@ export class Conversation
     if (!(content instanceof MessageText)) {
       return "other";
     }
-    const text = (content as MessageText).text || "";
-    if (!text) return "other";
-
-    // 摘要：含总结/摘要/概括（显式意图优先，避免被 code_gen 的宽泛词吞掉）
-    if (/总结|摘要|概括|summariz|summary/i.test(text)) {
-      return "summary";
-    }
-    // 分析：含分析/解读
-    if (/分析|解读|analyz|analysis/i.test(text)) {
-      return "analysis";
-    }
-    // 代码生成：需代码围栏，或明确的写码信号（收紧，不再用 code/let/const 等日常词误命中）
-    if (
-      text.includes("```") ||
-      /写(段|个|一)?代码|代码实现|生成代码|帮我(写|实现).*(函数|方法|代码|脚本)|报错|编译|\bdebug\b|\bfunction\b|\bclass\b|\bdef\b/i.test(
-        text
-      )
-    ) {
-      return "code_gen";
-    }
-    // 问答：含问号
-    if (text.includes("?") || text.includes("？")) {
-      return "qa";
-    }
-    return "other";
+    return classifyAssistantIntentText((content as MessageText).text);
   }
 
   // 统一上报转发结果。区分「全部失败」与「部分失败（带计数）」，全部成功不提示。
@@ -3261,17 +3266,7 @@ export class Conversation
                           const messages = checkedMessagewraps
                             .map((m) => m.message)
                             .filter(Boolean);
-                          if (messages.length === 0) return;
-                          try {
-                            await vm.deleteMessages(messages);
-                            vm.editOn = false;
-                            vm.unCheckAllMessages();
-                          } catch (e) {
-                            Toast.error(
-                              t("base.conversation.deleteConfirm.failed")
-                            );
-                            throw e;
-                          }
+                          await deleteSelectedConversationMessages(vm, messages);
                         },
                       });
                     }}
