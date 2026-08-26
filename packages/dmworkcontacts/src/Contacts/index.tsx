@@ -925,6 +925,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             <UserInfo
                                 uid={this.state.userInfoUid}
                                 onClose={() => this.setState({ userInfoVisible: false })}
+                                trackContactMessageEntry
                             />
                         )}
                     </WKModal>
@@ -947,6 +948,13 @@ export default class ContactsList extends Component<any, ContactsState> {
                             }
                         }}
                         onChat={(channel) => {
+                            // contact_message_clicked:通讯录 AI 名片「发消息」收口点(此 BotDetailModal 实例专属通讯录页,
+                            // 不同于全局共享实例)。channel.channelID = bot uid。
+                            Dap.shared.track('contact_message_clicked', {
+                                object_id: channel.channelID,
+                                contact_type: 'ai',
+                                space_id: WKApp.shared.currentSpaceId || undefined,
+                            })
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ botDetailVisible: false })
                         }}
@@ -959,6 +967,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                         visible={this.state.groupCardVisible}
                         onClose={() => this.setState({ groupCardVisible: false })}
                         onEnterChat={(channel) => {
+                            // channel_opened:通讯录群聊名片「进入聊天」收口点。会话列表行用 data-track 发同名事件,
+                            // 但此路径经 GroupCard 弹窗多层,点击委托兜不住 → 命令式补,object_id 口径对齐(原始 channelID)。
+                            Dap.shared.track('channel_opened', { object_id: channel.channelID })
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ groupCardVisible: false })
                         }}
