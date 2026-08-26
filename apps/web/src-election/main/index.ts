@@ -50,6 +50,8 @@ import {
   IPC_SCREENSHOTS_START,
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
+  IPC_TRUSTED_DOMAINS_GET,
+  IPC_TRUSTED_DOMAIN_REMOVE,
   IPC_ASK_TRUST_FLEET_HOST,
   IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
@@ -72,6 +74,13 @@ import { INDEX_HTML, reloadShell } from "./reloadShell";
 import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 import { clearAuthSessionCookies } from "./clearAuthSession";
+import {
+  addFleetTrustedHost,
+  normalizeTrustedHost,
+  readFleetTrustedHosts as readTrustedHostsFile,
+  removeFleetTrustedHost,
+  writeFleetTrustedHosts as writeTrustedHostsFile,
+} from "./fleetTrustedHosts";
 import { DOWNLOAD_SETTINGS_VERSION, normalizeDownloadSettings, sanitizeDownloadFilename, type DownloadSettings } from "./downloadSettings";
 import { attachTrayPrimaryClick, attachTraySecondaryMenu } from "./trayBehavior";
 
@@ -414,34 +423,45 @@ function registerKeepAwakeHandlers() {
 const fleetTrustedHostsPath = () => join(app.getPath("userData"), "fleet-trusted-hosts.json");
 
 function readFleetTrustedHosts(): string[] {
-  try {
-    const raw = JSON.parse(fs.readFileSync(fleetTrustedHostsPath(), "utf8"));
-    if (!Array.isArray(raw)) throw new Error("Invalid fleet-trusted-hosts file");
-    return raw.filter((h): h is string => typeof h === "string");
-  } catch {
-    return [];
-  }
+  return readTrustedHostsFile(fleetTrustedHostsPath());
 }
 
-function writeFleetTrustedHosts(hosts: string[]): void {
-  const path = fleetTrustedHostsPath();
-  // Unique temp suffix: concurrent rememberFleetTrustedHost calls (different
-  // hosts prompting at the same time) share the same `${pid}.tmp` target and
-  // race on rename; a per-call suffix keeps the atomic-write invariant.
-  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(hosts, null, 2));
-  try {
-    fs.renameSync(tempPath, path);
-  } catch (error) {
-    try { fs.unlinkSync(tempPath); } catch { /* best effort cleanup */ }
-    throw error;
-  }
+function writeFleetTrustedHosts(hosts: Iterable<unknown>): void {
+  writeTrustedHostsFile(fleetTrustedHostsPath(), hosts);
 }
 
-function rememberFleetTrustedHost(host: string): void {
-  const hosts = new Set(readFleetTrustedHosts());
-  hosts.add(host);
-  writeFleetTrustedHosts(Array.from(hosts));
+function rememberFleetTrustedHost(host: string): string {
+  const canonical = normalizeTrustedHost(host);
+  if (!canonical) throw new Error("invalid trusted host");
+  addFleetTrustedHost(fleetTrustedHostsPath(), canonical);
+  return canonical;
+}
+
+function removeFleetTrustedHostFromStore(host: string): string[] {
+  return removeFleetTrustedHost(fleetTrustedHostsPath(), host);
+}
+
+function registerTrustedDomainsSettingsHandlers(): void {
+  ipcMain.handle(IPC_TRUSTED_DOMAINS_GET, (event) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    // Built-in seeds are not shown: they cannot be revoked and would only
+    // confuse the user if a remove button were offered for them.
+    return readFleetTrustedHosts().filter((host) => !isBuiltInTrustSeed(host));
+  });
+  ipcMain.handle(IPC_TRUSTED_DOMAIN_REMOVE, (event, host: unknown) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    const normalizedHost = normalizeTrustedHost(host);
+    if (!normalizedHost) throw new Error("invalid trusted host");
+    // Provenance-aware: a host that is still covered by a built-in seed
+    // (static allowlist / API origin) is never revocable — neither from the
+    // persisted file nor from the live in-memory set.
+    if (isBuiltInTrustSeed(normalizedHost)) {
+      return readFleetTrustedHosts();
+    }
+    const hosts = removeFleetTrustedHostFromStore(normalizedHost);
+    trustedOrigins?.delete(normalizedHost);
+    return hosts;
+  });
 }
 
 /* ---------- external-link trust policy (confirm unknown origins) ---------- */
@@ -497,6 +517,23 @@ function getTrustedOrigins(): Set<string> {
 
 function isTrustedOrigin(host: string): boolean {
   return getTrustedOrigins().has(host);
+}
+
+/**
+ * Built-in trust seeds (static allowlist / API origin) are not user-managed:
+ * they must never appear in the trusted-domains list, and a remove request
+ * must never be able to revoke them from the live set.
+ */
+function isBuiltInTrustSeed(host: string): boolean {
+  if (STATIC_FLEET_PREVIEW_HOSTS.has(host)) return true;
+  if (OIDC_API_ORIGIN) {
+    try {
+      if (new URL(OIDC_API_ORIGIN).host === host) return true;
+    } catch {
+      // ignore malformed origin
+    }
+  }
+  return false;
 }
 
 // One prompt per URL at a time: rapid clicks (or several unknown-host
@@ -555,8 +592,11 @@ async function confirmOpenExternalInBrowser(
     if (response === 0) {
       if (checkboxChecked) {
         try {
-          rememberFleetTrustedHost(host);
-          trustedOrigins.add(host);
+          // Persist and seed the in-memory set with the SAME canonical key,
+          // otherwise the settings page lists one key while the live trust
+          // holds another, and removal silently fails for this session.
+          const canonical = rememberFleetTrustedHost(host);
+          trustedOrigins.add(canonical);
         } catch {
           // A storage failure must not convert the user's explicit 允许 into
           // a reject: degrade to "trusted for this click, not remembered".
@@ -2151,6 +2191,7 @@ app.on("ready", () => {
   }
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
+  registerTrustedDomainsSettingsHandlers();
   registerFleetTrustHostHandler();
   registerOpenExternalUrlHandler();
   registerDesktopSettingsHandlers();
