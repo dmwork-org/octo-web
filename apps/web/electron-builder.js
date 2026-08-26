@@ -60,8 +60,6 @@ module.exports = {
     icon: "resources/icons/icon.icns",
   },
   dmg: {
-    // eslint-disable-next-line no-template-curly-in-string
-    title: "${productName} ${version}",
     // background: 'build/appdmg.png', // dmg安装窗口背景图
     icon: "resources/icons/icon.icns", // 客户端图标
     iconSize: 100, // 安装图标大小

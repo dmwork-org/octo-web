@@ -19,13 +19,7 @@ import {
 } from "./vite.enterpriseHtml";
 
 export default defineConfig(({ mode }) => {
-  const loadedEnv = loadEnv(mode, process.cwd(), "VITE_");
-  const env = {
-    ...loadedEnv,
-    ...Object.fromEntries(
-      Object.entries(process.env).filter(([key]) => key.startsWith("VITE_"))
-    ),
-  };
+  const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
   const mailApiUrl = env.VITE_MAIL_API_URL || apiUrl || "http://127.0.0.1:8080";
   const agentMailApiUrl =
@@ -68,13 +62,6 @@ export default defineConfig(({ mode }) => {
       );
     }
   }
-  const electronUpdaterApiUrl = (() => {
-    const explicit = env.VITE_ELECTRON_UPDATER_API_URL;
-    if (explicit) {
-      return explicit.endsWith("/") ? explicit : `${explicit}/`;
-    }
-    return new URL("/api/v1/common/updater/", apiOrigin).toString();
-  })();
 
   return {
     // Electron loads the production entry through file://, so its assets must
@@ -130,7 +117,6 @@ export default defineConfig(({ mode }) => {
                       // accepting an origin nominated by the renderer.
                       oidcApiOrigin: apiOrigin,
                       oidcEndSessionOrigins: [apiOrigin, ...oidcTrustedOrigins],
-                      electronUpdaterApiUrl,
                     },
                     null,
                     2
