@@ -272,7 +272,13 @@ export default class BaseModule implements IModule {
 
     // 账号级快捷静音复用 WuKongIM CMD；回前台、网络恢复和重连时用 GET
     // 校准，CMD 只作为低延迟更新，不承担最终一致性。
-    const refreshQuickMute = () => { void quickMuteStore.refresh().catch(() => undefined); };
+    const refreshQuickMute = () => {
+      // The login page also receives foreground events. Do not call an
+      // authenticated endpoint without a session: its 401 is interpreted by
+      // APIClient as an expired login and reloads /login, discarding form input.
+      if (window.location.pathname.endsWith('/login') || !WKApp.loginInfo.isLogined()) return;
+      void quickMuteStore.refresh().catch(() => undefined);
+    };
     voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
     quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
     WKApp.mittBus.on("wk:app-foreground", refreshQuickMute);
