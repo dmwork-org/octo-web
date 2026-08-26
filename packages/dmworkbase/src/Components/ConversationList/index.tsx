@@ -64,6 +64,9 @@ import {
 } from "../../bridge/channelSetting/channelSettingActions";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { hideConversation } from "./hideConversation";
+import { Dap } from "../../Service/Dap";
+import { channelOpenedTrackPayload, resolveAiPeer } from "../../Service/channelOpenedTracking";
+import { isMessageAuthorAi } from "../Conversation/replyAiIdentity";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 export function isConversationPinned(conversationWrap: ConversationWrap): boolean {
@@ -206,9 +209,8 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     <div
       ref={setNodeRef}
       style={style}
-      // 子区行不发 channel_opened:改由 Pages/Chat componentDidMount 命令式发 subchannel_opened
-      // (带父群 channel_id + 子区 short_id,DOM 规则带不了)。两事件按手势划分、不重叠。
-      data-track={isThread ? undefined : "channel_opened"}
+      // data-object-id 仅作 E2E 行定位 hook(chat-supplement/chat-layout-coverage.spec 用它选行),
+      // channel_opened 已改命令式采集、不再读它;保留以免破坏 Playwright @p1 用例(review P0-1)。
       data-object-id={conversationWrap.channel.channelID}
       className={classNames(
         "wk-conv-compact-item",
@@ -580,6 +582,26 @@ export default class ConversationList extends Component<
     );
   };
 
+  // channel_opened 命令式采集(原 data-track,改命令式以带布尔 is_ai / channel_type,
+  // 见 channelOpenedTracking)。两处会话行 onClick(compact + flat)共用本方法。
+  // - 子区行由 payload helper 返回 null 挡掉(→ subchannel_opened),等价旧 isThread 门控。
+  // - is_ai 仅私聊(ChannelTypePerson)算:派生抽到 resolveAiPeer 纯函数(robot flag 用带前缀的
+  //   channelInfo,uid-list 判据用 stripSpacePrefix 后的裸 uid — 见该函数注释,修 Space 漏标 P1-1);
+  //   缓存未拉到退化 false → 下限而非精确。群/其他不带 is_ai。
+  // - 触发时机保持"点击即发"(与旧 data-track 捕获委托一致),object_id 保持原始 channelID。
+  _trackChannelOpened(conversationWrap: ConversationWrap) {
+    const channel = conversationWrap.channel;
+    const isAiPeer = resolveAiPeer(
+      channel,
+      conversationWrap.channelInfo,
+      isMessageAuthorAi
+    );
+    const payload = channelOpenedTrackPayload(channel, isAiPeer);
+    if (payload) {
+      Dap.shared.track("channel_opened", payload);
+    }
+  }
+
   _handleContextMenu(
     conversationWrap: ConversationWrap,
     event: React.MouseEvent
@@ -730,6 +752,7 @@ export default class ConversationList extends Component<
           }
           threadUnread={threadUnread}
           onClick={() => {
+            this._trackChannelOpened(conversationWrap);
             if (this.props.onClick) this.props.onClick(conversationWrap);
           }}
           onDoubleClick={
@@ -797,11 +820,10 @@ export default class ConversationList extends Component<
       <div
         ref={(node) => this.setConversationItemRef(conversationWrap, node)}
         key={conversationWrap.channel.getChannelKey()}
-        // 子区行不发 channel_opened:改由 Pages/Chat componentDidMount 命令式发 subchannel_opened。
-        // 两事件按手势划分、不重叠。
-        data-track={isThread ? undefined : "channel_opened"}
+        // data-object-id 仅作 E2E 行定位 hook(见 compact 分支注释);channel_opened 命令式采集不读它。
         data-object-id={conversationWrap.channel.channelID}
         onClick={() => {
+          this._trackChannelOpened(conversationWrap);
           if (onClick) {
             onClick(conversationWrap);
           }
