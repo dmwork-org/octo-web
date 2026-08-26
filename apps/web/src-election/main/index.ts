@@ -73,6 +73,7 @@ import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractE
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 import { clearAuthSessionCookies } from "./clearAuthSession";
 import { DOWNLOAD_SETTINGS_VERSION, normalizeDownloadSettings, sanitizeDownloadFilename, type DownloadSettings } from "./downloadSettings";
+import { attachTrayPrimaryClick, attachTraySecondaryMenu } from "./trayBehavior";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -1537,20 +1538,14 @@ function updateTray(unread?: number, isFlash = false): any {
       if (!tray) {
         // Init tray icon
         tray = new Tray(trayIcon);
-        // macOS uses the status-item click for its menu; Windows shows this
-        // menu on right-click automatically. Keep the explicit window restore
-        // click only on Windows to avoid two actions on one macOS click.
+        // A primary click on the tray icon always restores the main window.
+        // Windows exposes this menu on right-click via setContextMenu. On
+        // macOS, keep primary click for restoring and open it on right-click.
         if (!isOsx) tray.setContextMenu(contextmenu);
+        else attachTraySecondaryMenu(tray, contextmenu);
         tray.setToolTip(OCTO_CONFIG.name);
 
-        tray.on("click", () => {
-          if (isOsx) {
-            tray.popUpContextMenu(contextmenu);
-          } else if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.show();
-            mainWindow.focus();
-          }
-        });
+        attachTrayPrimaryClick(tray, () => mainWindow);
       }
 
       if (isOsx) {
