@@ -22,8 +22,7 @@ export interface NavRailVMProps {
     showAppUpdate: boolean;
     appUpdateProgress: number;
     showAppUpdateOperation: boolean;
-    appUpdateDownloaded?: boolean;
-    lastVersionInfo?: { appVersion: string; updateDesc: string; forceUpdate?: boolean };
+    lastVersionInfo?: { appVersion: string; updateDesc: string };
     onMenuClick: (menus: Menus) => void;
     onToggleSetting: () => void;
     onSetShowAppVersion: (v: boolean) => void;
@@ -62,7 +61,6 @@ export default class NavRail extends Component<NavRailProps> {
             showAppUpdate,
             appUpdateProgress,
             showAppUpdateOperation,
-            appUpdateDownloaded,
             lastVersionInfo,
             onMenuClick,
             onToggleSetting,
@@ -147,7 +145,6 @@ export default class NavRail extends Component<NavRailProps> {
                     showAppUpdate={showAppUpdate}
                     appUpdateProgress={appUpdateProgress}
                     showAppUpdateOperation={showAppUpdateOperation}
-                    appUpdateDownloaded={appUpdateDownloaded}
                     lastVersionInfo={lastVersionInfo}
                     onToggleSetting={onToggleSetting}
                     onSetShowAppVersion={onSetShowAppVersion}
