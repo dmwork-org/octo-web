@@ -85,9 +85,36 @@ describe("static settings pages", () => {
     const onOpenOnboarding = vi.fn();
     renderPage("about", { onAbout, onOpenOnboarding });
     expect(container.textContent).toContain("Octo Web");
-    act(() => container.querySelector(".wk-settings-center__about-update")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    act(() => container.querySelector("[aria-label=\"使用指南\"]")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onAbout).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("检查是否有新版本，更新后刷新页面即可生效。");
+    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeTruthy();
+    act(() => (container.querySelector("[aria-label=\"使用指南\"]") as HTMLElement).click());
+    renderPage("about", { environment: { ...webEnvironment, target: "desktop" }, onAbout, onOpenOnboarding });
+    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeNull();
+    expect(container.querySelector(".wk-settings-center__about-update")).toBeNull();
+    expect(onAbout).not.toHaveBeenCalled();
     expect(onOpenOnboarding).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows about version actions on web and desktop", () => {
+    renderPage("about");
+    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeTruthy();
+    expect(container.querySelector(".wk-settings-status-tag")?.textContent).toContain("尚未检查");
+    expect(container.querySelector(".wk-settings-center__about-update")?.textContent).toBe("检查更新");
+
+    renderPage("about", { environment: { ...webEnvironment, target: "desktop" } });
+    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeNull();
+    expect(container.querySelector(".wk-settings-status-tag")).toBeNull();
+    expect(container.querySelector(".wk-settings-center__about-update")).toBeNull();
+  });
+
+  it("keeps the about copy aligned with the version status", () => {
+    renderPage("about", { aboutUpdateStatus: { status: "update", version: "2.0.0" } });
+    expect(container.querySelector(".wk-settings-status-tag")?.textContent).toContain("发现新版本");
+    expect(container.textContent).toContain("发现新版本，刷新页面后生效：2.0.0");
+    expect(container.querySelector(".wk-settings-center__about-update")?.textContent).toBe("刷新");
+
+    renderPage("about", { aboutUpdateStatus: { status: "failed" } });
+    expect(container.querySelector(".wk-settings-status-tag")?.textContent).toContain("检查更新失败");
+    expect(container.textContent).toContain("暂时无法确认版本状态");
   });
 });
