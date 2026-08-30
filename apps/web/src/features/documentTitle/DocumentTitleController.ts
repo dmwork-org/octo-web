@@ -108,8 +108,12 @@ export class DocumentTitleController {
       return;
     }
     const activeMenu = this.options.getActiveMenu();
+    // Unread conversations belong to chat navigation. Keep document tabs
+    // stable so a document title is not prefixed by unrelated chat activity.
+    const unreadConversationCount =
+      activeMenu?.id === "docs" ? 0 : this.options.getUnreadConversationCount();
     const nextTitle = buildDocumentTitle({
-      unreadConversationCount: this.options.getUnreadConversationCount(),
+      unreadConversationCount,
       context: activeMenu
         ? this.options.contexts.get(activeMenu.id)
         : undefined,
