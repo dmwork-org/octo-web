@@ -88,6 +88,102 @@ describe("VoiceInputButton availability", () => {
     expect(mocks.toastWarning).toHaveBeenCalledWith("base.voiceInput.error.unavailable");
   });
 
+  it("records on click without a native input ref", () => {
+    mocks.settingsEnabled = true;
+    act(() => ReactDOM.render(<VoiceInputButton onTranscribed={() => undefined} />, container));
+
+    act(() => (container.querySelector(".wk-vib__btn") as HTMLElement).click());
+
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+  });
+
+  it("uses the configured shortcut for a focused ref-less host", () => {
+    mocks.settingsEnabled = true;
+    act(() => ReactDOM.render(
+      <VoiceInputButton onTranscribed={() => undefined} isHotkeyActive={() => true} />,
+      container,
+    ));
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+  });
+
+  it("starts and stops hold mode for a focused ref-less host", () => {
+    vi.useFakeTimers();
+    mocks.settingsEnabled = true;
+    mocks.speakingMode = "hold";
+    mocks.shortcut = "shift-left";
+    act(() => ReactDOM.render(
+      <VoiceInputButton onTranscribed={() => undefined} isHotkeyActive={() => true} />,
+      container,
+    ));
+
+    act(() => window.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "ShiftLeft", key: "Shift" }),
+    ));
+    act(() => vi.advanceTimersByTime(500));
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+
+    act(() => window.dispatchEvent(
+      new KeyboardEvent("keyup", { code: "ShiftLeft", key: "Shift" }),
+    ));
+    expect(mocks.stopRecording).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("keeps a ref-less host click-only without a focus predicate", () => {
+    mocks.settingsEnabled = true;
+    act(() => ReactDOM.render(<VoiceInputButton onTranscribed={() => undefined} />, container));
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("does not arm a ref-less shortcut while its host is unfocused", () => {
+    mocks.settingsEnabled = true;
+    act(() => ReactDOM.render(
+      <VoiceInputButton onTranscribed={() => undefined} isHotkeyActive={() => false} />,
+      container,
+    ));
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("arms the shortcut when a ref-less host receives a focus predicate after mount", () => {
+    mocks.settingsEnabled = true;
+    act(() => ReactDOM.render(<VoiceInputButton onTranscribed={() => undefined} />, container));
+    act(() => ReactDOM.render(
+      <VoiceInputButton onTranscribed={() => undefined} isHotkeyActive={() => true} />,
+      container,
+    ));
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+  });
+
+  it("does not stop a click-started ref-less recording on modifier release", () => {
+    mocks.settingsEnabled = true;
+    mocks.shortcut = "shift-left";
+    mocks.speakingMode = "hold";
+    act(() => ReactDOM.render(
+      <VoiceInputButton onTranscribed={() => undefined} isHotkeyActive={() => true} />,
+      container,
+    ));
+    act(() => (container.querySelector(".wk-vib__btn") as HTMLElement).click());
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+
+    act(() => window.dispatchEvent(
+      new KeyboardEvent("keyup", { code: "ShiftLeft", key: "Shift" }),
+    ));
+
+    expect(mocks.stopRecording).not.toHaveBeenCalled();
+  });
+
   it("starts and stops toggle mode for the configured shortcut", () => {
     mocks.settingsEnabled = true;
     input.focus();
