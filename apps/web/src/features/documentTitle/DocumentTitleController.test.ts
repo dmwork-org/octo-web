@@ -52,9 +52,9 @@ describe("DocumentTitleController", () => {
     store.set("docs", { primaryTitle: "年度经营计划", moduleTitle: "文档" });
     for (const listener of menuListeners) listener();
     await Promise.resolve();
-    expect(target.title).toBe("(2) 年度经营计划 - 文档 - Octo");
+    expect(target.title).toBe("年度经营计划 - 文档 - Octo");
 
-    unreadCount = 0;
+    unreadCount = 8;
     for (const listener of unreadListeners) listener();
     await Promise.resolve();
     expect(target.title).toBe("年度经营计划 - 文档 - Octo");
