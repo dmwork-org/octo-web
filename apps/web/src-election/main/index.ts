@@ -45,11 +45,14 @@ import {
   IPC_OIDC_CLEAR_AUTH_SESSION,
   IPC_NOTIFICATION_TEST_ICON,
   IPC_MEDIA_ACCESS_STATUS,
+  IPC_QUIT_APP,
   IPC_RESTART_APP,
   IPC_SCREENSHOTS_OK,
   IPC_SCREENSHOTS_START,
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
+  IPC_TRUSTED_DOMAINS_GET,
+  IPC_TRUSTED_DOMAIN_REMOVE,
   IPC_ASK_TRUST_FLEET_HOST,
   IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
@@ -72,9 +75,21 @@ import { INDEX_HTML, reloadShell } from "./reloadShell";
 import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 import { clearAuthSessionCookies } from "./clearAuthSession";
+import {
+  addFleetTrustedHost,
+  normalizeTrustedHost,
+  readFleetTrustedHosts as readTrustedHostsFile,
+  removeFleetTrustedHost,
+  writeFleetTrustedHosts as writeTrustedHostsFile,
+} from "./fleetTrustedHosts";
 import { DOWNLOAD_SETTINGS_VERSION, normalizeDownloadSettings, sanitizeDownloadFilename, type DownloadSettings } from "./downloadSettings";
+import { attachTrayPrimaryClick, attachTraySecondaryMenu } from "./trayBehavior";
 
 let forceQuit = false;
+const forceQuitApp = () => {
+  forceQuit = true;
+  app.quit();
+};
 let mainWindow: any;
 let isMainWindowFocusedWhenStartScreenshot = false;
 let screenshots: any;
@@ -413,53 +428,159 @@ function registerKeepAwakeHandlers() {
 const fleetTrustedHostsPath = () => join(app.getPath("userData"), "fleet-trusted-hosts.json");
 
 function readFleetTrustedHosts(): string[] {
-  try {
-    const raw = JSON.parse(fs.readFileSync(fleetTrustedHostsPath(), "utf8"));
-    if (!Array.isArray(raw)) throw new Error("Invalid fleet-trusted-hosts file");
-    return raw.filter((h): h is string => typeof h === "string");
-  } catch {
-    return [];
+  return readTrustedHostsFile(fleetTrustedHostsPath());
+}
+
+function writeFleetTrustedHosts(hosts: Iterable<unknown>): void {
+  writeTrustedHostsFile(fleetTrustedHostsPath(), hosts);
+}
+
+function rememberFleetTrustedHost(host: string): string {
+  const canonical = normalizeTrustedHost(host);
+  if (!canonical) throw new Error("invalid trusted host");
+  addFleetTrustedHost(fleetTrustedHostsPath(), canonical);
+  return canonical;
+}
+
+function removeFleetTrustedHostFromStore(host: string): string[] {
+  return removeFleetTrustedHost(fleetTrustedHostsPath(), host);
+}
+
+function registerTrustedDomainsSettingsHandlers(): void {
+  ipcMain.handle(IPC_TRUSTED_DOMAINS_GET, (event) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    // Built-in seeds are not shown: they cannot be revoked and would only
+    // confuse the user if a remove button were offered for them.
+    return readFleetTrustedHosts().filter((host) => !isBuiltInTrustSeed(host));
+  });
+  ipcMain.handle(IPC_TRUSTED_DOMAIN_REMOVE, (event, host: unknown) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    const normalizedHost = normalizeTrustedHost(host);
+    if (!normalizedHost) throw new Error("invalid trusted host");
+    // Provenance-aware: a host that is still covered by a built-in seed
+    // (static allowlist / API origin) is never revocable — neither from the
+    // persisted file nor from the live in-memory set.
+    if (isBuiltInTrustSeed(normalizedHost)) {
+      return readFleetTrustedHosts();
+    }
+    const hosts = removeFleetTrustedHostFromStore(normalizedHost);
+    trustedOrigins?.delete(normalizedHost);
+    return hosts;
+  });
+}
+
+/* ---------- external-link trust policy (confirm unknown origins) ---------- */
+
+/**
+ * In-memory union of every origin the client trusts without prompting.
+ *
+ * Seeded (lazily, first access — NOT at module top level) from main-side
+ * authority only:
+ *   - hosts persisted in fleet-trusted-hosts.json (user "trust this domain");
+ *   - the API origin, from OIDC_API_ORIGIN (build-time electron-config.json /
+ *     VITE_API_URL — the SAME source the renderer's APIClient resolves);
+ *   - the static fleet allowlist (im.deepminer.com.cn), mirroring the
+ *     renderer's FLEET_PREVIEW_HOSTS.
+ *
+ * There is deliberately NO IPC channel for the renderer to add origins:
+ * the main process is the trust authority and must never accept trust
+ * nominations over an IPC argument (regardless of sender validation).
+ *
+ * Keys are URL.host values (hostname + non-default port), matching the
+ * persisted file.
+ *
+ * Seeded lazily on first access — NOT at module top level: the persisted
+ * hosts file lives under app.getPath("userData"), which is only correct
+ * after app.setName/setPath runs in whenReady. Reading it earlier would
+ * seed from a stale/other-directory file and "trust this domain" would
+ * silently not survive a restart (dev + migration scenarios).
+ */
+const STATIC_FLEET_PREVIEW_HOSTS = new Set(["im.deepminer.com.cn"]);
+
+let trustedOrigins: Set<string> | null = null;
+
+function getTrustedOrigins(): Set<string> {
+  if (trustedOrigins === null) {
+    const seeds = new Set<string>();
+    // Persisted user trust.
+    readFleetTrustedHosts().forEach((host) => seeds.add(host));
+    // API origin (main-side authority — same build-time source as the
+    // renderer's apiURL).
+    if (OIDC_API_ORIGIN) {
+      try {
+        seeds.add(new URL(OIDC_API_ORIGIN).host);
+      } catch {
+        // ignore malformed origin
+      }
+    }
+    // Static fleet allowlist.
+    STATIC_FLEET_PREVIEW_HOSTS.forEach((host) => seeds.add(host));
+    trustedOrigins = seeds;
   }
+  return trustedOrigins;
 }
 
-function writeFleetTrustedHosts(hosts: string[]): void {
-  const path = fleetTrustedHostsPath();
-  // Unique temp suffix: concurrent rememberFleetTrustedHost calls (different
-  // hosts prompting at the same time) share the same `${pid}.tmp` target and
-  // race on rename; a per-call suffix keeps the atomic-write invariant.
-  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(hosts, null, 2));
-  try {
-    fs.renameSync(tempPath, path);
-  } catch (error) {
-    try { fs.unlinkSync(tempPath); } catch { /* best effort cleanup */ }
-    throw error;
+function isTrustedOrigin(host: string): boolean {
+  return getTrustedOrigins().has(host);
+}
+
+/**
+ * Built-in trust seeds (static allowlist / API origin) are not user-managed:
+ * they must never appear in the trusted-domains list, and a remove request
+ * must never be able to revoke them from the live set.
+ */
+function isBuiltInTrustSeed(host: string): boolean {
+  if (STATIC_FLEET_PREVIEW_HOSTS.has(host)) return true;
+  if (OIDC_API_ORIGIN) {
+    try {
+      if (new URL(OIDC_API_ORIGIN).host === host) return true;
+    } catch {
+      // ignore malformed origin
+    }
   }
+  return false;
 }
 
-function rememberFleetTrustedHost(host: string): void {
-  const hosts = new Set(readFleetTrustedHosts());
-  hosts.add(host);
-  writeFleetTrustedHosts(Array.from(hosts));
-}
-
-// One prompt per host at a time: rapid clicks (or several unknown-host fleet
+// One prompt per URL at a time: rapid clicks (or several unknown-host
 // links clicked in succession) would otherwise stack independent native
 // modals, and concurrent rememberFleetTrustedHost writes race on the same
 // temp/target path. Concurrent callers await the same in-flight result.
-const inflightFleetTrustPrompts = new Map<string, Promise<boolean>>();
+// Keyed on the full href — two different URLs on the same host each get
+// their own prompt; the verdict is never reused across URLs the user has
+// not seen.
+const inflightExternalOpenConfirm = new Map<
+  string,
+  Promise<"open" | "cancel">
+>();
 
-async function promptFleetTrustOnce(
+/**
+ * Native confirm dialog for opening an unknown-origin URL in the system
+ * browser. Shared by the window-open router (plain external links) and the
+ * fleet link path (task links on untrusted hosts). Fail-closed: Esc/close =
+ * cancel = nothing opens. When the user ticks "trust this domain", the host
+ * is persisted and added to trustedOrigins — subsequent clicks on that host
+ * (task links → in-app preview, plain links → silent browser) skip the
+ * prompt. Per-host de-duplicated while in flight.
+ */
+async function confirmOpenExternalInBrowser(
   win: Electron.BrowserWindow,
-  host: string,
-  href: string,
-): Promise<boolean> {
-  const existing = inflightFleetTrustPrompts.get(host);
+  url: string,
+): Promise<"open" | "cancel"> {
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    return Promise.resolve("cancel");
+  }
+  // Keyed on the full href (see inflightExternalOpenConfirm): the user must
+  // never have a verdict they did not see applied to a different URL on the
+  // same host.
+  const existing = inflightExternalOpenConfirm.get(url);
   if (existing) return existing;
-  const copy = fleetTrustDialogCopy(app.getLocale(), host, href);
-  const prompt = (async (): Promise<boolean> => {
+  const copy = fleetTrustDialogCopy(app.getLocale(), host, url);
+  const prompt = (async (): Promise<"open" | "cancel"> => {
     const { response, checkboxChecked } = await dialog.showMessageBox(win, {
-      type: "warning",
+      type: "question",
       title: copy.title,
       message: copy.message,
       detail: copy.detail,
@@ -473,61 +594,75 @@ async function promptFleetTrustOnce(
       checkboxLabel: copy.checkboxLabel,
       checkboxChecked: false,
     });
-    if (checkboxChecked && response === 0) {
-      try {
-        rememberFleetTrustedHost(host);
-      } catch {
-        // A storage failure must not convert the user's explicit 允许 into a
-        // reject: degrade to "trusted for this click, not remembered".
+    if (response === 0) {
+      if (checkboxChecked) {
+        try {
+          // Persist and seed the in-memory set with the SAME canonical key,
+          // otherwise the settings page lists one key while the live trust
+          // holds another, and removal silently fails for this session.
+          const canonical = rememberFleetTrustedHost(host);
+          trustedOrigins.add(canonical);
+        } catch {
+          // A storage failure must not convert the user's explicit 允许 into
+          // a reject: degrade to "trusted for this click, not remembered".
+        }
       }
+      return "open";
     }
-    return response === 0;
+    return "cancel";
   })();
-  inflightFleetTrustPrompts.set(host, prompt);
+  inflightExternalOpenConfirm.set(url, prompt);
   try {
     return await prompt;
   } finally {
-    inflightFleetTrustPrompts.delete(host);
+    inflightExternalOpenConfirm.delete(url);
   }
 }
 
 function registerFleetTrustHostHandler() {
   ipcMain.handle(
     IPC_ASK_TRUST_FLEET_HOST,
-    async (event, rawUrl: unknown): Promise<{ trusted: boolean }> => {
+    async (
+      event,
+      rawUrl: unknown,
+    ): Promise<{ mode: "preview" | "open" | "cancel" }> => {
       // Sender check + window resolution follow the OIDC handlers: the native
       // prompt must be owned by the window that asked (not whatever window
       // happens to be focused), and untrusted senders get a flat rejection.
-      // This is the only handler that persists durable trust, so it must not
-      // depend on the caller for that invariant.
       const win = resolveTrustedOidcSender(event);
-      if (!win) return { trusted: false };
+      if (!win) return { mode: "cancel" };
       // Validate the input instead of trusting the renderer blindly. The
       // trust key is derived from the validated URL here, never taken from
       // the renderer, so a caller cannot cache-trust one origin while
       // displaying another. The key is `URL.host` (hostname + non-default
       // port): remembering `x:8443` must not trust `x` or `x:9999`.
-      if (typeof rawUrl !== "string") return { trusted: false };
+      if (typeof rawUrl !== "string") return { mode: "cancel" };
       let parsedUrl: URL;
       try {
         parsedUrl = new URL(rawUrl);
         if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-          return { trusted: false };
+          return { mode: "cancel" };
         }
       } catch {
-        return { trusted: false };
+        return { mode: "cancel" };
       }
       const host = parsedUrl.host;
       // Re-validate the fleet path shape AND the decoded segment values
-      // BEFORE the remembered-host short-circuit (the renderer checked too,
-      // but the main process is the trust authority): a remembered host must
-      // not mint `trusted: true` for a URL that was never a fleet deep link,
-      // and a percent-encoded separator must not pass the shape gate and
-      // decode into path traversal afterwards.
-      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { trusted: false };
-      if (readFleetTrustedHosts().includes(host)) return { trusted: true };
-      return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
-    }
+      // BEFORE the trust check (the renderer checked too, but the main
+      // process is the trust authority): a trusted host must not mint
+      // `preview` for a URL that was never a fleet deep link, and a
+      // percent-encoded separator must not pass the shape gate and decode
+      // into path traversal afterwards.
+      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { mode: "cancel" };
+      // Trusted origin (persisted + renderer-reported) → in-app preview.
+      if (isTrustedOrigin(host)) return { mode: "preview" };
+      // Unknown origin → confirm opening in the browser (with optional
+      // "trust this domain" persistence). The main process opens the URL
+      // itself on confirmation.
+      const choice = await confirmOpenExternalInBrowser(win, parsedUrl.href);
+      if (choice === "open") void openUrlExternally(parsedUrl.href);
+      return choice === "open" ? { mode: "open" } : { mode: "cancel" };
+    },
   );
 }
 
@@ -663,11 +798,35 @@ function safeUrlLabel(url: string): string {
  */
 function attachExternalLinkRouter(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (decideWindowOpen(url) === "open-external") {
-      void openUrlExternally(url);
-    } else {
+    if (decideWindowOpen(url) !== "open-external") {
       logExternalUrlRejection(url);
+      return { action: "deny" };
     }
+    let host = "";
+    try {
+      host = new URL(url).host;
+    } catch {
+      return { action: "deny" };
+    }
+    if (isTrustedOrigin(host)) {
+      void openUrlExternally(url);
+      return { action: "deny" };
+    }
+    // Unknown origin: confirm with the user before handing it to the
+    // browser (they may tick "trust this domain" to skip future prompts).
+    void confirmOpenExternalInBrowser(win, url)
+      .then((choice) => {
+        if (choice === "open") void openUrlExternally(url);
+      })
+      .catch((error) => {
+        // The dialog can reject when its window is destroyed mid-prompt;
+        // fail closed (nothing opens) and never leave an unhandled
+        // rejection.
+        console.warn(
+          `[external-link] confirm dialog failed (${safeUrlLabel(url)}):`,
+          error,
+        );
+      });
     return { action: "deny" };
   });
 }
@@ -700,6 +859,11 @@ function registerOpenExternalUrlHandler(): void {
 const trustedShellContents = new WeakSet<Electron.WebContents>();
 
 function trackTrustedShellDocument(win: BrowserWindow) {
+  // Keep the WebContents reference captured while the window is alive. During
+  // app.exit(), Electron can emit navigation/destruction events after the
+  // BrowserWindow has already been destroyed; reading `win.webContents` from
+  // those callbacks throws "Object has been destroyed".
+  const webContents = win.webContents;
   const isTrustedDocument = (url: string) =>
     isTrustedSenderUrl(url, TRUSTED_SHELL_DEV_ORIGIN, TRUSTED_SHELL_FILE_URL);
   const tracker = createTrustedShellDocumentTracker(isTrustedDocument);
@@ -712,17 +876,17 @@ function trackTrustedShellDocument(win: BrowserWindow) {
   ) => {
     tracker.update(url, isMainFrame);
     if (tracker.isTrusted()) {
-      trustedShellContents.add(win.webContents);
+      trustedShellContents.add(webContents);
     } else {
-      trustedShellContents.delete(win.webContents);
+      trustedShellContents.delete(webContents);
     }
   };
   // Trust follows committed main-frame documents only. A will-navigate or
   // will-redirect can be cancelled (for example by an external-protocol
   // link), in which case revoking here would permanently disable IPC for the
   // still-visible shell because no did-frame-navigate event restores it.
-  win.webContents.on("did-frame-navigate", updateTrust);
-  win.webContents.once("destroyed", () => trustedShellContents.delete(win.webContents));
+  webContents.on("did-frame-navigate", updateTrust);
+  webContents.once("destroyed", () => trustedShellContents.delete(webContents));
 }
 
 // Guards every OIDC IPC handler against callers that are not our own
@@ -1424,20 +1588,14 @@ function updateTray(unread?: number, isFlash = false): any {
       if (!tray) {
         // Init tray icon
         tray = new Tray(trayIcon);
-        // macOS uses the status-item click for its menu; Windows shows this
-        // menu on right-click automatically. Keep the explicit window restore
-        // click only on Windows to avoid two actions on one macOS click.
+        // A primary click on the tray icon always restores the main window.
+        // Windows exposes this menu on right-click via setContextMenu. On
+        // macOS, keep primary click for restoring and open it on right-click.
         if (!isOsx) tray.setContextMenu(contextmenu);
+        else attachTraySecondaryMenu(tray, contextmenu);
         tray.setToolTip(OCTO_CONFIG.name);
 
-        tray.on("click", () => {
-          if (isOsx) {
-            tray.popUpContextMenu(contextmenu);
-          } else if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.show();
-            mainWindow.focus();
-          }
-        });
+        attachTrayPrimaryClick(tray, () => mainWindow);
       }
 
       if (isOsx) {
@@ -1680,6 +1838,11 @@ const createMainWindow = async () => {
     restartApp()
   })
 
+  ipcMain.on(IPC_QUIT_APP, (event) => {
+    if (!isTrustedShellIpcSender(event)) return;
+    forceQuitApp();
+  });
+
   // Test notification handler for debugging (development only)
   ipcMain.handle(IPC_NOTIFICATION_TEST_ICON, (event) => {
     if (!isTrustedShellIpcSender(event)) return false;
@@ -1703,7 +1866,7 @@ const createMainWindow = async () => {
   electronNotificationManager.setSenderGuard(isTrustedShellIpcSender);
 
   // 检查更新
-  checkUpdate(mainWindow)
+  checkUpdate(mainWindow, { quitApp: forceQuitApp })
 };
 
 // 重启应用
@@ -2038,6 +2201,7 @@ app.on("ready", () => {
   }
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
+  registerTrustedDomainsSettingsHandlers();
   registerFleetTrustHostHandler();
   registerOpenExternalUrlHandler();
   registerDesktopSettingsHandlers();

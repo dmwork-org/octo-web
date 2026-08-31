@@ -197,16 +197,34 @@ export default function MessageRow({
       
       {/* 头像（所有消息都在左侧） */}
       <div className="wk-msg-row-avatar">
-        {showAvatar && (
+        {showAvatar && (!isSelecting && !isWebhook && onAvatarClick ? (
+          <button
+            type="button"
+            className="wk-msg-row-avatar-button"
+            aria-label={t("base.conversation.avatarMenu.open", { values: { name: senderName } })}
+            onClick={onAvatarClick}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+          >
+            <Avatar
+              src={avatarUrl}
+              size={36}
+              isOnline={isOnline}
+              showOnlineDot
+              alt={senderName}
+            />
+          </button>
+        ) : (
           <Avatar
             src={avatarUrl}
             size={36}
             isOnline={isOnline}
             showOnlineDot
             alt={senderName}
-            onClick={isSelecting || isWebhook ? undefined : onAvatarClick}
           />
-        )}
+        ))}
         {/* 连续消息：头像占位,hover 时显示时间戳 */}
         {!showAvatar && isContinue && (
           <div className="wk-msg-row-avatar-placeholder">
@@ -255,7 +273,25 @@ export default function MessageRow({
         )}
         
         {/* 消息体 */}
-        <div className="wk-msg-row-body">
+        <div
+          className="wk-msg-row-body"
+          tabIndex={!isSelecting && onContextMenu ? 0 : undefined}
+          onKeyDown={(event) => {
+            if (isSelecting || !onContextMenu) return
+            if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
+              event.preventDefault()
+              const rect = event.currentTarget.getBoundingClientRect()
+              const contextMenuEvent = new MouseEvent('contextmenu', {
+                bubbles: true,
+                cancelable: true,
+                clientX: rect.left + Math.min(rect.width / 2, 24),
+                clientY: rect.top + Math.min(rect.height / 2, 24),
+              }) as MouseEvent & { focusFirstItem?: boolean }
+              contextMenuEvent.focusFirstItem = true
+              event.currentTarget.dispatchEvent(contextMenuEvent)
+            }
+          }}
+        >
           {!isSelecting && (onBodyClick || onBodyAuxClick) ? (
             <div
               className="wk-msg-row-body-hitarea"

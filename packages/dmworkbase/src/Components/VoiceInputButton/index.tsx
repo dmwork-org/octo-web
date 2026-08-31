@@ -31,7 +31,12 @@ const voiceHost = {
 };
 
 export interface VoiceInputButtonProps {
-  inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  /**
+   * Native text target. Rich-text hosts may omit it and insert transcriptions
+   * themselves through `onTranscribed`; native selection/edit mode is then
+   * unavailable.
+   */
+  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
   showModeMenu?: boolean;
@@ -40,6 +45,11 @@ export interface VoiceInputButtonProps {
   className?: string;
   /** Called right before recording starts (useful for cancelling pending blur commits) */
   onRecordingStart?: () => void;
+  /**
+   * Focus predicate that scopes the configured keyboard shortcut when
+   * `inputRef` is omitted. Without it, a ref-less host stays click-only.
+   */
+  isHotkeyActive?: () => boolean;
 }
 
 export default function VoiceInputButton({
@@ -51,12 +61,17 @@ export default function VoiceInputButton({
   getChatContext,
   className,
   onRecordingStart,
+  isHotkeyActive,
 }: VoiceInputButtonProps) {
   const { t } = useI18n();
   const [showMenu, setShowMenu] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
   const [voiceSettings, setVoiceSettings] = useState(() => voiceSettingsStore.get());
   useEffect(() => voiceSettingsStore.subscribe(setVoiceSettings), []);
+  const refless = inputRef === undefined;
+  const inputReady = refless || !!inputRef?.current;
+  const modeMenuEnabled = showModeMenu && !refless;
+  const hasHotkeyPredicate = typeof isHotkeyActive === "function";
 
   const {
     isRecording,
@@ -70,7 +85,7 @@ export default function VoiceInputButton({
     inputRef,
     onTranscribed,
     getCurrentText,
-    enableEditMode: showModeMenu,
+    enableEditMode: modeMenuEnabled,
     getChatContext,
     voiceHost,
   });
@@ -92,7 +107,7 @@ export default function VoiceInputButton({
   }, []);
 
   const canRecord = isOnline || localAvailable;
-  const isDisabled = !inputRef.current || !canRecord;
+  const isDisabled = !inputReady || !canRecord;
 
   // Floating indicator position
   const [floatingPosition, setFloatingPosition] = useState<{
@@ -179,6 +194,8 @@ export default function VoiceInputButton({
   isRecordingRef.current = isRecording;
   const isTranscribingRef = useRef(isTranscribing);
   isTranscribingRef.current = isTranscribing;
+  const isHotkeyActiveRef = useRef(isHotkeyActive);
+  isHotkeyActiveRef.current = isHotkeyActive;
 
   const clearShiftTimer = useCallback(() => {
     if (shiftTimerRef.current !== null) {
@@ -201,14 +218,18 @@ export default function VoiceInputButton({
 
   useEffect(() => {
     if (!isVoiceEnabled || !voiceSettings.enabled) return;
+    if (refless && !hasHotkeyPredicate) return;
     const configuredShortcut = getVoiceShortcut(voiceSettings, /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows");
     if (configuredShortcut === "disabled") return;
     const modifiersValid = (event: KeyboardEvent) => configuredShortcut === "alt-right"
       ? !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.getModifierState("AltGraph")
       : !event.altKey && !event.ctrlKey && !event.metaKey;
+    const isHostFocused = () => refless
+      ? (isHotkeyActiveRef.current?.() ?? false)
+      : !!inputRef?.current && document.activeElement === inputRef.current;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!inputRef.current || document.activeElement !== inputRef.current || document.querySelector(".wk-settings-center-modal")) return;
+      if (!isHostFocused() || document.querySelector(".wk-settings-center-modal")) return;
 
       if (
         voiceShortcutMatches(e, configuredShortcut) &&
@@ -274,8 +295,8 @@ export default function VoiceInputButton({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (!inputRef.current) return;
-      const isInputFocused = document.activeElement === inputRef.current;
+      if (!refless && !inputRef?.current) return;
+      const isInputFocused = isHostFocused();
 
       if (!isRecordingRef.current && !isInputFocused) return;
 
@@ -320,7 +341,7 @@ export default function VoiceInputButton({
       window.removeEventListener("blur", handleBlurClear);
       clearShiftTimer();
     };
-  }, [isVoiceEnabled, inputRef, clearShiftTimer, t, voiceSettings]);
+  }, [isVoiceEnabled, refless, hasHotkeyPredicate, inputRef, clearShiftTimer, t, voiceSettings]);
 
   const handleVoiceClick = () => {
     setShowMenu(false);
@@ -333,7 +354,9 @@ export default function VoiceInputButton({
       Toast.warning(t("base.voiceInput.error.networkUnavailable"));
       return;
     }
-    if (!inputRef.current) return;
+    // Read the native ref at interaction time. It may attach after this
+    // component's first render without causing a rerender.
+    if (!refless && !inputRef?.current) return;
     if (!voiceSettings.enabled) {
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
@@ -348,7 +371,7 @@ export default function VoiceInputButton({
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
     }
-    if (!canRecord || !inputRef.current) return;
+    if (!canRecord || !inputRef?.current) return;
     if (!voiceSettings.enabled) {
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
@@ -429,7 +452,7 @@ export default function VoiceInputButton({
   // Default idle state
   if (!isVoiceEnabled) return null;
 
-  if (showModeMenu) {
+  if (modeMenuEnabled) {
     const currentText = getCurrentText?.() ?? "";
     const hasContent = currentText.trim().length > 0;
     const dropdownMenu = (
@@ -457,7 +480,7 @@ export default function VoiceInputButton({
           trigger="hover"
           position="topRight"
           render={dropdownMenu}
-          visible={canRecord && !!inputRef.current ? showMenu : false}
+          visible={canRecord && !!inputRef?.current ? showMenu : false}
           onVisibleChange={setShowMenu}
           spacing={4}
         >
