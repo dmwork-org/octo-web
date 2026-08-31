@@ -86,6 +86,27 @@ describe("useTextareaVoice", () => {
     expect(mockStartRecording).toHaveBeenCalledWith("append_only");
   });
 
+  it("records in append mode and emits insertion metadata without an inputRef", () => {
+    const onTranscribed = vi.fn();
+    const { result } = renderHook(() =>
+      useTestTextareaVoice({ onTranscribed })
+    );
+
+    act(() => {
+      result.current.startRecording("edit_only");
+    });
+    act(() => {
+      capturedOnTranscribed?.("spoken text");
+    });
+
+    expect(mockStartRecording).toHaveBeenCalledWith("append_only");
+    expect(onTranscribed).toHaveBeenCalledWith(
+      "spoken text",
+      "insert",
+      { from: 0, to: 0 },
+    );
+  });
+
   it("should not call startRecording when inputRef.current is null", () => {
     const inputRef = { current: null } as React.RefObject<HTMLTextAreaElement>;
     const onTranscribed = vi.fn();

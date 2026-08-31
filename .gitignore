@@ -92,8 +92,5 @@ packages/docs/dev/colhover-out/
 # Loop V1 鍐呴儴璁捐鏂囨。浠呬繚鐣欏湪鏈湴 workspace锛屼笉绾冲叆鐗堟湰搴?
 docs/loop-v1/
 .omx
-<<<<<<< Updated upstream
 .idea/
-.idea/
->>>>>>> Stashed changes
 .ftre/

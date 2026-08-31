@@ -1,22 +1,22 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base"
+import { Contacts, WKApp, WKBase, ErrorBoundary, WKModal, I18nContext, t, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@douyinfe/semi-ui";
 import { ChevronRight, Users, Bot, UsersRound } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
 import { ContactsListManager } from "../Service/ContactsListManager";
-import { Card } from "@octo/base/src/Messages/Card";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
 import UserInfo from "@octo/base/src/Components/UserInfo";
 import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService, hasSpacePrefix } from "@octo/base/src/Service/SpaceService";
+import { channelOpenedTrackPayload } from "@octo/base/src/Service/channelOpenedTracking";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -163,7 +163,6 @@ function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopCha
 
 export class ContactsState {
     keyword?: string
-    selectedItem?: Contacts
     currentSpace?: Space
     spaceMembers: SpaceMember[] = []
 
@@ -211,8 +210,6 @@ export default class ContactsList extends Component<any, ContactsState> {
     declare context: React.ContextType<typeof I18nContext>
 
     channelInfoListener!: ChannelInfoListener
-    contextMenusContext!: ContextMenusContext
-    baseContext!: WKBaseContext
     private spaceChangedHandler!: (space: any) => void
     private flatItems: Contacts[] = []
     private indexCache = new Map<ContactFilterMode, ContactIndexData>()
@@ -637,6 +634,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private handleGroupClick = (groupNo: string, name?: string, memberCount?: number) => {
+        // group_card_opened:通讯录内点群行弹出群名片(唯一收口点,搜索结果行 + 列表行两处 onClick 都走这里)。
+        // 与 contact_opened(打开人/bot 名片)对称。object_id 用原始 group_no(与本文件其他 opened 事件
+        // 同口径,不 stripSpacePrefix)。仅记「打开卡片」这一手势;从卡片点「进入聊天」是另一事件 channel_opened。
+        Dap.shared.track('group_card_opened', { object_id: groupNo })
         this.setState({ groupCardVisible: true, groupCardGroupNo: groupNo, groupCardName: name, groupCardMemberCount: memberCount })
     }
 
@@ -648,11 +649,6 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.flatItems = items
         this.maybePrefetchSmallList()
         this.setState({ filterMode: mode, indexList, indexItemMap, listRows })
-    }
-
-    _handleContextMenu(item: Contacts, event: React.MouseEvent) {
-        this.contextMenusContext.show(event)
-        this.setState({ selectedItem: item })
     }
 
     // ─── Render Helpers ─────────────────────────────
@@ -887,8 +883,6 @@ export default class ContactsList extends Component<any, ContactsState> {
                 WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined
             )} onClick={() => {
                 this.handleContactClick(item.uid, item.robot === true)
-            }} onContextMenu={(e) => {
-                this._handleContextMenu(item, e)
             }}>
                 <div className="wk-contacts-section-item-avatar">
                     <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)} />
@@ -909,9 +903,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     render() {
         const { isSearching } = this.state
 
-        return <WKBase onContext={(baseCtx) => {
-            this.baseContext = baseCtx
-        }}>
+        return <WKBase>
             <ErrorBoundary moduleName={t("contacts.page.title")}>
                 <div className="wk-contacts">
                     <div className="wk-contacts-content">
@@ -927,47 +919,6 @@ export default class ContactsList extends Component<any, ContactsState> {
                         )}
                     </div>
 
-                    <ContextMenus onContext={(context: ContextMenusContext) => {
-                        this.contextMenusContext = context
-                    }} menus={[{
-                        title: t("contacts.context.viewProfile"), onClick: () => {
-                            const { selectedItem } = this.state
-                            this.setState({ userInfoUid: selectedItem?.uid || "", userInfoVisible: true })
-                        }
-                    }, {
-                        title: t("contacts.context.shareToFriend"), onClick: () => {
-                            WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-                                const { selectedItem } = this.state
-                                if (!channels || channels.length === 0) return
-                                // buildContent 每 channel 调一次 —— 名片本身无 per-channel 差异，
-                                // 但生成新实例避免 wrapSendContentForInjection 复用同一 content 引用。
-                                //
-                                // 注意行为变化：ForwardService 会给 person channel 注入 space_id
-                                // （与 vm.sendMessage / Summary 转发对齐，服务端 BotFather 依赖此字段
-                                // 识别用户当前 Space）。老代码走裸 chatManager.send 未注入 —— 属修正。
-                                const result = await ForwardService.send(
-                                    channels,
-                                    () => {
-                                        const card = new Card()
-                                        card.uid = selectedItem?.uid || ""
-                                        card.name = selectedItem?.name || ""
-                                        card.vercode = selectedItem?.vercode || ""
-                                        return card
-                                    },
-                                    { spaceId: WKApp.shared.currentSpaceId },
-                                )
-                                const state = interpretForwardResult(result, "targets")
-                                if (state.kind === "all-failed") {
-                                    Toast.error(t("contacts.share.failed"))
-                                } else if (state.kind === "partial") {
-                                    Toast.error(t("contacts.share.partialFailed", { values: { failed: state.failed, total: state.total } }))
-                                } else {
-                                    Toast.success(t("contacts.share.success"))
-                                }
-                            }, t("contacts.share.cardTitle"))
-                        }
-                    }]} />
-
                     <WKModal
                         title={null}
                         visible={this.state.userInfoVisible}
@@ -979,6 +930,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             <UserInfo
                                 uid={this.state.userInfoUid}
                                 onClose={() => this.setState({ userInfoVisible: false })}
+                                trackContactMessageEntry
                             />
                         )}
                     </WKModal>
@@ -1001,6 +953,13 @@ export default class ContactsList extends Component<any, ContactsState> {
                             }
                         }}
                         onChat={(channel) => {
+                            // contact_message_clicked:通讯录 AI 名片「发消息」收口点(此 BotDetailModal 实例专属通讯录页,
+                            // 不同于全局共享实例)。channel.channelID = bot uid。
+                            Dap.shared.track('contact_message_clicked', {
+                                object_id: channel.channelID,
+                                contact_type: 'ai',
+                                space_id: WKApp.shared.currentSpaceId || undefined,
+                            })
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ botDetailVisible: false })
                         }}
@@ -1013,6 +972,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                         visible={this.state.groupCardVisible}
                         onClose={() => this.setState({ groupCardVisible: false })}
                         onEnterChat={(channel) => {
+                            // channel_opened:通讯录群聊名片「进入聊天」收口点(群聊)。与会话列表行同为命令式采集,
+                            // 复用 channelOpenedTrackPayload 保证 object_id(原始 channelID)与 channel_type 口径一致。
+                            // 群聊无「对端 AI」语义 → 不带 is_ai(helper 仅 person 行携带)。
+                            const payload = channelOpenedTrackPayload(channel, false)
+                            if (payload) Dap.shared.track('channel_opened', payload)
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ groupCardVisible: false })
                         }}

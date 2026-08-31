@@ -24,7 +24,9 @@ vi.mock("../../../Service/Dap", () => ({
   Dap: { shared: { track: hoisted.dapTrack } },
 }))
 
-import { createThreadByNameAndNotify, emitThreadCreated, trackSubchannelCreated } from "../createThread"
+import { MessageContentType } from "wukongimjssdk"
+import { MessageContentTypeConst } from "../../../Service/Const"
+import { createThreadByNameAndNotify, emitThreadCreated, inferMsgType, trackSubchannelCreated } from "../createThread"
 
 beforeEach(() => {
   hoisted.mittBusEmit.mockReset()
@@ -109,11 +111,12 @@ describe("trackSubchannelCreated 关键属性", () => {
     })
   })
 
-  it("右键路径额外带 from_msg_type,channel_id = 源消息所在群", () => {
+  it("右键路径额外带 from_msg_type + is_ai_msg,channel_id = 源消息所在群", () => {
     trackSubchannelCreated({ short_id: "t2", channel_id: "group-b____t2" } as any, "message_right_click", {
       title: "",
       fromMsgType: "image_file",
       channelId: "group-b",
+      isAiMsg: true,
     })
     expect(hoisted.dapTrack).toHaveBeenCalledWith("subchannel_created", {
       subchannel_id: "t2",
@@ -121,11 +124,75 @@ describe("trackSubchannelCreated 关键属性", () => {
       title_len_bucket: "empty",
       from_msg_type: "image_file",
       channel_id: "group-b",
+      is_ai_msg: true,
+    })
+  })
+
+  it("is_ai_msg 携带 false(源消息作者非 AI)而非省略", () => {
+    trackSubchannelCreated({ short_id: "t2b", channel_id: "group-b____t2b" } as any, "message_right_click", {
+      title: "hi",
+      fromMsgType: "text",
+      channelId: "group-b",
+      isAiMsg: false,
+    })
+    expect(hoisted.dapTrack).toHaveBeenCalledWith("subchannel_created", {
+      subchannel_id: "t2b",
+      source: "message_right_click",
+      title_len_bucket: "short",
+      from_msg_type: "text",
+      channel_id: "group-b",
+      is_ai_msg: false,
     })
   })
 
   it("resp 为 null 时不发(fail-closed,不误判创建失败)", () => {
     trackSubchannelCreated(null, "channel_toolbar", { title: "x", channelId: "group-a" })
     expect(hoisted.dapTrack).not.toHaveBeenCalled()
+  })
+
+  it("uses parsed short_id or channel_id as a fallback and omits absent channel_id", () => {
+    trackSubchannelCreated({ channel_id: "group-a____parsed" } as any, "channel_toolbar", {
+      title: "12345678901",
+    })
+    expect(hoisted.dapTrack).toHaveBeenCalledWith("subchannel_created", {
+      subchannel_id: "parsed",
+      source: "channel_toolbar",
+      title_len_bucket: "medium",
+    })
+  })
+
+  it("does not track when the response has no usable subchannel id", () => {
+    trackSubchannelCreated({} as any, "channel_toolbar", { title: "Topic" })
+
+    expect(hoisted.dapTrack).not.toHaveBeenCalled()
+  })
+
+  it("strips a Space prefix from the parent channel_id", () => {
+    trackSubchannelCreated({ short_id: "t3" } as any, "channel_toolbar", {
+      title: "a".repeat(31),
+      channelId: "sa1b2c3d4e5f60718293a4b5c6d7e8f90_group-a",
+    })
+
+    expect(hoisted.dapTrack).toHaveBeenCalledWith("subchannel_created", expect.objectContaining({
+      subchannel_id: "t3",
+      title_len_bucket: "long",
+      channel_id: "group-a",
+    }))
+  })
+})
+
+describe("inferMsgType", () => {
+  it("prioritizes reply metadata over the underlying text type", () => {
+    expect(inferMsgType({
+      content: { contentType: MessageContentType.text, reply: { messageID: "m1" } },
+    })).toBe("reply")
+  })
+
+  it("maps text and image/file content while leaving unsupported content undefined", () => {
+    expect(inferMsgType({ contentType: MessageContentType.text })).toBe("text")
+    expect(inferMsgType({ contentType: MessageContentType.image })).toBe("image_file")
+    expect(inferMsgType({ contentType: MessageContentTypeConst.file })).toBe("image_file")
+    expect(inferMsgType({ contentType: MessageContentTypeConst.interactiveCard })).toBeUndefined()
+    expect(inferMsgType(undefined)).toBeUndefined()
   })
 })
