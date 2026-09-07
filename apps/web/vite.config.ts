@@ -238,6 +238,8 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "build",
       sourcemap: false,
+      // iPadOS 15 WKWebView cannot parse newer syntax such as class static blocks.
+      target: ["es2020", "safari15"],
     },
     server: {
       port: env.VITE_PORT ? Number(env.VITE_PORT) : 3000,
