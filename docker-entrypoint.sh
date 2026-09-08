@@ -78,6 +78,12 @@ export DRIVE_API_URL
 FLEET_API_URL="${FLEET_API_URL%/}"
 export FLEET_API_URL
 
+# Agent Worker owns device enrollment, Runtime registration and Runtime WSS.
+# Keep it on a dedicated prefix so Octo Server continues to own /api and /v1.
+: "${AGENT_WORKER_API_URL:=}"
+AGENT_WORKER_API_URL="${AGENT_WORKER_API_URL%/}"
+export AGENT_WORKER_API_URL
+
 # octo-dap telemetry collector upstream for the `location = /v1/e/b` block. Blank
 # by default (503 when unset) — same shape as the hosts above. Trailing slash
 # stripped: that block rewrites to a fixed `/v1/dap/collect` and proxy_passes
@@ -124,7 +130,7 @@ case "$NGINX_RESOLVER" in
 esac
 export NGINX_RESOLVER
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${FLEET_API_URL} ${TRACK_API_URL} ${MAIL_API_URL} ${AGENT_MAIL_API_URL} ${MAIL_CLIENT_MAX_BODY_SIZE} ${NGINX_RESOLVER} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${FLEET_API_URL} ${AGENT_WORKER_API_URL} ${TRACK_API_URL} ${MAIL_API_URL} ${AGENT_MAIL_API_URL} ${MAIL_CLIENT_MAX_BODY_SIZE} ${NGINX_RESOLVER} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

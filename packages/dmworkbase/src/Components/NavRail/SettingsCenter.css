@@ -50,6 +50,7 @@
 .wk-settings-center__voice-consent-footer .wk-checkbox { color: var(--wk-text-secondary); }
 .wk-settings-center__voice-consent-actions { margin-top: 0; }
 .wk-settings-center__voice-consent-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.wk-settings-center__section-content { container-type: inline-size; }
 .wk-settings-center__section-content h3 { margin: 0 0 16px; font-size: 16px; font-weight: 600; line-height: 1.35; }
 .wk-settings-center__settings-section + .wk-settings-center__settings-section { margin-top: 40px; }
 .wk-settings-center__settings-section h3 { margin: 0 0 16px; color: var(--wk-text-primary); font-size: 16px; font-weight: 600; line-height: 1.35; }

@@ -50,6 +50,14 @@ pnpm dev
 默认会连接 `http://localhost:8080` 的 `octo-server`。如需指向自有后端，
 复制 `.env.example` 为 `.env.local` 并修改其中的 `VITE_API_*` 字段。
 
+### Agent Worker onboarding 代理
+
+部署镜像在 `/octo-harness/install.sh` 和 `/octo-harness/install.ps1`
+发布同版本 Harness 安装器。将 `AGENT_WORKER_API_URL` 设为集群内
+Agent Worker origin，例如 `http://octo-agent-worker:8092`。Nginx 会去掉公开
+`/agent-worker` 前缀，再转发 enrollment、Runtime 注册和 Runtime WebSocket。
+未配置该变量时，`/agent-worker/*` 以 503 fail closed。
+
 ## 📦 模块与架构
 
 顶层结构：

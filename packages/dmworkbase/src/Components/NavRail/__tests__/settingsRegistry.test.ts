@@ -20,6 +20,7 @@ describe("settings registry", () => {
       "notifications",
       "voice",
       "shortcuts",
+      "my-devices",
       "devices",
       "about",
     ]);
@@ -46,5 +47,10 @@ describe("settings registry", () => {
 
   it("never exposes trusted domains on web", () => {
     expect(itemIds("web")).not.toContain("trusted-domains");
+  });
+
+  it("keeps My devices web-only", () => {
+    expect(itemIds("web")).toContain("my-devices");
+    expect(itemIds("desktop")).not.toContain("my-devices");
   });
 });

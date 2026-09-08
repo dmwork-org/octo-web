@@ -1,0 +1,302 @@
+.wk-runtime-device {
+  display: grid;
+  gap: var(--wk-sp-5);
+  margin-bottom: var(--wk-sp-10);
+  padding: var(--wk-sp-6) 0;
+  border-top: 1px solid var(--wk-border-subtle);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-runtime-device__main {
+  display: grid;
+  grid-template-columns: var(--wk-sp-10) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wk-sp-4);
+}
+
+.wk-runtime-device__icon {
+  display: inline-flex;
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+}
+
+.wk-runtime-device__icon svg {
+  width: var(--wk-sp-6);
+  height: var(--wk-sp-6);
+}
+
+.wk-runtime-device__copy {
+  min-width: 0;
+}
+
+.wk-runtime-device__copy h3 {
+  margin: 0;
+  color: var(--wk-text-primary);
+  font: var(--wk-text-h3);
+}
+
+.wk-runtime-device__copy p {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-body);
+}
+
+.wk-runtime-device__main .wk-btn svg {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+}
+
+.wk-runtime-device__adapters {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding-left: calc(var(--wk-sp-10) + var(--wk-sp-4));
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-caption);
+}
+
+.wk-runtime-device__adapters ul {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wk-runtime-device__adapters li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-caption);
+}
+
+.wk-runtime-device__adapters li svg {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+}
+
+.wk-runtime-device-dialog {
+  display: grid;
+  gap: var(--wk-sp-6);
+}
+
+.wk-runtime-device-dialog__description {
+  margin: 0;
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-body);
+}
+
+.wk-runtime-device-dialog__platforms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+}
+
+.wk-runtime-device-dialog__platforms button {
+  display: inline-flex;
+  min-height: var(--wk-sp-9, 36px);
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-3);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+  font: var(--wk-text-body-medium);
+}
+
+.wk-runtime-device-dialog__platforms button:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-runtime-device-dialog__platforms button.is-active {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+.wk-runtime-device-dialog__platforms svg,
+.wk-runtime-device-dialog__hint svg,
+.wk-runtime-device-dialog__section-heading button svg {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+  flex: 0 0 var(--wk-sp-4);
+}
+
+.wk-runtime-device-dialog__section {
+  display: grid;
+  gap: var(--wk-sp-3);
+}
+
+.wk-runtime-device-dialog__section h4 {
+  margin: 0;
+  color: var(--wk-text-primary);
+  font: var(--wk-text-h4);
+}
+
+.wk-runtime-device-dialog__code {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--wk-code-border);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-code-bg);
+  color: var(--wk-text-inverse);
+  overflow: hidden;
+}
+
+.wk-runtime-device-dialog__code pre {
+  margin: 0;
+  padding: var(--wk-sp-4) var(--wk-sp-4) var(--wk-sp-12);
+  overflow: auto;
+  font: var(--wk-text-code);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wk-runtime-device-dialog__enrollment-state {
+  min-height: 112px;
+  padding: var(--wk-sp-4);
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-body);
+}
+
+.wk-runtime-device-dialog__enrollment-state.is-error {
+  color: var(--wk-color-danger);
+}
+
+.wk-runtime-device-dialog__copy {
+  position: absolute;
+  right: var(--wk-sp-2);
+  bottom: var(--wk-sp-2);
+  display: inline-flex;
+  min-height: var(--wk-sp-8);
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid var(--wk-white-alpha-12);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-neutral-800);
+  color: var(--wk-text-inverse);
+  cursor: pointer;
+  font: var(--wk-text-caption);
+}
+
+.wk-runtime-device-dialog__copy:hover {
+  background: var(--wk-neutral-700);
+}
+
+.wk-runtime-device-dialog__copy:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wk-runtime-device-dialog__retry {
+  display: inline-flex;
+  width: fit-content;
+  min-height: var(--wk-sp-8);
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  padding: 0 var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+  font: var(--wk-text-caption);
+}
+
+.wk-runtime-device-dialog__retry:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-runtime-device-dialog__retry svg {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+}
+
+.wk-runtime-device-dialog__copy svg {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+}
+
+.wk-runtime-device-dialog__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+  margin: 0;
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-caption);
+}
+
+.wk-runtime-device-dialog__section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+}
+
+.wk-runtime-device-dialog__section-heading button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+  font: var(--wk-text-caption);
+}
+
+.wk-runtime-device-dialog__section-heading button:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-runtime-device-dialog__prompt {
+  margin: 0;
+  padding: var(--wk-sp-4);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-body);
+}
+
+.wk-runtime-device button:focus-visible,
+.wk-runtime-device-dialog button:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+  outline-offset: var(--wk-sp-0-5);
+}
+
+@container (max-width: 560px) {
+  .wk-runtime-device__main {
+    grid-template-columns: var(--wk-sp-10) minmax(0, 1fr);
+  }
+
+  .wk-runtime-device__main .wk-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .wk-runtime-device__adapters {
+    align-items: flex-start;
+    flex-direction: column;
+    padding-left: 0;
+  }
+}
