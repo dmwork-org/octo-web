@@ -137,8 +137,8 @@ export interface DocForwardOpen {
   docId?: string
   /** The doc's space id (deep-link + preview both need it). */
   spaceId?: string
-  /** Resource kind — doc/board/sheet/html — drives the card icon + which preview endpoint the cell calls. */
-  kind?: "doc" | "board" | "sheet" | "html"
+  /** Resource kind drives the card icon and preview provider. */
+  kind?: "doc" | "board" | "sheet" | "html" | "html_ppt"
   /** Pre-resolved owner display name for the card eyebrow (optional). */
   ownerName?: string
   /** Pre-formatted "updated at" string for the card eyebrow (optional). */

@@ -2,6 +2,7 @@ import { webOrigin } from "../../Utils/docLink";
 import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
 import { getElectronLinksBridge } from "../../electron/desktopBridge";
 import React from "react";
+import WKApp from '../../App';
 import MessageBase from "../Base";
 import { MessageBaseCellProps, MessageCell } from "../MessageCell";
 import { I18nContext } from "../../i18n";
@@ -32,6 +33,8 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
 
   state: DocShareCardCellState = { status: "loading" };
   private aborter?: AbortController;
+  private previewRequest = 0;
+  private recheckTimer?: ReturnType<typeof setInterval>;
 
   componentDidMount(): void {
     super.componentDidMount();
@@ -39,12 +42,20 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
     void this.loadPreview(false);
     window.addEventListener("focus", this.handleRecheck);
     document.addEventListener("visibilitychange", this.handleVisibility);
+    WKApp.mittBus?.on('space-changed', this.handleRecheck);
+    WKApp.mittBus?.on('wk:auth-state-changed', this.handleRecheck);
+    if ((this.props.message.content as DocumentShareCardContent).kind === 'html_ppt') {
+      this.recheckTimer = setInterval(this.handleVisibility, 30_000);
+    }
   }
 
   componentWillUnmount(): void {
     this.aborter?.abort();
     window.removeEventListener("focus", this.handleRecheck);
     document.removeEventListener("visibilitychange", this.handleVisibility);
+    WKApp.mittBus?.off('space-changed', this.handleRecheck);
+    WKApp.mittBus?.off('wk:auth-state-changed', this.handleRecheck);
+    clearInterval(this.recheckTimer);
     super.componentWillUnmount();
   }
 
@@ -59,8 +70,10 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
   /** 拉取并写回预览/权限态。force=true 时强制绕过缓存拿最新 ACL 结果。 */
   private loadPreview(force: boolean): Promise<void> {
     const content = this.props.message.content as DocumentShareCardContent;
+    const request = ++this.previewRequest;
+    if (force) this.setState({ status: 'loading', preview: undefined });
     return fetchDocPreview(content.kind, content.docId, content.spaceId, { force }).then((res) => {
-      if (this.aborter?.signal.aborted) return;
+      if (this.aborter?.signal.aborted || request !== this.previewRequest) return;
       this.setState({ status: res.status, preview: res.preview });
     });
   }
