@@ -42,11 +42,14 @@ import useSummaryWorkbench, {
 } from "../../bridge/summaryWorkbench/useSummaryWorkbench";
 import SummaryWorkbench, {
   type SummaryWorkbenchAction,
+  type SummaryWorkbenchCardView,
   type SummaryWorkbenchContextKind,
+  type SummaryWorkbenchMessageView,
 } from "../../ui/SummaryWorkbench";
 import type { ChatCandidate, SummaryListItem } from "../../types/summary";
 import { channelToChatCandidate } from "../../utils/channelConvert";
 import { markAgentSummaryNotificationEligible } from "../../utils/groupSummaryNotify";
+import { trackAgentSummaryQuality } from "../../utils/summaryQualityDiagnostics";
 import {
   deriveSummaryTitle,
   resolveTemplate,
@@ -94,6 +97,13 @@ export interface SummaryWorkbenchFeatureProps {
 
 type OpenSelector = Exclude<SummaryWorkbenchContextKind, "template"> | null;
 type ReferencedTask = Pick<SummaryListItem, "task_id" | "title">;
+let referencePreviewIdSequence = 0;
+
+function createReferencePreviewId(): string {
+  referencePreviewIdSequence += 1;
+  return `summary-workbench-reference-preview-${referencePreviewIdSequence}`;
+}
+
 type ParticipantCandidateState = ParticipantCandidateLoadResult & {
   sourceKey: string;
   status: "idle" | "loading" | "ready" | "error";
@@ -142,6 +152,20 @@ function isAcceptedResponse(
   return Boolean(response && response.resultType !== "error");
 }
 
+function hasAcceptedHydratedTurn(
+  messages: SummaryWorkbenchMessageView[],
+  card?: SummaryWorkbenchCardView
+): boolean {
+  return Boolean(
+    card ||
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.resultType !== "error"
+      )
+  );
+}
+
 export default function SummaryWorkbenchFeature({
   spaceId,
   channel,
@@ -155,6 +179,7 @@ export default function SummaryWorkbenchFeature({
   messaging,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
+  const [referencePreviewId] = useState(createReferencePreviewId);
   const currentUserId = messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
   const initialScope = useMemo(
     () => initialScopeFor(channel, derivedFromTask),
@@ -220,6 +245,13 @@ export default function SummaryWorkbenchFeature({
     workbench.isHydrating ||
     workbench.isConfirming ||
     workbench.isSaving;
+  const templateLocked =
+    hasSubmitted ||
+    (!workbench.isHydrating &&
+      hasAcceptedHydratedTurn(
+        workbench.viewState.messages,
+        workbench.viewState.card
+      ));
   const latestScopeRef = useRef(workbench.scope);
   const latestScopeChangeImpactRef = useRef<SummaryScopeChangeImpact | null>(
     controllerScopeChangeImpact(workbench)
@@ -392,8 +424,10 @@ export default function SummaryWorkbenchFeature({
     if (!hydrationObserved.current) return;
     hydrationObserved.current = false;
     if (
-      workbench.viewState.messages.length > 0 ||
-      Boolean(workbench.viewState.card)
+      hasAcceptedHydratedTurn(
+        workbench.viewState.messages,
+        workbench.viewState.card
+      )
     ) {
       setHasSubmitted(true);
       setTemplateGalleryOpen(false);
@@ -401,7 +435,7 @@ export default function SummaryWorkbenchFeature({
   }, [
     workbench.isHydrating,
     workbench.viewState.card,
-    workbench.viewState.messages.length,
+    workbench.viewState.messages,
   ]);
 
   const referencedTaskId = workbench.scope.referencedTaskIds[0];
@@ -513,11 +547,12 @@ export default function SummaryWorkbenchFeature({
       !busy &&
       participantScopeReady &&
       (composerHasCustomText ||
-        (!hasSubmitted && structuredGenerate) ||
-        (hasSubmitted &&
+        (!templateLocked && structuredGenerate) ||
+        (templateLocked &&
           templateFilledComposer.current !== null &&
           structuredGenerate)),
-    showTemplateTrigger: !templateGalleryOpen,
+    showTemplateTrigger: !templateLocked && !templateGalleryOpen,
+    templateLocked,
     sendLabelKey:
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
@@ -525,6 +560,8 @@ export default function SummaryWorkbenchFeature({
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
+    referencePreviewOpen,
+    referencePreviewId,
   };
 
   const updateScopeWithPreviewGuard = (
@@ -607,7 +644,7 @@ export default function SummaryWorkbenchFeature({
     }
     const action =
       directTeamWorkflow &&
-      !hasSubmitted &&
+      !templateLocked &&
       workbench.scope.participants.length > 0
         ? "start_team_workflow"
         : "chat";
@@ -651,8 +688,17 @@ export default function SummaryWorkbenchFeature({
   };
 
   const handleContextOpen = (kind: SummaryWorkbenchContextKind) => {
+    // Reference is a read-only preview toggle — mutates no scope and must
+    // remain usable while sending/hydrating. Gate the scope-mutating branches
+    // (template / participant / other pickers) only.
+    if (kind === "reference" && referencedTask) {
+      setOpenSelector(null);
+      setReferencePreviewOpen((open) => !open);
+      return;
+    }
     if (busy) return;
     if (kind === "template") {
+      if (templateLocked) return;
       setTemplateGalleryOpen(true);
       return;
     }
@@ -664,9 +710,6 @@ export default function SummaryWorkbenchFeature({
     if (kind === "participant") {
       void refreshParticipantCandidates();
     }
-    if (kind === "reference" && referencedTask) {
-      setReferencePreviewOpen(true);
-    }
   };
 
   const handleContextRemove = (
@@ -674,6 +717,7 @@ export default function SummaryWorkbenchFeature({
     id: string
   ) => {
     if (busy) return;
+    if (kind === "template" && templateLocked) return;
     const shouldClearTemplateText =
       kind === "template" && templateFilledComposer.current !== null;
     const result = removeScopeContext(workbench.scope, kind, id);
@@ -779,28 +823,17 @@ export default function SummaryWorkbenchFeature({
     setSaveDialogOpen(false);
     if (handledSavedTaskIds.current.has(result.task_id)) return;
     handledSavedTaskIds.current.add(result.task_id);
-    // P1-5 (yujiawei review 5087124100): gate the warning on finish_status,
-    // not on gaps[0].detail — {finish_status:"FAILED", gaps:[]} previously
-    // produced a success toast. Show gap detail when present, otherwise a
-    // generic quality-gate warning.
-    const qualityGateHit =
-      result.finish_status === "PARTIAL" || result.finish_status === "FAILED";
-    if (qualityGateHit) {
-      const firstGapDetail = result.gaps?.[0]?.detail;
-      if (firstGapDetail) {
-        Toast.warning(
-          t("summary.workbench.notice.savedWithQualityGap", {
-            values: { detail: firstGapDetail },
-          })
-        );
-      } else {
-        Toast.warning(
-          t("summary.workbench.notice.savedWithQualityGateWarning")
-        );
-      }
-    } else {
-      Toast.success(t("summary.create.agentSummaryCreated"));
-    }
+    // Reaching this branch means task creation/save succeeded. Transport,
+    // protocol, and task-creation failures stay on the existing error path;
+    // finish_status and gaps are post-save internal quality diagnostics only.
+    trackAgentSummaryQuality(result, {
+      object_id: channel?.channelID,
+      source,
+      entry_point: source,
+      entry_source: source,
+      trigger_mode: "agent",
+    });
+    Toast.success(t("summary.create.agentSummaryCreated"));
     notifyCreated(result.task_id, "agent");
     openTask(result.task_id);
   };
@@ -811,6 +844,10 @@ export default function SummaryWorkbenchFeature({
   );
 
   const applyTemplate = (template: SummaryWorkbenchTemplateScope) => {
+    if (templateLocked) {
+      setPendingTemplate(null);
+      return;
+    }
     updateScopeWithPreviewGuard({ ...workbench.scope, template }, () => {
       setPendingTemplate(null);
       templateFilledComposer.current = template.requirement;
@@ -826,7 +863,7 @@ export default function SummaryWorkbenchFeature({
   const handleTemplateChange = (
     template: SummaryWorkbenchTemplateScope | null
   ) => {
-    if (busy) return;
+    if (busy || templateLocked) return;
     if (!template) {
       updateScopeWithPreviewGuard(
         { ...workbench.scope, template: null },
@@ -868,7 +905,7 @@ export default function SummaryWorkbenchFeature({
           actions={{
             onInputChange: (value) => {
               const shouldClearTemplate = Boolean(
-                !hasSubmitted &&
+                !templateLocked &&
                   !value.trim() &&
                   workbench.scope.template &&
                   templateFilledComposer.current !== null &&
@@ -901,7 +938,7 @@ export default function SummaryWorkbenchFeature({
             onNewSession: resetSession,
           }}
           contextPanel={
-            templateGalleryOpen ? (
+            templateGalleryOpen && !templateLocked ? (
               <TemplateSelectorModal
                 visible
                 inline
@@ -918,6 +955,7 @@ export default function SummaryWorkbenchFeature({
 
       {referencePreviewOpen && referencedTask && (
         <SummaryReferenceSidePanel
+          id={referencePreviewId}
           taskId={referencedTask.task_id}
           onClose={() => setReferencePreviewOpen(false)}
         />
@@ -1000,7 +1038,7 @@ export default function SummaryWorkbenchFeature({
       </Modal>
 
       <Modal
-        visible={pendingTemplate !== null}
+        visible={pendingTemplate !== null && !templateLocked}
         title={t("summary.workbench.selector.replaceTemplateTitle")}
         okText={t("summary.workbench.selector.replaceTemplateConfirm")}
         cancelText={t("summary.common.cancel")}
@@ -1014,7 +1052,6 @@ export default function SummaryWorkbenchFeature({
 
       <SummaryReferencePicker
         visible={openSelector === "reference"}
-        selectedTaskId={referencedTask?.task_id}
         onSelect={(task: SummaryListItem) => {
           if (busy) return;
           updateScopeWithPreviewGuard(
