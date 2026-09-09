@@ -377,18 +377,18 @@ export interface CreateAgentSummaryParams {
 
 /**
  * v2 完成判定(SS-07 / SS-11)。COMPLETE = 完整交付;PARTIAL = 有覆盖缺口;
- * FAILED = 总结已保存，但质量门发现硬性缺口。PARTIAL / FAILED 都应向用户展示 gaps 警示。
+ * FAILED = 总结已保存，但质量门发现硬性缺口。该字段用于内部诊断，不改变用户保存成功语义。
  */
 export type FinishStatus = 'COMPLETE' | 'PARTIAL' | 'FAILED';
 
 /**
- * v2 覆盖/质量缺口(SS-07 finishgate.Gap)。用于 PARTIAL / FAILED 时向用户披露具体问题。
+ * v2 覆盖/质量缺口(SS-07 finishgate.Gap)。保留为内部诊断信息，不直接向用户展示。
  */
 export interface CoverageGap {
-    /** 缺口种类,如 tool_error / coverage / evidence 等(后端枚举,前端按需归类展示)。 */
+    /** 缺口种类,如 tool_error / coverage / evidence 等；前端仅用于内部诊断聚合。 */
     kind: string;
-    /** 人类可读的缺口说明。 */
-    detail: string;
+    /** 可选的人类可读缺口说明；不向用户展示，也不随诊断埋点上报。 */
+    detail?: string;
     /** 可选:关联的结构化错误码。 */
     error_code?: string;
 }
@@ -405,7 +405,7 @@ export interface CreateAgentSummaryResult {
     created_at: string;
     /** v2:COMPLETE / PARTIAL / FAILED；三者都表示保存请求已成功。 */
     finish_status?: FinishStatus;
-    /** v2:PARTIAL / FAILED 时的缺口清单;COMPLETE 时为空数组。 */
+    /** v2:PARTIAL / FAILED 时的内部诊断清单；前端仅聚合首个 kind，不展示 detail。 */
     gaps?: CoverageGap[];
 }
 export interface ChatMessage {

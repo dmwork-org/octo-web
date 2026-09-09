@@ -68,6 +68,7 @@ import {
     writeAgentChatRequestId,
     clearAgentChatRequestId,
 } from "../utils/summaryHelpers";
+import { trackAgentSummaryQuality } from "../utils/summaryQualityDiagnostics";
 import {
   resolveTemplate,
   computeTemplateSelection,
@@ -1114,18 +1115,17 @@ export default class SummaryCreatePage extends Component<
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
-            const qualityGateHit = result.finish_status === 'PARTIAL' || result.finish_status === 'FAILED';
-            const firstGapDetail = qualityGateHit ? result.gaps?.[0]?.detail : undefined;
-            if (firstGapDetail) {
-                Toast.warning(t('summary.workbench.notice.savedWithQualityGap', {
-                    values: { detail: firstGapDetail },
-                }));
-            } else if (qualityGateHit) {
-                // P1-5: FAILED/PARTIAL with an empty gaps list must not read as success.
-                Toast.warning(t('summary.workbench.notice.savedWithQualityGateWarning'));
-            } else {
-                Toast.success(t('summary.create.agentSummaryCreated'));
-            }
+            // Reaching this branch means task creation/save succeeded. Actual
+            // request failures remain in the catch/error path; finish_status
+            // and gaps are post-save internal quality diagnostics only.
+            trackAgentSummaryQuality(result, {
+                object_id: this.props.channel?.channelID,
+                source: this.props.source,
+                entry_point: this.props.source,
+                entry_source: this.props.source,
+                trigger_mode: 'agent',
+            });
+            Toast.success(t('summary.create.agentSummaryCreated'));
 
             // 保存成功 → 销毁 chat session 工作台:
             //   1. 清 localStorage 里的 session_id(不然下次进 agent 会误恢复空 session)
