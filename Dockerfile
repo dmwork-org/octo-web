@@ -7,6 +7,7 @@ RUN npm config set registry https://registry.npmmirror.com && npm install -g pnp
 ARG VITE_ENTERPRISE_MODULES_ENTRY=
 ARG VITE_ENTERPRISE_HTML_HEAD_PATH=
 ARG VITE_ENTERPRISE_FS_ALLOW=
+ARG VITE_DOCS_PPT_ENTRY=false
 
 # 复制全量源码并安装依赖
 COPY . .
@@ -30,6 +31,7 @@ ENV VITE_ENABLE_ENTERPRISE_SSO=${ENABLE_ENTERPRISE_SSO}
 ENV VITE_ENTERPRISE_MODULES_ENTRY=${VITE_ENTERPRISE_MODULES_ENTRY}
 ENV VITE_ENTERPRISE_HTML_HEAD_PATH=${VITE_ENTERPRISE_HTML_HEAD_PATH}
 ENV VITE_ENTERPRISE_FS_ALLOW=${VITE_ENTERPRISE_FS_ALLOW}
+ENV VITE_DOCS_PPT_ENTRY=${VITE_DOCS_PPT_ENTRY}
 RUN pnpm --filter @octo/web build
 # Enterprise Docs relies on the host-applied Excalidraw patch. Verify the final
 # production bundle, not the patch source or installed package, before publishing.

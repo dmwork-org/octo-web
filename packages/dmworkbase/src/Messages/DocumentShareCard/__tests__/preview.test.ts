@@ -4,6 +4,7 @@ vi.mock("../../../Service/APIClient", () => ({
   default: {
     shared: {
       get: vi.fn(),
+      config: { apiURL: "" },
     },
   },
 }));
@@ -53,6 +54,7 @@ function wireReject(status: number, errorCode?: string) {
 
 beforeEach(() => {
   apiGet.mockReset();
+  APIClient.shared.config.apiURL = "";
   currentUid = "u_self";
   resetDocPreviewCache();
 });
@@ -82,21 +84,15 @@ describe("fetchDocPreview — kind → endpoint mapping (blocker #2 regression)"
     expect(cfg.headers?.["X-Space-Id"]).toBe("sp_other");
   });
 
-  it("uses the independent docs backend for Electron previews", async () => {
-    vi.stubGlobal("window", { location: { protocol: "file:" } });
-    vi.stubEnv("VITE_ELECTRON_BUILD", "true");
-    vi.stubEnv("VITE_DOCS_API_URL", "https://docs.example.com/base-ignored");
+  it("uses the shared preview service's Docs path with an absolute desktop IM base", async () => {
+    APIClient.shared.config.apiURL = "https://im.example.com/v1/";
     apiGet.mockResolvedValueOnce({});
-
-    try {
-      await fetchDocPreview("doc", "d_1", "sp_1");
-      const cfg = apiGet.mock.calls[0][1] as { baseURL?: string };
-      expect(cfg.baseURL).toBe("https://docs.example.com/api/v1/");
-    } finally {
-      vi.unstubAllGlobals();
-      vi.unstubAllEnvs();
-    }
+    await fetchDocPreview("doc", "d_1", "sp_1");
+    expect(apiGet.mock.calls[0][0]).toBe("https://im.example.com/api/v1/docs/d_1/content");
+    const cfg = apiGet.mock.calls[0][1] as { headers?: Record<string, string> };
+    expect(cfg.headers?.["X-Space-Id"]).toBe("sp_1");
   });
+
 });
 
 describe("fetchDocPreview — ACL-safe status mapping (blocker #3 / ACL design)", () => {

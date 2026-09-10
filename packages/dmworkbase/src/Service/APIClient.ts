@@ -253,8 +253,6 @@ export class RequestConfig {
     param?: any
     data?:any
     resp?: () => APIResp
-    /** Optional per-request base URL, used by desktop-only independent services. */
-    baseURL?: string
     /**
      * 逐请求显式 HTTP 头，转发给 axios 并由其合并进最终请求头。用于让 per-request 头
      * （如 standalone /d/:docId preflight 的 X-Space-Id）真正上 wire。合并策略见

@@ -321,6 +321,7 @@ argocd_sync:
         docker build \
           --build-arg APP_VERSION="$CI_COMMIT_SHORT_SHA" \
           --build-arg ENABLE_ENTERPRISE_SSO="${ENABLE_ENTERPRISE_SSO:-false}" \
+          --build-arg VITE_DOCS_PPT_ENTRY="${VITE_DOCS_PPT_ENTRY:-false}" \
           --build-arg VITE_ENTERPRISE_MODULES_ENTRY \
           --build-arg VITE_ENTERPRISE_HTML_HEAD_PATH \
           --build-arg VITE_ENTERPRISE_FS_ALLOW \
@@ -331,6 +332,7 @@ argocd_sync:
         docker build \
           --build-arg APP_VERSION="$CI_COMMIT_SHORT_SHA" \
           --build-arg ENABLE_ENTERPRISE_SSO="${ENABLE_ENTERPRISE_SSO:-false}" \
+          --build-arg VITE_DOCS_PPT_ENTRY="${VITE_DOCS_PPT_ENTRY:-false}" \
           -t "$PUSH_IMAGE_PATH" \
           -t "$PUSH_IMAGE_LATEST" \
           -f ./Dockerfile .
