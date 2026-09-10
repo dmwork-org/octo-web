@@ -5,6 +5,7 @@ import { act, Simulate } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExpertItem } from "../mock/expertMock";
 import type { ExpertListResult, ListExpertParams } from "../api/expertService";
+import type { MineRow } from "@dmwork/skillmarket";
 
 const api = vi.hoisted(() => ({
   listExperts: vi.fn(),
@@ -20,7 +21,10 @@ const api = vi.hoisted(() => ({
   getExpert: vi.fn(),
   getSquad: vi.fn(),
 }));
+const pluginReview = vi.hoisted(() => ({ cancelPluginReview: vi.fn(), publishPluginListing: vi.fn() }));
+vi.mock("../api/pluginReview", () => pluginReview);
 const bus = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn() }));
+const reviews = vi.hoisted(() => ({ useReviewRequests: vi.fn(), refresh: vi.fn() }));
 vi.mock("../api/expertService", () => api);
 vi.mock("@octo/base", () => ({
   WKApp: { mittBus: bus },
@@ -41,12 +45,18 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn() },
   Tooltip: () => null,
 }));
-vi.mock("@dmwork/skillmarket", () => ({
-  MineTable: ({ rows }: { rows: { id: string; name: string }[] }) => (
+vi.mock("@dmwork/skillmarket", async () => ({
+  deriveSkillReviewState: (await import("../../../dmworkskillmarket/src/utils/review")).deriveSkillReviewState,
+  useReviewRequests: reviews.useReviewRequests,
+  MineTable: ({ rows }: { rows: MineRow[] }) => (
     <div>
       {rows.map((row) => (
-        <div data-item={row.id} key={row.id}>
+        <div data-item={row.id} data-status={row.status} key={row.id}>
           {row.name}
+          {row.onEdit && <button onClick={row.onEdit}>edit</button>}
+          {row.onPublish && <button onClick={row.onPublish}>publish</button>}
+          {row.onUpgrade && <button onClick={row.onUpgrade}>upgrade</button>}
+          {row.onCancelReview && <button onClick={row.onCancelReview}>cancel</button>}
         </div>
       ))}
     </div>
@@ -63,6 +73,8 @@ vi.mock("../components/ExpertDeleteConfirmModal", () => ({
   default: () => null,
 }));
 vi.mock("../components/ExpertAddToLoopModal", () => ({ default: () => null }));
+vi.mock("../components/ExpertEditModal", () => ({ default: () => null }));
+vi.mock("../components/ReviewSubmitModal", () => ({ default: () => null }));
 
 import ExpertMarketListPage from "./ExpertMarketListPage";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
@@ -107,6 +119,7 @@ let root: HTMLDivElement;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
+  reviews.useReviewRequests.mockReturnValue({ items: [], refresh: reviews.refresh });
   for (const list of [
     api.listExperts,
     api.listSquads,
@@ -439,6 +452,7 @@ describe("expert catalog server search and pagination", () => {
     expect(itemCount()).toBe(0);
     expect(root.textContent).not.toContain("mcp.expert.loadMore");
     expect(api.clearLoopCache).toHaveBeenCalledOnce();
+    expect(reviews.refresh).toHaveBeenCalledOnce();
   });
 
   it("deduplicates overlapping pages and stops on an empty end page", async () => {
@@ -480,6 +494,40 @@ describe("expert catalog server search and pagination", () => {
   });
 
   it.each(["agent", "squad"] as const)(
+    "preserves review status and owner actions on later personal %s pages",
+    async (mineType) => {
+      const list = mineType === "agent" ? api.listMyExperts : api.listMySquads;
+      list.mockImplementation(async (params: ListExpertParams) => {
+        const result = await serverList(params);
+        return {
+          ...result,
+          items: result.items.map((item) => ({
+            ...item,
+            kind: mineType,
+            visibility: "space",
+            listingState: item.id === "expert-102" ? "published" : "unlisted",
+            reviewId: item.id === "expert-101" ? "review-101" : undefined,
+            displayStatus: item.id === "expert-101" ? "pending_review" : item.id === "expert-102" ? "published" : "draft",
+          })),
+        };
+      });
+      await render({ variant: "mine", mineType });
+      expect(reviews.useReviewRequests).toHaveBeenLastCalledWith({ mode: "mine", pageSize: 100, enabled: true });
+      click(button("mcp.expert.loadMore"));
+      await tick();
+      const pending = root.querySelector('[data-item="expert-101"]')!;
+      expect(pending.getAttribute("data-status")).toBe("pending_review");
+      expect(Array.from(pending.querySelectorAll("button"), (el) => el.textContent)).toEqual(["cancel"]);
+      const published = root.querySelector('[data-item="expert-102"]')!;
+      expect(published.getAttribute("data-status")).toBe("published");
+      expect(Array.from(published.querySelectorAll("button"), (el) => el.textContent)).toEqual(["upgrade"]);
+      const draft = root.querySelector('[data-item="expert-103"]')!;
+      expect(Array.from(draft.querySelectorAll("button"), (el) => el.textContent)).toEqual(["edit", "publish"]);
+      expect(itemCount()).toBe(112);
+    }
+  );
+
+  it.each(["agent", "squad"] as const)(
     "only loads the selected personal %s type",
     async (mineType) => {
       await render({ variant: "mine", mineType });
@@ -499,5 +547,48 @@ describe("expert catalog server search and pagination", () => {
     await tick(250);
     expect(api.listExperts).toHaveBeenCalledTimes(1);
     expect(bus.off).toHaveBeenCalledWith("space-changed", expect.any(Function));
+  });
+});
+
+
+describe.each(["agent", "squad"] as const)("personal %s review cancellation", (mineType) => {
+  function pendingList(reviewId?: string) {
+    const list = mineType === "agent" ? api.listMyExperts : api.listMySquads;
+    list.mockResolvedValue({
+      items: [{ ...records[0], kind: mineType, visibility: "space", displayStatus: "pending_review", reviewId }],
+      total: 1,
+    });
+  }
+
+  it.each([undefined, "", "   "])("withholds cancellation when the review ID is %j", async (reviewId) => {
+    pendingList(reviewId);
+    await render({ variant: "mine", mineType });
+    const row = root.querySelector('[data-item="expert-1"]')!;
+    expect(row.getAttribute("data-status")).toBe("pending_review");
+    expect(row.querySelector("button")).toBeNull();
+    expect(pluginReview.cancelPluginReview).not.toHaveBeenCalled();
+  });
+
+  it("cancels with the review ID returned by the plugin row", async () => {
+    pendingList("row-review-1");
+    await render({ variant: "mine", mineType });
+    click(button("cancel"));
+    await tick();
+    expect(pluginReview.cancelPluginReview).toHaveBeenCalledExactlyOnceWith("row-review-1");
+  });
+
+  it.each([undefined, "", "   "])("waits for the pending review lookup when the row ID is %j", async (reviewId) => {
+    pendingList(reviewId);
+    await render({ variant: "mine", mineType });
+    expect(root.querySelector('[data-item="expert-1"] button')).toBeNull();
+
+    reviews.useReviewRequests.mockReturnValue({
+      items: [{ id: "lookup-review-1", pluginId: "expert-1", status: "pending" }],
+      refresh: reviews.refresh,
+    });
+    await render({ variant: "mine", mineType });
+    click(button("cancel"));
+    await tick();
+    expect(pluginReview.cancelPluginReview).toHaveBeenCalledExactlyOnceWith("lookup-review-1");
   });
 });

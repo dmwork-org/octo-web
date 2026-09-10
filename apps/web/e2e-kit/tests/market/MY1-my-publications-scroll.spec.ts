@@ -31,7 +31,7 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 900, height: 520 
         await expect.poll(() => table.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
       }
       const lastRow = page.getByRole("row", { name: "Scroll asset 16", exact: true });
-      const lastDelete = lastRow.getByRole("button", { name: "删除 Scroll asset 16", exact: true });
+      const lastDelete = lastRow.getByRole("button", { name: "删除「Scroll asset 16」", exact: true });
       const tableWidth = await table.evaluate((el) => el.scrollWidth);
       expect(await lastRow.evaluate((el) => el.clientWidth)).toBeGreaterThanOrEqual(tableWidth - 1);
       await expect(lastDelete).toBeInViewport();
