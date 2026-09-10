@@ -10,14 +10,20 @@ vi.mock("../../App", () => ({
   },
 }));
 
-import { SpaceService, type SpaceMember } from "../SpaceService";
+import {
+  isSpaceAdminOrOwner,
+  isSpaceOwner,
+  SPACE_ROLE_MEMBER,
+  SpaceService,
+  type SpaceMember,
+} from "../SpaceService";
 
 function member(uid: string): SpaceMember {
   return {
     uid,
     name: uid,
     avatar: "",
-    role: 3,
+    role: SPACE_ROLE_MEMBER,
     robot: 0,
     created_at: "",
   };
@@ -27,6 +33,17 @@ function member(uid: string): SpaceMember {
 function fullPage(size: number): SpaceMember[] {
   return Array.from({ length: size }, (_, i) => member(`u${i}`));
 }
+
+describe("Space role helpers", () => {
+  it("uses the 0=member, 1=admin, 2=owner encoding", () => {
+    expect(isSpaceAdminOrOwner(0)).toBe(false);
+    expect(isSpaceAdminOrOwner(1)).toBe(true);
+    expect(isSpaceAdminOrOwner(2)).toBe(true);
+    expect(isSpaceOwner(0)).toBe(false);
+    expect(isSpaceOwner(1)).toBe(false);
+    expect(isSpaceOwner(2)).toBe(true);
+  });
+});
 
 describe("SpaceService member pagination", () => {
   beforeEach(() => {
@@ -197,13 +214,15 @@ describe("SpaceService.getRoster", () => {
 
   it("refetches after removeMembers invalidates the roster", async () => {
     api.get.mockResolvedValue([member("u1")]);
-    api.delete.mockResolvedValue(undefined);
+    api.post.mockResolvedValue(undefined);
 
     await SpaceService.shared.getRoster("space-1");
     await SpaceService.shared.removeMembers("space-1", ["u1"]);
     await SpaceService.shared.getRoster("space-1");
 
     expect(api.get).toHaveBeenCalledTimes(2);
+    expect(api.post).toHaveBeenCalledWith("space/space-1/members/remove", { uids: ["u1"] });
+    expect(api.delete).not.toHaveBeenCalled();
   });
 
   it("refetches after updateMemberRole invalidates the roster", async () => {
