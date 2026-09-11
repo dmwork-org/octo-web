@@ -39,6 +39,13 @@ export const DocReader: Story = {
 };
 
 /** 表格 · 可查看 · 首屏网格。 */
+export const PptReader: Story = {
+  args: {
+    kind: 'html_ppt', title: 'Quarterly presentation', state: 'reader', strings: strings(),
+    preview: { type: 'doc', heading: 'Quarterly results', paragraphs: ['First-slide content, without AI summarization.'] },
+  },
+};
+
 export const SheetReader: Story = {
   args: {
     kind: "sheet",

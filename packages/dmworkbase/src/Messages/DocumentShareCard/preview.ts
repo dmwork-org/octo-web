@@ -1,8 +1,10 @@
 import {
   DocumentPreviewError,
+  type DocumentPreviewInput,
   getDocumentPreviewBody,
 } from "../../Service/DocumentPreviewService";
 import WKApp from "../../App";
+import { fetchModuleSharePreview } from '../../bridge/docs/sharePreviewPort';
 import type {
   DocShareKind,
   DocSharePreview,
@@ -174,6 +176,7 @@ function adoptHtmlPreview(body: unknown): DocSharePreview | undefined {
   return { type: "doc", heading, paragraphs };
 }
 
+
 /**
  * 从 APIClient reject 出来的错误里取 docs-backend 的 **wire 错误码**。
  *
@@ -198,7 +201,7 @@ function wireErrorCode(e: unknown): string | undefined {
 }
 
 async function requestPreview(
-  kind: DocShareKind,
+  kind: DocumentPreviewInput["kind"],
   docId: string,
   spaceId: string,
 ): Promise<DocPreviewResult> {
@@ -315,6 +318,9 @@ export async function fetchDocPreview(
   opts: { force?: boolean } = {},
 ): Promise<DocPreviewResult> {
   if (!docId) return { status: "error" };
+  // Extension providers reauthorize on every read in the recipient's current
+  // Space. Message-carried Space and the legacy preview cache are not authority.
+  if (kind !== "doc" && kind !== "board" && kind !== "sheet" && kind !== "html") return fetchModuleSharePreview(kind, docId);
 
   // 账号隔离（Jerry-Xin/lml2468 🔴 跨账号缓存泄漏）：预览结果按当前登录用户的 ACL
   // 授权，换号后旧号缓存不可复用。检测到 uid 变化先整体清空缓存与在飞表，再用带 uid
