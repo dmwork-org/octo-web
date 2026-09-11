@@ -52,15 +52,6 @@ By default the web build expects an `octo-server` instance reachable at
 `http://localhost:8080`. Point it at your own server by copying
 `.env.example` to `.env.local` and editing the `VITE_API_*` values.
 
-### Agent Worker onboarding proxy
-
-The deployment image serves the versioned Harness installers at
-`/octo-harness/install.sh` and `/octo-harness/install.ps1`. Set
-`AGENT_WORKER_API_URL` to the internal Agent Worker origin, for example
-`http://octo-agent-worker:8092`. Nginx strips the public `/agent-worker`
-prefix and forwards enrollment, Runtime registration, and Runtime WebSocket
-requests. When the variable is unset, `/agent-worker/*` fails closed with 503.
-
 ## 📦 Modules / Architecture
 
 Top-level layout:
