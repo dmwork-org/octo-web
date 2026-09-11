@@ -37,7 +37,14 @@ if [ "$OCTO_HTML_SOURCE_DIFF_ENABLED" = "true" ]; then
 else
   HTML_SOURCE_DIFF_JS=false
 fi
-printf 'window.__OCTO_HTML_SOURCE_DIFF_ENABLED__ = %s;\n' "$HTML_SOURCE_DIFF_JS" \
+# PPT rollout is controlled by the running container, independently of the
+# value used to build the bundle. Only the literal "true" enables it.
+PPT_ENTRY_JS=false
+if [ "${VITE_DOCS_PPT_ENTRY:-false}" = "true" ]; then
+  PPT_ENTRY_JS=true
+fi
+printf 'window.__OCTO_HTML_SOURCE_DIFF_ENABLED__ = %s;\nwindow.__OCTO_DOCS_PPT_ENTRY_ENABLED__ = %s;\n' \
+  "$HTML_SOURCE_DIFF_JS" "$PPT_ENTRY_JS" \
   > /usr/share/nginx/html/runtime-config.js
 
 # octo-marketplace backend — dmworkmcp / dmworkskillmarket proxy through the
