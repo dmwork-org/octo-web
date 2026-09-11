@@ -10,28 +10,23 @@
 
 ## 目标
 
-验证设置中心工具页能展示当前支持的键盘快捷键、我的设备 onboarding 和设备/扩展资源。
+验证设置中心工具页能展示当前支持的键盘快捷键和设备/扩展资源。
 
 ## 前置条件
 
 - fixture: `fixtures-authed` (E2E_TARGET=local, mock 默认装)
-- Per-case handler: 拦截 `POST /agent-worker/api/v1/device_enrollments`，返回短期、单次使用的 enrollment token。
+- Per-case handler: 无；设备二维码更新接口由 baseline handler 提供稳定响应。
 
 ## 用户操作步骤
 
 1. 打开设置中心，将界面语言切换为 English。
 2. 进入键盘快捷键。
-3. 进入 My devices，点击 Add device。
-4. 查看 macOS 命令并切换到 Windows PowerShell。
-5. 进入设备资源页。
+3. 进入在其他设备上使用 Octo。
 
 ## 预期结果
 
 - 键盘快捷键页显示 Voice input、Hold to talk 和 Cancel voice input。
 - 键盘快捷键页不显示 New chat 或 Navigation。
-- 设置侧栏显示独立的 My devices 项，页面显示 Connect a device 及 Codex、Claude Code、CodeBuddy、OpenCode、OpenClaw adapter。
-- Add device 弹窗用当前 Space 请求 enrollment token，并把真实 token 写入命令；不得显示 `{{ENROLL_TOKEN}}` 占位符。macOS 使用 `install.sh`，Windows 使用 `install.ps1`。
-- enrollment 请求使用 `POST`，并携带非空 `X-Space-ID`。
 - 设备页显示 Android、iPhone、Windows、macOS、Octo Chrome Extension 和 OpenClaw Plugin。
 - Windows 和 macOS 桌面端卡片显示 `Coming soon` 状态标签。
 - 设备页显示 Mobile 和 Extensions and connections 分组。

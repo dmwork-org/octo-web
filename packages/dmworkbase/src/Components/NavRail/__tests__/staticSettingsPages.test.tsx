@@ -78,7 +78,6 @@ describe("static settings pages", () => {
 
   it("renders device resources and about page actions", async () => {
     renderPage("devices");
-    expect(container.textContent).not.toContain("添加设备");
     expect(container.querySelectorAll("[data-resource-status]")).toHaveLength(6);
     expect(container.querySelector('a[href*="octo-android"]')).toBeTruthy();
 
@@ -94,16 +93,6 @@ describe("static settings pages", () => {
     act(() => (container.querySelector(".wk-settings-center__about-update") as HTMLElement).click());
     expect(onAbout).toHaveBeenCalledTimes(1);
     expect(onOpenOnboarding).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps runtime device onboarding web-only", () => {
-    renderPage("my-devices");
-    expect(container.textContent).toContain("我的设备");
-    expect(container.textContent).toContain("连接新设备");
-    expect(container.textContent).toContain("添加设备");
-
-    renderPage("my-devices", { environment: { ...webEnvironment, target: "desktop" } });
-    expect(container.textContent).not.toContain("添加设备");
   });
 
   it("shows about version actions on web and desktop", () => {
