@@ -331,6 +331,13 @@
   gap: var(--wk-sp-1);
 }
 
+/* The narrow version pane puts its content below Windows caption controls.
+   A zero right inset (fullscreen) keeps the compact header without a blank row. */
+#root[data-desktop-platform="win32"][data-desktop-integrated="true"] .version-panel__header[data-desktop-header] {
+  padding-top: calc(var(--wk-sp-1) + min(var(--desktop-safe-right, 0px), var(--desktop-header-height)));
+  padding-right: var(--wk-sp-3);
+}
+
 #root[data-desktop-platform] .version-panel__icon {
   display: none;
 }
