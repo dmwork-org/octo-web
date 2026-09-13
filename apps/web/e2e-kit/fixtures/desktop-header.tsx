@@ -4,6 +4,7 @@ import { FilePreviewHeader } from "../../../../packages/dmworkbase/src/Component
 import "../../../../packages/dmworkbase/src/theme/index.css";
 import "../../../../packages/dmworkbase/src/App.css";
 import "../../../../packages/dmworkbase/src/Components/FilePreviewPanel/index.css";
+import "../../src/client-feature/desktop/presentation.css";
 import "../../src/client-communication/desktop-presentation.css";
 import { installDesktopPresentation, type DesktopPresentation } from "../../src/client-communication/desktopPresentation";
 import type { OctoBuddyCommunicationBridge } from "../../src/client-communication/hostBridge";
