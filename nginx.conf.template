@@ -8,10 +8,17 @@ gzip_buffers 16 8k;
 gzip_http_version 1.1;
 gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
 
+# Runtime switches must be fetched again after a container restart. Keep this
+# at server scope so runtime-config.js retains the existing security headers.
+map $uri $runtime_config_cache_control {
+        default "";
+        /runtime-config.js "no-store";
+}
 
 server {
         listen       80;
         server_name  localhost;
+        add_header Cache-Control $runtime_config_cache_control always;
 
         # Security headers
         # Prevent clickjacking attacks
