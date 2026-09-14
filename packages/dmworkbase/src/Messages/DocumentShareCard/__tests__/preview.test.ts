@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../Service/APIClient", () => ({
   default: {
     shared: {
       get: vi.fn(),
+      config: { apiURL: "" },
     },
   },
 }));
@@ -22,8 +23,15 @@ vi.mock("../../../App", () => ({
 
 import APIClient from "../../../Service/APIClient";
 import { fetchDocPreview, resetDocPreviewCache } from "../preview";
+import { installDocumentPreviewTransport } from "../../../Service/DocumentPreviewService";
 
 const apiGet = APIClient.shared.get as unknown as ReturnType<typeof vi.fn>;
+let disposeTransport: (() => void) | undefined;
+
+afterEach(() => {
+  disposeTransport?.();
+  disposeTransport = undefined;
+});
 
 /**
  * 构造一个和 APIClient 拦截器真实 reject 形状一致的错误对象。
@@ -46,6 +54,7 @@ function wireReject(status: number, errorCode?: string) {
 
 beforeEach(() => {
   apiGet.mockReset();
+  APIClient.shared.config.apiURL = "";
   currentUid = "u_self";
   resetDocPreviewCache();
 });
@@ -75,21 +84,15 @@ describe("fetchDocPreview — kind → endpoint mapping (blocker #2 regression)"
     expect(cfg.headers?.["X-Space-Id"]).toBe("sp_other");
   });
 
-  it("uses the independent docs backend for Electron previews", async () => {
-    vi.stubGlobal("window", { location: { protocol: "file:" } });
-    vi.stubEnv("VITE_ELECTRON_BUILD", "true");
-    vi.stubEnv("VITE_DOCS_API_URL", "https://docs.example.com/base-ignored");
+  it("uses the shared preview service's Docs path with an absolute desktop IM base", async () => {
+    APIClient.shared.config.apiURL = "https://im.example.com/v1/";
     apiGet.mockResolvedValueOnce({});
-
-    try {
-      await fetchDocPreview("doc", "d_1", "sp_1");
-      const cfg = apiGet.mock.calls[0][1] as { baseURL?: string };
-      expect(cfg.baseURL).toBe("https://docs.example.com/api/v1/");
-    } finally {
-      vi.unstubAllGlobals();
-      vi.unstubAllEnvs();
-    }
+    await fetchDocPreview("doc", "d_1", "sp_1");
+    expect(apiGet.mock.calls[0][0]).toBe("https://im.example.com/api/v1/docs/d_1/content");
+    const cfg = apiGet.mock.calls[0][1] as { headers?: Record<string, string> };
+    expect(cfg.headers?.["X-Space-Id"]).toBe("sp_1");
   });
+
 });
 
 describe("fetchDocPreview — ACL-safe status mapping (blocker #3 / ACL design)", () => {
@@ -179,6 +182,51 @@ describe("fetchDocPreview — ACL-safe status mapping (blocker #3 / ACL design)"
   it("empty docId short-circuits to error without a request", async () => {
     const res = await fetchDocPreview("doc", "", "sp_1");
     expect(res.status).toBe("error");
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+});
+
+describe("fetchDocPreview host transport", () => {
+  it("does not cache an old response or remove new inflight work after a context reset", async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    apiGet.mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
+    const old = fetchDocPreview("doc", "d_race", "sp_1");
+    resetDocPreviewCache();
+    const current = fetchDocPreview("doc", "d_race", "sp_1");
+    pending[0]({});
+    expect(await old).toEqual({ status: "error" });
+    const duplicate = fetchDocPreview("doc", "d_race", "sp_1");
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    pending[1]({});
+    expect((await current).status).toBe("ready");
+    expect((await duplicate).status).toBe("ready");
+  });
+
+  it.each([
+    [403, undefined, "denied"],
+    [404, undefined, "unavailable"],
+    [410, undefined, "unavailable"],
+    [409, "unsupported_doc_type", "empty"],
+    [409, "conflict", "unavailable"],
+    [409, "sheet_snapshot_invalid", "error"],
+    [409, "board_snapshot_invalid", "error"],
+    [409, undefined, "error"],
+    [401, undefined, "error"],
+    [500, undefined, "error"],
+  ] as const)("keeps HTTP %s / %s as %s", async (status, code, expected) => {
+    disposeTransport = installDocumentPreviewTransport(async () => ({ ok: false, status, code }));
+    expect(await fetchDocPreview("doc", "d_host", "wire-space")).toEqual({ status: expected });
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+
+  it("renders real preview data supplied through the host", async () => {
+    disposeTransport = installDocumentPreviewTransport(async () => ({
+      ok: true, body: { preview: { heading: "Title", paragraphs: ["Body"] } },
+    }));
+    expect(await fetchDocPreview("html", "d_host", "wire-space")).toEqual({
+      status: "ready",
+      preview: { type: "doc", heading: "Title", paragraphs: ["Body"] },
+    });
     expect(apiGet).not.toHaveBeenCalled();
   });
 });

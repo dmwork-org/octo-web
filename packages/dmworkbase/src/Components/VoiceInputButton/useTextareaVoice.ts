@@ -15,11 +15,7 @@ export interface SelectionRange {
 
 export interface UseTextareaVoiceOptions {
   voiceHost: ChatComposerVoiceHost;
-  /**
-   * Native text target. Rich-text hosts may omit it and insert transcriptions
-   * themselves through `onTranscribed`.
-   */
-  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null> | null;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
   enableEditMode?: boolean;
@@ -84,28 +80,25 @@ export default function useTextareaVoice({
 
   const startRecording = useCallback(
     (mode?: VoiceMode) => {
-      const el = inputRef?.current ?? null;
-      // A native host whose ref has not attached yet keeps the old no-op
-      // behaviour. Omitting inputRef explicitly opts a rich-text host into
-      // ref-less append mode.
-      if (inputRef !== undefined && !el) return;
+      const el = inputRef ? inputRef.current : undefined;
+      // A supplied ref whose element has not mounted yet stays unavailable.
+      if (inputRef && !el) return;
 
       if (el) {
         const selStart = el.selectionStart ?? 0;
         const selEnd = el.selectionEnd ?? 0;
         hadSelectionRef.current = selStart !== selEnd;
         savedSelectionRangeRef.current = { from: selStart, to: selEnd };
-        savedSelectedTextRef.current =
-          selStart !== selEnd ? el.value.slice(selStart, selEnd) : undefined;
+        const selectedText = (selStart !== selEnd) ? el.value.slice(selStart, selEnd) : undefined;
+        savedSelectedTextRef.current = selectedText;
       } else {
+        // Ref-less host: no DOM selection to capture; fall back to callback insertion.
         hadSelectionRef.current = false;
         savedSelectionRangeRef.current = { from: 0, to: 0 };
         savedSelectedTextRef.current = undefined;
       }
 
-      // Edit mode depends on a native selection. A ref-less host always owns
-      // insertion and therefore cannot request replace-all semantics.
-      const effectiveMode = el ? (mode ?? "append_only") : "append_only";
+      const effectiveMode = mode ?? "append_only";
       recordingModeRef.current = effectiveMode;
       rawStartRecording(effectiveMode);
     },

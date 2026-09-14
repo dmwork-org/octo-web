@@ -11,62 +11,81 @@ import {
   deleteSquad,
   getExpert,
   getSquad,
-  listExpertCategories,
-  listExperts,
-  listMyExperts,
-  listMySquads,
-  listSquads,
+  loadExpertReviewSnapshot,
   prefetchLoopTargets,
 } from "../api/expertService";
-import type { ExpertCatalogSort, ExpertCategoryCount } from "../api/expertService";
-import { expertListErrorI18nKey } from "../api/expertListError";
+import type { ExpertCatalogSort } from "../api/expertService";
+import { cancelPluginReview, publishPluginListing } from "../api/pluginReview";
+import { useExpertCatalog } from "../bridge/useExpertCatalog";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
+import ExpertEditModal from "../components/ExpertEditModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
-import { MineTable } from "@dmwork/skillmarket";
+import ReviewSubmitModal, {
+  type ReviewSubmitTarget,
+} from "../components/ReviewSubmitModal";
+import { MineTable, type MineRow } from "@dmwork/skillmarket";
+import {
+  resolveReviewRowState,
+  useMyReviewState,
+} from "../hooks/useMyReviewState";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { normalizeVisibility } from "../utils/visibility";
 
 type ExpertKind = "agent" | "squad" | "mine";
 
 const TOAST_DURATION = 3000;
+// The unified catalog accepts at most 20 AND-combined tag filters.
+const MAX_SELECTED_TAGS = 20;
 // The localized "all" chip / sentinel. Sourced from the shared category list
 // (not a re-typed literal) so it stays in one place and out of the i18n scan.
 const ALL_CATEGORY = EXPERT_CATEGORIES[0];
-// Catalog lists are fetched with page_size=100 (expertService default); when the
-// true total exceeds this the catalog is truncated and we surface a notice.
-const LIST_PAGE_SIZE = 100;
-// Catalog sort modes, mirroring the skill market's control: the backend orders
-// the list (metric-backed modes rank by resource_metrics counters), the client
-// only filters. `descending` adds the ↓ affordance on the count-based modes.
+// Ordering and filtering both apply on the server before pagination.
 const SORT_OPTIONS: Array<{ value: ExpertCatalogSort; labelKey: string; descending?: boolean }> = [
   { value: "latest", labelKey: "mcp.expert.sortLatest" },
   { value: "installs", labelKey: "mcp.expert.sortHottest" },
 ];
 
-/** Keyword match against name / summary / tags (all lower-cased upstream). */
-function matchesQuery(item: ExpertItem, q: string): boolean {
-  if (!q) return true;
-  return (
-    item.name.toLowerCase().includes(q) ||
-    item.summary.toLowerCase().includes(q) ||
-    item.tags.some((tag) => tag.toLowerCase().includes(q))
-  );
+/**
+ * Tail sentinel that fires `onLoadMore` when it scrolls near the viewport, so
+ * 专家 / 专家团 page in on scroll like the 技能 / 连接器 catalogs instead of
+ * forcing a click on 加载更多. Renders nothing visible — the pagination row
+ * shows the count + a spinner. `loadMore` is self-guarded (a page already in
+ * flight, exhausted, or errored is a no-op), so repeated intersections are
+ * safe. jsdom has no IntersectionObserver; there it degrades to an inert node
+ * and tests drive `loadMore` through a mocked observer.
+ */
+function LoadMoreSentinel({
+  onLoadMore,
+  rearmKey,
+}: {
+  onLoadMore: () => void;
+  rearmKey: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const cbRef = useRef(onLoadMore);
+  useEffect(() => {
+    cbRef.current = onLoadMore;
+  }, [onLoadMore]);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    // Recreating on each committed page re-delivers the current intersection,
+    // so a short page that leaves the sentinel visible can continue loading.
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) cbRef.current();
+      },
+      { rootMargin: "160px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [rearmKey]);
+  return <div ref={ref} className="wk-mcp-expert-sentinel" aria-hidden="true" />;
 }
 
-/**
- * Expert Marketplace catalog — the third tab under 市场 (after MCP / Skills).
- * Data comes from the octo-marketplace expert catalog (expertService.ts): the
- * catalog list for the active kind (ordered server-side by the sort control,
- * mirroring the skill market's 综合/最新/安装/浏览 modes), the caller's own
- * records for the 我的 tab, and category chips with live counts. Keyword /
- * category / tag filtering stays client-side over the fetched arrays. Sub-tabs
- * switch between 专家 (single experts) and 专家团 (squads); 专家 is the default.
- * Clicking a card fetches the full detail (list items are projections) and
- * opens the shared detail modal.
- */
 /**
  * Rendering variant. "market" (default) = discovery catalog (专家/专家团 tabs).
  * "mine" = personal assets mounted inside MyAssetsPage — forces the mine view,
@@ -116,50 +135,69 @@ export default function ExpertMarketListPage({
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   /** Bot-authored create/update flow (the previous version): create opens the
-   *  publish prompt; editTarget drives the update prompt for an existing record. */
+   *  publish prompt; botEditTarget drives the update prompt for an existing
+   *  record. Reached from ExpertEditModal's content handoff — 编辑 itself now
+   *  opens the marketplace-metadata editor first. */
   const [botPublishOpen, setBotPublishOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<
+  const [botEditTarget, setBotEditTarget] = useState<
     { id: string; kind: "agent" | "squad" } | null
   >(null);
+  /** 编辑 — the 可见范围 editor (ExpertEditModal). Metadata only; content still
+   *  goes through the Bot prompt. */
+  const [editItem, setEditItem] = useState<ExpertItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
   const [addToLoopTarget, setAddToLoopTarget] = useState<ExpertItem | null>(null);
+  /** 提交审核 / 重新提交 / 发布新版本 all funnel into ReviewSubmitModal. */
+  const [reviewTarget, setReviewTarget] = useState<ReviewSubmitTarget | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
 
-  // Server-backed data — one array per catalog list, plus category counts.
-  const [agentsData, setAgentsData] = useState<ExpertItem[]>([]);
-  const [squadsData, setSquadsData] = useState<ExpertItem[]>([]);
-  const [myAgentsData, setMyAgentsData] = useState<ExpertItem[]>([]);
-  const [mySquadsData, setMySquadsData] = useState<ExpertItem[]>([]);
-  // True totals behind the mine sections: the list fetch caps at
-  // LIST_PAGE_SIZE, and 我的 is the only entry point to edit/delete, so a
-  // silent cut at 100 would make older records unmanageable with no clue.
-  const [myAgentsTotal, setMyAgentsTotal] = useState(0);
-  const [mySquadsTotal, setMySquadsTotal] = useState(0);
-  // True catalog totals per kind (the list fetch caps at PAGE_SIZE, so total can
-  // exceed the loaded array length — see the truncation notice below).
-  const [agentsTotal, setAgentsTotal] = useState(0);
-  const [squadsTotal, setSquadsTotal] = useState(0);
-  const [categories, setCategories] = useState<ExpertCategoryCount[]>([]);
-  const [loading, setLoading] = useState(false);
-  // Holds the i18n key for the specific load failure (auth / forbidden /
-  // network / server / unknown), or null when the load succeeded. Lets the
-  // error state show an actionable message instead of a single generic one.
-  const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [scopeRevision, setScopeRevision] = useState(0);
+  const catalogOptions = {
+    mine: kind === "mine",
+    keyword: query,
+    category: kind === "mine" ? undefined : category,
+    tags: selectedTags,
+    sort,
+    scopeRevision,
+    tagKeyword: tagQuery,
+  };
+  const agents = useExpertCatalog({
+    ...catalogOptions,
+    kind: "agent",
+    enabled: kind === "agent" || (kind === "mine" && mineType !== "squad"),
+  });
+  const squads = useExpertCatalog({
+    ...catalogOptions,
+    kind: "squad",
+    enabled: kind === "squad" || (kind === "mine" && mineType !== "agent"),
+  });
+  const activeCatalog = kind === "squad" ? squads : agents;
+  const categories = activeCatalog.categories;
+  const items = activeCatalog.items;
+  const myAgents = agents.items;
+  const mySquads = squads.items;
+  const loading = agents.loading || squads.loading;
+  const errorKey = agents.errorKey || squads.errorKey;
+  const tagsLoading = agents.tagsLoading || squads.tagsLoading;
+  const tagsErrorKey = agents.tagsErrorKey || squads.tagsErrorKey;
+  const reloadAgents = agents.reload;
+  const reloadSquads = squads.reload;
+  const reload = useCallback(() => {
+    reloadAgents();
+    reloadSquads();
+  }, [reloadAgents, reloadSquads]);
+
+  // Review state for the "我的" surface only. `mode=mine` is applicant-scoped, but
+  // the discovery catalog shows no review state and no owner actions, so the read
+  // is held back there to keep browsing cheap.
+  const myReviews = useMyReviewState(kind === "mine");
+  const reviewsRefreshRef = useRef(myReviews.refresh);
+  reviewsRefreshRef.current = myReviews.refresh;
 
   const toastTimerRef = useRef<number | null>(null);
   const tagFilterRef = useRef<HTMLDivElement | null>(null);
-  // Monotonic request counter: each load() captures its version and bails after
-  // every await if a newer load (kind switch / space-change reload) has started,
-  // so a slow response can't overwrite the current tab's state. Mirrors
-  // McpMarketListPage's requestVersion guard.
-  const reqVer = useRef(0);
-  const kindRef = useRef(kind);
-  kindRef.current = kind;
-  const sortRef = useRef(sort);
-  sortRef.current = sort;
-
   const showToast = (message: string) => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     setToast(message);
@@ -175,61 +213,6 @@ export default function ExpertMarketListPage({
     };
   }, []);
 
-  // Fetch the data backing the active tab. The catalog tabs (专家 / 专家团) load
-  // the full kind list (ordered server-side by the active sort mode) + category
-  // counts; the 我的 tab loads the caller's own experts and squads (rendered in
-  // two sections). Keyword / category / tag filtering stays client-side over
-  // the returned arrays.
-  const load = useCallback(async (activeKind: ExpertKind, activeSort: ExpertCatalogSort) => {
-    const v = ++reqVer.current;
-    setLoading(true);
-    setErrorKey(null);
-    try {
-      if (activeKind === "mine") {
-        const [mine, minesq] = await Promise.all([listMyExperts(), listMySquads()]);
-        if (v !== reqVer.current) return;
-        setMyAgentsData(mine.items);
-        setMyAgentsTotal(mine.total);
-        setMySquadsData(minesq.items);
-        setMySquadsTotal(minesq.total);
-      } else if (activeKind === "squad") {
-        const [list, cats] = await Promise.all([
-          listSquads({ sort: activeSort }),
-          listExpertCategories("squad"),
-        ]);
-        if (v !== reqVer.current) return;
-        setSquadsData(list.items);
-        setSquadsTotal(list.total);
-        setCategories(cats);
-      } else {
-        const [list, cats] = await Promise.all([
-          listExperts({ sort: activeSort }),
-          listExpertCategories("agent"),
-        ]);
-        if (v !== reqVer.current) return;
-        setAgentsData(list.items);
-        setAgentsTotal(list.total);
-        setCategories(cats);
-      }
-    } catch (err) {
-      if (v !== reqVer.current) return;
-      setErrorKey(expertListErrorI18nKey(err));
-    } finally {
-      if (v === reqVer.current) setLoading(false);
-    }
-  }, []);
-
-  const reload = useCallback(
-    () => load(kindRef.current, sortRef.current),
-    [load]
-  );
-
-  // Load on mount and whenever the active tab or sort mode changes (ordering is
-  // server-side, so a sort switch is a refetch).
-  useEffect(() => {
-    load(kind, sort);
-  }, [kind, sort, load]);
-
   // Warm the Loop workspace/runtime lists on mount so the "添加到回路" dialog opens
   // with its selects already populated instead of waiting on two sequential
   // fleet round-trips at open time. Fire-and-forget; the dialog still fetches
@@ -244,9 +227,11 @@ export default function ExpertMarketListPage({
     const handleSpaceChanged = () => {
       setSelected(null);
       setBotPublishOpen(false);
-      setEditTarget(null);
+      setBotEditTarget(null);
+      setEditItem(null);
       setDeleteTarget(null);
       setAddToLoopTarget(null);
+      setReviewTarget(null);
       setQuery("");
       setCategory(ALL_CATEGORY);
       setSelectedTags([]);
@@ -256,11 +241,12 @@ export default function ExpertMarketListPage({
       // new one so the dialog stays instant after a switch.
       clearLoopCache();
       if (loopOn) prefetchLoopTargets();
-      reload();
+      setScopeRevision((value) => value + 1);
+      reviewsRefreshRef.current();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
-  }, [reload, loopOn]);
+  }, [loopOn]);
 
   // Tags and categories are catalog-specific, so switching the 专家 / 专家团 tab
   // clears any active tag filter (a squad tag rarely matches an agent, and vice
@@ -293,31 +279,36 @@ export default function ExpertMarketListPage({
     };
   }, [tagFilterOpen]);
 
-  // Category chips: 全部 sentinel first, then the fetched category set (or the
-  // static fallback, which already includes 全部).
+  // Category chips: 全部 sentinel first, then the backend category set. Empty
+  // categories are filtered here too so tests/mocks cannot reintroduce zero-count
+  // chips.
   const categoryChips = useMemo(() => {
-    if (categories.length) return [ALL_CATEGORY, ...categories.map((c) => c.name)];
-    return EXPERT_CATEGORIES;
+    return [
+      ALL_CATEGORY,
+      ...categories.filter((c) => c.count > 0).map((c) => c.name),
+    ];
   }, [categories]);
+  useEffect(() => {
+    if (
+      activeCatalog.categoriesLoading ||
+      activeCatalog.categoriesErrorKey ||
+      categories.length === 0
+    ) {
+      return;
+    }
+    if (
+      category !== ALL_CATEGORY &&
+      !categories.some((item) => item.count > 0 && item.name === category)
+    ) {
+      setCategory(ALL_CATEGORY);
+    }
+  }, [activeCatalog.categoriesLoading, activeCatalog.categoriesErrorKey, categories, category]);
 
-  // All tags in the current view's catalog, de-duped and sorted, for the popover.
-  // In the mine view the source is the user's own experts/squads (narrowed by
-  // mineType) rather than the discovery catalog.
+  // The scoped tag endpoint includes tags on records beyond the loaded page.
   const allTags = useMemo(() => {
-    const source: ExpertItem[] =
-      kind === "mine"
-        ? mineType === "squad"
-          ? mySquadsData
-          : mineType === "agent"
-            ? myAgentsData
-            : [...myAgentsData, ...mySquadsData]
-        : kind === "squad"
-          ? squadsData
-          : agentsData;
-    const set = new Set<string>();
-    source.forEach((item) => item.tags.forEach((tag) => set.add(tag)));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-  }, [kind, mineType, squadsData, agentsData, myAgentsData, mySquadsData]);
+    const tags = kind === "mine" ? [...agents.tags, ...squads.tags] : activeCatalog.tags;
+    return Array.from(new Set([...tags, ...selectedTags])).sort((a, b) => a.localeCompare(b));
+  }, [kind, agents.tags, squads.tags, activeCatalog.tags, selectedTags]);
 
   const visibleTags = useMemo(() => {
     const q = tagQuery.trim().toLowerCase();
@@ -327,102 +318,52 @@ export default function ExpertMarketListPage({
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]
+      prev.includes(tag) ? prev.filter((x) => x !== tag) : prev.length < MAX_SELECTED_TAGS ? [...prev, tag] : prev
     );
   };
 
-  const items = useMemo(() => {
-    const source: ExpertItem[] = kind === "squad" ? squadsData : agentsData;
-    const q = query.trim().toLowerCase();
-    // The backend already ordered the list by the active sort mode; filtering
-    // preserves that order.
-    return source.filter((item) => {
-      if (category !== ALL_CATEGORY && item.category !== category) return false;
-      // Tag filter: item must carry EVERY selected tag (AND, matching the MCP
-      // market's tag semantics).
-      if (
-        selectedTags.length &&
-        !selectedTags.every((tag) => item.tags.includes(tag))
-      ) {
-        return false;
-      }
-      return matchesQuery(item, q);
-    });
-  }, [kind, category, query, squadsData, agentsData, selectedTags]);
-
-  // Per-category counts for the filter chips, reflecting the active keyword /
-  // tag filters (but not the selected category itself, so every chip shows how
-  // many results choosing it would yield). "全部" holds the total.
+  // Category counts are unfiltered server aggregates. Suppress them during
+  // keyword/tag search: recounting the loaded page would under-report results.
   const categoryCounts = useMemo(() => {
-    const source: ExpertItem[] = kind === "squad" ? squadsData : agentsData;
-    const q = query.trim().toLowerCase();
-    // With no keyword/tag filter active, use the authoritative server counts:
-    // they cover the WHOLE catalog, while the loaded slice caps at
-    // LIST_PAGE_SIZE — recomputing from the slice under-reports on a truncated
-    // catalog and contradicts the header total rendered beside the chips.
-    // Keyword/tag filtering is client-side over the slice, so once a filter is
-    // active the recount below is the honest number for what choosing a chip
-    // would actually yield.
-    if (!q && selectedTags.length === 0 && categories.length) {
-      const counts: Record<string, number> = {
-        [ALL_CATEGORY]: kind === "squad" ? squadsTotal : agentsTotal,
-      };
-      for (const c of categories) counts[c.name] = c.count;
-      return counts;
-    }
-    const base = source.filter((item) => {
-      if (
-        selectedTags.length &&
-        !selectedTags.every((tag) => item.tags.includes(tag))
-      ) {
-        return false;
-      }
-      return matchesQuery(item, q);
-    });
-    const counts: Record<string, number> = { [ALL_CATEGORY]: base.length };
-    for (const item of base) {
-      counts[item.category] = (counts[item.category] ?? 0) + 1;
-    }
+    const counts: Record<string, number> = {};
+    if (query.trim() || selectedTags.length || loading || errorKey) return counts;
+    for (const item of categories) counts[item.name] = item.count;
+    if (category === ALL_CATEGORY) counts[ALL_CATEGORY] = activeCatalog.total;
     return counts;
-  }, [kind, squadsData, agentsData, query, selectedTags, categories, squadsTotal, agentsTotal]);
+  }, [query, selectedTags, loading, errorKey, categories, category, activeCatalog.total]);
 
-  // 我的 tab: the caller's own experts / squads (GET /experts/mine +
-  // /squads/mine). Only the keyword search applies here (the sort control and
-  // category / tag filters are hidden in this tab); each kind gets its own
-  // section, keeping the backend's newest-first order. Filtered by the keyword
-  // and the tag filter (AND semantics, matching discovery).
-  const myAgents = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return myAgentsData.filter(
-      (item) =>
-        matchesQuery(item, q) &&
-        (!selectedTags.length ||
-          selectedTags.every((tag) => item.tags.includes(tag)))
-    );
-  }, [myAgentsData, query, selectedTags]);
-
-  const mySquads = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return mySquadsData.filter(
-      (item) =>
-        matchesQuery(item, q) &&
-        (!selectedTags.length ||
-          selectedTags.every((tag) => item.tags.includes(tag)))
-    );
-  }, [mySquadsData, query, selectedTags]);
-
-  // The active catalog's true total vs. how many were actually loaded. The list
-  // fetch caps at LIST_PAGE_SIZE, so when the total exceeds the loaded count the
-  // catalog is truncated (client-side filtering only sees the loaded slice).
-  const activeTotal = kind === "squad" ? squadsTotal : agentsTotal;
-  const loadedCount = kind === "squad" ? squadsData.length : agentsData.length;
-  const isTruncated = loadedCount < activeTotal;
-
-  // The header count must not contradict the visible grid. Filtering is
-  // client-side, so once a keyword / category / tag filter is active show how
-  // many results are actually rendered (items.length); with no filter show the
-  // backend catalog total (which may exceed the loaded slice — see the
-  // truncation notice above).
+  const renderPagination = (catalog: typeof agents) => (
+    <div className="wk-mcp-expert-pagination">
+      <span role="status">
+        {t("mcp.expert.loadedCount", {
+          values: { count: catalog.items.length, total: catalog.total },
+        })}
+      </span>
+      {catalog.loadingMore && (
+        <span className="wk-mcp-expert-pagination__loading" role="status">
+          {t("mcp.expert.loading")}
+        </span>
+      )}
+      {catalog.moreErrorKey && <span role="alert">{t(catalog.moreErrorKey)}</span>}
+      {catalog.hasMore &&
+        (catalog.moreErrorKey ? (
+          // A failed page stops the scroll auto-retry loop; the user re-triggers
+          // it explicitly rather than have every intersection re-hit a 5xx.
+          <WKButton
+            variant="secondary"
+            disabled={catalog.loadingMore}
+            onClick={() => catalog.loadMore()}
+          >
+            {t("mcp.list.retry")}
+          </WKButton>
+        ) : (
+          <LoadMoreSentinel
+            onLoadMore={() => catalog.loadMore()}
+            rearmKey={catalog.page}
+          />
+        ))}
+    </div>
+  );
 
   // List items are projections — fetch the full detail before opening the
   // detail modal / install prompt / editor so members, instruction, mcpConfig
@@ -457,14 +398,24 @@ export default function ExpertMarketListPage({
   };
 
   // -------- 我的 tab manage actions (edit / delete) --------
-  // Edit hands a Bot the marketplace "update" prompt for this listing (carrying
-  // its id); the Bot performs the update via octo-cli. Only id + kind are
-  // needed here — the Bot reads the current record and asks the user for the
-  // fields to change, so no hydrate is required.
+  // 编辑 opens ExpertEditModal, which owns the ONE thing a client can write for
+  // these types: the declared 可见范围. Content is still Bot-authored — the modal
+  // hands off to the update prompt below for that — but visibility is
+  // marketplace metadata that 发布 reads, so making an author round-trip it
+  // through an agent would be absurd. A list projection carries everything the
+  // modal reads, so no hydrate is required here either.
   const handleEdit = (item: ExpertItem) => {
-    // Edit via the Bot update prompt (previous version) — the Bot reads the
-    // current record and asks for the fields to change.
-    setEditTarget({ id: item.id, kind: item.kind === "squad" ? "squad" : "agent" });
+    setEditItem(item);
+  };
+
+  /** Content handoff out of ExpertEditModal: the Bot reads the current record
+   *  and asks for the fields to change (exactly what 编辑 used to do directly). */
+  const handleEditContent = (item: ExpertItem) => {
+    setEditItem(null);
+    setBotEditTarget({
+      id: item.id,
+      kind: item.kind === "squad" ? "squad" : "agent",
+    });
   };
 
   const handleConfirmDelete = async (id: string) => {
@@ -480,6 +431,150 @@ export default function ExpertMarketListPage({
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
     }
+  };
+
+  // -------- 组织审核 (Space review) --------
+  // 专家 / 专家团 are CONTAINER types: the record owns child relations
+  // (expert_skill / expert_team_expert). A submission whose `relations` field is
+  // absent lets the server freeze its OWN detail read at submit time, so the
+  // frozen child set would not be the one this page resolved — every submission
+  // from here names the current child set explicitly.
+  const openReviewSubmit = (item: ExpertItem, initialChangelog?: string) => {
+    const isUpgrade = normalizeVisibility(item.visibility) !== "private";
+    setReviewTarget({
+      pluginId: item.id,
+      name: item.name,
+      version: item.version,
+      isUpgrade,
+      initialChangelog,
+      // ONE detail read backs both halves. Content and relations MUST come from
+      // the same revision: composed from two reads, a Bot write landing between
+      // them freezes a snapshot that was never live, and nothing downstream
+      // detects it (see loadExpertReviewSnapshot).
+      //
+      // An UPGRADE of an already-listed record must echo its own live content —
+      // the backend refuses a contentless submission on a listed plugin (400) —
+      // while a first listing of a private draft sends none, because the server
+      // can freeze the draft row as-is. Only `needs` differs between the two
+      // paths; the read does not.
+      loadSnapshot: () => loadExpertReviewSnapshot(item.id),
+      needs: { relations: true, content: isUpgrade },
+    });
+  };
+
+  const handleCancelReview = async (reviewId: string) => {
+    if (!reviewId.trim()) return;
+    try {
+      await cancelPluginReview(reviewId);
+      showToast(t("skillMarket.review.canceledToast"));
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : t("skillMarket.review.cancelFailed")
+      );
+    } finally {
+      // Refresh either way: on a lost race the server already moved the request
+      // out of `pending`, and only a re-read shows the real state.
+      //
+      // The expert list only. `cancelPluginReview` reaches skillmarket's wrapped
+      // `cancelReview`, so `myReviews` has already re-read by the time this runs
+      // (see @dmwork/skillmarket api/reviewSignal.ts).
+      reload();
+    }
+  };
+
+  /** A listing changed (review submitted, visibility saved, publish landed):
+   *  show what happened and re-read, because the row's status and its available
+   *  actions both follow server state.
+   *
+   *  `myReviews.refresh()` is NOT redundant here, unlike the publish and cancel
+   *  handlers around it: ExpertEditModal's 保存草稿 branch calls only
+   *  `updateExpertVisibility` (expertService, not a wrapped endpoint) and a
+   *  narrowed audience can un-list the record and close an open request, so
+   *  nothing has invalidated the review reads on that path. */
+  const handleListingChanged = (message: string) => {
+    showToast(message);
+    reload();
+    myReviews.refresh();
+  };
+
+  /**
+   * Project one owned expert / squad onto a MineTable row, review affordances
+   * included. Shared by the 专家团 and 专家 sections so the two cannot drift.
+   */
+  /**
+   * 发布 from the row. Same one-button contract as the other markets: the
+   * backend routes on the declared visibility and the response says which way
+   * it went.
+   */
+  const handlePublish = async (item: ExpertItem) => {
+    try {
+      const outcome = await publishPluginListing(item.id, { version: item.version });
+      Toast.success(
+        outcome.displayStatus === "pending_review"
+          ? t("skillMarket.review.submittedToast")
+          : t("skillMarket.plugin.publishedToast")
+      );
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
+    } finally {
+      // Expert list only — `publishPluginListing` invalidates the review reads
+      // itself, on refusal as well as on success.
+      reload();
+    }
+  };
+
+  const toMineRow = (item: ExpertItem, type: "expert" | "squad"): MineRow => {
+    const visibility = normalizeVisibility(item.visibility);
+    const review = resolveReviewRowState(
+      visibility,
+      item.listingState,
+      item.displayStatus,
+      myReviews.stateByPlugin.get(item.id)
+    );
+    const reviewId = item.reviewId?.trim() || review.pending?.id.trim();
+    return {
+      id: item.id,
+      type,
+      trackItemType: "expert",
+      icon: (
+        <span
+          className="wk-mine-table__avatar-tile"
+          style={{ background: getMcpAvatarColor(item.id) }}
+        >
+          {item.shortName}
+        </span>
+      ),
+      name: item.name,
+      description: item.summary,
+      category: item.category,
+      version: item.version,
+      visibility,
+      views: item.viewCount,
+      downloads: item.installCount,
+      status: review.status,
+      rejectReason: review.rejectReason,
+      ariaLabel: item.name,
+      onOpen: () => openDetail(item),
+      // 编辑 is withheld once the record is listed to the org: a direct edit takes
+      // effect immediately for everyone, which would route around review (the
+      // backend answers such a write with 409 listed_requires_review). A listed
+      // record changes only through 升级版本, and while a request is pending it
+      // does not change at all — the live version stays up until a decision lands.
+      onEdit: review.canEdit ? () => handleEdit(item) : undefined,
+      onDelete: () => setDeleteTarget(item),
+      editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
+      deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: item.name } }),
+      onPublish: review.canPublish ? () => void handlePublish(item) : undefined,
+      publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
+      onUpgrade: review.canUpgrade ? () => openReviewSubmit(item) : undefined,
+      upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
+      onCancelReview: review.canCancelReview && reviewId
+        ? () => void handleCancelReview(reviewId)
+        : undefined,
+      cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", {
+        values: { name: item.name },
+      }),
+    };
   };
 
   const searchPlaceholder =
@@ -586,7 +681,14 @@ export default function ExpertMarketListPage({
                     role="listbox"
                     aria-label={t("mcp.expert.tagFilter")}
                   >
-                    {visibleTags.length > 0 ? (
+                    {tagsLoading ? (
+                      <div className="wk-mcp-expert-tagfilter__empty" role="status">{t("mcp.expert.loading")}</div>
+                    ) : tagsErrorKey ? (
+                      <div className="wk-mcp-expert-tagfilter__empty" role="alert">
+                        <p>{t(tagsErrorKey)}</p>
+                        <WKButton onClick={() => { agents.reloadTags(); squads.reloadTags(); }}>{t("mcp.list.retry")}</WKButton>
+                      </div>
+                    ) : visibleTags.length > 0 ? (
                       visibleTags.map((tag) => {
                         const active = selectedTags.includes(tag);
                         return (
@@ -595,6 +697,7 @@ export default function ExpertMarketListPage({
                             type="button"
                             role="option"
                             aria-selected={active}
+                            disabled={!active && selectedTags.length >= MAX_SELECTED_TAGS}
                             title={tag}
                             className={
                               active
@@ -618,7 +721,9 @@ export default function ExpertMarketListPage({
                   </div>
                   <div className="wk-mcp-expert-tagfilter__footer">
                     <span>
-                      {selectedTags.length
+                      {selectedTags.length >= MAX_SELECTED_TAGS
+                        ? t("mcp.expert.tagLimit", { values: { count: MAX_SELECTED_TAGS } })
+                        : selectedTags.length
                         ? t("mcp.expert.tagSelectedCount", {
                             values: { count: selectedTags.length },
                           })
@@ -665,9 +770,11 @@ export default function ExpertMarketListPage({
                 onClick={() => setCategory(cat)}
               >
                 {cat === ALL_CATEGORY ? t("mcp.expert.categoryAll") : cat}
-                <span className="wk-mcp-expert-category__count">
-                  {categoryCounts[cat] ?? 0}
-                </span>
+                {categoryCounts[cat] !== undefined && (
+                  <span className="wk-mcp-expert-category__count">
+                    {categoryCounts[cat]}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -712,48 +819,16 @@ export default function ExpertMarketListPage({
                   <span>{t("mcp.expert.mineSquadsTitle")}</span>
                 </h2>
               )}
-              {mySquadsData.length < mySquadsTotal && (
-                <p className="wk-mcp-expert-truncated" role="note">
-                  {t("mcp.expert.truncatedNotice", {
-                    values: { count: mySquadsData.length },
-                  })}
-                </p>
-              )}
               {mySquads.length > 0 ? (
                 <MineTable
-                  rows={mySquads.map((item) => ({
-                    id: item.id,
-                    type: "squad" as const,
-                    trackItemType: "expert",
-                    icon: (
-                      <span
-                        className="wk-mine-table__avatar-tile"
-                        style={{ background: getMcpAvatarColor(item.id) }}
-                      >
-                        {item.shortName}
-                      </span>
-                    ),
-                    name: item.name,
-                    description: item.summary,
-                    category: item.category,
-                    version: item.version,
-                    visibility: normalizeVisibility(item.visibility),
-                    views: item.viewCount,
-                    downloads: item.installCount,
-                    ariaLabel: item.name,
-                    onOpen: () => openDetail(item),
-                    onEdit: () => handleEdit(item),
-                    onDelete: () => setDeleteTarget(item),
-                    editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
-                    deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
-                  }))}
-                  visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
+                  rows={mySquads.map((item) => toMineRow(item, "squad"))}
                 />
               ) : (
                 <p className="wk-mcp-expert-mine-empty">
                   {t("mcp.expert.mineSquadsEmpty")}
                 </p>
               )}
+              {renderPagination(squads)}
             </section>
             )}
             {mineType !== "squad" && (
@@ -763,61 +838,21 @@ export default function ExpertMarketListPage({
                   <span>{t("mcp.expert.mineAgentsTitle")}</span>
                 </h2>
               )}
-              {myAgentsData.length < myAgentsTotal && (
-                <p className="wk-mcp-expert-truncated" role="note">
-                  {t("mcp.expert.truncatedNotice", {
-                    values: { count: myAgentsData.length },
-                  })}
-                </p>
-              )}
               {myAgents.length > 0 ? (
                 <MineTable
-                  rows={myAgents.map((item) => ({
-                    id: item.id,
-                    type: "expert" as const,
-                    trackItemType: "expert",
-                    icon: (
-                      <span
-                        className="wk-mine-table__avatar-tile"
-                        style={{ background: getMcpAvatarColor(item.id) }}
-                      >
-                        {item.shortName}
-                      </span>
-                    ),
-                    name: item.name,
-                    description: item.summary,
-                    category: item.category,
-                    version: item.version,
-                    visibility: normalizeVisibility(item.visibility),
-                    views: item.viewCount,
-                    downloads: item.installCount,
-                    ariaLabel: item.name,
-                    onOpen: () => openDetail(item),
-                    onEdit: () => handleEdit(item),
-                    onDelete: () => setDeleteTarget(item),
-                    editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
-                    deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
-                  }))}
-                  visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
+                  rows={myAgents.map((item) => toMineRow(item, "expert"))}
                 />
               ) : (
                 <p className="wk-mcp-expert-mine-empty">
                   {t("mcp.expert.mineAgentsEmpty")}
                 </p>
               )}
+              {renderPagination(agents)}
             </section>
             )}
           </div>
         ) : (
           <>
-            {isTruncated && (
-              <p className="wk-mcp-expert-truncated" role="note">
-                {t("mcp.expert.truncatedNotice", {
-                  values: { count: LIST_PAGE_SIZE },
-                })}
-              </p>
-            )}
-
             {items.length > 0 ? (
               <div className="wk-mcp-expert-grid">
                 {items.map((item) => (
@@ -850,6 +885,7 @@ export default function ExpertMarketListPage({
                 )}
               </div>
             )}
+            {renderPagination(activeCatalog)}
           </>
         )}
       </main>
@@ -866,12 +902,18 @@ export default function ExpertMarketListPage({
         onToast={showToast}
       />
       <ExpertBotPublishModal
-        visible={Boolean(editTarget)}
-        kind={editTarget?.kind ?? "agent"}
+        visible={Boolean(botEditTarget)}
+        kind={botEditTarget?.kind ?? "agent"}
         mode="update"
-        editingId={editTarget?.id}
-        onClose={() => setEditTarget(null)}
+        editingId={botEditTarget?.id}
+        onClose={() => setBotEditTarget(null)}
         onToast={showToast}
+      />
+      <ExpertEditModal
+        item={editItem}
+        onClose={() => setEditItem(null)}
+        onSaved={handleListingChanged}
+        onEditContent={handleEditContent}
       />
       <ExpertDeleteConfirmModal
         item={deleteTarget}
@@ -882,6 +924,11 @@ export default function ExpertMarketListPage({
         key={addToLoopTarget?.id ?? "none"}
         item={addToLoopTarget}
         onClose={() => setAddToLoopTarget(null)}
+      />
+      <ReviewSubmitModal
+        target={reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        onSubmitted={handleListingChanged}
       />
 
       {toast &&

@@ -1,6 +1,6 @@
 import { Modal, Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
-import { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
 import ConversationSelect from "../ConversationSelect";
 import type { ConversationSelectGrant } from "../ConversationSelect";
@@ -8,8 +8,9 @@ import type { DocForwardOpen, ForwardGrant } from "../ForwardModal/grant";
 import { buildForwardMessageText } from "../ForwardModal/forwardMessageText";
 import { DocumentShareCardContent } from "../../Messages/DocumentShareCard/DocumentShareCardContent";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
-import { ForwardService } from "../../Service/ForwardService";
-import { interpretForwardResult } from "../../Service/forwardResultToast";
+import { ForwardService, type ForwardResult, type ForwardSender } from "../../Service/ForwardService";
+import { interpretForwardResult, shouldEmitDocForwarded } from "../../Service/forwardResultToast";
+import { Dap } from "../../Service/Dap";
 import UserInfo from "../UserInfo";
 import BotDetailModal from "../BotDetailModal";
 import WKApp from "../../App";
@@ -113,6 +114,7 @@ export interface WKBaseState {
   alertTitle?: string;
   onAlertOk?: () => void;
   conversationSelectFinished?: (channel: Channel[]) => void;
+  conversationSelectCancelled?: () => void;
 
   showGlobalModal?: boolean; // 显示全局弹窗
   globalModalOptions?: GlobalModalOptions;
@@ -133,6 +135,14 @@ export class GlobalModalOptions {
   onCancel?: () => void;
 }
 
+/** A picker and its asynchronous send share one identity until cancellation or completion. */
+interface ForwardOp {
+  settled: boolean
+  confirmed: boolean
+  forward?: DocForwardOpen
+  onCancel?: () => void
+}
+
 export interface WKBaseProps {
   children: React.ReactNode;
   onContext?: (context: WKBaseContext) => void;
@@ -147,8 +157,9 @@ export interface WKBaseContext {
   showConversationSelect(
     onFinished?: (channels: Channel[]) => void,
     title?: string,
-    forward?: DocForwardOpen
-  ): void;
+    forward?: DocForwardOpen,
+    onCancel?: () => void
+  ): (() => void) | void;
 
   // 显示用户信息
   showUserInfo(uid: string, fromChannel?: Channel, vercode?: string): void;
@@ -252,14 +263,17 @@ export default class WKBase
   showConversationSelect(
     onFinished?: (channels: Channel[]) => void,
     title?: string,
-    forward?: DocForwardOpen
-  ) {
-    // feature #511: stash the forward payload so the finished handler can run the host-side
-    // "先授权后发" orchestration. Cleared on cancel/close so a later plain forward isn't affected.
-    this.docForward = forward;
+    forward?: DocForwardOpen,
+    onCancel?: () => void
+  ): (() => void) | void {
+    if (this.currentForwardOp) this.cancelForward(this.currentForwardOp);
+    const op: ForwardOp = { settled: false, confirmed: false, forward, onCancel };
+    this.forwardOps.add(op);
+    this.currentForwardOp = op;
     this.setState((prev) => ({
       showConversationSelect: true,
       conversationSelectFinished: onFinished,
+      conversationSelectCancelled: onCancel,
       conversationSelectTitle: title,
       conversationSelectGrant: forward
         ? {
@@ -269,14 +283,34 @@ export default class WKBase
             spaceId: forward.spaceId,
           }
         : undefined,
-      // 每次打开递增 key，强制 ConversationSelect 重新挂载，
-      // 让 useForwardModal 用当前 spaceId 重新拉数据，避免切 Space 后列表陈旧。
       conversationSelectKey: (prev.conversationSelectKey ?? 0) + 1,
     }));
+    return () => this.cancelForward(op);
   }
 
-  /** feature #511: active doc-forward payload (host-side orchestration), null for plain forwards. */
-  private docForward?: DocForwardOpen;
+  private currentForwardOp?: ForwardOp;
+  private readonly forwardOps = new Set<ForwardOp>();
+  private forwardUnmounted = false;
+
+  private hideForwardPicker(op: ForwardOp): void {
+    if (this.currentForwardOp !== op) return;
+    this.currentForwardOp = undefined;
+    if (!this.forwardUnmounted) this.setState({
+      showConversationSelect: false,
+      conversationSelectGrant: undefined,
+      conversationSelectFinished: undefined,
+      conversationSelectCancelled: undefined,
+    });
+  }
+
+  private cancelForward(op: ForwardOp): void {
+    if (op.settled) return;
+    op.settled = true;
+    this.forwardOps.delete(op);
+    this.hideForwardPicker(op);
+    if (op.confirmed) op.forward?.onError?.(new Error("Document forwarding cancelled"));
+    else op.onCancel?.();
+  }
 
   /**
    * Legacy fallback: expand selected targets into a de-duplicated uid snapshot
@@ -313,17 +347,38 @@ export default class WKBase
   private async runDocForward(
     channels: Channel[],
     grant: ForwardGrant | undefined,
-    forward: DocForwardOpen
+    forward: DocForwardOpen,
+    op?: ForwardOp
   ): Promise<void> {
     const { t } = this.context;
+
+    // Capture source space BEFORE any async grant/load, so no send proceeds
+    // under a different currentSpaceId.
+    const sourceSpaceId = WKApp.shared.currentSpaceId;
+
     let grantFailures: string[] | undefined;
     let grantRejections: string[] | undefined;
+    let interrupted = false;
+    const isDead = (): boolean => interrupted || this.forwardUnmounted || op?.settled === true ||
+      WKApp.shared.currentSpaceId !== sourceSpaceId || forward.isActive?.() === false;
+    const reportError = (error: unknown): void => {
+      if (interrupted) return;
+      interrupted = true;
+      if (op?.settled) return;
+      if (op) { op.settled = true; this.forwardOps.delete(op); }
+      forward.onError?.(error);
+    };
+    if (isDead()) {
+      reportError(new Error("Forward source is no longer active"));
+      return;
+    }
 
     // 0) disband guard 提前一次，仅为 grant 阶段决定是否有可授权目标。真正的 send 阶段
     // disband 计入交给 ForwardService（它同样过滤 disband 并计入 failedTargets）。
     const sendable = channels.filter((ch) => !isConversationDisbanded(ch));
     if (sendable.length === 0) {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
+      if (op) { op.settled = true; this.forwardOps.delete(op); }
       forward.onResult?.({
         sent: 0,
         failed: channels.length,
@@ -358,21 +413,30 @@ export default class WKBase
           uids = [...new Set([...humanUids, ...legacyBotUids])];
         }
         if (uids.length > 0) {
+          // Liveness check before granting: cancelled or inactive source must not grant.
+          if (isDead()) {
+            reportError(new Error("Forward source invalidated before grant execution"));
+            return;
+          }
           const res = await forward.grantAccess(uids, grant.role);
           if (res.failed > 0) grantFailures = res.failures;
           if (res.rejected && res.rejected.length > 0)
             grantRejections = res.rejected;
         }
-      } catch {
+      } catch (error) {
+        if (isDead()) { reportError(error); return; }
         // A grant failure must not block sending the message — the receiver can still
         // request access (screen 4c). Surface it as a non-fatal warning.
         Toast.warning(t("base.forwardModal.grant.grantFailed"));
       }
     }
 
-    // 2) send the message to each target via ForwardService (统一 disband 守卫、
-    // space_id / mention 注入、错误隔离)。原先手写的 encodeJSON monkey-patch
-    // 由 wrapSendContentForInjection + opts.spaceId 代替。
+    if (isDead()) {
+      reportError(new Error("Forward source invalidated after grant"));
+      return;
+    }
+
+    // 2) build the content factory.
     //
     // 只有**文档分享转发**（startDocForward，显式 shareAsCard=true）才发文档卡片
     // （DocumentShareCardContent=18）。其它复用同一转发通道但语义不同的流程——尤其
@@ -397,13 +461,53 @@ export default class WKBase
           new MessageText(
             buildForwardMessageText(forward.messageTitle, forward.link)
           );
-    const result = await ForwardService.send(channels, contentFactory, {
-      spaceId: WKApp.shared.currentSpaceId,
-    });
+
+    if (isDead()) {
+      reportError(new Error("Forward source invalidated before send"));
+      return;
+    }
+
+    // ForwardService still owns filtering and accounting. Guard at the actual SDK boundary,
+    // including ordinary Web callers; a Client can additionally revalidate its source in main.
+    const sender: ForwardSender = async (content, channel, setting) => {
+      try {
+        if (isDead()) throw new Error("Forward source is no longer active");
+        if (forward.beforeSend) await forward.beforeSend();
+        if (isDead()) throw new Error("Forward source is no longer active");
+      } catch (error) {
+        reportError(error);
+        throw error;
+      }
+      return WKSDK.shared().chatManager.send(content, channel, setting);
+    };
+
+    const result: ForwardResult = await ForwardService.send(
+      channels, contentFactory,
+      {
+        spaceId: sourceSpaceId,
+        sender,
+      },
+    );
+
+    if (isDead()) {
+      reportError(new Error("Forward invalidated during send"));
+      return;
+    }
 
     // 3) partial-failure Toast (reuse the dmworksummary范式). 分母维度用 targets，
     // 保留旧的用户可见语义（原代码 total=channels.length，即 result.targets）。
     const state = interpretForwardResult(result, "targets");
+    // Octo-Q head 258e876e P1 / head 86c932a5 🔴: document_forwarded fires here on the real
+    // forward-send success path (>=1 target sent), NOT on the opt-in grant batch endpoint
+    // (default-off switch → default forward produced zero events). Gated on shareAsCard===true:
+    // runDocForward is shared by (1) doc-card share (shareAsCard true → count) and (2) the
+    // html-doc "让 AI 处理" AI-instruction forward (shareAsCard unset → do NOT count; it is an
+    // AI-workflow gesture, not the doc-forward-btn that emits document_forward_panel_opened).
+    // Contract: ForwardModal/grant.ts DocForwardOpen.shareAsCard (only share sets it true) and
+    // the contentFactory branch three lines above. Once per share-forward gesture; {} props.
+    if (shouldEmitDocForwarded(forward.shareAsCard, state.kind)) {
+        Dap.shared.track("document_forwarded", {});
+    }
     if (state.kind === "all-failed") {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
     } else if (state.kind === "partial") {
@@ -429,6 +533,7 @@ export default class WKBase
     }
 
     const sent = state.total - state.failed;
+    if (op) { op.settled = true; this.forwardOps.delete(op); }
     forward.onResult?.({
       sent,
       failed: state.failed,
@@ -436,7 +541,6 @@ export default class WKBase
       grantRejections,
     });
   }
-
   hideUserInfo() {
     // 与 showUserInfo 对称：主动关闭时也视为一次状态变更，让 router 递增 token
     // 使任何在飞的 fetchChannelInfo 结果都被丢弃，避免关闭后又被晚到的 resolve
@@ -463,6 +567,7 @@ export default class WKBase
   }
 
   componentDidMount() {
+    this.forwardUnmounted = false;
     const { onContext } = this.props;
     if (onContext) {
       onContext(this);
@@ -470,6 +575,8 @@ export default class WKBase
   }
 
   componentWillUnmount() {
+    this.forwardUnmounted = true;
+    for (const op of [...this.forwardOps]) this.cancelForward(op);
     // Stale-guard: router.dispose() marks the router disposed and invalidates
     // the token so any unresolved fetchChannelInfo returning post-unmount is a
     // no-op (no setState-on-unmounted React warning).
@@ -514,6 +621,7 @@ export default class WKBase
       orgCode,
       orgUid,
     } = this.state;
+    const renderForwardOp = this.currentForwardOp;
     // join_org.html 由后端提供，需要通过 API 路径加载
     // Web 环境：apiURL = "/api/v1/"，replace 后得到 "/api/"，由 Nginx 代理到后端
     // Tauri/Electron 环境：apiURL = "https://host/v1/"，replace 后得到 "https://host/"
@@ -574,38 +682,34 @@ export default class WKBase
           width={625}
           options={{ mask: false }}
           onCancel={() => {
-            this.docForward = undefined;
-            this.setState({
-              showConversationSelect: false,
-              conversationSelectGrant: undefined,
-            });
+            if (renderForwardOp) this.cancelForward(renderForwardOp);
           }}
         >
           <ConversationSelect
             key={conversationSelectKey}
             grant={conversationSelectGrant}
             onFinished={(channels: Channel[], grant) => {
-              const forward = this.docForward;
-              this.docForward = undefined;
-              this.setState({
-                showConversationSelect: false,
-                conversationSelectGrant: undefined,
-              });
+              if (!renderForwardOp || renderForwardOp !== this.currentForwardOp ||
+                  renderForwardOp.settled || renderForwardOp.confirmed) return;
+              renderForwardOp.confirmed = true;
+              const forward = renderForwardOp.forward;
+              this.hideForwardPicker(renderForwardOp);
               if (forward) {
                 // feature #511: host owns "先授权后发" + send + partial-failure Toast.
-                void this.runDocForward(channels, grant, forward);
+                void this.runDocForward(channels, grant, forward, renderForwardOp).catch((error) => {
+                  if (renderForwardOp.settled) return;
+                  renderForwardOp.settled = true;
+                  this.forwardOps.delete(renderForwardOp);
+                  forward.onError?.(error);
+                });
                 return;
               }
-              if (conversationSelectFinished) {
-                conversationSelectFinished(channels);
-              }
+              renderForwardOp.settled = true;
+              this.forwardOps.delete(renderForwardOp);
+              conversationSelectFinished?.(channels);
             }}
             onCancel={() => {
-              this.docForward = undefined;
-              this.setState({
-                showConversationSelect: false,
-                conversationSelectGrant: undefined,
-              });
+              if (renderForwardOp) this.cancelForward(renderForwardOp);
             }}
             title={conversationSelectTitle}
           ></ConversationSelect>

@@ -260,9 +260,7 @@
       "participantsPrunedArtifactInvalidated": "Participant access changed. The previous result remains in history; generate a new result to continue.",
       "participantCandidatesLoadFailed": "Some group members failed to load. Try again.",
       "participantsUnsupportedForSelectedChats": "Participants require group chats only, with no more than 30 chats selected.",
-      "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
-      "savedWithQualityGap": "Summary saved with a quality warning: {{detail}}",
-      "savedWithQualityGateWarning": "Summary saved, but it did not pass the full quality check. Please review before use."
+      "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only."
     },
     "errors": {
       "network": "Network error. Try again later.",
@@ -503,6 +501,7 @@
     "scheduleSaved": "Scheduled update saved",
     "scheduleCreated": "Scheduled update created",
     "forwardFailed": "Failed to forward",
+    "forwardContextChanged": "The forwarding context changed. Please reopen the summary and try again.",
     "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
     "forwarded": "Forwarded",
     "forwardToChat": "Forward to chat",
@@ -638,6 +637,9 @@
     "convertSuccess": "Document created, redirecting...",
     "convertFailed": "Conversion failed, please retry",
     "convertPopupBlocked": "The browser blocked the new tab. The document was created.",
+    "convertOpenFailed": "The document was retained but could not be opened here. Copy the link below and check it in the original account and organization. Do not convert again.",
+    "convertDocumentRetained": "The document was retained. Check its contents before converting again.",
+    "convertErrCreateUnconfirmed": "Document creation could not be confirmed. Check the original organization's library before creating another document.",
     "convertDocLink": "Open document",
     "convertErrSchema": "The content uses a format that is not supported yet (e.g. inline code inside bold). Please adjust and retry",
     "convertErrParse": "Could not parse the content. Please check the formatting and retry",
@@ -732,6 +734,7 @@
     "buttonTip": "Click to reference an existing summary",
     "badge": "Referenced",
     "remove": "Remove reference",
+    "closePreview": "Close preview",
     "previewTitle": "Summary preview",
     "previewLatestHint": "Showing the latest version of this summary (may have been updated since you referenced it)",
     "previewNotFound": "This summary was deleted or you don't have access",

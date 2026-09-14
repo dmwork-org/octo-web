@@ -31,12 +31,7 @@ const voiceHost = {
 };
 
 export interface VoiceInputButtonProps {
-  /**
-   * Native text target. Rich-text hosts may omit it and insert transcriptions
-   * themselves through `onTranscribed`; native selection/edit mode is then
-   * unavailable.
-   */
-  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null> | null;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
   showModeMenu?: boolean;
@@ -45,10 +40,7 @@ export interface VoiceInputButtonProps {
   className?: string;
   /** Called right before recording starts (useful for cancelling pending blur commits) */
   onRecordingStart?: () => void;
-  /**
-   * Focus predicate that scopes the configured keyboard shortcut when
-   * `inputRef` is omitted. Without it, a ref-less host stays click-only.
-   */
+  /** Callback to check if keyboard shortcut is allowed (ref-less mode). If absent, shortcuts never capture globally. */
   isHotkeyActive?: () => boolean;
 }
 
@@ -68,10 +60,6 @@ export default function VoiceInputButton({
   const buttonRef = useRef<HTMLDivElement>(null);
   const [voiceSettings, setVoiceSettings] = useState(() => voiceSettingsStore.get());
   useEffect(() => voiceSettingsStore.subscribe(setVoiceSettings), []);
-  const refless = inputRef === undefined;
-  const inputReady = refless || !!inputRef?.current;
-  const modeMenuEnabled = showModeMenu && !refless;
-  const hasHotkeyPredicate = typeof isHotkeyActive === "function";
 
   const {
     isRecording,
@@ -82,10 +70,10 @@ export default function VoiceInputButton({
     isVoiceEnabled,
     localAvailable,
   } = useTextareaVoice({
-    inputRef,
+    inputRef: inputRef ?? null,
     onTranscribed,
     getCurrentText,
-    enableEditMode: modeMenuEnabled,
+    enableEditMode: showModeMenu,
     getChatContext,
     voiceHost,
   });
@@ -107,7 +95,7 @@ export default function VoiceInputButton({
   }, []);
 
   const canRecord = isOnline || localAvailable;
-  const isDisabled = !inputReady || !canRecord;
+  const isDisabled = (inputRef ? !inputRef.current : false) || !canRecord;
 
   // Floating indicator position
   const [floatingPosition, setFloatingPosition] = useState<{
@@ -218,18 +206,20 @@ export default function VoiceInputButton({
 
   useEffect(() => {
     if (!isVoiceEnabled || !voiceSettings.enabled) return;
-    if (refless && !hasHotkeyPredicate) return;
     const configuredShortcut = getVoiceShortcut(voiceSettings, /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows");
     if (configuredShortcut === "disabled") return;
     const modifiersValid = (event: KeyboardEvent) => configuredShortcut === "alt-right"
       ? !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.getModifierState("AltGraph")
       : !event.altKey && !event.ctrlKey && !event.metaKey;
-    const isHostFocused = () => refless
-      ? (isHotkeyActiveRef.current?.() ?? false)
-      : !!inputRef?.current && document.activeElement === inputRef.current;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isHostFocused() || document.querySelector(".wk-settings-center-modal")) return;
+      // Ref-less mode: require explicit focus via isHotkeyActive callback;
+      // absent callback never captures globally.
+      if (!inputRef) {
+        if (!isHotkeyActiveRef.current || !isHotkeyActiveRef.current()) return;
+      }
+      if (inputRef && (!inputRef.current || document.activeElement !== inputRef.current)) return;
+      if (document.querySelector(".wk-settings-center-modal")) return;
 
       if (
         voiceShortcutMatches(e, configuredShortcut) &&
@@ -262,6 +252,9 @@ export default function VoiceInputButton({
           }, PREPARING_DELAY_MS);
           shiftTimerRef.current = setTimeout(() => {
             shiftTimerRef.current = null;
+            // Ref-less hold capture re-checks focus before starting so a host
+            // whose focus moved while the key stayed down does not begin.
+            if (!inputRef && (!isHotkeyActiveRef.current || !isHotkeyActiveRef.current())) return;
             if (!isOnlineRef.current && !localAvailableRef.current) {
               Toast.warning(t("base.voiceInput.error.networkUnavailable"));
               return;
@@ -295,10 +288,16 @@ export default function VoiceInputButton({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (!refless && !inputRef?.current) return;
-      const isInputFocused = isHostFocused();
+      if (inputRef && !inputRef.current) return;
+      const ownsRecording = isRecordingRef.current || shiftRecordingRef.current || shiftTimerRef.current !== null;
+      const isInputFocused = inputRef
+        ? document.activeElement === inputRef.current
+        : (isHotkeyActiveRef.current?.() ?? false);
 
-      if (!isRecordingRef.current && !isInputFocused) return;
+      // Focus gating applies only to START. If this button already owns a
+      // pending hold timer or an active recording, release must still
+      // clear/stop even if the host lost focus.
+      if (!ownsRecording && !isInputFocused) return;
 
       if (voiceShortcutMatches(e, configuredShortcut) && shiftTimerRef.current !== null) {
         clearShiftTimer();
@@ -341,7 +340,7 @@ export default function VoiceInputButton({
       window.removeEventListener("blur", handleBlurClear);
       clearShiftTimer();
     };
-  }, [isVoiceEnabled, refless, hasHotkeyPredicate, inputRef, clearShiftTimer, t, voiceSettings]);
+  }, [isVoiceEnabled, inputRef, clearShiftTimer, t, voiceSettings]);
 
   const handleVoiceClick = () => {
     setShowMenu(false);
@@ -354,9 +353,7 @@ export default function VoiceInputButton({
       Toast.warning(t("base.voiceInput.error.networkUnavailable"));
       return;
     }
-    // Read the native ref at interaction time. It may attach after this
-    // component's first render without causing a rerender.
-    if (!refless && !inputRef?.current) return;
+    if (inputRef && !inputRef.current) return;
     if (!voiceSettings.enabled) {
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
@@ -371,7 +368,7 @@ export default function VoiceInputButton({
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
     }
-    if (!canRecord || !inputRef?.current) return;
+    if (!canRecord || (inputRef && !inputRef.current)) return;
     if (!voiceSettings.enabled) {
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
@@ -452,7 +449,7 @@ export default function VoiceInputButton({
   // Default idle state
   if (!isVoiceEnabled) return null;
 
-  if (modeMenuEnabled) {
+  if (showModeMenu) {
     const currentText = getCurrentText?.() ?? "";
     const hasContent = currentText.trim().length > 0;
     const dropdownMenu = (
@@ -480,7 +477,7 @@ export default function VoiceInputButton({
           trigger="hover"
           position="topRight"
           render={dropdownMenu}
-          visible={canRecord && !!inputRef?.current ? showMenu : false}
+          visible={canRecord && (inputRef ? !!inputRef.current : true) ? showMenu : false}
           onVisibleChange={setShowMenu}
           spacing={4}
         >

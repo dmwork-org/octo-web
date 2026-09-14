@@ -11,11 +11,19 @@
     "skills": "Skills",
     "experts": "Experts",
     "expertsBadge": "Loop",
-    "mine": "My publications"
+    "mine": "My publications",
+    "review": "Publication management"
   },
   "mine": {
     "pageTitle": "My publications",
-    "navAriaLabel": "My asset type"
+    "navAriaLabel": "My asset type",
+    "tabAll": "All",
+    "searchPlaceholder": "Search name or description...",
+    "emptyAll": "You have not published anything yet",
+    "allAriaLabel": "All my publications",
+    "deleteTitle": "Delete plugin",
+    "deleteHint": "Delete {{name}}? This cannot be undone.",
+    "deletedToast": "Deleted"
   },
   "expert": {
     "typeSquad": "Squads",
@@ -30,6 +38,7 @@
     "tagSearchPlaceholder": "Search tags",
     "tagNoneSelected": "No tags selected",
     "tagSelectedCount": "{{count}} tags selected",
+    "tagLimit": "Select up to {{count}} tags",
     "tagClear": "Clear",
     "tagEmpty": "No matching tags",
     "publish": "Publish squad",
@@ -44,7 +53,8 @@
     "memberCount": "{{count}} experts",
     "viewCountTitle": "{{count}} views",
     "installCountTitle": "Added to Loop {{count}} times",
-    "truncatedNotice": "Showing the first {{count}} — narrow with search or category",
+    "loadedCount": "Showing {{count}} of {{total}}",
+    "loadMore": "Load more",
     "sortAriaLabel": "Sort by",
     "sortLatest": "Latest",
     "empty": "No matching results",
@@ -392,10 +402,13 @@
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
   },
-  "visibility": {
-    "public": "All platforms",
-    "space": "Organization",
-    "private": "Only me",
-    "system": "All platforms"
+  "review": {
+    "cancel": "Cancel",
+    "relationsLoading": "Loading current items…",
+    "relationsFrozen": "This submission freezes the current {{count}} item(s)",
+    "relationsFailed": "Failed to load child items; cannot submit for review",
+    "newVersionSection": "Publish new version",
+    "newVersionSectionDesc": "Your edits are submitted with this review request; the listed version is replaced only after approval.",
+    "pendingBlocksEdit": "A review request is pending; edits are available after it is resolved"
   }
 }

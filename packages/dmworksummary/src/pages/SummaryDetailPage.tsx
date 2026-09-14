@@ -12,15 +12,10 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
-import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
   t,
-  ForwardService,
-  interpretForwardResult,
   titleContextStore,
-  SummaryTipContent,
-  isConversationDisbanded,
   Dap,
   // CR: 必须走包的 public index，不能深路径 import `@octo/base/src/...`。
   // dmworksummary 的 vitest.config.ts 末尾有一条**字符串** alias
@@ -28,6 +23,9 @@ import {
   // `@octo/base/src/Service/APIClient` 一并吃进 mock 文件里导致解析失败，
   // 静默打断本包 4 个测试套件的 collection。
   copyToClipboard,
+  getDocsDocumentOpener,
+  validateDocsDocumentLink,
+  webOrigin,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -36,9 +34,7 @@ import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context
 import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
-import { splitSummaryText } from "../utils/splitMessage";
-import { convertDocErrorMessage } from "../utils/convertDocError";
-import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
+import { convertDocErrorMessage, convertDocErrorDocument, resolveConvertDocErrorKey } from "../utils/convertDocError";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -57,6 +53,7 @@ import type {
     WorkflowStage,
     SummaryVersionDetail,
     SummaryVersionItem,
+    SummaryReferenceTask,
 } from "../types/summary";
 import { TaskStatus, SummaryMode, ParticipantStatus, TriggerType } from "../types/summary";
 import {
@@ -71,12 +68,15 @@ import {
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
+import SummaryAddMemberModal from "../features/summaryMembers/SummaryAddMemberModal";
 import SummaryResultActions from "../components/SummaryResultActions";
 import { stripCitationMarkers } from "../components/citationStrip";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
 import SummaryVersionPanel from "../components/SummaryVersionPanel";
+import { legacySummaryMessagingPort, SummaryForwardContextExpiredError } from "../host";
+import type { SummaryConversationTarget, SummaryMessagingPort } from "../host";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
@@ -86,6 +86,11 @@ interface SummaryDetailPageProps {
      *  instances (ChatSummaryPanel, SummaryConfirmPage) must not pollute the
      *  list selection state. */
     emitSelection?: boolean;
+    /** Controlled workspace navigation for the continue-refine action. */
+    onContinueRefine?: (task: SummaryReferenceTask) => void;
+    /** Controlled workspace navigation for legacy task confirmation. */
+    onViewConfirm?: (taskId: number) => void;
+    messaging?: SummaryMessagingPort;
 }
 
 type RegenerateMode = "refine" | "full";
@@ -167,9 +172,10 @@ interface SummaryDetailPageState {
      */
     copyingKey: string | null;
     convertingKey: string | null;
+    /** 面板模式添加成员弹窗可见性 */
+    showAddMemberModal: boolean;
 }
 
-const INTER_MESSAGE_DELAY_MS = 200;
 const PERSONAL_RESULT_POLL_INTERVAL_MS = 1500;
 const WORKFLOW_COMPLETE_REVEAL_DELAY_MS = 650;
 
@@ -214,6 +220,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private regenerateVoiceMode: RegenerateMode | null = null;
     /** 转文档的同步重入闸（P1-b：semi-ui loading 不禁点，双击会创建两份文档）。 */
     private convertInFlight = false;
+
+    private get messaging(): SummaryMessagingPort {
+        return this.props.messaging ?? legacySummaryMessagingPort;
+    }
 
     private handleRegenerateVoiceRecordingStart = () => {
         this.regenerateVoiceMode = this.state.regenerateMode;
@@ -294,6 +304,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         teamStreamError: null,
         copyingKey: null,
         convertingKey: null,
+        showAddMemberModal: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -1222,27 +1233,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     private notifyGroupsOnCompletion(previousStatus: number | undefined, detail: SummaryDetail) {
-        void sendGroupSummaryCompletionTips(
-            previousStatus,
-            detail,
-            WKApp.loginInfo.uid,
-            TaskStatus.COMPLETED,
-            ChannelTypeGroup,
-            {
-                sendToChannel: async (channel, currentUserId) => {
-                    const name = WKApp.loginInfo.selfDisplayName?.()
-                        || WKApp.loginInfo.name
-                        || currentUserId;
-                    // Iterate #1379: emit a WK_TIP (2000) system-range tip so
-                    // Web and native clients render it via their built-in
-                    // SystemContent path with no per-type adaptation.
-                    const content = new SummaryTipContent().setSender(currentUserId, name);
-                    await WKSDK.shared().chatManager.send(content, channel);
-                },
-                isDisbanded: isConversationDisbanded,
-                warn: (message, context) => console.warn(message, context),
-            },
-        );
+        void this.messaging
+            .notifySummaryCompleted({ previousStatus, detail })
+            .catch((error) => {
+                console.warn("[SummaryDetailPage] completion notice failed", error);
+            });
     }
 
 
@@ -2350,23 +2345,37 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail } = this.state;
         if (!detail) return;
         if (!this.canRefineCurrentDetail()) return;
-        const event = new CustomEvent('summary-open-chat-with-reference', {
-            detail: {
-                task_id: detail.task_id,
-                title: detail.title,
-                trigger_type: detail.trigger_type,
-                status: detail.status,
-                creator_id: detail.creator_id,
-                summary_mode: detail.summary_mode,
-                time_range_start: detail.time_range_start,
-                time_range_end: detail.time_range_end,
-                sources: detail.sources || [],
-                total_msg_count: 0,
-                created_at: '',
-                updated_at: '',
-            },
+        const referenceTask = {
+            task_id: detail.task_id,
+            title: detail.title,
+            trigger_type: detail.trigger_type,
+            status: detail.status,
+            creator_id: detail.creator_id,
+            summary_mode: detail.summary_mode,
+            time_range_start: detail.time_range_start,
+            time_range_end: detail.time_range_end,
+            sources: detail.sources || [],
+            total_msg_count: 0,
+            created_at: "",
+            updated_at: "",
+        } satisfies SummaryReferenceTask;
+        if (this.props.onContinueRefine) {
+            this.props.onContinueRefine(referenceTask);
+            return;
+        }
+        const event = new CustomEvent("summary-open-chat-with-reference", {
+            detail: referenceTask,
         });
         window.dispatchEvent(event);
+    };
+
+    private handleViewConfirm = () => {
+        if (this.taskId == null) return;
+        if (this.props.onViewConfirm) {
+            this.props.onViewConfirm(this.taskId);
+            return;
+        }
+        WKApp.routeLeft.push(<SummaryConfirmPage taskId={this.taskId} />);
     };
 
     handleForwardToChat = () => {
@@ -2381,37 +2390,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (!sourceContent.trim()) return;
         // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
         Dap.shared.track("smart_summary_forward_panel_opened", {});
-        WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-            const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
-            const chunks = splitSummaryText(cleanContent);
-
-            // 长文分块 → 同 channel 内 serial 保序 + interMessageDelayMs 节流；
-            // 跨 channel 也走 serial（保持与原实现一致的顺序体验）。
-            // 原先手写的 space_id monkey-patch 由 ForwardService 内部
-            // wrapSendContentForInjection + opts.spaceId 代替。
-            const result = await ForwardService.send(
-                channels,
-                () => chunks.map((c) => new MessageText(c)),
-                {
-                    channelMode: "serial",
-                    messageMode: "serial",
-                    interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
-                    spaceId: WKApp.shared.currentSpaceId,
-                },
-            );
-
-            // 分母保持 channels 数（scope='targets'），不改动用户可见的 Toast 语义。
-            const state = interpretForwardResult(result, "targets");
-            if (state.kind === "all-failed") {
-                Toast.error(t("summary.detail.forwardFailed"));
-            } else if (state.kind === "partial") {
-                Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
-            } else {
-                Toast.success(t("summary.detail.forwarded"));
-            }
-            // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
-            if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
-        }, t("summary.detail.forwardToChat"));
+        const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
+        this.messaging.requestForward({
+            content: cleanContent,
+            title: t("summary.detail.forwardToChat"),
+            onComplete: (state) => {
+                if (state.kind === "all-failed") {
+                    Toast.error(t("summary.detail.forwardFailed"));
+                } else if (state.kind === "partial") {
+                    Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
+                } else {
+                    Toast.success(t("summary.detail.forwarded"));
+                }
+                // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
+                if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
+            },
+            onError: (error) => Toast.error(t(
+                error instanceof SummaryForwardContextExpiredError
+                    ? "summary.detail.forwardContextChanged"
+                    : "summary.detail.forwardFailed"
+            )),
+        });
     };
 
     /**
@@ -2933,48 +2932,86 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const text = content?.trim();
         if (!text) return;
         // 同步重入闸：semi-ui@2.93 的 Button `loading` 纯装饰、不禁点（round-4 P1-b(i)），
-        // 双开两个总结各点一下会并发两次转文档请求、创建两份文档。已有请求在飞时直接忽略，
-        // 不用 convertingKey（它是渲染态，异步 setState 拦不住同一事件循环里的第二次点击）。
+        // 双开两个总结各点一下会并发两次转文档请求、创建两份文档。已有请求在飞时直接忽略。
         if (this.convertInFlight) return;
         this.convertInFlight = true;
-        // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup。
-        // 对齐 Pages/Chat/index.tsx 的写法：先开 about:blank 拿到真实的“被拦/成功”信号
-        // （带 noopener 的 window.open 成功时也返回 null，没法 null-check），再手动置空 opener。
-        const opened = window.open("about:blank", "_blank");
-        if (opened) {
-            try {
-                opened.opener = null;
-            } catch {
-                // 个别沙箱会冻结 opener setter；about:blank 同源，残留风险可控，继续。
-            }
-        }
-        this.setState({ convertingKey: key });
+
+        let hostOpener: ReturnType<typeof getDocsDocumentOpener> = undefined;
+        let documentOrigin = "";
+        let opened: Window | null = null;
         try {
+            documentOrigin = webOrigin();
+            hostOpener = getDocsDocumentOpener();
+            // Client 模式不预开 about:blank；Web 模式保持原有 popup 行为。
+            if (!hostOpener) {
+                opened = window.open("about:blank", "_blank");
+                if (opened) {
+                    try {
+                        opened.opener = null;
+                    } catch {
+                        // Some sandboxes freeze the opener setter.
+                    }
+                }
+            }
+            this.setState({ convertingKey: key });
             const docTitle = title || this.context.t("summary.detail.defaultTitle");
-            // 转文档时去掉引用序号标记（`[1]` / 团队 `[P1]`）——它们是总结正文
-            // 的引用锚,落到文档正文里是噪声。实现见 citationStrip.ts：与渲染侧权威正则
-            // 对齐，护住 markdown 链接 / 代码块 / 引用定义（round-4 P1-a）。
             const cleaned = stripCitationMarkers(content);
-            const { url } = await api.convertSummaryToDoc(docTitle, cleaned);
+            const value = await api.convertSummaryToDoc(docTitle, cleaned);
             if (this.unmounted) {
                 if (opened && !opened.closed) opened.close();
                 return;
             }
-            if (opened && !opened.closed) {
-                // 预开的标签页还在 → 导航它。
-                opened.location.href = url;
+            const result = validateDocsDocumentLink(value, documentOrigin, true);
+            if (!result) {
+                throw Object.assign(new Error("invalid document link"), {
+                    response: { data: { error: "create_unconfirmed" } },
+                });
+            }
+            if (hostOpener) {
+                const openDocument = hostOpener;
+                // Client 模式：宿主侧导航；失败时不展示"创建失败"，创建已成功。
+                try {
+                    await hostOpener(result);
+                } catch {
+                    if (this.unmounted) return;
+                    Toast.warning({
+                        duration: 8,
+                        content: (
+                            <span>
+                                {this.context.t("summary.detail.convertOpenFailed")}{" "}
+                                <a
+                                    href={result.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="summary-detail-doc-popup-link"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        void openDocument(result).catch(() => {
+                                            Toast.warning(this.context.t("summary.detail.convertOpenFailed"));
+                                        });
+                                    }}
+                                >
+                                    {this.context.t("summary.detail.convertDocLink")}
+                                </a>
+                                <span className="summary-detail-doc-retained-url">{result.url}</span>
+                            </span>
+                        ),
+                    });
+                    return;
+                }
+                if (!this.unmounted) Toast.success(this.context.t("summary.detail.convertSuccess"));
+            } else if (opened && !opened.closed) {
+                opened.location.href = result.url;
                 Toast.success(this.context.t("summary.detail.convertSuccess"));
             } else {
-                // popup 被拦（opened=null）或预开标签已被用户关掉（opened.closed）：
-                // 文档**已经创建成功**，不再喊“允许弹出后重试”——照做只会再造一份孤儿文档
-                // （round-4 P1-b(iii)）。给出文档直达链接，链接可点、文档不丢。
+                // Web popup 被拦或已关：文档已创建成功，只给链接不触发第二次创建。
                 Toast.warning({
                     duration: 8,
                     content: (
                         <span>
                             {this.context.t("summary.detail.convertPopupBlocked")}{" "}
                             <a
-                                href={url}
+                                href={result.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="summary-detail-doc-popup-link"
@@ -2988,15 +3025,42 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         } catch (err) {
             if (opened && !opened.closed) opened.close();
             if (this.unmounted) return;
-            // 刻意不走 extractErrorMsg：host 的 normalizeApiError 只识别 401/403/404/429/5xx,
-            // docs-backend 的 422/413/412/409 全部被归一化成「未知错误」——一个**非空**字符串,
-            // 于是 `extractErrorMsg(err) || convertFailed` 里 `||` 右边永远不执行,更具体的原因
-            // 全被吞掉。convertDocErrorMessage 直接读 err.response.data.error（docs 模块的
-            // toApiErrorEnvelope 保证它在),认不出时才回落 convertFailed。
-            Toast.error(convertDocErrorMessage(err, this.context.t));
+            // 错误文案走 convertDocErrorMessage（直读 err.response.data.error），
+            // 认不出时回落 convertFailed。部分失败保留文档时展示直达链接。
+            const partialDoc = convertDocErrorDocument(err, documentOrigin);
+            if (partialDoc) {
+                const openDocument = hostOpener;
+                const errorKey = resolveConvertDocErrorKey(err);
+                Toast.error({
+                    duration: 8,
+                    content: (
+                        <span>
+                            {errorKey ? this.context.t(errorKey) + " " : null}
+                            {this.context.t("summary.detail.convertDocumentRetained")}{" "}
+                            <a
+                                href={partialDoc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="summary-detail-doc-popup-link"
+                                onClick={(e) => {
+                                    if (openDocument) {
+                                        e.preventDefault();
+                                        void openDocument(partialDoc).catch(() => {
+                                            Toast.warning(this.context.t("summary.detail.convertOpenFailed"));
+                                        });
+                                    }
+                                }}
+                            >
+                                {this.context.t("summary.detail.convertDocLink")}
+                            </a>
+                            <span className="summary-detail-doc-retained-url">{partialDoc.url}</span>
+                        </span>
+                    ),
+                });
+            } else {
+                Toast.error(convertDocErrorMessage(err, this.context.t));
+            }
         } finally {
-            // 只在 key 仍是自己时清：万一将来有并发路径覆写了 key，别把别人的
-            // loading 态顺手掐掉（round-4 P1-b(ii)）。
             if (!this.unmounted && this.state.convertingKey === key) {
                 this.setState({ convertingKey: null });
             }
@@ -3731,7 +3795,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <IconClose style={{ fontSize: 14 }} />
                         <span>
                             {m.user_name}
-                            <span style={{ color: "var(--semi-color-text-3)", fontWeight: 400 }}> · </span>
+                            <span style={{ color: "var(--semi-color-text-3)", fontWeight: 400 }}>{" "}·{" "}</span>
                             <span style={{ fontSize: 13, color: "var(--semi-color-text-2)", fontWeight: 400 }}>
                                 {t("summary.confirmPage.declined")}
                             </span>
@@ -3957,11 +4021,33 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     // need7：creator 添加新成员。选定后调 POST /members，成功 loadDetail 刷新（新成员 Pending）。
+    private addMemberConversationTarget(): SummaryConversationTarget {
+        const detail = this.state.detail;
+        const tId = this.taskId;
+        const channelId = detail?.origin_channel_id || "";
+        // origin_channel_type 映射：后端类型 1=群聊/2=子区/3=私聊。
+        // loadConversationMembers 需要 IM SDK 的 channelType（2=群聊/1=私聊/5=子区），
+        // 复用 handleOpenAddMember 同一转换逻辑。
+        const rawType = detail?.origin_channel_type ?? 2;
+        const channelType =
+            rawType === 1 ? 2 : rawType === 3 ? 1 : 2;
+        return {
+            channelId: channelId || (tId != null ? String(tId) : ""),
+            channelType,
+        };
+    }
+
     handleOpenAddMember = () => {
         if (this.taskId == null) return;
         const detail = this.state.detail;
         if (!detail) return;
-        // 推断频道：origin_channel_id + origin_channel_type
+        // 面板模式：用 Semi Modal 代替 WKApp.routeRight.push，绕过缺少 SubscriberList
+        // 的代码包拆分问题。
+        if (this.props.messaging) {
+            this.setState({ showAddMemberModal: true });
+            return;
+        }
+        // 传统 Web 路由：通过 SubscriberList 路由页面添加成员。
         const channelId = detail.origin_channel_id;
         const channelType = detail.origin_channel_type === 1 ? 2 : detail.origin_channel_type === 3 ? 1 : 2;
         const channel = channelId ? new WkChannel(channelId, channelType) : new WkChannel(this.taskId.toString(), 2);
@@ -4222,7 +4308,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         return (
             <>
-            <div className="summary-detail-title-row">
+            <div className="summary-detail-title-row" data-desktop-chrome="header">
                 <div className="summary-detail-header-title-wrap">
                     <OverflowTooltip as="h2" data-testid={summaryTestIds.detailTitle} className="summary-detail-title" title={displayTitle}>
                         {displayTitle}
@@ -4544,7 +4630,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             <p style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8, marginBottom: 16 }}>
                                                 {t("summary.detail.waitingConfirmDesc")}
                                             </p>
-                                            <Button onClick={() => WKApp.routeLeft.push(<SummaryConfirmPage taskId={this.taskId} />)}>
+                                            <Button onClick={this.handleViewConfirm}>
                                                 {t("summary.detail.viewConfirmStatus")}
                                             </Button>
                                         </div>
@@ -4626,6 +4712,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     hasExisting={!!this.state.scheduleItem && this.state.scheduleItem.is_active !== false}
                     onDisable={this.handleScheduleDisable}
                     disabling={this.state.scheduleDisabling}
+                />
+                <SummaryAddMemberModal
+                    visible={this.state.showAddMemberModal}
+                    taskId={this.taskId!}
+                    target={this.addMemberConversationTarget()}
+                    existingMemberIds={
+                        (this.state.detail?.participants || []).map(
+                            (p) => p.user_id
+                        )
+                    }
+                    messaging={this.messaging}
+                    onClose={() =>
+                        this.setState({ showAddMemberModal: false })
+                    }
+                    onSuccess={() => {
+                        this.setState({ showAddMemberModal: false });
+                        this.loadDetail();
+                    }}
                 />
                 {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
                 <Modal

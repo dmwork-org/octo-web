@@ -8,7 +8,7 @@ import {
     defaultOnboardingConfig,
     shouldShowOnboarding,
 } from "../../Components/Onboarding/content";
-import { Space, SpaceService } from "@octo/base";
+import { isSpaceAdminOrOwner, Space, SpaceService } from "@octo/base";
 import { JoinSpaceModalConnected, NavRail, MeInfo, SpaceCreate } from "@octo/base";
 import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
@@ -257,7 +257,7 @@ export class MainPage extends Component<{}, MainPageState> {
         } = this.state;
         // 客户端 UI 可见性控制：仅在用户拥有任一 Space 的 owner/admin 角色时显示入口；
         // 真正的接口鉴权由 admin SPA 后端负责。allSpaces 来自登录后刷新，角色变更需重新加载。
-        const canManageSpace = allSpaces.some(s => s.role === 1 || s.role === 2);
+        const canManageSpace = allSpaces.some(s => isSpaceAdminOrOwner(s.role));
 
         return (
             <Provider create={() => new MainVM()} render={(vm: MainVM) => {
@@ -311,6 +311,13 @@ export class MainPage extends Component<{}, MainPageState> {
                                                     // 真正切到 Apps(menusId=appbot,非 reentry)时计一次。
                                                     if (menus.id === "appbot" && !isReentry) {
                                                         Dap.shared.track("apps_module_entered", {});
+                                                    }
+                                                    // Octo-Q head 258e876e P1:document_module_entered 是 Class N
+                                                    // 导航事件,不能挂 GET /docs/recent/creators(该端点被 122 ?creator=
+                                                    // 筛选共用、任何重拉都重发)。与 contacts_/apps_module_entered 同款,
+                                                    // 在真正切到文档(menus.id==='docs',非 reentry)时命令式计一次。
+                                                    if (menus.id === "docs" && !isReentry) {
+                                                        Dap.shared.track("document_module_entered", {});
                                                     }
                                                     vm.currentMenus = menus;
                                                     WKApp.currentMenuId = menus.id;

@@ -1,7 +1,7 @@
 import React from "react";
 import "./index.css";
 
-export type DocShareKind = "doc" | "board" | "sheet" | "html";
+export type DocShareKind = "doc" | "board" | "sheet" | "html" | "html_ppt";
 
 /** viewer 视角的权限态（由 Cell 依据实时 ACL 取数结果给出）。 */
 export type DocSharePermissionState =
@@ -75,6 +75,12 @@ function toneOf(state: DocSharePermissionState): "success" | "warning" | "error"
 
 /** 资源类型内联图标（自包含，不耦合图标系统）。 */
 function KindIcon({ kind }: { kind: DocShareKind }): JSX.Element {
+  if (kind === "html_ppt") {
+    return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="13" rx="2" />
+      <path d="M12 17v4M8 21h8M9 8l6 3-6 3z" />
+    </svg>;
+  }
   if (kind === "board") {
     return (
       <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">

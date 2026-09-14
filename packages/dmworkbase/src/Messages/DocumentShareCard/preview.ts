@@ -1,5 +1,10 @@
-import APIClient from "../../Service/APIClient";
+import {
+  DocumentPreviewError,
+  type DocumentPreviewInput,
+  getDocumentPreviewBody,
+} from "../../Service/DocumentPreviewService";
 import WKApp from "../../App";
+import { fetchModuleSharePreview } from '../../bridge/docs/sharePreviewPort';
 import type {
   DocShareKind,
   DocSharePreview,
@@ -171,35 +176,6 @@ function adoptHtmlPreview(body: unknown): DocSharePreview | undefined {
   return { type: "doc", heading, paragraphs };
 }
 
-const ENDPOINT: Record<DocShareKind, string> = {
-  doc: "content",
-  board: "scene",
-  sheet: "sheet",
-  // html 有了专属预览端点（docs-backend docHtmlPreview.ts，reader / requireDocRole）：
-  // 服务端抓上游 HTML、抽出 heading + 前几段**纯文本**返回，原始 markup 永不过界。
-  // 它复用 doc 的三段式错误码语义（403 无权限 / 404·410 失效 / 409
-  // `unsupported_doc_type` 该类型无预览 / 409 `conflict` 已归档），所以下面的分派不变。
-  html: "html-preview",
-};
-
-/**
- * Electron has no Vite proxy, and the docs backend is independent from the IM API.
- * The normal host client therefore needs an explicit base URL for chat-card previews.
- * Browser builds keep the relative `/api/v1/` route so nginx/Vite can proxy it.
- */
-function desktopDocsApiBaseURL(): string | undefined {
-  const isDesktop =
-    typeof window !== "undefined" &&
-    (window.location.protocol === "file:" || import.meta.env.VITE_ELECTRON_BUILD === "true");
-  if (!isDesktop) return undefined;
-  const raw = import.meta.env.VITE_DOCS_API_URL?.trim();
-  if (!raw) return undefined;
-  try {
-    return `${new URL(raw).origin}/api/v1/`;
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * 从 APIClient reject 出来的错误里取 docs-backend 的 **wire 错误码**。
@@ -212,6 +188,7 @@ function desktopDocsApiBaseURL(): string | undefined {
  * 同款先例：dmworkmcp/src/api/mcpService.ts、expertService.ts 的 extractErrorMessage。
  */
 function wireErrorCode(e: unknown): string | undefined {
+  if (e instanceof DocumentPreviewError) return e.code;
   if (!e || typeof e !== "object") return undefined;
   const raw = (e as { error?: unknown }).error;
   if (!raw || typeof raw !== "object") return undefined;
@@ -224,19 +201,12 @@ function wireErrorCode(e: unknown): string | undefined {
 }
 
 async function requestPreview(
-  kind: DocShareKind,
+  kind: DocumentPreviewInput["kind"],
   docId: string,
   spaceId: string,
 ): Promise<DocPreviewResult> {
   try {
-    const body = await APIClient.shared.get<unknown>(
-      `docs/${encodeURIComponent(docId)}/${ENDPOINT[kind]}`,
-      {
-        baseURL: desktopDocsApiBaseURL(),
-        headers: spaceId ? { "X-Space-Id": spaceId } : undefined,
-        param: spaceId ? { sp: spaceId } : undefined,
-      } as any,
-    );
+    const body = await getDocumentPreviewBody({ kind, docId }, spaceId);
     const preview =
       kind === "doc"
         ? parseDocPreview(body)
@@ -278,9 +248,11 @@ async function requestPreview(
 const PREVIEW_TTL_MS = 30_000;
 const resultCache = new Map<string, { at: number; result: DocPreviewResult }>();
 const inflight = new Map<string, Promise<DocPreviewResult>>();
+let cacheGeneration = 0;
 
 /** 测试用：清空预览结果缓存与在飞表，避免用例间串味。 */
 export function resetDocPreviewCache(): void {
+  cacheGeneration++;
   resultCache.clear();
   inflight.clear();
   cacheOwnerUid = null;
@@ -346,12 +318,16 @@ export async function fetchDocPreview(
   opts: { force?: boolean } = {},
 ): Promise<DocPreviewResult> {
   if (!docId) return { status: "error" };
+  // Extension providers reauthorize on every read in the recipient's current
+  // Space. Message-carried Space and the legacy preview cache are not authority.
+  if (kind !== "doc" && kind !== "board" && kind !== "sheet" && kind !== "html") return fetchModuleSharePreview(kind, docId);
 
   // 账号隔离（Jerry-Xin/lml2468 🔴 跨账号缓存泄漏）：预览结果按当前登录用户的 ACL
   // 授权，换号后旧号缓存不可复用。检测到 uid 变化先整体清空缓存与在飞表，再用带 uid
   // 的 key 存取，杜绝下一个用户在 TTL 窗口内读到上一个用户的 ready/denied。
   const viewerUid = currentViewerUid();
   if (viewerUid !== cacheOwnerUid) {
+    cacheGeneration++;
     resultCache.clear();
     inflight.clear();
     cacheOwnerUid = viewerUid;
@@ -369,7 +345,13 @@ export async function fetchDocPreview(
   const existing = inflight.get(key);
   if (existing) return existing;
 
+  const generation = cacheGeneration;
   const p = requestPreview(kind, docId, spaceId).then((result) => {
+    // A host organization/session switch must not revive old results or delete
+    // a newer request for the same card after resetDocPreviewCache().
+    if (generation !== cacheGeneration || viewerUid !== currentViewerUid()) {
+      return { status: "error" } as DocPreviewResult;
+    }
     inflight.delete(key);
     if (result.status !== "error") resultCache.set(key, { at: Date.now(), result });
     return result;

@@ -13,7 +13,7 @@ import {
 } from "@octo/base";
 import { ContactsModule } from "@octo/contacts";
 import { DataSourceModule } from "@octo/datasource";
-import { SummaryModule } from "@dmwork/summary";
+import { SummaryCommunicationModule } from "@dmwork/summary/communication";
 import { registerEnterpriseModules } from "virtual:octo-enterprise-modules";
 import { WKSDK } from "wukongimjssdk";
 import { version as pkgVersion } from "../../package.json";
@@ -21,16 +21,21 @@ import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installCommunicationAuthExpiryHandler } from "./authLifecycle";
+import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
+import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
+import { installHostDocumentPreview } from "./documentPreview";
+import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
+import "../client-feature/desktop/presentation.css";
+import "./desktop-presentation.css";
+import "./desktop-contacts.css";
 
 async function main() {
   const host = requireHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1) {
-    throw new Error(`Unsupported communication bridge version: ${bootstrap.bridgeVersion}`);
-  }
+  assertClientFeatureBootstrap(bootstrap, "communication");
 
   WKApp.apiClient.config.apiURL = resolveApiURL({
     isDesktop: true,
@@ -52,6 +57,7 @@ async function main() {
   });
   WKApp.shared.currentSpaceId = bootstrap.space.id;
   document.documentElement.dataset.spaceId = bootstrap.space.id;
+  installHostDocumentPreview(host, bootstrap.space.id);
 
   i18n.registerNamespace("app", {
     "zh-CN": appZhCN,
@@ -65,12 +71,12 @@ async function main() {
   installCommunicationAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host);
   WKApp.shared.registerModule(new DataSourceModule());
   WKApp.shared.registerModule(new ContactsModule());
-  WKApp.shared.registerModule(new SummaryModule());
+  WKApp.shared.registerModule(new SummaryCommunicationModule());
   registerEnterpriseModules({
     registerModule: (module) => WKApp.shared.registerModule(module),
   });
 
-  await enableMocksIfE2E();
+  await enableClientFeatureMocks("communication");
   await enableMockImIfE2E();
   WKApp.shared.startup({ loadLoginInfo: false, isPC: true });
   if (
@@ -83,7 +89,13 @@ async function main() {
   document.documentElement.dataset.theme = bootstrap.appearance.theme;
   Dap.shared.init();
 
-  createRoot(document.getElementById("root")!).render(
+  const root = document.getElementById("root")!;
+  const presentation = installDesktopPresentationLifecycle(window, host, root, () => ({
+    page: WKApp.currentMenuId === "contacts" ? "contacts" : "chat",
+    spaceId: WKApp.shared.currentSpaceId,
+  }));
+  await presentation.available;
+  createRoot(root).render(
     <React.StrictMode>
       <I18nProvider>
         <CommunicationShell
@@ -91,26 +103,17 @@ async function main() {
           initialPage={bootstrap.initialPage}
           initialSpaceId={bootstrap.space.id}
           initialPresentation={bootstrap.initialPresentation}
-          onReady={({ page, spaceId }) => host.reportReady({
+          onReady={({ page, spaceId }) => presentation.reportReady({
             bridgeVersion: 1,
             page,
             spaceId,
             rendererVersion: WKApp.config.appVersion,
+            documentForwardVersion: 1,
           })}
         />
       </I18nProvider>
     </React.StrictMode>,
   );
-}
-
-async function enableMocksIfE2E(): Promise<void> {
-  if (import.meta.env.VITE_E2E_MOCK !== "1") return;
-  try {
-    const { worker } = await import("../mocks/browser");
-    await worker.start({ onUnhandledRequest: "bypass" });
-  } catch (error) {
-    console.warn("[communication-e2e] MSW disabled:", error);
-  }
 }
 
 async function enableMockImIfE2E(): Promise<void> {

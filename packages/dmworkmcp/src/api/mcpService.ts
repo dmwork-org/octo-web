@@ -13,6 +13,14 @@ import type {
   UpdateMcpParams,
 } from "../types/mcp";
 import { toPluginUpsert } from "./mcpWireParams";
+// Deep import, deliberately. `withReviewInvalidation` must be the SAME module
+// instance `useReviewRequests` subscribes to, but this file must not reach the
+// @dmwork/skillmarket barrel: the suites covering it mock only `axios` +
+// `@octo/base`, and pulling that package's React graph in would break them at
+// import time — the reason api/pluginReview.ts exists as a separate bridge
+// file. This subpath resolves to a leaf module with ZERO imports of its own, so
+// it costs this module's graph nothing. Keep that true.
+import { withReviewInvalidation } from "@dmwork/skillmarket/src/api/reviewSignal";
 import {
   SCENE_CODE,
   splitUserSupplied,
@@ -52,6 +60,7 @@ import { McpListError, classifyMcpListError, executeMcpListRequest } from "./mcp
 //   fetchMcpList(params)   → list + categories
 //   fetchMcpMine(params)   → list restricted to caller-owned records
 //   fetchMcpDetail(id)     → full detail
+//   trackMcpView(id)       → best-effort view metric
 //   probeMcpTools(req)     → "try connect / fetch tool list" (see LSC-70)
 //   createMcp(params)      → create a new MCP entry
 //   updateMcp(id, params)  → PATCH — owner-only partial update
@@ -106,10 +115,9 @@ function assertSafeUploadURL(raw: string): void {
 
 // ─── Mock implementations ──────────────────────────────────────────────────
 
-/** Category pill counts over an arbitrary MCP set. Callers pass the same
- *  filtered slice they showed as items, so pill numbers stay coherent with
- *  the visible list — matches the real backend's `/mcp_categories` which
- *  respects `created_by_type` (issue #894 follow-up). */
+/** Category pill counts over the visible catalog scope. Keyword/category/tag
+ *  filters are deliberately excluded so the filter bar does not disappear
+ *  when the current result set is empty. */
 function buildCategories(source: McpListItem[] = MOCK_MCP_LIST): McpCategory[] {
   const counts = new Map<string, number>();
   for (const item of source) {
@@ -119,7 +127,7 @@ function buildCategories(source: McpListItem[] = MOCK_MCP_LIST): McpCategory[] {
     key,
     label: MCP_CATEGORY_LABELS[key] ?? key,
     count: key === "all" ? source.length : counts.get(key) ?? 0,
-  }));
+  })).filter((category) => category.key === "all" || category.count > 0);
 }
 
 async function fetchMcpListMock(
@@ -171,7 +179,7 @@ async function fetchMcpListMockFiltered(
   return delay({
     items,
     total: filtered.length,
-    categories: buildCategories(filtered),
+    categories: buildCategories(source),
   });
 }
 
@@ -181,6 +189,13 @@ async function fetchMcpDetailMock(id: string): Promise<McpDetail> {
     throw new Error(`MCP not found: ${id}`);
   }
   return delay(detail);
+}
+
+async function trackMcpViewMock(id: string): Promise<void> {
+  const detail = MOCK_MCP_DETAILS.find((item) => item.id === id);
+  if (detail) detail.viewCount = (detail.viewCount ?? 0) + 1;
+  const item = MOCK_MCP_LIST.find((entry) => entry.id === id);
+  if (item) item.viewCount = (item.viewCount ?? 0) + 1;
 }
 
 async function probeMcpToolsMock(
@@ -226,6 +241,10 @@ async function createMcpMock(params: CreateMcpParams): Promise<{ id: string }> {
     ? `${id}-${Date.now().toString(36)}`
     : id;
   const detail = buildDetailFromCreate(uniqueId, params);
+  // A create is always a DRAFT carrying the declared audience — mirroring the
+  // real path, where 发布 is the only thing that lists a connector.
+  detail.listingState = "draft";
+  detail.displayStatus = "draft";
   MOCK_MCP_DETAILS.unshift(detail);
   MOCK_MCP_LIST.unshift(projectListItem(detail));
   return delay({ id: uniqueId }, 400);
@@ -250,7 +269,14 @@ async function updateMcpMock(
   next.createdByType = prev.createdByType;
   next.createdByBotUid = prev.createdByBotUid;
   next.createdByBotName = prev.createdByBotName;
-  next.visibility = prev.visibility;
+  // Listing lifecycle stays server-owned: a save is not a publish. Visibility
+  // is NOT in that group any more — it is declared by the editor, so an
+  // explicit value is written through and only an omission preserves the
+  // stored one (same rule as updateMcpReal).
+  next.listingState = prev.listingState;
+  next.displayStatus = prev.displayStatus;
+  next.reviewId = prev.reviewId;
+  next.visibility = params.visibility ?? prev.visibility;
   MOCK_MCP_DETAILS[idx] = next;
   const listIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
   if (listIdx !== -1) MOCK_MCP_LIST[listIdx] = projectListItem(next);
@@ -299,6 +325,10 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
     toolCount: params.tools.length,
     icon: params.icon ?? "",
     creatorName: WKApp.loginInfo?.name || "",
+    // Same default as the real create path: a connector nobody declared an
+    // audience for is private. Listing state is NOT set here — this builder
+    // also backs the mock update, and a save must not move a row's listing.
+    visibility: params.visibility ?? "private",
     quickStart,
     tools: params.tools,
     usageExamples: (params.usageExamples ?? []).filter((s) => s.trim()),
@@ -323,6 +353,12 @@ function projectListItem(d: McpDetail): McpListItem {
     createdByBotUid: d.createdByBotUid,
     createdByBotName: d.createdByBotName,
     creatorName: d.creatorName,
+    // Audience + listing lifecycle, so a mock 我的发布 row resolves the same
+    // owner actions (编辑 / 发布 / 升级版本) the real listing does.
+    visibility: d.visibility,
+    listingState: d.listingState,
+    displayStatus: d.displayStatus,
+    reviewId: d.reviewId,
   };
 }
 
@@ -406,7 +442,14 @@ mcpAxios.interceptors.request.use((config) => {
 mcpAxios.interceptors.response.use(
   (resp) => resp,
   (err) => {
-    if (err?.response?.status === 401) {
+    const url = (err?.config?.url as string | undefined) ?? "";
+    if (
+      err?.response?.status === 401 &&
+      // View tracking is fire-and-forget. Its authorization failure must not
+      // tear down an otherwise healthy session; ordinary marketplace reads
+      // remain the authoritative authentication probe.
+      url !== `${BASE}/metrics/track`
+    ) {
       WKApp.shared.logout();
     }
     return Promise.reject(err);
@@ -615,6 +658,12 @@ function mapListItem(
     viewCount: raw.view_count ?? 0,
     installCount: raw.install_count ?? 0,
     visibility: mapVisibility(raw.visibility),
+    // Server-computed listing state and status. Both are absent on the public
+    // catalog, where every row is published by construction, so they stay
+    // optional rather than defaulting — a missing value must not read as 草稿.
+    listingState: raw.listing_state,
+    displayStatus: raw.display_status,
+    reviewId: raw.review_id || undefined,
     creatorName: raw.creator_name,
     createdByType: raw.created_by_type,
     createdByBotUid: raw.created_by_bot_id,
@@ -733,6 +782,7 @@ async function fetchMcpListPath(
   const categories: McpCategory[] = [
     { key: CATEGORY_KEY_ALL, label: categoryLabel(CATEGORY_KEY_ALL), count: allCount },
     ...[...categoryWire]
+      .filter((c) => (c.plugin_count ?? 0) > 0)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((c) => ({ key: c.name, label: c.name, count: c.plugin_count ?? 0 })),
   ];
@@ -766,6 +816,20 @@ async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
     getConnectorCategoryMaps(),
   ]);
   return mapDetail(detail.plugin, maps.idToKey);
+}
+
+/** Record one connector detail view. Metrics are deliberately best-effort:
+ * opening the detail must still work when the metrics service is unavailable. */
+async function trackMcpViewReal(id: string): Promise<void> {
+  try {
+    await mcpAxios.post(`${BASE}/metrics/track`, {
+      resource_type: "plugin",
+      resource_id: id,
+      event_type: "view",
+    });
+  } catch {
+    // A lost metric is non-actionable and must not affect the detail UI.
+  }
 }
 
 async function probeMcpToolsReal(
@@ -815,20 +879,57 @@ async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
   // Fail closed on an unresolved category so the plugin and its placement never
   // split-brain on a NULL category_id.
   const { categoryId } = await resolveWriteCategory(params.category, maps);
+  // A create always lands as a DRAFT, carrying the audience the author
+  // DECLARED. The declaration by itself lists nothing: 发布 is the one door, and
+  // the backend reads this value there to decide whether that lists the
+  // connector immediately (private) or opens an organization review (space).
+  //
+  // This used to hardcode `private` regardless of what the author picked, which
+  // made 本组织 unreachable from the create form. It defaults to `private` only
+  // when the caller declares nothing, so a non-UI caller cannot accidentally
+  // widen a new connector by omission.
   const detail = await post<PluginDetailWire>(
     "/plugins/upsert",
-    toPluginUpsert(params, { categoryId, visibility: "space" })
+    toPluginUpsert(params, {
+      categoryId,
+      visibility: params.visibility ?? "private",
+    })
   );
   return { id: detail.plugin.plugin_id };
 }
 
-/** Full-replace update via upsert. The current visibility is fetched first so
- *  the replace echo preserves it (legacy PATCH semantics); placement category
- *  follows the current-state category server-side. */
+/** Full-replace update via upsert. The declared visibility is written through;
+ *  the current one is fetched as the fallback for a caller that omits it (see
+ *  CreateMcpParams.visibility), so a row the editor cannot express — a legacy
+ *  `system` / `public` record — is preserved rather than downgraded. Placement
+ *  category follows the current-state category server-side. */
 async function updateMcpReal(
   id: string,
   params: UpdateMcpParams
 ): Promise<McpDetail> {
+  const { body, maps } = await buildConnectorUpsert(id, params);
+  const detail = await post<PluginDetailWire>("/plugins/upsert", body);
+  return mapDetail(detail.plugin, maps.idToKey);
+}
+
+/**
+ * Build the full-replace upsert body for an existing connector.
+ *
+ * Shared by the direct edit (updateMcpReal) and by the 发布新版本 review
+ * submission, which needs the very same `manifest_json` / `plugin_json` pair but
+ * posts it to `/plugins/review_requests` instead of `/plugins/upsert`. Extracted
+ * rather than duplicated because everything below is preservation logic — a
+ * review submission that skipped it would freeze a snapshot with the caller's
+ * unmodeled attachments and server keys destroyed, and approving it would then
+ * destroy them for real.
+ */
+async function buildConnectorUpsert(
+  id: string,
+  params: UpdateMcpParams
+): Promise<{
+  body: ReturnType<typeof toPluginUpsert>;
+  maps: Awaited<ReturnType<typeof getConnectorCategoryMaps>>;
+}> {
   const [current, maps] = await Promise.all([
     get<PluginDetailWire>(`/plugins/detail`, {
       plugin_id: id,
@@ -875,22 +976,49 @@ async function updateMcpReal(
   for (const [k, v] of Object.entries(currentServers)) {
     if (k !== currentServerName) extraServers[k] = v;
   }
-  const detail = await post<PluginDetailWire>(
-    "/plugins/upsert",
-    toPluginUpsert(
-      { ...params, icon: canonicalIcon },
-      {
-        pluginId: id,
-        categoryId,
-        visibility: current.plugin.visibility,
-        rawServer,
-        extraServers,
-        // toPluginUpsert drops the five modeled paths, keeping only the extras.
-        extraAttachments: current.plugin.plugin_json?.attachments,
-      }
-    )
+  const body = toPluginUpsert(
+    { ...params, icon: canonicalIcon },
+    {
+      pluginId: id,
+      categoryId,
+      // The audience as DECLARED by this write. An upsert replaces the row, so
+      // the value has to travel with every save — omitting it would leave the
+      // column to a backend default instead of to the author's choice.
+      //
+      // Widening it on an already-listed connector un-lists the row server-side
+      // (the audience changed, so the listing must be re-earned through 发布);
+      // the editor warns before saving. Falls back to the stored value for a
+      // caller that declares nothing — notably a row whose visibility the
+      // two-option editor cannot express (see CreateMcpParams.visibility).
+      visibility: params.visibility ?? current.plugin.visibility,
+      rawServer,
+      extraServers,
+      // toPluginUpsert drops the five modeled paths, keeping only the extras.
+      extraAttachments: current.plugin.plugin_json?.attachments,
+    }
   );
-  return mapDetail(detail.plugin, resolvedMaps.idToKey);
+  return { body, maps: resolvedMaps };
+}
+
+/**
+ * The frozen content for a connector 发布新版本 submission: exactly the
+ * documents a direct edit would have written, but handed to the caller instead
+ * of posted.
+ *
+ * An already-listed (`space`) connector cannot be edited directly — the backend
+ * answers 409 `listed_requires_review` — so this pair IS the change under
+ * review. The live row keeps serving the previous version until a reviewer
+ * approves.
+ */
+export async function buildConnectorReviewContent(
+  id: string,
+  params: UpdateMcpParams
+): Promise<{ manifestJson: unknown; pluginJson: unknown }> {
+  const { body } = await buildConnectorUpsert(id, params);
+  return {
+    manifestJson: body.plugin.manifest_json,
+    pluginJson: body.plugin.plugin_json,
+  };
 }
 
 /** POST /plugins/delete — owner-only soft delete. */
@@ -1010,6 +1138,10 @@ export function fetchMcpDetail(id: string): Promise<McpDetail> {
   return USE_MOCK ? fetchMcpDetailMock(id) : fetchMcpDetailReal(id);
 }
 
+export function trackMcpView(id: string): Promise<void> {
+  return USE_MOCK ? trackMcpViewMock(id) : trackMcpViewReal(id);
+}
+
 /** One tag suggestion in the tag-filter popover (mcp-v1.md §4.8). */
 export interface McpTagSuggestion {
   name: string;
@@ -1124,10 +1256,26 @@ export function updateMcp(
   return USE_MOCK ? updateMcpMock(id, params) : updateMcpReal(id, params);
 }
 
-/** DELETE /mcps/{id} — owner-only soft delete. */
-export function deleteMcp(id: string): Promise<void> {
+/**
+ * POST /plugins/delete — owner-only soft delete.
+ *
+ * Wrapped for the same reason @dmwork/skillmarket wraps `deleteSkill`: the
+ * backend cancels the plugin's pending review request inside the delete's own
+ * transaction (octo-marketplace `cancelPendingReviewFor`, reason "plugin
+ * deleted"), because a request whose plugin is gone is unreadable and
+ * unsettleable by anybody. So the Space's pending count really does drop here,
+ * and a client that does not re-read keeps advertising a review request for a
+ * connector that no longer exists.
+ *
+ * On the ENDPOINT rather than on its callers — deleting reaches this function
+ * from the row's 删除 and from the detail modal's inline confirm today, and
+ * whichever surface comes next gets it for free. See reviewSignal.ts.
+ */
+export const deleteMcp = withReviewInvalidation(function deleteMcp(
+  id: string
+): Promise<void> {
   return USE_MOCK ? deleteMcpMock(id) : deleteMcpReal(id);
-}
+});
 
 /**
  * Upload an MCP icon to object storage (POST /mcps/{id}/icon, multipart).
