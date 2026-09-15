@@ -100,8 +100,9 @@ export default class APIClient {
             config.headers = config.headers || {};
             config.headers["Accept-Language"] = buildAcceptLanguage();
             // 埋点路由模板登记(见 apiPath.ts):唯一知道 baseURL 的地方,把 apiPath 产出的
-            // 具体路径与模板按最终 pathname 对齐,供 Dap http_request 上报稳定模板而非反解归一。
-            // 非 apiPath 路径无副作用;登记失败绝不影响请求本身。
+            // 具体路径与模板按最终 pathname 对齐。保留供 apiPath 模板 registry 使用;http_request
+            // 原始事件已按 Option A 停发,此登记已不再喂 http_request 上报(registry 现无运行时消费者,
+            // 实删另开 follow-up)。非 apiPath 路径无副作用;登记失败绝不影响请求本身。
             try {
                 registerRequestTemplate(config.url, config.baseURL ?? axios.defaults.baseURL ?? undefined);
             } catch { /* 埋点旁路,任何异常不得波及业务请求 */ }
