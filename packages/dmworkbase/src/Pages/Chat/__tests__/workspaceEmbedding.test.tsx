@@ -100,6 +100,31 @@ describe("ChatContentPage workspaceEmbedding", () => {
       expect(setState.mock.calls[0][0].previewFile).toBeTruthy();
     });
 
+    it("preserves pending file preview source and download URLs", () => {
+      const page = createPage(new Channel("g", 2));
+      (WKApp as any).shared.pendingFilePreview = {
+        url: "blob:preview",
+        sourceUrl: "/files/source/report.html",
+        downloadUrl: "/files/download/report.html",
+        name: "report.html",
+        extension: "html",
+        messageId: "m-html",
+      };
+
+      mountPage(page);
+
+      expect((WKApp as any).shared.pendingFilePreview).toBeUndefined();
+      expect(page.state.previewFile).toMatchObject({
+        url: "blob:preview",
+        sourceUrl: "/files/source/report.html",
+        downloadUrl: "/files/download/report.html",
+        name: "report.html",
+        extension: "html",
+        messageId: "m-html",
+      });
+      expect(page.state.activePreviewMessageId).toBe("m-html");
+    });
+
     it("opens thread panel on onOpenThreadPanel", () => {
       const page = createPage(new Channel("g", 2));
       const setState = vi.spyOn(page, "setState");
@@ -139,6 +164,24 @@ describe("ChatContentPage workspaceEmbedding", () => {
       const page = createPage(new Channel("g", 2), { ...EMPTY_EMBEDDING, onSidePanelUnavailable: unavailable });
       page._onFilePreview({ url: "u", name: "f.txt", extension: "txt", size: 1, messageId: "m1" });
       expect(unavailable).toHaveBeenCalledTimes(1);
+    });
+
+    it("consumes a pending file preview without opening the side panel", () => {
+      const page = createPage(new Channel("g", 2), EMPTY_EMBEDDING);
+      (WKApp as any).shared.pendingFilePreview = {
+        url: "blob:preview",
+        sourceUrl: "/files/source/report.html",
+        downloadUrl: "/files/download/report.html",
+        name: "report.html",
+        extension: "html",
+        messageId: "m-html",
+      };
+
+      mountPage(page);
+
+      expect((WKApp as any).shared.pendingFilePreview).toBeUndefined();
+      expect(page.state.previewFile).toBeNull();
+      expect(page.state.activePreviewMessageId).toBeNull();
     });
 
     it("calls onSidePanelUnavailable for channel search", () => {
@@ -263,6 +306,39 @@ describe("ChatContentPage workspaceEmbedding", () => {
       expect(page.state.showChannelSetting).toBe(false);
       expect(page.state.showThreadPanel).toBe(false);
       expect(requireConv(page).headerMode).toBeUndefined();
+    });
+
+    it("reconciles queued presentation updates before acknowledging the latest one", () => {
+      const page = createPage(new Channel("g", 2));
+      const queue: Array<() => void> = [];
+      page.setState = (update: any, callback?: () => void) => {
+        queue.push(() => {
+          const next = typeof update === "function" ? update(page.state, page.props) : update;
+          if (next) page.state = { ...page.state, ...next };
+          callback?.();
+        });
+      };
+      const snapshots: unknown[] = [];
+      page.updateWorkspaceEmbedding(EMPTY_EMBEDDING, () => snapshots.push(page.state.workspaceEmbedding));
+      page.updateWorkspaceEmbedding(undefined, () => snapshots.push(page.state.workspaceEmbedding));
+      expect(snapshots).toEqual([]);
+      expect(queue).toHaveLength(2);
+      queue.forEach((commit) => commit());
+      expect(snapshots).toEqual([EMPTY_EMBEDDING, undefined]);
+      expect(page.state.workspaceEmbedding).toBeUndefined();
+    });
+
+    it("reports completion for an unchanged presentation without clearing panels", () => {
+      const page = createPage(new Channel("g", 2));
+      page.setState({ showChannelSetting: true });
+      const onCommitted = vi.fn();
+      page.setState = (update: any, callback?: () => void) => {
+        expect(update(page.state, page.props)).toBeNull();
+        callback?.();
+      };
+      page.updateWorkspaceEmbedding(undefined, onCommitted);
+      expect(onCommitted).toHaveBeenCalledTimes(1);
+      expect(page.state.showChannelSetting).toBe(true);
     });
 
     it("constructor does not set showChannelSearch when embedding", () => {
