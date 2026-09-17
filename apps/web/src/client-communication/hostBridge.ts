@@ -158,6 +158,18 @@ export interface OctoBuddyCommunicationBridge {
   cancelFilePreview?: AttachmentPreviewHost["cancelFilePreview"];
   openFilePreviewInPlace?: LayoutAttachmentHost["openFilePreviewInPlace"];
   setFilePreviewLayout?: LayoutAttachmentHost["setFilePreviewLayout"];
+  /**
+   * Independently optional host preference query; only its presence installs host policy.
+   * Additive v1 fields are ignored; changes to required fields or semantics need a new version.
+   */
+  getNotificationPreferences?(): Promise<{
+    version: 1;
+    desktopNotifications: boolean;
+    soundNotifications: boolean;
+    quickMuteScope: "popup" | "all";
+  }>;
+  /** Independently optional pause CMD subscription; works with the legacy store without host preferences. */
+  onNotificationPauseChanged?(callback: (value: unknown) => void): () => void;
 }
 
 declare global {
