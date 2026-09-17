@@ -5,6 +5,11 @@ import { getDocumentPreviewBody } from "@octo/base/src/Service/DocumentPreviewSe
 import type { DocumentPreviewResponse } from "@octo/base/src/Service/DocumentPreviewService";
 import APIClient from "@octo/base/src/Service/APIClient";
 import { resetDocPreviewCache } from "@octo/base/src/Messages/DocumentShareCard/preview";
+import { installHostFilePreview } from "../filePreview";
+import {
+  setWebAttachmentHost, subscribeHostAttachmentState, tryHostTakeover,
+  type AttachmentPreviewRequest,
+} from "@octo/base/src/features/filePreview/attachmentHost";
 
 const f = vi.hoisted(() => ({
   store: {
@@ -85,6 +90,57 @@ describe("communication runtime composition", () => {
     owner.dispose();
     expect(f.sdk.disconnect).toHaveBeenCalledOnce();
     expect(f.gate.dispose).toHaveBeenCalledOnce();
+  });
+  it("forwards native file preview lifecycle state to the runtime-owned UI", async () => {
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    try {
+      h.send({ type: "navigate", page: "chat" });
+      await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce());
+      const mountedHost = f.mount.mock.calls[0][0] as OctoBuddyCommunicationBridge;
+      const received: unknown[] = [];
+      const off = mountedHost.onCommand((command) => received.push(command));
+      h.legacy({ type: "filePreviewState", requestId: "r1", phase: "error", error: "Denied" });
+      h.legacy({ type: "filePreviewClosed", requestId: "r1" });
+      expect(received).toEqual([
+        { type: "filePreviewState", requestId: "r1", phase: "error", error: "Denied" },
+        { type: "filePreviewClosed", requestId: "r1" },
+      ]);
+      off();
+    } finally { owner.dispose(); }
+  });
+  it("validates lifecycle commands after runtime-owner forwarding before they reach the UI", async () => {
+    const h = hostFixture();
+    const open = vi.fn(async (_request: AttachmentPreviewRequest) => ({ status: "accepted" as const }));
+    const cancel = vi.fn(async () => {});
+    h.host.openFilePreview = open;
+    h.host.cancelFilePreview = cancel;
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    let disposePreview: (() => void) | undefined;
+    const state = vi.fn();
+    const off = subscribeHostAttachmentState(state);
+    try {
+      h.send({ type: "navigate", page: "chat" });
+      await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce());
+      const mountedHost = f.mount.mock.calls[0][0] as OctoBuddyCommunicationBridge;
+      disposePreview = installHostFilePreview(mountedHost, "s");
+      await expect(tryHostTakeover({
+        url: "https://example.com/file.txt", name: "file.txt", extension: "txt",
+        sourceChannelId: "group", sourceChannelType: 2, messageId: "42", messageSeq: 1, attachmentIndex: 0,
+      })).resolves.toBe("taken");
+      const requestId = open.mock.calls[0][0].requestId;
+      h.legacy({ type: "filePreviewState", requestId, phase: "error", error: { invalid: true } });
+      h.legacy({ type: "filePreviewClosed", requestId, unexpected: true });
+      expect(state).not.toHaveBeenCalled();
+      expect(cancel).not.toHaveBeenCalled();
+      h.legacy({ type: "filePreviewState", requestId, phase: "ready" });
+      expect(state).toHaveBeenCalledExactlyOnceWith({ requestId, phase: "ready" });
+    } finally {
+      off();
+      disposePreview?.();
+      setWebAttachmentHost(null);
+      owner.dispose();
+    }
   });
   it("releases runtime on authentication expiry and restores the auth callback", async () => {
     const previous = vi.fn();
