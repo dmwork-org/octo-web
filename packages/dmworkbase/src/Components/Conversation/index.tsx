@@ -122,6 +122,10 @@ import {
   shouldMarkConversationRead,
 } from "../../features/notifications";
 import { downloadFile } from "../../Utils/download";
+import { ImageGalleryProvider } from "../../features/conversation-image-gallery/ImageGalleryProvider";
+import { ImageGalleryContext } from "../../features/conversation-image-gallery/ImageGalleryContext";
+import { collectGalleryImages, imageGalleryKey } from "../../features/conversation-image-gallery/imageGallery";
+import { getImageMessageImages } from "../../bridge/message/imageMessageImages";
 import { isImReadAttentionAllowed } from "../../im-runtime/readAttentionHost";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -296,20 +300,11 @@ const foldSessionAvatarIcon = new URL(
   import.meta.url
 ).href;
 
-const FoldImage: React.FC<{ src: string }> = ({ src }) => {
-  const [open, setOpen] = React.useState(false);
+const FoldImage: React.FC<{ src: string; imageKey: string }> = ({ src, imageKey }) => {
+  const gallery = React.useContext(ImageGalleryContext);
   return (
-    <div className="wk-fold-img" onClick={() => setOpen(true)}>
+    <div className="wk-fold-img" onClick={() => gallery?.openImage(imageKey)}>
       <img src={src} alt="" />
-      <Lightbox
-        open={open}
-        close={() => setOpen(false)}
-        slides={[{ src, alt: "", download: src }]}
-        plugins={[Download]}
-        carousel={{ finite: true }}
-        controller={{ closeOnBackdropClick: true }}
-        render={{ buttonPrev: () => null, buttonNext: () => null }}
-      />
     </div>
   );
 };
@@ -2366,11 +2361,14 @@ export class Conversation
     // 图片消息
     if (message.contentType === MessageContentType.image) {
       const content = message.content as ImageContent;
-      const rawUrl = content.url || content.remoteUrl || "";
-      const imgUrl = rawUrl
-        ? WKApp.dataSource.commonDataSource.getImageURL(rawUrl)
-        : content.imgData || "";
-      return imgUrl ? <FoldImage src={imgUrl} /> : null;
+      const images = getImageMessageImages(content).flatMap((image) => {
+        const src = image.url
+          ? WKApp.dataSource.commonDataSource.getImageURL(image.url)
+          : content.imgData || "";
+        const key = imageGalleryKey(message, image.imageIndex);
+        return src ? [<FoldImage key={key} src={src} imageKey={key} />] : [];
+      });
+      return images.length > 1 ? images : images[0] || null;
     }
 
     // 其他类型：回退到文本摘要
@@ -3101,7 +3099,15 @@ export class Conversation
         }}
         render={(vm: ConversationVM) => {
           return (
-            <>
+            <ImageGalleryProvider
+              scopeKey={JSON.stringify([WKApp.shared.currentSpaceId, channel.channelType, channel.channelID])}
+              images={collectGalleryImages(vm.messages || [], {
+                resolveUrl: (url) => WKApp.dataSource.commonDataSource.getImageURL(url),
+                getUploadStatus: (id) => (WKSDK.shared().taskManager as unknown as {
+                  taskMap?: Map<string, { status: TaskStatus }>;
+                }).taskMap?.get(id)?.status,
+              })}
+            >
               <ConversationSelectionStateBridge
                 editOn={vm.editOn}
                 checkedCount={vm.getCheckedMessages?.().length ?? 0}
@@ -3548,7 +3554,7 @@ export class Conversation
                   },
                 ]}
               />
-            </>
+            </ImageGalleryProvider>
           );
         }}
       ></Provider>
