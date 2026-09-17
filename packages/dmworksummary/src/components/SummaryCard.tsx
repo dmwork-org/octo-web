@@ -143,7 +143,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
             className={`summary-card${active ? " summary-card--active" : ""}`}
             onClick={() => {
                 // 埋点 305:点开一张总结卡片进入详情（动态 testid 无法走委托，命令式）。
-                Dap.shared.track("smart_summary_opened", {});
+                // DAP-266：补 summary_id + status（列表项 SummaryListItem 就近有 task_id / status）。
+                Dap.shared.track("smart_summary_opened", { summary_id: task.task_id, status: task.status });
                 onClick(task.task_id);
             }}
         >

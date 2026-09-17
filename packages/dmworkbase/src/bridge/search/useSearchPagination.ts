@@ -27,6 +27,12 @@ export interface UseSearchPaginationOptions<T> {
    * 只在无 cursor 分支触发,与后端 _search_ 首页请求 1:1;翻页(带 cursor)不触发。绝不传关键词。
    */
   onQueryStart?: () => void;
+  /**
+   * 首页检索**结果返回后**回调一次(仅首页成功分支,翻页/失败/被覆盖的过期请求不触发)。
+   * hasResult = 首页是否有命中项 —— 供 channel_search_query 补 has_result(结果计数需等结果返回,
+   * 故与 onQueryStart 分开:onQueryStart 早于结果、拿不到 has_result)。绝不传关键词/正文。
+   */
+  onQueryComplete?: (hasResult: boolean) => void;
 }
 
 export function useSearchPagination<T>({
@@ -35,6 +41,7 @@ export function useSearchPagination<T>({
   errorMessage,
   debounceMs = 300,
   onQueryStart,
+  onQueryComplete,
 }: UseSearchPaginationOptions<T>) {
   const [response, setResponse] = useState<SearchPage<T>>({
     items: [],
@@ -107,6 +114,8 @@ export function useSearchPagination<T>({
           nextCursor: stopPagination ? undefined : next.nextCursor,
           hasMore: stopPagination ? false : next.hasMore,
         }));
+        // 首页成功返回后回调(翻页 cursor 分支不触发):供调用方发带 has_result 的检索埋点。
+        if (!cursor) onQueryComplete?.(next.items.length > 0);
       } catch {
         if (mountedRef.current && requestIdRef.current === requestId) {
           if (cursor) setPaginationError(errorMessage);
@@ -122,7 +131,7 @@ export function useSearchPagination<T>({
         }
       }
     },
-    [enabled, errorMessage, search, onQueryStart]
+    [enabled, errorMessage, search, onQueryStart, onQueryComplete]
   );
 
   const loadNextPage = useCallback(

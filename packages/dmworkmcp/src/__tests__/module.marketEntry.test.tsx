@@ -78,7 +78,9 @@ describe("McpMarketModule market entry", () => {
     expect(h.routeGet).toHaveBeenCalledWith("/mcp-market/skills");
     expect(h.replaceToRoot.mock.calls[0][0].type).toBe(SkillListPage);
     expect(h.syncPath).toHaveBeenCalledWith("/mcp-market/skills");
-    expect(h.track).toHaveBeenCalledWith("market_module_entered", {});
+    expect(h.track).toHaveBeenCalledWith("market_module_entered", {
+      default_tab: "skills",
+    });
 
     const connectorFactory = h.registerRoute.mock.calls.find(
       ([path]) => path === "/mcp-market/mcp"

@@ -26,6 +26,7 @@ import {
 } from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 
 interface BuildGroupManagementRowsOptions {
   context: RouteContext<ChannelSettingRouteData>;
@@ -220,6 +221,7 @@ export function buildGroupManagementRows({
         value: channelInfo?.orgData?.remark || "",
         placeholder: t("base.module.channelSettings.remarkPlaceholder"),
         trackEvent: "conversation_remark_edit_opened",
+        trackProps: { channel_id: stripSpacePrefix(channel.channelID) },
         maxCount: 15,
         allowEmpty: true,
         onSave: (value: string) =>

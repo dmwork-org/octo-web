@@ -49,6 +49,12 @@ interface SendIntent {
     isReplyToAi?: boolean
     /** 当前登录用户 uid(供 ai_mentioned 补 user_id;由生产者从 WKApp.loginInfo 注入,避免 leaf import App) */
     userId?: string | null
+    /**
+     * DAP-271 finding 6：本条消息是否带附件(图片/gif/语音/小视频/文件/富文本图文混排)。
+     * 由生产者(vm.sendMessage)按 content.contentType 就近派生的布尔——贴纸/名片/互动卡/纯文本
+     * 均为 false。仅布尔,不含任何正文/文件名。供 message_sent 补 has_attachment。
+     */
+    hasAttachment?: boolean
 }
 
 /** 按 clientSeq 暂存发送意图,sendack 时消费。带上限防泄漏。 */
@@ -121,6 +127,15 @@ export function trackMessageSent(clientSeq: number | undefined, messageId?: stri
         // 服务端分配的消息 ID(sendack 才拿得到);无值时 sanitizeProps 丢弃。仅 message_sent 用,
         // 下游 message_replied/ai_mentioned 只引用 base.object_id、不 spread base,故不受影响。
         message_id: messageId,
+        // is_thread_reply:本条是否为回复(intent.isReply,发送态已知的布尔);
+        // 与 message_replied 的判据同源(content.reply)。
+        is_thread_reply: intent.isReply ?? false,
+        // DAP-271 finding 6：has_attachment——本条是否带附件(图片/gif/语音/小视频/文件/富文本)。
+        // 由生产者按 content.contentType 就近派生(见 vm.sendMessage);贴纸/名片/卡片/纯文本为 false。
+        has_attachment: intent.hasAttachment ?? false,
+        // sender_type:发送方类型。发送侧只有人类凭证(bot 发送不走本路径),恒为 'user'
+        // (与本文件 actor_type 同口径;sink 顶层列口径 user/bot,不用 'human')。
+        sender_type: 'user',
     }
     Dap.shared.track('message_sent', base)
     // §IM 16:回复(reply)语义。spec 关键属性 = {is_ai_msg, channel_id, actor_type}。

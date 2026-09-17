@@ -26,6 +26,7 @@ import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import { isBotfatherChannelID } from "../../Service/botfatherChannel";
 import {
   subchannelOpenFromMount,
@@ -1023,7 +1024,8 @@ export class ChatContentPage extends Component<
     ) {
       const entry = WKApp.shared.pendingBotfatherOpenEntry || "conversation";
       WKApp.shared.pendingBotfatherOpenEntry = undefined;
-      Dap.shared.track("botfather_opened", { entry });
+      // spec 关键属性为 source(进入 botfather 会话的来源枚举);entry 值即来源,按 spec 命名为 source。
+      Dap.shared.track("botfather_opened", { source: entry });
     }
   }
 
@@ -1404,7 +1406,9 @@ export class ChatContentPage extends Component<
                   !this.state.previewFile &&
                   !this.state.activeThread;
                 if (!isThreadListVisibleNow) {
-                  Dap.shared.track("channel_subchannel_panel_opened", {});
+                  Dap.shared.track("channel_subchannel_panel_opened", {
+                    channel_id: stripSpacePrefix(channel.channelID),
+                  });
                   this._openRightPanel("thread");
                 } else {
                   this._closeThreadPanel();
@@ -1432,7 +1436,9 @@ export class ChatContentPage extends Component<
             }
             this.channelSettingReturnFocusElement = event.currentTarget;
             if (channel.channelType === ChannelTypeGroup) {
-              Dap.shared.track("group_info_panel_opened", {});
+              Dap.shared.track("group_info_panel_opened", {
+                channel_id: stripSpacePrefix(channel.channelID),
+              });
             }
             this._openRightPanel("channelSetting");
           }}

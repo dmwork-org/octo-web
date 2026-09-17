@@ -1440,7 +1440,8 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     Toast.success(
       t("mcp.create.import.applied", { values: { count: importPreviewCount } })
     );
-    Dap.shared.track("market_manual_publish_json_imported", {});
+    // market_type='mcp':本弹窗为 MCP 手动创建/导入,市场类型为常量 mcp。
+    Dap.shared.track("market_manual_publish_json_imported", { market_type: "mcp" });
     setCreateMode("manual");
     setStep(0);
   };

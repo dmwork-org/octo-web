@@ -625,7 +625,9 @@ describe("channel setting actions", () => {
     // 十二审 🔴 P1-1:清空是真实手势,成功后命令式单发 conversation_cleared(替代原 POST /message/offset
     //   的 fetch 规则 —— 该端点被删好友顺带调用,path 通道会误计)。
     expect(Dap.shared.track).toHaveBeenCalledTimes(1);
-    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_cleared", {});
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_cleared", {
+      channel_id: "group-1",
+    });
   });
 
   it("does nothing when clearing messages without a conversation", async () => {

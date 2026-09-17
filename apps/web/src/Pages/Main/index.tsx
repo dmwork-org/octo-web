@@ -187,7 +187,9 @@ export class MainPage extends Component<{}, MainPageState> {
         //   冷启动都会触发,不只切空间(见 review P1-3)。仅在目标与当前不同(确有切换)时计一次。
         const prevSpaceId = WKApp.shared.currentSpaceId || "";
         if (spaceId && spaceId !== prevSpaceId) {
-            Dap.shared.track("space_switched", {});
+            // DAP-218 A 类补属性:from_space/to_space(spec)。事件名 merge base 起已在此发,
+            //   仅缺 spec 属性 —— 就地补齐,不新增 emit、不改触发条件(仍仅真切换时计一次)。
+            Dap.shared.track("space_switched", { from_space: prevSpaceId, to_space: spaceId });
         }
         // 同步更新 currentSpaceId 与持久化，并立刻 emit space-changed，
         // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId

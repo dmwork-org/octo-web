@@ -23,6 +23,7 @@ import {
 } from "../../ui/ChannelSettingRows";
 import { parseAvatarColorIndex } from "./channelSettingAvatarColor";
 import { ChannelSettingInputEditPush } from "./types";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 
 interface BuildGroupProfileRowsOptions {
   context: RouteContext<ChannelSettingRouteData>;
@@ -191,6 +192,7 @@ export function buildGroupProfileRows({
         displayValue: groupName,
         placeholder: t("base.module.channelSettings.groupNamePlaceholder"),
         trackEvent: "group_name_edit_opened",
+        trackProps: { channel_id: stripSpacePrefix(channel.channelID) },
         maxCount: GROUP_NAME_MAX_LENGTH,
         // 改名走「服务端为唯一权威」（WS-23）：前端不再前置判定谁能改群名——客户端只持有
         // 部分 roster（超级群父群仅缓存首页），任何本地 gate 都会对不在缓存里的合法成员误判。
@@ -256,6 +258,7 @@ export function buildGroupProfileRows({
         multiline: true,
         placeholder: t("base.module.channelSettings.groupNotice"),
         trackEvent: "group_announcement_edit_opened",
+        trackProps: { channel_id: stripSpacePrefix(channel.channelID) },
         maxCount: 400,
         allowEmpty: true,
         onStartEdit: () => {

@@ -118,6 +118,11 @@ export interface ChannelSettingInlineEditRowProps {
    * 否则每次点击都会重发「打开」事件(见 PR #1390 review)。
    */
   trackEvent?: string;
+  /**
+   * 埋点属性:随 trackEvent 一并上报(如 channel_id)。由行配置就近传入(编辑器打开时才发),
+   * 只放静态/标识/枚举类,绝不带草稿正文。
+   */
+  trackProps?: Record<string, string | number | boolean>;
   /** Resolve false or reject to keep the editor open with its current draft. */
   onSave: (value: string) => Promise<void | boolean>;
 }
@@ -132,6 +137,7 @@ export function ChannelSettingInlineEditRow({
   multiline = false,
   onStartEdit,
   trackEvent,
+  trackProps,
   onSave,
 }: ChannelSettingInlineEditRowProps) {
   const [editing, setEditing] = useState(false);
@@ -158,7 +164,11 @@ export function ChannelSettingInlineEditRow({
 
   const startEdit = () => {
     if (onStartEdit?.() === false) return;
-    if (trackEvent) Dap.shared.track(trackEvent);
+    if (trackEvent) {
+      // trackProps 缺省时按单参调用(保持与无属性事件的既有调用形状一致);有属性时才带第二参。
+      if (trackProps) Dap.shared.track(trackEvent, trackProps);
+      else Dap.shared.track(trackEvent);
+    }
     setDraft(currentValue);
     setDirty(false);
     setEditing(true);

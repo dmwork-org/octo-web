@@ -1,6 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Dap } from "@octo/base";
 import TemplateSelectorModal, {
   topicTemplateToWorkbenchScope,
   type TemplateSelectorDataSource,
@@ -165,6 +166,8 @@ describe("TemplateSelectorModal", () => {
       templateId: "weekly",
       label: "Weekly report",
       requirement: "List progress and risks",
+      // DAP-271 finding 6：scope 现透传 isCustom（预置模板=false）供 template_type/template_source 补齐。
+      isCustom: false,
       version: 3,
     });
   });
@@ -196,6 +199,46 @@ describe("TemplateSelectorModal", () => {
     expect(
       view.getByRole("heading", { name: "Edit template" })
     ).toBeInTheDocument();
+  });
+
+  it("emits preset_template_edit_opened with a non-PII payload (no *_name free-text key)", async () => {
+    // DAP-271 P1 隐私红线回归守卫:预设模板「编辑」打开上报必须只带非 PII 的 template_id + is_custom,
+    //   绝不带 template_name 之类自由文本键(被个人覆盖的预设 label 可含客户/项目/私人内容,且经
+    //   dmworkbase Dap.test.ts「finding 1」证明该字符串键不被 sanitizer 黑名单拦截 → 只能在 emit 站点防守)。
+    const track = vi
+      .spyOn(Dap.shared, "track")
+      .mockImplementation(() => undefined);
+
+    const view = render(
+      <TemplateSelectorModal
+        visible
+        value={null}
+        labels={labels}
+        dataSource={dataSource()}
+        onChange={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { legacyRoot: true }
+    );
+
+    await view.findByText("Weekly report");
+    fireEvent.click(view.getByRole("button", { name: "Edit" }));
+
+    expect(track).toHaveBeenCalledWith(
+      "smart_summary_preset_template_edit_opened",
+      { template_id: "weekly", is_custom: false }
+    );
+    const [, props] = track.mock.calls.find(
+      ([event]) => event === "smart_summary_preset_template_edit_opened"
+    )!;
+    expect(props).not.toHaveProperty("template_name");
+    expect(
+      Object.keys(props as Record<string, unknown>).filter((k) =>
+        k.endsWith("_name")
+      )
+    ).toEqual([]);
+
+    track.mockRestore();
   });
 
   it("creates a custom template through the injected CRUD data source", async () => {
@@ -235,10 +278,14 @@ describe("TemplateSelectorModal", () => {
       fireEvent.click(view.getByRole("button", { name: "Save" }));
     });
 
-    expect(create).toHaveBeenCalledWith({
-      label: "Decision log",
-      description: "Only decisions",
-    });
+    // DAP-266：create 现额外接收 trackProps（template_count_after=创建后自定义模板数）。
+    expect(create).toHaveBeenCalledWith(
+      {
+        label: "Decision log",
+        description: "Only decisions",
+      },
+      expect.objectContaining({ template_count_after: expect.any(Number) }),
+    );
     expect(await view.findByText("Decision log")).toBeInTheDocument();
   });
 

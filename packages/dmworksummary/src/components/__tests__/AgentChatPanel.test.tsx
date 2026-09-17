@@ -262,3 +262,22 @@ describe('AgentChatPanel 新会话 action', () => {
         expect(btn).toBeDisabled();
     });
 });
+
+// DAP-271 finding 6:展开「查看生成过程」时透传 agent 业务 session_id(与信封设备 session 分属两条路径)。
+describe('AgentChatPanel — agent_process_viewed.session_id (DAP-271 finding 6)', () => {
+    it('展开边发 smart_summary_agent_process_viewed 并带业务 session_id', async () => {
+        const { Dap } = await import('@octo/base');
+        const { act } = await import('@testing-library/react');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const ref = React.createRef<any>();
+        const { container } = rtlRender(<AgentChatPanel ref={ref} messages={[{ role: 'assistant', content: 'hi' }] as any} onSend={vi.fn()} sending={false} useStream sessionId="sess-xyz" />);
+        // 生成过程面板只在最后一条 assistant 消息下渲染;造出步骤并折叠(仅展开边发事件)。
+        act(() => ref.current.setState({ progressSteps: [{ phase: 'search' }], processExpanded: false }));
+        const toggle = container.querySelector('.agent-chat-process-toggle') as HTMLElement;
+        expect(toggle, '生成过程折叠开关应已渲染').toBeTruthy();
+        fireEvent.click(toggle);
+        const viewed = track.mock.calls.find(([n]) => n === 'smart_summary_agent_process_viewed');
+        expect(viewed?.[1]).toMatchObject({ step_count: 1, session_id: 'sess-xyz' });
+        track.mockRestore();
+    });
+});

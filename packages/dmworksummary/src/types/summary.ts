@@ -726,6 +726,18 @@ export interface MemberCandidate {
 /** 定时配置（内部状态用）：通用「数量 × 单位」组合 */
 export type ScheduleUnit = "day" | "week" | "month";
 
+/**
+ * B-1：定时埋点的「UI 单位真值」提示。scheduleToParams 把周调度编码为
+ * interval_days = every*7 + day_of_week，与「每 N 天」在提交参数层字节相同，
+ * 单看 params 无法区分（尤其周-不限周几 day_of_week:0 时）。因此写路径把用户在 UI
+ * 选择的原始 unit/every 作为可选提示透传给 track props 构造，frequency_unit/frequency_n
+ * 优先用它推导；缺省时才回退到 params 推导。不改后端提交形状。
+ */
+export interface ScheduleUiHint {
+    unit: ScheduleUnit;
+    every: number;
+}
+
 export interface ScheduleConfig {
     unit: ScheduleUnit;   // 天 / 周 / 月
     every: number;        // 正整数数量，如 every=2 + unit="week" => 每 2 周

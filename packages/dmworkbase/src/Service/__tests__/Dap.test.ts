@@ -676,3 +676,71 @@ describe('Dap — rule-table fallback (no data-track)', () => {
         expect(evts[0].props?.object_id).toBeUndefined()
     })
 })
+
+// DAP-271 finding 1/2:sanitizeProps 最终 envelope 契约(经真实 Dap flush,而非 mock track)。
+// finding 2:数组维度(如 channel_ids)过不了 sanitizer(仅留 primitive),曾传数组即被静默丢弃=「假补齐」;
+//   primitive 的 channel_count 才能存活 —— 佐证 summary 侧只保 channel_count 的保守方案。
+// finding 1:template_name 这类"看似无害"的键**不在黑名单**,字符串值会原样存活,sanitizer 兜不住隐私 ——
+//   佐证隐私红线必须在 emit 站点(summaryApi 不传 label)防守,见 dmworksummary 对应回归。
+describe('Dap — sanitizeProps 最终 envelope 契约(DAP-271 finding 1/2)', () => {
+    let fetchMock: FetchMock
+    beforeEach(() => {
+        localStorage.clear()
+        fetchMock = okFetch()
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+    })
+
+    function propsOf(eventName: string): Record<string, unknown> | undefined {
+        for (const c of fetchMock.mock.calls) {
+            if (c[0] !== BATCH_PATH) continue
+            const body = JSON.parse((c[1] as RequestInit).body as string)
+            for (const e of body.events as Array<{ event_name: string; props?: Record<string, unknown> }>) {
+                if (e.event_name === eventName) return e.props ?? {}
+            }
+        }
+        return undefined
+    }
+
+    it('finding 2: 数组 channel_ids 被 sanitizer 丢弃,primitive channel_count / mode 存活', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+        Dap.shared.track('smart_summary_started', { channel_count: 3, channel_ids: ['c1', 'c2', 'c3'], mode: 'by_person' })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const props = propsOf('smart_summary_started')
+        expect(props, '批次机制在场(非假绿)').toBeTruthy()
+        expect(props).not.toHaveProperty('channel_ids') // 原始数组被丢 —— 故 emit 站点须编码成字符串
+        expect(props).toMatchObject({ channel_count: 3, mode: 'by_person' }) // primitive 存活
+    })
+
+    it('finding 2: 逗号连接的字符串 channel_ids 能过 sanitizer(emit 站点的安全编码方案)', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+        // spec 要求 channel_ids;emit 站点把 chat_id 逗号连接成字符串再传 → primitive,存活。
+        Dap.shared.track('smart_summary_started', { channel_count: 2, channel_ids: 'c1,c2', mode: 'by_person' })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const props = propsOf('smart_summary_started')
+        expect(props).toMatchObject({ channel_count: 2, channel_ids: 'c1,c2', mode: 'by_person' })
+    })
+
+    it('finding 1: 自由文本字符串键(template_name)不被黑名单拦截 —— 隐私须在 emit 站点防守', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+        Dap.shared.track('smart_summary_custom_template_created', { template_name: '客户机密并购项目', is_custom: true })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const props = propsOf('smart_summary_custom_template_created')
+        expect(props, '批次机制在场(非假绿)').toBeTruthy()
+        // template_name 不含 text/content/keyword 等黑名单子串 → 字符串值原样存活。sanitizer 兜不住,
+        // 故 finding 1 的隐私修复只能在 summaryApi 侧「不传 label」达成(见 dmworksummary 回归)。
+        expect(props).toMatchObject({ template_name: '客户机密并购项目', is_custom: true })
+    })
+})

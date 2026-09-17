@@ -2,7 +2,7 @@ import React from "react";
 import { Button, Tag } from "@douyinfe/semi-ui";
 import { IconHistory, IconClose } from "@douyinfe/semi-icons";
 import { ChevronRight } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, Dap } from "@octo/base";
 import type { SummaryVersionItem } from "../types/summary";
 import { formatDate } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
@@ -11,6 +11,8 @@ interface SummaryVersionPanelProps {
     open: boolean;
     versions: SummaryVersionItem[];
     currentVersion: number;
+    /** 当前总结的 task_id，用于 smart_summary_version_viewed 埋点（DAP-266，由详情页 plumb 入）。 */
+    summaryId?: number;
     /** result_id of the version currently previewed in the center (null = viewing current). */
     selectedResultId: number | null;
     /** result_id being restored right now (spinner on footer button). */
@@ -38,6 +40,7 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
     open,
     versions,
     currentVersion,
+    summaryId,
     selectedResultId,
     restoringResultId,
     canRestore,
@@ -120,7 +123,15 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
                                 data-testid={summaryTestIds.versionCard(version.version)}
                                 className={`version-card${isCurrent ? " is-current" : ""}${isSelected ? " is-selected" : ""}`}
                                 aria-pressed={isSelected}
-                                onClick={() => onSelect(version)}
+                                onClick={() => {
+                                    // DAP-218 M11：查看某历史版本(点版本卡预览)手势。
+                                    // DAP-266：补 version_number（version.version 展示版本号）+ summary_id（详情页 plumb）。
+                                    Dap.shared.track("smart_summary_version_viewed", {
+                                        ...(summaryId !== undefined ? { summary_id: summaryId } : {}),
+                                        version_number: version.version,
+                                    });
+                                    onSelect(version);
+                                }}
                             >
                                 <span className="version-card__marker" aria-hidden>
                                     <span>{`V${version.version}`}</span>

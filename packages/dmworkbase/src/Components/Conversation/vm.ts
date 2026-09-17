@@ -158,6 +158,24 @@ export function matchBotfatherCommandEvent(text: string): string | undefined {
     return "botfather_command_sent"
 }
 
+/**
+ * DAP-271 finding 6：按消息内容类型判定「是否带附件」(message_sent.has_attachment)。
+ * 附件语义 = 携带媒体/文件负载的消息：图片/gif/语音/小视频/文件/富文本(图文混排)。
+ * 贴纸(lottie)/名片/互动卡/文档转发卡/纯文本/系统消息等非附件 → false。
+ * 仅依据 contentType 枚举派生，不读取任何正文/文件名。
+ */
+const ATTACHMENT_CONTENT_TYPES = new Set<number>([
+    MessageContentTypeConst.image,
+    MessageContentTypeConst.gif,
+    MessageContentTypeConst.voice,
+    MessageContentTypeConst.smallVideo,
+    MessageContentTypeConst.file,
+    MessageContentTypeConst.richText,
+])
+export function isAttachmentContentType(contentType: number | undefined): boolean {
+    return contentType != null && ATTACHMENT_CONTENT_TYPES.has(contentType)
+}
+
 export default class ConversationVM extends ProviderListener {
 
     private static nextMessageContainerSeq = 0
@@ -2776,6 +2794,9 @@ export default class ConversationVM extends ProviderListener {
                 // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
                 userId: WKApp.loginInfo.uid || null,
                 mentionedBots,
+                // DAP-271 finding 6：has_attachment——按 content.contentType 就近派生的布尔。附件=图片/gif/
+                // 语音/小视频/文件/富文本(图文混排);贴纸/名片/互动卡/纯文本等非附件为 false。仅布尔无正文。
+                hasAttachment: isAttachmentContentType(content.contentType),
             })
         }
         const messageWrap = new MessageWrap(message)

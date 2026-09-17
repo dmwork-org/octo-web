@@ -213,7 +213,7 @@ describe('ChatSummaryHistory', () => {
             await flushPromises();
         });
 
-        expect(mockDeleteSummary).toHaveBeenCalledWith(7);
+        expect(mockDeleteSummary).toHaveBeenCalledWith(7, 'history');
         expect(onDeleted).toHaveBeenCalled();
         const event = onDeleted.mock.calls[0][0] as CustomEvent;
         expect(event.detail).toEqual({ channelId: 'ch1' });
@@ -249,7 +249,7 @@ describe('ChatSummaryHistory', () => {
             await flushPromises();
         });
 
-        expect(mockDeleteSummary).toHaveBeenCalledWith(7);
+        expect(mockDeleteSummary).toHaveBeenCalledWith(7, 'history');
         expect(mockToastError).toHaveBeenCalledWith('删除失败');
         expect(onDeleted).not.toHaveBeenCalled();
 

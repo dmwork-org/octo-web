@@ -141,6 +141,7 @@ import {
   taskStatusWaitResult,
 } from "../../Utils/sendWaitResult";
 import { parseThreadChannelId } from "../../Service/Thread";
+import { inferMsgType } from "../../bridge/thread/createThread";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import { captureSelectionWithinContainer } from "./copySelection";
@@ -180,6 +181,25 @@ function forwardBlockedMessageKey(error: unknown): string | null {
     return "base.conversation.forward.cardBlocked";
   }
   return null;
+}
+
+/**
+ * 转发目标频道类型分类(供 message_forwarded / message_multiselect_forwarded 的 target_type)。
+ * 全部单聊 → 'person';全部群聊(含社区话题等非单聊) → 'group';混合 → 'mixed';空 → undefined(不发)。
+ * 仅记静态枚举,绝不带任何频道 id / 名称。
+ */
+function forwardTargetType(
+  channels: Channel[],
+): "person" | "group" | "mixed" | undefined {
+  if (!channels || channels.length === 0) return undefined;
+  let hasPerson = false;
+  let hasGroup = false;
+  for (const c of channels) {
+    if (c.channelType === ChannelTypePerson) hasPerson = true;
+    else hasGroup = true;
+  }
+  if (hasPerson && hasGroup) return "mixed";
+  return hasPerson ? "person" : "group";
 }
 
 export function classifyAssistantIntentText(text: string | undefined): string {
@@ -777,6 +797,11 @@ export class Conversation
         if (kind !== "all-failed") Dap.shared.track("message_forwarded", {
             object_id: message.messageID,
             message_id: message.messageID,
+            // channel_id:被转发消息所在的源会话(与 message_context_menu_opened / message_replied 同口径)。
+            channel_id: stripSpacePrefix(this.vm.channel.channelID),
+            // target_count / target_type:本次转发选择的目标频道数量与类型(person/group/mixed)。
+            target_count: channels.length,
+            target_type: forwardTargetType(channels),
             // is_ai_msg:被转发消息的作者是否 AI/bot(与 message_replied 同源判据),
             // 供区分 AI 消息转发漏斗(session.go ai_msg_forward)。见 #1452 review。
             is_ai_msg: isMessageAuthorAi(message.fromUID),
@@ -1650,8 +1675,16 @@ export class Conversation
     );
 
     this.contextMenusContext.show(event);
-    // 破例:右键 contextmenu 走原生事件而非委托蒙版,命令式补点。props 恒空。
-    Dap.shared.track("message_context_menu_opened", {});
+    // 破例:右键 contextmenu 走原生事件而非委托蒙版,命令式补点。
+    // msg_type(inferMsgType 映射的 text/reply/image_file)/ is_ai_msg(作者是否 AI/bot)/
+    // channel_id(源会话,归一 bare id) —— 均就近取自本次右键的 message 与当前会话,只记枚举/布尔/标识。
+    Dap.shared.track("message_context_menu_opened", {
+      msg_type: inferMsgType(message),
+      is_ai_msg: isMessageAuthorAi(message.fromUID),
+      channel_id: this.vm.channel
+        ? stripSpacePrefix(this.vm.channel.channelID)
+        : undefined,
+    });
   }
   hideContextMenus(): void {
     this.contextMenusContext.hide();
@@ -2511,9 +2544,15 @@ export class Conversation
                   event.stopPropagation();
                   const wasExpanded = session.isExpanded;
                   this.vm.toggleFoldSession(session.sessionId);
-                  // 兼收起:仅「展开」态命令式补点,避免收起误报。props 恒空。
+                  // 兼收起:仅「展开」态命令式补点,避免收起误报。
+                  // thread_count=折叠会话内消息条数(session.count)、channel_id=当前会话(bare id)。
                   if (!wasExpanded) {
-                    Dap.shared.track("thread_expanded", {});
+                    Dap.shared.track("thread_expanded", {
+                      thread_count: session.count,
+                      channel_id: this.vm.channel
+                        ? stripSpacePrefix(this.vm.channel.channelID)
+                        : undefined,
+                    });
                   }
 
                   // 展开时,确保内容可见(无动画,下一帧立即滚动)
@@ -3224,7 +3263,15 @@ export class Conversation
                             // 多选 Toast 分母保持 messages × channels 语义（scope='messages'）。
                             const kind = this.showForwardResult(result, "messages");
                             // 全部失败不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
-                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {});
+                            // mode='individual'(逐条转发)/ count=选中消息数 / channel_id=源会话 /
+                            // target_count/target_type=目标频道数量与类型。均就近取,只记计数/枚举/标识。
+                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {
+                              mode: "individual",
+                              count: messages.length,
+                              channel_id: stripSpacePrefix(this.vm.channel.channelID),
+                              target_count: channels.length,
+                              target_type: forwardTargetType(channels),
+                            });
                           } catch (e) {
                             console.error("[forward] build content failed", e);
                             const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -3257,7 +3304,15 @@ export class Conversation
                             );
                             const kind = this.showForwardResult(result, "targets");
                             // 全部失败不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
-                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {});
+                            // mode='merge'(合并转发)/ count=选中消息数 / channel_id=源会话 /
+                            // target_count/target_type=目标频道数量与类型。只记计数/枚举/标识。
+                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {
+                              mode: "merge",
+                              count: checkedMsgs.length,
+                              channel_id: stripSpacePrefix(this.vm.channel.channelID),
+                              target_count: channels.length,
+                              target_type: forwardTargetType(channels),
+                            });
                           } catch (e) {
                             console.error(
                               "[merge-forward] build content failed",

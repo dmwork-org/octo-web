@@ -1679,6 +1679,77 @@ describe("SummaryWorkbenchFeature", () => {
     expect(onOpenTask).toHaveBeenCalledWith(303);
   });
 
+  // DAP-247/S6（architect 裁定 · spec-props.md:333 P0）：agent 创建路径发 smart_summary_agent_saved
+  // (props={message_count})、绝不发 smart_summary_started;normal「快速总结」路径仍发 started。
+  it("emits smart_summary_agent_saved (never started) when saving an Agent preview (DAP-247/S6)", async () => {
+    const savePreview = vi
+      .fn()
+      .mockResolvedValue({ task_id: 411, title: "Draft" });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+        // message_count 就近取自 workbench 会话消息条数（viewState.messages.length）。
+        viewState: { messages: [{}, {}, {}] },
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+
+    expect(mocks.track).toHaveBeenCalledWith("smart_summary_agent_saved", {
+      message_count: 3,
+    });
+    expect(
+      mocks.track.mock.calls.some(
+        (c: unknown[]) => c[0] === "smart_summary_started"
+      )
+    ).toBe(false);
+  });
+
+  it("emits smart_summary_started (never agent_saved) for a normal workflow creation (DAP-247/S6)", async () => {
+    const confirmWorkflow = vi.fn().mockResolvedValue({
+      resultType: "workflow_started",
+      workflow: { taskId: 412, taskTitle: "Team update" },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: {},
+          workflow: null,
+        },
+        confirmWorkflow,
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" embedded />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "confirm-workflow" }));
+    await waitFor(() => expect(confirmWorkflow).toHaveBeenCalledTimes(1));
+
+    const started = mocks.track.mock.calls.filter(
+      (c: unknown[]) => c[0] === "smart_summary_started"
+    );
+    expect(started).toHaveLength(1);
+    expect(started[0][1]).toMatchObject({
+      trigger_mode: "normal",
+      mode: "normal",
+    });
+    expect(
+      mocks.track.mock.calls.some(
+        (c: unknown[]) => c[0] === "smart_summary_agent_saved"
+      )
+    ).toBe(false);
+  });
+
   it.each(["PARTIAL", "FAILED"] as const)(
     "keeps save success for a created task with an internal %s quality verdict (owner-confirmed P1 policy)",
     async (finishStatus) => {

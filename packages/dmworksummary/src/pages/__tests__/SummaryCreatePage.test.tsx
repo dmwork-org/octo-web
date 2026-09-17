@@ -912,5 +912,30 @@ describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层�
         expect((api.createSummary as any)).toHaveBeenCalledTimes(1);
         const props = (api.createSummary as any).mock.calls[0][1];
         expect(props).toMatchObject({ trigger_mode: 'normal', source: 'summary_home', entry_point: 'summary_home' });
+        // DAP-271 finding 2：channel_ids 按 spec 以逗号连接的字符串编码(primitive,过得了 sanitizer),
+        //   不再是被静默丢弃的数组;无已选聊天时为空串。
+        expect(typeof props.channel_ids).toBe('string');
+    });
+
+    it('DAP-271 finding 6: 套用模板发 template_applied.template_type,并让 started 带 template_source', async () => {
+        const trackSpy = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => { render(<SummaryCreatePage ref={ref} />); await flushPromises(); });
+        const instance = ref.current as any;
+        (instance as any).context = { t: (k: string) => k };
+        await act(async () => {
+            instance.setState({ mode: 'normal' });
+            (instance as any).handleTemplateClick({ id: 'custom_x', label: '客户模板', icon: 'FileText', description: 'd', type: 'fixed', pattern: '按点总结', is_custom: true });
+        });
+        const applied = trackSpy.mock.calls.find(([n]) => n === 'smart_summary_template_applied');
+        expect(applied?.[1]).toMatchObject({ template_type: 'custom', source: 'create_page' });
+        expect(instance.state.appliedTemplateSource).toBe('custom');
+
+        (api.createSummary as any).mockClear();
+        await act(async () => { await instance.handleSubmit(); });
+        const startedProps = (api.createSummary as any).mock.calls[0][1];
+        expect(startedProps.template_source).toBe('custom');
+        trackSpy.mockRestore();
     });
 });
+

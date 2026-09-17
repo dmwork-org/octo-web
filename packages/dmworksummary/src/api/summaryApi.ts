@@ -30,6 +30,7 @@ import type {
     TopicTemplate,
     TopicTemplatesResponse,
     UpdateScheduleParams,
+    ScheduleUiHint,
     AgentProgressEvent,
     AgentDoneEvent,
     AgentErrorEvent,
@@ -442,10 +443,12 @@ export async function createAgentSummary(
         // 后端返成功但 task_id 缺失/非法 —— 视为保存失败,不能清 chat
         throw new Error(resp.data?.message || 'create agent summary returned no task_id');
     }
-    // 二审 P1/P2-2:agent 模式也是一条「成功发起」。走到这里 envelope code 已判定成功
-    // (仅 code===0,缺/空/非零信封均已在上面抛出),与传统 createSummary 的 gate 同口径,
-    // 补发 smart_summary_started(此前 agent 模式一次都不发,与 normal 模式不一致)。
-    Dap.shared.track('smart_summary_started', trackProps);
+    // DAP-247/S6（architect 裁定 · spec-props.md:333 P0）：smart_summary_started 只对应
+    // normal「快速总结」创建路径;Agent 总结模式不产生本事件,agent 真正「生成一条总结记录」的
+    // 动作事件是 smart_summary_agent_saved。此端点(POST /summaries/agent)是 agent 专用路径,
+    // 故不再发 started —— 其成功事件 smart_summary_agent_saved 由「保存为总结」成功回调
+    // (AgentChatPanel.tsx onSaveAsSummary resolve truthy 时)发出,删此处 started 后本路径
+    // 变为「只发 agent_saved」,符合 spec。trackProps 仍随调用传入但此路径不再消费。
     return data;
 }
 
@@ -1103,8 +1106,13 @@ export async function markSummaryRead(
     return post(`/summaries/${taskId}/read`, cursors);
 }
 
-export async function deleteSummary(taskId: number): Promise<void> {
-    return del(`/summaries/${taskId}`, 'smart_summary_deleted');
+export async function deleteSummary(taskId: number, source?: string): Promise<void> {
+    // DAP-266：补 summary_id（业务 id 不自动注入）。
+    // DAP-271 finding 6：source（删除触发来源受控枚举,如 'list'/'detail'/'history'）由调用方就近透传。
+    return del(`/summaries/${taskId}`, 'smart_summary_deleted', {
+        summary_id: taskId,
+        ...(source ? { source } : {}),
+    });
 }
 
 export interface RegenerateSummaryParams {
@@ -1113,8 +1121,15 @@ export interface RegenerateSummaryParams {
     time_range?: { start: string; end: string };
 }
 
-export async function regenerateSummary(taskId: number, body?: RegenerateSummaryParams): Promise<{ task_id: number }> {
-    return post(`/summaries/${taskId}/regenerate`, body, 'smart_summary_regenerated');
+export async function regenerateSummary(taskId: number, body?: RegenerateSummaryParams, prevStatus?: number): Promise<{ task_id: number }> {
+    // DAP-266：团队整体重生成。summary_id + regenerate_type='team'。
+    // DAP-271 finding 6：prev_status（重生成前状态）由调用方就近透传（列表页已查到 task.status、
+    //   详情页有 detail.status）。
+    return post(`/summaries/${taskId}/regenerate`, body, 'smart_summary_regenerated', {
+        summary_id: taskId,
+        regenerate_type: 'team',
+        ...(prevStatus != null ? { prev_status: prevStatus } : {}),
+    });
 }
 
 export async function saveGenerationConfig(taskId: number, body: RegenerateSummaryParams): Promise<{ task_id: number }> {
@@ -1178,12 +1193,19 @@ export async function refineSummary(
 export async function regeneratePersonalSummary(
     taskId: number,
     body?: { topic?: string },
+    prevStatus?: number,
 ): Promise<{ task_id: number; result_id: number; status: number }> {
     // 八审 P2:BY_PERSON 多人协作的「个人报告」整条重生成,与 regenerateSummary(团队整体重生成)
     // 同属一次 full regenerate,漏斗 smart_summary_regenerated 必须计入,否则 dialog_opened→regenerated
     // 比值只反映埋点覆盖而非用户行为。走 post() 的 code===0 gate,与团队路径同口径。
     // (注:refine-by-feedback 是「反馈微调」的另一种交互,不是 full regenerate,不计本事件;见 DAP_EVENTS.md。)
-    return post(`/summaries/${taskId}/personal-regenerate`, body, 'smart_summary_regenerated');
+    // DAP-266：个人报告整体重生成。summary_id + regenerate_type='personal'。
+    // DAP-271 finding 6：prev_status 由调用方就近透传（详情页 detail.status）。
+    return post(`/summaries/${taskId}/personal-regenerate`, body, 'smart_summary_regenerated', {
+        summary_id: taskId,
+        regenerate_type: 'personal',
+        ...(prevStatus != null ? { prev_status: prevStatus } : {}),
+    });
 }
 
 export async function streamRefinePersonalSummary(
@@ -1250,6 +1272,7 @@ export async function listPersonalSummaryVersions(
 export async function restorePersonalSummaryVersion(
     taskId: number,
     versionId: number,
+    versionNumber?: number,
 ): Promise<{
     task_id: number;
     result_id: number;
@@ -1259,7 +1282,13 @@ export async function restorePersonalSummaryVersion(
     // DAP-110 Stage 2:恢复版本成功(code===0)发 smart_summary_version_restored。个人(by-person)与团队
     //   (restoreSummaryVersion,by-group)是同一「恢复版本」动作的两个作用域,两处同发一个事件——与
     //   smart_summary_regenerated 的 by-group/by-person 收口同款,避免漏斗在其一侧断裂。
-    return post(`/summaries/${taskId}/personal-versions/${versionId}/restore`, undefined, 'smart_summary_version_restored');
+    // DAP-266：补 summary_id。
+    // DAP-271 finding 6：version_number 由调用方就近透传(入参 versionId 是记录 id≠展示版本号,但
+    //   详情页持有 SummaryVersionItem.version 展示版本号 → 作为 versionNumber 传入,不再 DEFER)。
+    return post(`/summaries/${taskId}/personal-versions/${versionId}/restore`, undefined, 'smart_summary_version_restored', {
+        summary_id: taskId,
+        ...(versionNumber != null ? { version_number: versionNumber } : {}),
+    });
 }
 
 export async function getPersonalSummaryVersion(taskId: number, versionId: number): Promise<SummaryVersionDetail> {
@@ -1276,10 +1305,16 @@ export async function listSummaryVersions(
 export async function restoreSummaryVersion(
     taskId: number,
     resultId: number,
+    versionNumber?: number,
 ): Promise<{ task_id: number; result_id: number; version: number }> {
     // DAP-110 Stage 2:团队(by-group)恢复版本成功(code===0)发 smart_summary_version_restored
     //   (与 restorePersonalSummaryVersion 同事件,见其注释)。
-    return post(`/summaries/${taskId}/versions/${resultId}/restore`, undefined, 'smart_summary_version_restored');
+    // DAP-266：补 summary_id。
+    // DAP-271 finding 6：version_number 由调用方就近透传(入参 resultId 是记录 id,详情页持有展示版本号)。
+    return post(`/summaries/${taskId}/versions/${resultId}/restore`, undefined, 'smart_summary_version_restored', {
+        summary_id: taskId,
+        ...(versionNumber != null ? { version_number: versionNumber } : {}),
+    });
 }
 
 export async function getSummaryVersion(taskId: number, resultId: number): Promise<SummaryVersionDetail> {
@@ -1297,7 +1332,7 @@ export async function editSummary(
             content,
             base_result_id: baseResultId,
         });
-        trackOnEnvelopeSuccess(resp, 'smart_summary_edited');
+        trackOnEnvelopeSuccess(resp, 'smart_summary_edited', { summary_id: taskId });
         return resp.data?.data ?? resp.data;
     } catch (err: unknown) {
         // Preserve cancellation identity so callers can use axios.isCancel(err)
@@ -1352,13 +1387,20 @@ export async function addMembers(taskId: number, userIds: string[]): Promise<voi
     // DAP-110 Stage 2:新增成员成功(envelope code===0)命令式发 smart_summary_member_added。
     //   与 smart_summary_deleted/_regenerated 同款,唯一收口在 api 层的 code gate(见 trackOnEnvelopeSuccess);
     //   props 留空(注册契约无自定义属性,避免越界)。source/quality 由采集器按注册默认填(frontend_tracker/submitted)。
-    return post(`/summaries/${taskId}/members`, { user_ids: userIds }, 'smart_summary_member_added');
+    // DAP-266：补 summary_id + added_count（本次新增成员数）。
+    return post(`/summaries/${taskId}/members`, { user_ids: userIds }, 'smart_summary_member_added', {
+        summary_id: taskId,
+        added_count: userIds.length,
+    });
 }
 
 // 退出多人协作（参与者，非 creator）。后端物理删除调用者的
 // participant + personal_result 行，并重算团队总结（meta_summary）。
 export async function leaveSummary(taskId: number): Promise<void> {
-    return post(`/summaries/${taskId}/leave`);
+    // DAP-218 M11：参与者「退出协作」成功(code===0)命令式发 smart_summary_member_exited;
+    //   与 smart_summary_member_removed（creator 移除）语义不同、事件独立;props 留空。
+    // DAP-266：补 summary_id。
+    return post(`/summaries/${taskId}/leave`, undefined, 'smart_summary_member_exited', { summary_id: taskId });
 }
 
 // creator 移除某成员。后端物理删除该成员的 participant + personal_result
@@ -1366,7 +1408,11 @@ export async function leaveSummary(taskId: number): Promise<void> {
 export async function removeMember(taskId: number, uid: string): Promise<void> {
     // DAP-110 Stage 2:creator 移除成员成功(code===0)命令式发 smart_summary_member_removed。
     //   仅覆盖 creator 主动「移除」手势;参与者自行「退出」(leaveSummary)是语义不同的动作、无对应注册事件,故不计。
-    return del(`/summaries/${taskId}/members?uid=${encodeURIComponent(uid)}`, 'smart_summary_member_removed');
+    // DAP-266：补 summary_id + removed_count=1（一次移除一个成员）。
+    return del(`/summaries/${taskId}/members?uid=${encodeURIComponent(uid)}`, 'smart_summary_member_removed', {
+        summary_id: taskId,
+        removed_count: 1,
+    });
 }
 
 // refineAgentSummary 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
@@ -1381,9 +1427,14 @@ export async function batchStatus(taskIds: number[]): Promise<BatchStatusItem[]>
     return data?.tasks ?? [];
 }
 
-export async function cancelSummary(taskId: number): Promise<void> {
-    // DAP-110 Stage 2:取消任务成功(code===0)命令式发 smart_summary_task_cancelled;props 留空。
-    return post(`/summaries/${taskId}/cancel`, undefined, 'smart_summary_task_cancelled');
+export async function cancelSummary(taskId: number, source?: string): Promise<void> {
+    // DAP-110 Stage 2:取消任务成功(code===0)命令式发 smart_summary_task_cancelled。
+    // DAP-266：补 summary_id。
+    // DAP-271 finding 6：source（取消触发来源受控枚举,如 'list'/'detail'）由调用方就近透传。
+    return post(`/summaries/${taskId}/cancel`, undefined, 'smart_summary_task_cancelled', {
+        summary_id: taskId,
+        ...(source ? { source } : {}),
+    });
 }
 
 export async function confirmParticipation(taskId: number, sources: SourceItem[]): Promise<void> {
@@ -1404,7 +1455,13 @@ export async function acceptInvitation(taskId: number): Promise<void> {
 }
 
 export async function respondToTask(taskId: number, action: 'accept' | 'reject'): Promise<void> {
-    return post(`/summaries/${taskId}/respond`, { action });
+    // DAP-218 M11：应答邀请成功(code===0)命令式发。accept→smart_summary_invite_accepted、
+    //   reject→smart_summary_invite_rejected;卡片(SummaryCard onRespond)与详情页(handleRespondToTask)
+    //   均汇入本 api 函数,单一收口天然去重;props 留空。
+    // DAP-266：两分支同补 summary_id。
+    return post(`/summaries/${taskId}/respond`, { action },
+        action === 'accept' ? 'smart_summary_invite_accepted' : 'smart_summary_invite_rejected',
+        { summary_id: taskId });
 }
 
 // ─── Personal Results ──────────────────────────────────
@@ -1414,7 +1471,9 @@ export async function getPersonalResult(taskId: number): Promise<PersonalResult>
 }
 
 export async function submitPersonalResult(taskId: number): Promise<void> {
-    return post(`/summaries/${taskId}/submit`);
+    // DAP-218 M11：提交「我的报告」成功(code===0)命令式发 smart_summary_my_report_submitted;props 留空。
+    // DAP-266：补 summary_id。
+    return post(`/summaries/${taskId}/submit`, undefined, 'smart_summary_my_report_submitted', { summary_id: taskId });
 }
 
 export async function getMembers(taskId: number): Promise<MemberStatus[]> {
@@ -1457,9 +1516,15 @@ export async function updateMyTopicTemplate(
     templateId: string,
     payload: CustomTopicTemplatePayload,
 ): Promise<TopicTemplate> {
+    // DAP-218 M11：编辑「预置模板」的个人覆盖成功(code===0)命令式发 smart_summary_preset_template_edited。
+    // DAP-271 P1 隐私红线：**不上报用户自由输入的模板名称**(payload.label 可含客户/项目/私人内容)。
+    //   改用非 PII 的模板标识/类型:template_id(不透明标识)+ is_custom=false(预置模板被个人覆盖)。
+    //   owner 已裁定不采 template_name(2026-09-17 于靖力：隐私红线 + 源 spec 指标表无埋点消费,场景分类走 DB),已收口非冲突。
     const data = await put<{ template: TopicTemplate }>(
         `/summary-templates/${encodeURIComponent(templateId)}/my`,
         payload,
+        'smart_summary_preset_template_edited',
+        { template_id: templateId, is_custom: false },
     );
     return data.template;
 }
@@ -1469,11 +1534,21 @@ export async function resetMyTopicTemplate(templateId: string): Promise<TopicTem
     return data.template;
 }
 
-export async function createCustomTopicTemplate(payload: CustomTopicTemplatePayload): Promise<TopicTemplate> {
+export async function createCustomTopicTemplate(
+    payload: CustomTopicTemplatePayload,
+    trackProps: Record<string, unknown> = {},
+): Promise<TopicTemplate> {
+    // DAP-266：template_count_after 由调用方经 trackProps 透传
+    //   （创建成功后的自定义模板总数=创建前数+1）—— 调用方作用域才有该计数。
+    // DAP-271 P1 隐私红线：**不上报用户自由输入的模板名称**(payload.label)。改用非 PII 字段
+    //   is_custom=true(本函数恒创建自定义模板)。新模板 id 由服务端生成,调用点(track 发起于请求前)
+    //   拿不到 → 不带 template_id,只带 is_custom + 调用方 trackProps(如 template_count_after)。
+    //   owner 已裁定不采 template_name(2026-09-17 于靖力：隐私红线 + 源 spec 指标表无埋点消费,场景分类走 DB),已收口非冲突。
     const data = await post<{ template: TopicTemplate }>(
         '/summary-templates/my',
         payload,
         'smart_summary_custom_template_created',
+        { is_custom: true, ...trackProps },
     );
     return data.template;
 }
@@ -1482,15 +1557,26 @@ export async function updateCustomTopicTemplate(
     templateId: string,
     payload: CustomTopicTemplatePayload,
 ): Promise<TopicTemplate> {
+    // DAP-218 M11：编辑「自定义模板」成功(code===0)命令式发 smart_summary_custom_template_edited。
+    // DAP-271 P1 隐私红线：**不上报用户自由输入的模板名称**(payload.label)。改用非 PII 的
+    //   template_id(不透明标识)+ is_custom=true(自定义模板)。
+    //   owner 已裁定不采 template_name(2026-09-17 于靖力：隐私红线 + 源 spec 指标表无埋点消费,场景分类走 DB),已收口非冲突。
     const data = await put<{ template: TopicTemplate }>(
         `/summary-templates/my/${encodeURIComponent(templateId)}`,
         payload,
+        'smart_summary_custom_template_edited',
+        { template_id: templateId, is_custom: true },
     );
     return data.template;
 }
 
-export async function deleteCustomTopicTemplate(templateId: string): Promise<void> {
-    return del(`/summary-templates/my/${encodeURIComponent(templateId)}`);
+export async function deleteCustomTopicTemplate(
+    templateId: string,
+    trackProps: Record<string, unknown> = {},
+): Promise<void> {
+    // DAP-218 M11：删除「自定义模板」成功(code===0)命令式发 smart_summary_custom_template_deleted。
+    // DAP-266：template_count_after 由调用方经 trackProps 透传（删除前数−1）—— 调用方作用域才有计数。
+    return del(`/summary-templates/my/${encodeURIComponent(templateId)}`, 'smart_summary_custom_template_deleted', trackProps);
 }
 
 export async function inferScope(topic: string): Promise<InferResult> {
@@ -1516,9 +1602,53 @@ export async function getSchedule(scheduleId: number): Promise<ScheduleItem> {
     return normalizeScheduleItem(await get<ScheduleItem>(`/summary-schedules/${scheduleId}`));
 }
 
-export async function createSchedule(params: CreateScheduleParams): Promise<ScheduleItem> {
+// DAP-266：定时配置埋点维度。仅取 params 上就近存在/可推导的字段：
+//   weekday←day_of_week、time←run_time、has_gen_prompt←generation_instruction 是否非空（只发布尔,绝不带
+//   prompt 文本）；frequency_unit / frequency_n 由周期字段推导。
+// B-1（第三轮返工）：scheduleToParams 把周调度编码为 interval_days = every*7 且 day_of_week = 所选周几，
+//   与「每 N 天」在提交参数层字节相同 —— 单看 params，每周每1 会被误报成 {day,7}，永远出不了 "week"。
+//   唯一持有单位真相的是 UI 的 ScheduleConfig.unit/every。因此写路径把它作为 uiHint 透传进来：
+//   · 有 uiHint → frequency_unit/frequency_n 直接用 UI 真值（day/week/month + 每 N），最稳。
+//   · 无 uiHint（旧/直接调用方）→ 回退到 params 推导，且把 week 判定前移
+//     （interval_days 为 7 的整数倍且 day_of_week 非 0 → week），尽量少误报；但残留歧义仍在
+//     （周-不限周几 day_of_week:0 与 daily-每7 在 params 层不可区分，只能靠 uiHint），故优先传 uiHint。
+const DAYS_PER_WEEK_FOR_TRACK = 7;
+function buildScheduleTrackProps(
+    params: CreateScheduleParams | UpdateScheduleParams,
+    uiHint?: ScheduleUiHint,
+): Record<string, unknown> {
+    const props: Record<string, unknown> = {
+        has_gen_prompt: Boolean(params.generation_instruction?.trim?.()),
+    };
+    if (params.day_of_week !== undefined) props.weekday = params.day_of_week;
+    if (params.run_time !== undefined) props.time = params.run_time;
+
+    if (uiHint && (uiHint.unit === 'day' || uiHint.unit === 'week' || uiHint.unit === 'month')) {
+        // 生产者侧真值：UI 单位是唯一能区分「每 N 周」与「每 N*7 天」的来源。
+        props.frequency_unit = uiHint.unit;
+        props.frequency_n = Math.max(1, Math.floor(uiHint.every || 1));
+    } else if (params.interval_months) {
+        props.frequency_unit = 'month';
+        props.frequency_n = params.interval_months;
+    } else if (params.interval_days) {
+        // 兜底：无 UI 真值时，7 的整数倍 + 指定周几 视为周调度，其余按天。
+        if (params.interval_days % DAYS_PER_WEEK_FOR_TRACK === 0 && params.day_of_week) {
+            props.frequency_unit = 'week';
+            props.frequency_n = params.interval_days / DAYS_PER_WEEK_FOR_TRACK;
+        } else {
+            props.frequency_unit = 'day';
+            props.frequency_n = params.interval_days;
+        }
+    } else if (params.day_of_month) {
+        props.frequency_unit = 'month';
+        props.frequency_n = 1;
+    }
+    return props;
+}
+
+export async function createSchedule(params: CreateScheduleParams, uiHint?: ScheduleUiHint): Promise<ScheduleItem> {
     return normalizeScheduleItem(
-        await post<ScheduleItem>('/summary-schedules', params, 'smart_summary_timer_configured'),
+        await post<ScheduleItem>('/summary-schedules', params, 'smart_summary_timer_configured', buildScheduleTrackProps(params, uiHint)),
     );
 }
 
@@ -1527,9 +1657,9 @@ export async function listSchedules(): Promise<ScheduleItem[]> {
     return (data || []).map(normalizeScheduleItem);
 }
 
-export async function updateSchedule(scheduleId: number, params: UpdateScheduleParams): Promise<ScheduleItem> {
+export async function updateSchedule(scheduleId: number, params: UpdateScheduleParams, uiHint?: ScheduleUiHint): Promise<ScheduleItem> {
     return normalizeScheduleItem(
-        await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params, 'smart_summary_timer_configured'),
+        await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params, 'smart_summary_timer_configured', buildScheduleTrackProps(params, uiHint)),
     );
 }
 
@@ -1537,19 +1667,29 @@ export async function deleteSchedule(scheduleId: number): Promise<void> {
     return del(`/summary-schedules/${scheduleId}`);
 }
 
-export async function toggleSchedule(scheduleId: number, isActive: boolean): Promise<ScheduleItem> {
+export async function toggleSchedule(scheduleId: number, isActive: boolean, summaryId?: number): Promise<ScheduleItem> {
+    // DAP-218 M11：仅「关闭定时」(isActive===false) 成功(code===0)命令式发 smart_summary_timer_disabled;
+    //   重新开启不发(无对应注册事件)。
+    // DAP-271 finding 6：summary_id 由调用方就近透传(schedule 只带 scheduleId,详情页入口已捕获
+    //   requestTaskId → 传该 taskId,不可用 scheduleId 代替)。
     return normalizeScheduleItem(
         await put<ScheduleItem>(`/summary-schedules/${scheduleId}/toggle`, {
             is_active: isActive,
-        }),
+        }, isActive ? undefined : 'smart_summary_timer_disabled',
+        !isActive && summaryId != null ? { summary_id: summaryId } : {}),
     );
 }
 
 // V5：schedule 级「一次性确认」。对当前登录用户在该 schedule 的 participant_config
 // 里置 confirmed=true（后端处理）。语义是「确认这个定时任务，确认一次后续
 // 每轮免确认」，不是确认某一轮 task。
-export async function confirmSchedule(scheduleId: number): Promise<void> {
-    return post(`/summary-schedules/${scheduleId}/confirm`);
+export async function confirmSchedule(scheduleId: number, summaryId?: number): Promise<void> {
+    // DAP-218 M11：定时总结「一次性参与确认」成功(code===0)命令式发
+    //   smart_summary_recurring_participation_confirmed。
+    // DAP-271 finding 6：summary_id 由调用方就近透传(详情页入口已捕获 requestTaskId,不可用 scheduleId 代替)。
+    return post(`/summary-schedules/${scheduleId}/confirm`, undefined,
+        'smart_summary_recurring_participation_confirmed',
+        summaryId != null ? { summary_id: summaryId } : {});
 }
 
 // ─── Candidate Selection ───────────────────────────────

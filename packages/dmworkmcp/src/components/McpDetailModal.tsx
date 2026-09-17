@@ -31,8 +31,9 @@ interface McpDetailModalProps {
  * renders as the interpolated `<把这里换成你的 KEY>` placeholder so the
  * user sees exactly which field they need to fill. Default tab = 提示词.
  */
-const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
+const QuickAccess: React.FC<{ quickStart: McpQuickStart; mcpId: string }> = ({
   quickStart,
+  mcpId,
 }) => {
   const tabs = useMemo(() => buildQuickStartTabs(quickStart), [quickStart]);
   const [active, setActive] = useState(tabs[0]?.key ?? "prompt");
@@ -43,7 +44,12 @@ const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
     try {
       await navigator.clipboard.writeText(current.content);
       // 六审 P2:写剪贴板成功后才计数(原点击委托在 promise 落定前就发,失败/权限拒绝也计)。
-      Dap.shared.track("market_mcp_connect_prompt_copied", {});
+      // mcp_id=当前 MCP 记录 id;format=复制的快速接入片段格式(prompt/json,取自当前 tab)。
+      Dap.shared.track("market_mcp_connect_prompt_copied", {
+        object_id: mcpId,
+        mcp_id: mcpId,
+        format: current.key,
+      });
       Toast.success(t("mcp.detail.copied"));
     } catch {
       Toast.error(t("mcp.detail.copyFailed"));
@@ -407,7 +413,7 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
             <h4 className="wk-mcp-section__title">
               ⚡ {t("mcp.detail.quickAccess")}
             </h4>
-            <QuickAccess quickStart={detail.quickStart} />
+            <QuickAccess quickStart={detail.quickStart} mcpId={detail.id} />
           </section>
 
           {/* 2. 🔧工具清单 */}
