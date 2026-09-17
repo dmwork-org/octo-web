@@ -103,6 +103,24 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const closeFilterPopover = useCallback(() => {
     setFilterOpen(false);
   }, []);
+  const handleApplyFilters = useCallback(
+    (next: ChannelSearchFilters) => {
+      // channel_search_filtered(DAP-218 A 类):在筛选面板「确定」应用处发,仅当筛选实际生效
+      //   (与本文件 channel_search_query 的 hasEffectiveFilters 门控同口径,避免空应用刷量)。
+      //   属性为静态枚举/布尔:has_sender / sort / time_range,绝不上报发送人 uid 明细或关键词。
+      if (hasEffectiveFilters(next)) {
+        const timeRange = next.datePreset ?? ((next.startAt || next.endAt) ? "custom" : "all");
+        Dap.shared.track("channel_search_filtered", {
+          channel_id: stripSpacePrefix(channel.channelID),
+          has_sender: next.senderUids.length > 0,
+          sort: next.sort,
+          time_range: timeRange,
+        });
+      }
+      setFilters(next);
+    },
+    [channel.channelID]
+  );
   const updateKeyword = useCallback(
     (value: string) => {
       const runeCount = countChannelSearchKeywordRunes(value);
@@ -175,20 +193,23 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     enabled: canSearch && !isComposing,
     search: searchPage,
     errorMessage: t("base.channelSearch.searchFailed"),
-    // channel_search_query = 用户真的检索了(首页执行且带 keyword 或有效 filter);翻页不计。
-    // 媒体/文件 tab 的 shouldRunSearch 恒 true,仅切 tab 也会触发首页请求 → 若不 gate 会以空 keyword
-    // 误发一次(#1452 P2-1)。故这里按「有 keyword 或有效 filter」再计,与 tab_switched 分开。
-    // 判别位是 keyword 值 / 嵌套 filters(值级,被 sanitize 拦),故退命令式;绝不上报关键词。
+    // channel_search_query 挪到「结果返回后」(onQueryComplete)才发,以带上 has_result(首页是否有命中)。
+    // onQueryStart 早于结果、拿不到 has_result(owner 判定:时机问题,非后端下发)。
+    // 同一 gate:空 keyword 且无有效 filter(如仅切媒体/文件 tab)不计,避免空检索刷量(#1452 P2-1)。
     // channel_id 归一 stripSpacePrefix → bare id:与本 PR 其余新命令式事件同一 channel_id 口径,
     // Space 部署下可跨事件 join。注意这不是「与后端 _search_ 对齐」——SearchService 发的是 raw
     // channel.channelID(见 SearchService.ts,不 strip);此处刻意归一到 bare 供数仓 join(#1452 R10 P2-2)。
-    onQueryStart: useCallback(() => {
-      if (keyword.trim().length === 0 && !hasEffectiveFilters(filters)) return;
-      Dap.shared.track("channel_search_query", {
-        channel_id: stripSpacePrefix(channel.channelID),
-        tab: activeTab,
-      });
-    }, [channel.channelID, activeTab, keyword, filters]),
+    onQueryComplete: useCallback(
+      (hasResult: boolean) => {
+        if (keyword.trim().length === 0 && !hasEffectiveFilters(filters)) return;
+        Dap.shared.track("channel_search_query", {
+          channel_id: stripSpacePrefix(channel.channelID),
+          tab: activeTab,
+          has_result: hasResult,
+        });
+      },
+      [channel.channelID, activeTab, keyword, filters]
+    ),
   });
 
   const handleLocate = useCallback(
@@ -199,7 +220,16 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         return;
       }
       // 埋点:结果可跳转才算一次有效点击(移到 guard 之后,见 #1452 review P2)。
-      Dap.shared.track("channel_search_result_clicked", {});
+      // result_type=命中项类别(message/file/media,由 item.kind 归一)、channel_id=当前会话(bare id)。
+      Dap.shared.track("channel_search_result_clicked", {
+        channel_id: stripSpacePrefix(channel.channelID),
+        result_type:
+          item.kind === "file"
+            ? "file"
+            : item.kind === "image" || item.kind === "video"
+              ? "media"
+              : "message",
+      });
       if (onLocateMessage) {
         onLocateMessage(item);
         return;
@@ -220,7 +250,9 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     // channel_search_filter_panel_opened:仅在「打开」这一支计数。原 TrackRules 的
     // channel-search-filter-trigger 点击规则在开和关都触发(toggle)→ 翻倍(见 review P2-7)。已移除该规则。
     if (!filterOpen) {
-      Dap.shared.track("channel_search_filter_panel_opened", {});
+      Dap.shared.track("channel_search_filter_panel_opened", {
+        channel_id: stripSpacePrefix(channel.channelID),
+      });
     }
     setFilterOpen((open) => !open);
   };
@@ -344,7 +376,10 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
           if (tab && tab !== activeTab) {
             // channel_search_tab_switched:仅在 tab 真正切换时计一次。原挂在 POST
             // /messages/_search_media|_search_files 的 2xx 通道,每次搜索/去抖/翻页都重打 → 过计数(见二审 P1-4)。
-            Dap.shared.track("channel_search_tab_switched", { tab });
+            Dap.shared.track("channel_search_tab_switched", {
+              tab,
+              channel_id: stripSpacePrefix(channel.channelID),
+            });
             setActiveTab(tab);
           }
         }}
@@ -363,7 +398,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
               open={filterOpen}
               filters={filters}
               dataSource={dataSource}
-              onApply={setFilters}
+              onApply={handleApplyFilters}
               onClose={() => setFilterOpen(false)}
             />
           </div>

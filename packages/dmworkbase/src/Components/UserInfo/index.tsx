@@ -106,6 +106,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                     Dap.shared.track('contact_message_clicked', {
                         object_id: vm.uid,
                         contact_type: isBot ? 'ai' : 'user',
+                        is_ai: isBot,
                         space_id: spaceId || undefined,
                     })
                 }
@@ -119,6 +120,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                     Dap.shared.track('contact_message_clicked', {
                         object_id: vm.uid,
                         contact_type: isBot ? 'ai' : 'user',
+                        is_ai: isBot,
                         space_id: spaceId || undefined,
                     })
                 }

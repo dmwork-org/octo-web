@@ -60,6 +60,7 @@ vi.mock('../../utils/summaryAttentionBadge', () => ({
 
 import * as api from '../../api/summaryApi';
 import { WKApp, Dap, t } from '@octo/base';
+import * as octoBase from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 import { requestSummaryScheduleOpen, consumeSummaryScheduleOpen, requestSummaryDetailAction, consumeSummaryDetailAction } from '../../utils/summaryDetailIntent';
@@ -289,8 +290,10 @@ describe('shared detail actions after navigation', () => {
 
         await page.handleRetry();
 
-        expect(api.regenerateSummary).toHaveBeenCalledWith(1);
-        expect(api.regenerateSummary).not.toHaveBeenCalledWith(1, expect.anything());
+        // DAP-271 finding 6：retry 走 regenerateSummary(taskId, undefined, prev_status)。第二参(regenerate
+        //   body)仍恒为 undefined——不替换已保存指令；第三参补 prev_status(detail.status)。
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1, undefined, TaskStatus.FAILED);
+        expect((api.regenerateSummary as any).mock.calls[0][1]).toBeUndefined();
     });
 
     it.each([TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED])('allows both edit entries for terminal status %s with retained content', (status) => {
@@ -1241,7 +1244,8 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         const pending = page.handleScheduleDisable();
         await Promise.resolve();
-        expect(api.toggleSchedule).toHaveBeenCalledWith(50, false);
+        // DAP-271 finding 6：timer_disabled 补 summary_id（入口快照 requestTaskId=1）。
+        expect(api.toggleSchedule).toHaveBeenCalledWith(50, false, 1);
 
         // 切到 task B（B 无定时）。
         (page as any).props = { taskId: 2 };
@@ -1272,7 +1276,8 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         const pending = page.handleConfirmSchedule();
         await Promise.resolve();
-        expect(api.confirmSchedule).toHaveBeenCalledWith(60);
+        // DAP-271 finding 6：recurring_participation_confirmed 补 summary_id（入口快照 requestTaskId=1）。
+        expect(api.confirmSchedule).toHaveBeenCalledWith(60, 1);
 
         // 切到 task B。
         (page as any).props = { taskId: 2 };
@@ -1316,6 +1321,7 @@ describe('SummaryDetailPage — new schedule: one-step create (scope=task)', () 
         expect(api.createSchedule).toHaveBeenCalledTimes(1);
         expect(api.createSchedule).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'task', task_id: 1 }),
+            expect.anything(), // B-1：第二参数为 UI 单位真值 hint {unit, every}
         );
         // 不再有第二步绑定、也不再回滚。
         expect(api.updateSchedule).not.toHaveBeenCalled();
@@ -1374,6 +1380,7 @@ describe('SummaryDetailPage — V5 confirm_policy on schedule write paths', () =
 
         expect(api.createSchedule).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'task', task_id: 1, confirm_policy: 1 }),
+            expect.anything(), // B-1：第二参数为 UI 单位真值 hint
         );
     });
 
@@ -1413,6 +1420,7 @@ describe('SummaryDetailPage — V5 confirm_policy on schedule write paths', () =
         expect(api.updateSchedule).toHaveBeenCalledWith(
             7,
             expect.objectContaining({ scope: 'task', task_id: 1, confirm_policy: 1 }),
+            expect.anything(), // B-1：第三参数为 UI 单位真值 hint
         );
     });
 
@@ -1596,6 +1604,7 @@ describe('SummaryDetailPage — finding 1: 多人判定不被 members 二次异�
         // 多人 → confirm_policy=1，未因 members 未到而误判单人。
         expect(api.createSchedule).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'task', task_id: 1, confirm_policy: 1 }),
+            expect.anything(), // B-1：第二参数为 UI 单位真值 hint
         );
     });
 
@@ -3577,5 +3586,54 @@ describe('SummaryDetailPage — 深链 string taskNo：loadPersonalResult 四入
         expect(api.getPersonalResult).toHaveBeenCalledWith(740);    // 终态刷新用数字
         expect(api.batchStatus).not.toHaveBeenCalledWith(['SUM-740']);
         expect(api.getPersonalResult).not.toHaveBeenCalledWith('SUM-740');
+    });
+});
+
+// DAP-271 finding 5:异步成功事件用「入口 taskId 快照」归因,切总结不错记到另一条。
+describe('DAP-271 finding 5 — 异步成功事件归因入口快照(切 task 不误记)', () => {
+    const messaging: SummaryMessagingPort = {
+        getCurrentUser: () => ({ uid: 'me', displayName: 'Me' }),
+        loadConversationMembers: async () => [],
+        openConversation: async () => {},
+        notifySummaryCompleted: async () => {},
+        requestForward: vi.fn(),
+        subscribeInvalidation: () => () => {},
+    };
+
+    it('forwarded: 入口 task=1,转发完成前切到 task=2,summary_id 仍记 1', () => {
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const requestForward = vi.fn();
+        const page = new SummaryDetailPage({ taskId: 1, messaging: { ...messaging, requestForward } } as any);
+        (page as any).context = { t: (k: string) => k };
+        page.state = { ...page.state, detail: baseDetail({ result: { content: 'Summary text' } }) as any };
+
+        page.handleForwardToChat();
+        // 完成回调到达前用户切到 task 2。
+        (page as any).props = { taskId: 2, messaging: { ...messaging, requestForward } };
+        const request = requestForward.mock.calls[0][0];
+        request.onComplete?.({ kind: 'success', total: 3 });
+
+        const forwarded = track.mock.calls.find((c) => c[0] === 'smart_summary_forwarded');
+        expect(forwarded?.[1]).toMatchObject({ summary_id: 1, target_count: 3 });
+        track.mockRestore();
+    });
+
+    it('copied: 入口 task=1,复制 await 期间切到 task=2,summary_id 仍记 1', async () => {
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        let resolveCopy: (v: boolean) => void = () => {};
+        const copySpy = vi.spyOn(octoBase, 'copyToClipboard').mockReturnValue(new Promise<boolean>((res) => { resolveCopy = res; }));
+
+        const page = makePage(1);
+        (page as any).unmounted = false;
+        const pending = page.handleCopyContent('some copied text', 'personal-result');
+        // clipboard 兑现前切到 task 2。
+        (page as any).props = { taskId: 2 };
+        resolveCopy(true);
+        await pending;
+
+        const copied = track.mock.calls.find((c) => c[0] === 'smart_summary_copied');
+        expect(copied?.[1]).toMatchObject({ summary_id: 1 });
+        copySpy.mockRestore();
+        track.mockRestore();
     });
 });

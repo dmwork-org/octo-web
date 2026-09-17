@@ -5,7 +5,7 @@ import { Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { I18nContext, t, WKButton } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import * as api from "../api/summaryApi";
-import type { CreateScheduleParams, ScheduleItem, UpdateScheduleParams } from "../types/summary";
+import type { CreateScheduleParams, ScheduleItem, UpdateScheduleParams, ScheduleUiHint } from "../types/summary";
 import {
     getModeLabel,
     describeSchedule,
@@ -90,7 +90,7 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
         }
     }
 
-    handleUpdate = async (params: CreateScheduleParams) => {
+    handleUpdate = async (params: CreateScheduleParams, uiHint?: ScheduleUiHint) => {
         const { editingSchedule } = this.state;
         if (!editingSchedule || this.actionPending) return;
         this.actionPending = true;
@@ -115,7 +115,7 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                     ? { confirm_policy: editingSchedule.confirm_policy ?? 1 }
                     : {}),
             };
-            await api.updateSchedule(editingSchedule.schedule_id, updateParams);
+            await api.updateSchedule(editingSchedule.schedule_id, updateParams, uiHint);
             this.setState({ editingSchedule: null });
             // The update payload intentionally omits source_name. Refetch so
             // cards and the next edit use the authoritative labels resolved by

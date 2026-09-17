@@ -9,6 +9,7 @@ import { updateChannelSettingMyGroupNickname } from "../../bridge/channelSetting
 import { t } from "../../i18n";
 import { ChannelSettingInlineEditRow } from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 
 export function buildMyGroupNicknameSection(
   context: RouteContext<ChannelSettingRouteData>,
@@ -36,6 +37,7 @@ export function buildMyGroupNicknameSection(
             "base.module.channelSettings.myGroupNicknamePlaceholder"
           ),
           trackEvent: "group_nickname_edit_opened",
+          trackProps: { channel_id: stripSpacePrefix(data.channel.channelID) },
           maxCount: 10,
           allowEmpty: true,
           onSave: async (value: string) => {

@@ -6,6 +6,7 @@ import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context
 import { GroupRole } from "../../Service/Const";
 import RouteContext from "../../Service/Context";
 import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import {
@@ -60,8 +61,10 @@ export function buildChannelDangerSection(
               return;
             }
             // 命令式上报:仅在真正打开退出确认弹窗时计数;群主分支被上面的 return
-            // 拦截,不会误报(见 PR #1390 review P1-1)。
-            Dap.shared.track("conversation_leave_dialog_opened");
+            // 拦截,不会误报(见 PR #1390 review P1-1)。channel_id=退出目标群(归一 bare id)。
+            Dap.shared.track("conversation_leave_dialog_opened", {
+              channel_id: stripSpacePrefix(data.channel.channelID),
+            });
             WKApp.shared.baseContext.showAlert({
               content: t("base.module.channelSettings.deleteAndExitConfirm"),
               onOk: async () => {

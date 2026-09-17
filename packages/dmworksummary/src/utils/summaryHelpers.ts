@@ -713,3 +713,15 @@ export function formatScheduleSummary(item: ScheduleItem): string {
 
     return `${t("summary.detail.schedulePrefix")}${body}${nextPart}`;
 }
+
+/**
+ * DAP-266：把主题输入长度归一成分桶枚举（只上报长度分桶，绝不上报主题正文本身）。
+ * 供 smart_summary_theme_input 的 theme_len_bucket 使用；workbench 与创建页两处共用同一口径。
+ */
+export function themeLenBucket(len: number): string {
+    if (len <= 0) return "0";
+    if (len <= 10) return "1-10";
+    if (len <= 30) return "11-30";
+    if (len <= 100) return "31-100";
+    return "100+";
+}

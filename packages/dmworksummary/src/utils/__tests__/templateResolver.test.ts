@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, deriveSummaryDisplayContent, limitTemplateSummaryContent } from '../templateResolver';
+import { describe, it, expect, vi } from 'vitest';
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, deriveSummaryDisplayContent, limitTemplateSummaryContent, trackPresetTemplateEditOpened } from '../templateResolver';
 import type { TopicTemplate } from '../../types/summary';
 import { TOPIC_TEMPLATES } from '../../constants/templates';
+import { Dap } from '@octo/base';
 
 // 读 zh-CN 资源的简易 t（与 dmworkBase mock 行为一致）：把 `summary.<path>` 映射到明文。
 import zhCN from '../../i18n/zh-CN.json';
@@ -194,4 +195,37 @@ describe('computeTemplateSelection', () => {
         expect(range).toBeNull();
     });
 
+});
+
+describe('trackPresetTemplateEditOpened (M-I：两站点共用的隐私守卫)', () => {
+    // 该 helper 被 TemplateSelectorModal 与 SummaryCreatePage 两站点共用，pin 一次即覆盖两侧。
+    const PII = '客户AcmeCorp机密并购项目';
+    const preset: TopicTemplate = {
+        id: 'tpl_preset',
+        label: PII, // 被个人覆盖的预设名可能含 PII —— 绝不能出现在上报里
+        icon: 'FileText',
+        description: PII,
+        type: 'fixed',
+        pattern: '',
+        is_custom: false,
+    };
+
+    it('预设模板：只上报 template_id + is_custom:false，绝无 *_name 自由文本，且不含 PII', () => {
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        trackPresetTemplateEditOpened(preset);
+        expect(track).toHaveBeenCalledTimes(1);
+        const [event, props] = track.mock.calls[0];
+        expect(event).toBe('smart_summary_preset_template_edit_opened');
+        expect(props).toEqual({ template_id: 'tpl_preset', is_custom: false });
+        expect(props).not.toHaveProperty('template_name');
+        expect(JSON.stringify(props)).not.toContain(PII);
+        track.mockRestore();
+    });
+
+    it('自定义模板：不计入本事件（spec 限定预设）', () => {
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        trackPresetTemplateEditOpened({ ...preset, id: 'tpl_custom', is_custom: true });
+        expect(track).not.toHaveBeenCalled();
+        track.mockRestore();
+    });
 });

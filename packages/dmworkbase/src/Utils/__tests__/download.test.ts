@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 vi.mock('@douyinfe/semi-ui', () => ({ Toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -10,8 +12,26 @@ vi.mock('../../App', () => ({
   },
 }))
 
-import { downloadFile, getPresignedDownloadUrl, getPresignedPreviewUrl } from '../download'
+const mockTrack = vi.fn()
+vi.mock('../../Service/Dap', () => ({
+  Dap: {
+    shared: {
+      track: (...args: unknown[]) => mockTrack(...args),
+    },
+  },
+}))
+
+// B-2:electron 下载状态由 desktopBridge 桥接。默认按浏览器路(isElectronPowered=false),
+//   electron 测试里逐例改成 true 并注入捕获 IPC_DOWNLOAD_STATUS 监听器的假 bridge。
+vi.mock('../../electron/desktopBridge', () => ({
+  isElectronPowered: vi.fn(() => false),
+  getElectronIpcBridge: vi.fn(() => null),
+}))
+
+import { downloadFile, getPresignedDownloadUrl, getPresignedPreviewUrl, classifyDownloadFileType, clampFileType } from '../download'
 import WKApp from '../../App'
+import { isElectronPowered, getElectronIpcBridge } from '../../electron/desktopBridge'
+import { IPC_DOWNLOAD_STATUS, IPC_DOWNLOAD_URL } from '../../../../../apps/web/src-election/shared/ipc-channels'
 
 describe('downloadFile', () => {
   let capturedAnchor: HTMLAnchorElement | null = null
@@ -92,5 +112,158 @@ describe('downloadFile', () => {
     expect(WKApp.apiClient.get).not.toHaveBeenCalled()
     expect(capturedAnchor).not.toBeNull()
     expect(capturedAnchor!.href).toBe(`${window.location.origin}/files/a.txt`)
+  })
+})
+
+describe('message_file_downloaded file_type privacy guard', () => {
+  // 隐私红线:file_type 绝不透传用户可控的文件名正文,只能是已知扩展名白名单里的低基数枚举
+  //   或 "other" / ""。参照本 PR 为模板事件加的 *_name 自由文本键守卫风格。
+  const fileType = (name: string): string => classifyDownloadFileType(name)
+
+  it('keeps known extensions and normalizes case', () => {
+    expect(fileType('photo.PNG')).toBe('png')
+    expect(fileType('report.pdf')).toBe('pdf')
+    expect(fileType('sheet.XLSX')).toBe('xlsx')
+  })
+
+  it('clamps CJK / free-text suffixes to "other", never leaking the raw fragment', () => {
+    for (const name of ['机密.客户并购项目', 'report.内部资料', '2026Q3财报.客户机密并购项目', 'a.superlongsuffixstring']) {
+      const ext = fileType(name)
+      expect(ext).toBe('other')
+      // 绝不等于原始片段,且不含任何非 [a-z0-9] 字符
+      const rawFragment = name.slice(name.lastIndexOf('.') + 1)
+      expect(ext).not.toBe(rawFragment)
+      expect(ext).toMatch(/^[a-z0-9]+$/)
+    }
+  })
+
+  it('reports empty string when there is no extension', () => {
+    expect(fileType('README')).toBe('')
+    expect(fileType('.env')).toBe('')
+    expect(fileType('report.')).toBe('')
+  })
+
+  it('emits the clamped file_type through Dap.shared.track on download', async () => {
+    mockTrack.mockClear()
+    await downloadFile('/files/机密.客户并购项目', '机密.客户并购项目')
+
+    expect(mockTrack).toHaveBeenCalledWith('message_file_downloaded', { file_type: 'other' })
+    const calls = mockTrack.mock.calls
+    const props = calls[calls.length - 1][1] as { file_type: string }
+    expect(props.file_type).not.toContain('客户')
+  })
+})
+
+describe('message_file_downloaded electron completion semantics (B-2)', () => {
+  // electron 路只在下载「完成」时计一次;取消/失败/过期都不计。
+  let statusListener: ((event: unknown, ...args: unknown[]) => void) | null = null
+  let invokeMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    mockTrack.mockClear()
+    statusListener = null
+    invokeMock = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(isElectronPowered).mockReturnValue(true)
+    vi.mocked(getElectronIpcBridge).mockReturnValue({
+      send: vi.fn(),
+      once: vi.fn(),
+      invoke: invokeMock as unknown as (channel: string, ...args: unknown[]) => Promise<unknown>,
+      on: (channel: string, listener: (event: unknown, ...args: unknown[]) => void) => {
+        if (channel === IPC_DOWNLOAD_STATUS) statusListener = listener
+      },
+      removeListener: vi.fn(),
+    })
+  })
+
+  afterEach(() => {
+    vi.mocked(isElectronPowered).mockReturnValue(false)
+    vi.mocked(getElectronIpcBridge).mockReturnValue(null)
+  })
+
+  // 从 invoke(IPC_DOWNLOAD_URL, url, filename, id) 拿到内部生成的 download id
+  const invokedId = (): string => {
+    const call = invokeMock.mock.calls.find((c) => c[0] === IPC_DOWNLOAD_URL)
+    return (call?.[3] as string) ?? ''
+  }
+
+  it('emits once with clamped file_type only after status === completed', async () => {
+    await downloadFile('/files/report.pdf', 'report.pdf')
+    expect(mockTrack).not.toHaveBeenCalled() // 发起时不计
+    expect(statusListener).not.toBeNull()
+
+    statusListener!(null, { id: invokedId(), state: 'completed', filename: 'report.pdf' })
+    expect(mockTrack).toHaveBeenCalledTimes(1)
+    expect(mockTrack).toHaveBeenCalledWith('message_file_downloaded', { file_type: 'pdf' })
+  })
+
+  it('does NOT emit when status === failed', async () => {
+    await downloadFile('/files/report.pdf', 'report.pdf')
+    statusListener!(null, { id: invokedId(), state: 'failed', filename: 'report.pdf' })
+    expect(mockTrack).not.toHaveBeenCalled()
+  })
+
+  it('does NOT emit when status === cancelled', async () => {
+    await downloadFile('/files/report.pdf', 'report.pdf')
+    statusListener!(null, { id: invokedId(), state: 'cancelled', filename: 'report.pdf' })
+    expect(mockTrack).not.toHaveBeenCalled()
+  })
+
+  it('ignores status events for a different download id', async () => {
+    await downloadFile('/files/report.pdf', 'report.pdf')
+    statusListener!(null, { id: 'some-other-id', state: 'completed', filename: 'report.pdf' })
+    expect(mockTrack).not.toHaveBeenCalled()
+  })
+})
+
+describe('clampFileType privacy guard (shared clamp for structured FileContent.extension)', () => {
+  // clampFileType 入参是「裸后缀」(FileContent.extension 本就无点),不做 lastIndexOf(".") 切分。
+  //   message_file_saved_to_drive 直接拿它钳制 extension,与 message_file_downloaded 同口径。
+  it('keeps clean bare extensions and normalizes case', () => {
+    expect(clampFileType('pdf')).toBe('pdf')
+    expect(clampFileType('PNG')).toBe('png')
+    expect(clampFileType('  Xlsx  ')).toBe('xlsx')
+  })
+
+  it('does NOT misclassify a clean bare suffix as "" (the lastIndexOf-dot trap)', () => {
+    // 结构化 extension 无点:若误用 classifyDownloadFileType 会因 lastDot<=0 返回 ""。
+    //   clampFileType 不切点,pdf 应稳定命中白名单。
+    expect(classifyDownloadFileType('pdf')).toBe('') // 反证陷阱:无点被 classify 判空
+    expect(clampFileType('pdf')).toBe('pdf')          // clamp 才是正确处理裸后缀的入口
+  })
+
+  it('clamps CJK / free-text / oversized suffixes to "other", never leaking the raw fragment', () => {
+    for (const raw of ['客户机密并购项目', '内部资料', 'aaaaaaaaaaaa', 'a b', 'tar.gz name']) {
+      const ext = clampFileType(raw)
+      expect(ext).toBe('other')
+      expect(ext).not.toBe(raw)
+      expect(ext).toMatch(/^[a-z0-9]+$/)
+    }
+  })
+
+  it('reports empty string for empty / whitespace-only suffix', () => {
+    expect(clampFileType('')).toBe('')
+    expect(clampFileType('   ')).toBe('')
+  })
+})
+
+describe('message_file_saved_to_drive source-level file_type guard', () => {
+  // module.tsx 的 saveToDrive 成功回调没有独立可挂测的导出;用 source-level pin 守住
+  //   「file_type 经 clampFileType 钳制、绝不直传原始 extension」这条隐私红线。
+  const moduleSrc = readFileSync(
+    resolve(__dirname, '../../module.tsx'),
+    'utf8',
+  )
+
+  it('imports the shared clampFileType helper', () => {
+    expect(moduleSrc).toMatch(/import\s*\{\s*clampFileType\s*\}\s*from\s*["']\.\/Utils\/download["']/)
+  })
+
+  it('clamps file_type at the message_file_saved_to_drive track site', () => {
+    const idx = moduleSrc.indexOf('"message_file_saved_to_drive"')
+    expect(idx).toBeGreaterThan(-1)
+    const block = moduleSrc.slice(idx, idx + 400)
+    // 钳制后的 file_type,绝不再出现「直传原始 extension」的旧形态
+    expect(block).toMatch(/file_type:\s*clampFileType\(/)
+    expect(block).not.toMatch(/file_type:\s*fileContent\?\.extension\s*\|\|\s*""/)
   })
 })

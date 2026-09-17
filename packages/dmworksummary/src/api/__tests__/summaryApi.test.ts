@@ -41,6 +41,7 @@ import {
     revokeSummaryShare,
     updateCustomTopicTemplate,
 } from '../summaryApi';
+import { SummaryMode } from '../../types/summary';
 
 describe('summaryApi interceptors', () => {
   it('injects language, token, and space headers', async () => {
@@ -807,15 +808,17 @@ describe('summaryApi', () => {
             track.mockRestore();
         });
 
-        it('agent mode emits once after envelope success (P2-2)', async () => {
+        it('agent mode does NOT emit smart_summary_started even after envelope success (DAP-247/S6)', async () => {
+            // architect 裁定（spec-props.md:333 P0）：smart_summary_started 只对应 normal「快速总结」
+            // 路径;createAgentSummary 是 agent 专用端点,成功后不发 started（agent 的记录事件是
+            // smart_summary_agent_saved,由「保存为总结」成功回调发出）。此前固化 agent 发 started
+            // 属错误行为,反转钉死:envelope 成功也不发 started。
             const { Dap } = await import('@octo/base');
             const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
             const { createAgentSummary } = await import('../summaryApi');
             mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 3, task_no: 'n', status: 1, created_at: 'x' } } });
             await createAgentSummary({} as any, { trigger_mode: 'agent' });
-            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
-            expect(started).toHaveLength(1);
-            expect(started[0][1]).toMatchObject({ trigger_mode: 'agent' });
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
             track.mockRestore();
         });
 
@@ -959,16 +962,17 @@ describe('summaryApi', () => {
             event: string;
             mock: 'post' | 'del';
             run: (api: typeof import('../summaryApi')) => Promise<unknown>;
+            props?: Record<string, unknown>;
         }> = [
-            { name: 'addMembers', event: 'smart_summary_member_added', mock: 'post', run: (api) => api.addMembers(1, ['u1']) },
-            { name: 'removeMember', event: 'smart_summary_member_removed', mock: 'del', run: (api) => api.removeMember(1, 'u1') },
-            { name: 'cancelSummary', event: 'smart_summary_task_cancelled', mock: 'post', run: (api) => api.cancelSummary(1) },
-            { name: 'restoreSummaryVersion (team)', event: 'smart_summary_version_restored', mock: 'post', run: (api) => api.restoreSummaryVersion(1, 2) },
-            { name: 'restorePersonalSummaryVersion (personal)', event: 'smart_summary_version_restored', mock: 'post', run: (api) => api.restorePersonalSummaryVersion(1, 2) },
+            { name: 'addMembers', event: 'smart_summary_member_added', mock: 'post', run: (api) => api.addMembers(1, ['u1']), props: { summary_id: 1, added_count: 1 } },
+            { name: 'removeMember', event: 'smart_summary_member_removed', mock: 'del', run: (api) => api.removeMember(1, 'u1'), props: { summary_id: 1, removed_count: 1 } },
+            { name: 'cancelSummary', event: 'smart_summary_task_cancelled', mock: 'post', run: (api) => api.cancelSummary(1), props: { summary_id: 1 } },
+            { name: 'restoreSummaryVersion (team)', event: 'smart_summary_version_restored', mock: 'post', run: (api) => api.restoreSummaryVersion(1, 2), props: { summary_id: 1 } },
+            { name: 'restorePersonalSummaryVersion (personal)', event: 'smart_summary_version_restored', mock: 'post', run: (api) => api.restorePersonalSummaryVersion(1, 2), props: { summary_id: 1 } },
         ];
 
         for (const c of cases) {
-            it(`${c.name}: emits ${c.event} once with empty props when envelope code===0`, async () => {
+            it(`${c.name}: emits ${c.event} once with DAP-266 spec props when envelope code===0`, async () => {
                 const { Dap } = await import('@octo/base');
                 const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
                 const api = await import('../summaryApi');
@@ -977,8 +981,8 @@ describe('summaryApi', () => {
                 await c.run(api);
                 const hits = track.mock.calls.filter((call) => call[0] === c.event);
                 expect(hits).toHaveLength(1);
-                // props 留空(注册契约无自定义属性,避免越界被 validator 拒)。
-                expect(hits[0][1]).toEqual({});
+                // DAP-266：补齐 result doc spec_props（summary_id 等业务 id 不自动注入,须显式传）。
+                expect(hits[0][1]).toEqual(c.props ?? {});
                 track.mockRestore();
             });
 
@@ -1004,5 +1008,280 @@ describe('summaryApi', () => {
                 track.mockRestore();
             });
         }
+    });
+});
+
+// DAP-218 M11：本轮补埋的 api 层「动作完成」类事件的 envelope gate。与 DAP-110 Stage 2 同款——
+// 唯一收口在 api 层,仅 code===0 才命令式 track 一次,props 留空;code!==0 / 缺 code 一律不发。
+describe('DAP-218 M11 envelope gate — template/member/submit/schedule', () => {
+    type Api = typeof import('../summaryApi');
+    const cases: Array<{
+        name: string;
+        event: string;
+        mock: 'post' | 'put' | 'del';
+        run: (api: Api) => Promise<unknown>;
+        props?: Record<string, unknown>;
+    }> = [
+        { name: 'updateMyTopicTemplate', event: 'smart_summary_preset_template_edited', mock: 'put', run: (api) => api.updateMyTopicTemplate('tpl_1', { label: 'x', description: 'd' }), props: { template_id: 'tpl_1', is_custom: false } },
+        { name: 'updateCustomTopicTemplate', event: 'smart_summary_custom_template_edited', mock: 'put', run: (api) => api.updateCustomTopicTemplate('tpl_1', { label: 'x', description: 'd' }), props: { template_id: 'tpl_1', is_custom: true } },
+        { name: 'deleteCustomTopicTemplate', event: 'smart_summary_custom_template_deleted', mock: 'del', run: (api) => api.deleteCustomTopicTemplate('tpl_1') },
+        { name: 'leaveSummary', event: 'smart_summary_member_exited', mock: 'post', run: (api) => api.leaveSummary(1), props: { summary_id: 1 } },
+        { name: 'submitPersonalResult', event: 'smart_summary_my_report_submitted', mock: 'post', run: (api) => api.submitPersonalResult(1), props: { summary_id: 1 } },
+        { name: 'confirmSchedule', event: 'smart_summary_recurring_participation_confirmed', mock: 'post', run: (api) => api.confirmSchedule(7) },
+    ];
+
+    const mockFor = (m: 'post' | 'put' | 'del') => (m === 'post' ? mockPost : m === 'put' ? mockPut : mockDelete);
+
+    for (const c of cases) {
+        it(`${c.name}: emits ${c.event} once with DAP-266 spec props when envelope code===0`, async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const api = await import('../summaryApi');
+            mockFor(c.mock).mockResolvedValueOnce({ data: { code: 0, data: { template: {}, is_active: false } } });
+            await c.run(api);
+            const hits = track.mock.calls.filter((call) => call[0] === c.event);
+            expect(hits).toHaveLength(1);
+            // DAP-266：deleteCustomTopicTemplate / confirmSchedule 在本单元测试未透传 trackProps → 仍 {}；
+            //   DAP-271：模板编辑改用非 PII 的 template_id + is_custom（不再上报 template_name 自由文本）。
+            expect(hits[0][1]).toEqual(c.props ?? {});
+            track.mockRestore();
+        });
+
+        it(`${c.name}: does NOT emit ${c.event} when envelope code!==0`, async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const api = await import('../summaryApi');
+            mockFor(c.mock).mockResolvedValueOnce({ data: { code: 1, message: 'fail', data: null } });
+            await c.run(api);
+            expect(track.mock.calls.some((call) => call[0] === c.event)).toBe(false);
+            track.mockRestore();
+        });
+
+        it(`${c.name}: does NOT emit ${c.event} when code 缺省(网关信封)`, async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const api = await import('../summaryApi');
+            mockFor(c.mock).mockResolvedValueOnce({ data: { data: null } });
+            await c.run(api);
+            expect(track.mock.calls.some((call) => call[0] === c.event)).toBe(false);
+            track.mockRestore();
+        });
+    }
+
+    it('respondToTask(accept) emits invite_accepted (not rejected) on code===0', async () => {
+        const { Dap } = await import('@octo/base');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const api = await import('../summaryApi');
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: {} } });
+        await api.respondToTask(1, 'accept');
+        expect(track.mock.calls.filter((c) => c[0] === 'smart_summary_invite_accepted')).toHaveLength(1);
+        expect(track.mock.calls.some((c) => c[0] === 'smart_summary_invite_rejected')).toBe(false);
+        track.mockRestore();
+    });
+
+    it('respondToTask(reject) emits invite_rejected (not accepted) on code===0', async () => {
+        const { Dap } = await import('@octo/base');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const api = await import('../summaryApi');
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: {} } });
+        await api.respondToTask(1, 'reject');
+        expect(track.mock.calls.filter((c) => c[0] === 'smart_summary_invite_rejected')).toHaveLength(1);
+        expect(track.mock.calls.some((c) => c[0] === 'smart_summary_invite_accepted')).toBe(false);
+        track.mockRestore();
+    });
+
+    it('respondToTask does NOT emit when code!==0', async () => {
+        const { Dap } = await import('@octo/base');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const api = await import('../summaryApi');
+        mockPost.mockResolvedValueOnce({ data: { code: 1, data: null } });
+        await api.respondToTask(1, 'accept');
+        expect(track.mock.calls.some((c) => String(c[0]).startsWith('smart_summary_invite_'))).toBe(false);
+        track.mockRestore();
+    });
+
+    it('toggleSchedule(false) emits timer_disabled on code===0', async () => {
+        const { Dap } = await import('@octo/base');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const api = await import('../summaryApi');
+        mockPut.mockResolvedValueOnce({ data: { code: 0, data: { is_active: false } } });
+        await api.toggleSchedule(7, false);
+        expect(track.mock.calls.filter((c) => c[0] === 'smart_summary_timer_disabled')).toHaveLength(1);
+        track.mockRestore();
+    });
+
+    it('toggleSchedule(true) does NOT emit timer_disabled even on code===0 (re-enable edge)', async () => {
+        const { Dap } = await import('@octo/base');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const api = await import('../summaryApi');
+        mockPut.mockResolvedValueOnce({ data: { code: 0, data: { is_active: true } } });
+        await api.toggleSchedule(7, true);
+        expect(track.mock.calls.some((c) => c[0] === 'smart_summary_timer_disabled')).toBe(false);
+        track.mockRestore();
+    });
+});
+
+// DAP-271:emit 站点 props 回归(经 mock track 捕获 API 传入的 props;最终 sanitizer 行为另见 dmworkbase Dap.test)。
+describe('DAP-271 — emit 站点 props(finding 1 隐私 / finding 6 补齐)', () => {
+    async function trackFor(run: (api: typeof import('../summaryApi')) => Promise<unknown>, event: string) {
+        const { Dap } = await import('@octo/base');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const api = await import('../summaryApi');
+        await run(api);
+        const hit = track.mock.calls.find((c) => c[0] === event);
+        track.mockRestore();
+        return hit?.[1] as Record<string, unknown> | undefined;
+    }
+
+    const PII = '客户AcmeCorp机密并购项目复盘';
+
+    it('finding 1: custom_template_created 传 is_custom 且不含用户输入的 label/template_name', async () => {
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { template: { id: 'x' } } } });
+        const props = await trackFor((api) => api.createCustomTopicTemplate({ label: PII, description: PII }, { template_count_after: 2 }), 'smart_summary_custom_template_created');
+        expect(JSON.stringify(props)).not.toContain(PII);
+        expect(props).not.toHaveProperty('template_name');
+        expect(props).toMatchObject({ is_custom: true, template_count_after: 2 });
+    });
+
+    it('finding 1: preset/custom template_edited 传 template_id+is_custom,不含 label', async () => {
+        mockPut.mockResolvedValueOnce({ data: { code: 0, data: { template: {} } } });
+        const preset = await trackFor((api) => api.updateMyTopicTemplate('tpl_p', { label: PII, description: PII }), 'smart_summary_preset_template_edited');
+        expect(JSON.stringify(preset)).not.toContain(PII);
+        expect(preset).toMatchObject({ template_id: 'tpl_p', is_custom: false });
+
+        mockPut.mockResolvedValueOnce({ data: { code: 0, data: { template: {} } } });
+        const custom = await trackFor((api) => api.updateCustomTopicTemplate('tpl_c', { label: PII, description: PII }), 'smart_summary_custom_template_edited');
+        expect(JSON.stringify(custom)).not.toContain(PII);
+        expect(custom).toMatchObject({ template_id: 'tpl_c', is_custom: true });
+    });
+
+    it('finding 6: version_restored 透传 version_number(展示版本号)', async () => {
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: {} } });
+        const team = await trackFor((api) => api.restoreSummaryVersion(11, 22, 5), 'smart_summary_version_restored');
+        expect(team).toMatchObject({ summary_id: 11, version_number: 5 });
+
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: {} } });
+        const personal = await trackFor((api) => api.restorePersonalSummaryVersion(11, 22, 7), 'smart_summary_version_restored');
+        expect(personal).toMatchObject({ summary_id: 11, version_number: 7 });
+    });
+
+    it('finding 6: deleted/task_cancelled 透传受控 source 枚举', async () => {
+        mockDelete.mockResolvedValueOnce({ data: { code: 0, data: null } });
+        const del = await trackFor((api) => api.deleteSummary(9, 'list'), 'smart_summary_deleted');
+        expect(del).toMatchObject({ summary_id: 9, source: 'list' });
+
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: null } });
+        const cancel = await trackFor((api) => api.cancelSummary(9, 'detail'), 'smart_summary_task_cancelled');
+        expect(cancel).toMatchObject({ summary_id: 9, source: 'detail' });
+    });
+
+    it('finding 6: regenerated 透传 prev_status(team + personal)', async () => {
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 1 } } });
+        const team = await trackFor((api) => api.regenerateSummary(3, undefined, 4), 'smart_summary_regenerated');
+        expect(team).toMatchObject({ summary_id: 3, regenerate_type: 'team', prev_status: 4 });
+
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 1 } } });
+        const personal = await trackFor((api) => api.regeneratePersonalSummary(3, undefined, 2), 'smart_summary_regenerated');
+        expect(personal).toMatchObject({ summary_id: 3, regenerate_type: 'personal', prev_status: 2 });
+    });
+
+    it('finding 6: timer_disabled / recurring_participation_confirmed 透传 summary_id(非 scheduleId)', async () => {
+        mockPut.mockResolvedValueOnce({ data: { code: 0, data: { is_active: false } } });
+        const disabled = await trackFor((api) => api.toggleSchedule(50, false, 777), 'smart_summary_timer_disabled');
+        expect(disabled).toMatchObject({ summary_id: 777 });
+
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: null } });
+        const confirmed = await trackFor((api) => api.confirmSchedule(60, 888), 'smart_summary_recurring_participation_confirmed');
+        expect(confirmed).toMatchObject({ summary_id: 888 });
+    });
+});
+
+describe('B-1 — smart_summary_timer_configured frequency_unit/frequency_n 映射', () => {
+    async function trackFor(run: (api: typeof import('../summaryApi')) => Promise<unknown>, event: string) {
+        const { Dap } = await import('@octo/base');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const api = await import('../summaryApi');
+        await run(api);
+        const hit = track.mock.calls.find((c) => c[0] === event);
+        track.mockRestore();
+        return hit?.[1] as Record<string, unknown> | undefined;
+    }
+
+    // scheduleToParams 对周调度编码为 interval_days=every*7 + day_of_week，与「每 N 天」在
+    // 提交参数层字节相同。这些用例覆盖：日/周(每1)/双周/月，断言 frequency_* 正确。
+    const base = {
+        title: 't',
+        summary_mode: SummaryMode.BY_GROUP,
+        cron_expr: '',
+        time_range_type: 2 as const,
+        sources: [],
+    };
+
+    it('daily every 1 → {day, 1}(带 UI 真值)', async () => {
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { schedule_id: 1 } } });
+        const props = await trackFor(
+            (api) => api.createSchedule(
+                { ...base, interval_days: 1, interval_months: 0, day_of_week: 0, day_of_month: 0, run_time: '09:00' },
+                { unit: 'day', every: 1 },
+            ),
+            'smart_summary_timer_configured',
+        );
+        expect(props).toMatchObject({ frequency_unit: 'day', frequency_n: 1 });
+    });
+
+    it('weekly every 1 → {week, 1}(生产者把它编码成 interval_days=7,不能误报成 day)', async () => {
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { schedule_id: 2 } } });
+        const props = await trackFor(
+            (api) => api.createSchedule(
+                { ...base, interval_days: 7, interval_months: 0, day_of_week: 3, day_of_month: 0, run_time: '09:00' },
+                { unit: 'week', every: 1 },
+            ),
+            'smart_summary_timer_configured',
+        );
+        expect(props).toMatchObject({ frequency_unit: 'week', frequency_n: 1 });
+    });
+
+    it('biweekly → {week, 2}', async () => {
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { schedule_id: 3 } } });
+        const props = await trackFor(
+            (api) => api.createSchedule(
+                { ...base, interval_days: 14, interval_months: 0, day_of_week: 3, day_of_month: 0, run_time: '09:00' },
+                { unit: 'week', every: 2 },
+            ),
+            'smart_summary_timer_configured',
+        );
+        expect(props).toMatchObject({ frequency_unit: 'week', frequency_n: 2 });
+    });
+
+    it('monthly every 1 → {month, 1}', async () => {
+        mockPut.mockResolvedValueOnce({ data: { code: 0, data: { schedule_id: 4 } } });
+        const props = await trackFor(
+            (api) => api.updateSchedule(4,
+                { interval_days: 0, interval_months: 1, day_of_week: 0, day_of_month: 15, run_time: '09:00' },
+                { unit: 'month', every: 1 },
+            ),
+            'smart_summary_timer_configured',
+        );
+        expect(props).toMatchObject({ frequency_unit: 'month', frequency_n: 1 });
+    });
+
+    it('无 UI 真值兜底：interval_days 为 7 的整数倍且指定周几 → week；纯天 → day', async () => {
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { schedule_id: 5 } } });
+        const wk = await trackFor(
+            (api) => api.createSchedule(
+                { ...base, interval_days: 14, interval_months: 0, day_of_week: 3, day_of_month: 0, run_time: '09:00' },
+            ),
+            'smart_summary_timer_configured',
+        );
+        expect(wk).toMatchObject({ frequency_unit: 'week', frequency_n: 2 });
+
+        mockPost.mockResolvedValueOnce({ data: { code: 0, data: { schedule_id: 6 } } });
+        const dy = await trackFor(
+            (api) => api.createSchedule(
+                { ...base, interval_days: 3, interval_months: 0, day_of_week: 0, day_of_month: 0, run_time: '09:00' },
+            ),
+            'smart_summary_timer_configured',
+        );
+        expect(dy).toMatchObject({ frequency_unit: 'day', frequency_n: 3 });
     });
 });

@@ -596,10 +596,12 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
-        // contacts_searched:仅 keyword 非空(去抖后)发;不采 keyword
-        Dap.shared.track('contacts_searched', {})
-
+        // contacts_searched:仅 keyword 非空(去抖后)发;不采 keyword。
+        // has_result 需等结果算出,故 track 移到 searchContacts 之后(联系人或群任一有命中即 true)。
         const { contacts, groups } = searchContacts(keyword, this.contactsSearchIndex)
+        Dap.shared.track('contacts_searched', {
+            has_result: contacts.length > 0 || groups.length > 0,
+        })
 
         this.setState({
             isSearching: true,
@@ -619,9 +621,10 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private toggleSection = (section: ContactsDirectorySectionKey) => {
         const willExpand = this.state.expandedSection !== section
-        // contacts_group_expanded:仅展开态发(gate willExpand),props 恒空(不带 section)
+        // contacts_group_expanded:仅展开态发(gate willExpand)。group_type=展开的目录分区
+        // (groups/myBots/allContacts),就近取自 section;不带任何 id / 名称。
         if (willExpand) {
-            Dap.shared.track('contacts_group_expanded', {})
+            Dap.shared.track('contacts_group_expanded', { group_type: section })
         }
         this.setState({
             expandedSection: willExpand ? section : null,
@@ -629,9 +632,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private handleContactClick = (uid: string, isBot: boolean) => {
-        // contact_opened:补 is_ai / bot_type(system=botfather,余 custom;非 bot 为 null)
+        // contact_opened:补 contact_type(bot/person) / is_ai / bot_type(system=botfather,余 custom;非 bot 为 null)
         Dap.shared.track('contact_opened', {
             object_id: uid,
+            contact_type: isBot ? 'bot' : 'person',
             is_ai: isBot,
             bot_type: isBot ? (uid === 'botfather' ? 'system' : 'custom') : null,
         })
@@ -666,8 +670,8 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private handleFilterChange = (mode: ContactFilterMode) => {
         if (this.state.filterMode === mode) return
-        // contacts_filter_switched:已 guard 同值;props 恒空(不带 mode)
-        Dap.shared.track('contacts_filter_switched', {})
+        // contacts_filter_switched:已 guard 同值。filter_type=切换到的过滤模式(all/bots/humans),就近取自 mode。
+        Dap.shared.track('contacts_filter_switched', { filter_type: mode })
         const { items, indexList, indexItemMap, listRows } = this.getIndex(mode)
         this.flatItems = items
         this.maybePrefetchSmallList()
@@ -982,6 +986,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             Dap.shared.track('contact_message_clicked', {
                                 object_id: channel.channelID,
                                 contact_type: 'ai',
+                                is_ai: true,
                                 space_id: WKApp.shared.currentSpaceId || undefined,
                             })
                             WKApp.endpoints.showConversation(channel)

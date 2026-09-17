@@ -47,6 +47,12 @@ export interface SummaryWorkbenchTemplateScope {
   label: string;
   requirement: string;
   version?: number;
+  /**
+   * DAP-271 finding 6：模板来源(自定义/预置)。承载 TopicTemplate.is_custom，使
+   * workbench 侧 smart_summary_template_applied / smart_summary_started 能补 template_type /
+   * template_source。仅布尔枚举语义，不含任何名称/正文。
+   */
+  isCustom?: boolean;
 }
 
 export interface SummaryWorkbenchTimeRangeScope {

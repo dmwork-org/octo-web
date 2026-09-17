@@ -14,6 +14,7 @@ import {
 } from "../../Service/Thread";
 import { ThreadPanelVM, ThreadPanelState } from "./vm";
 import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import {
   X,
   Plus,
@@ -1189,7 +1190,10 @@ export default class ThreadPanel extends Component<
     }
     if (!groupNo) return;
 
-    Dap.shared.track('channel_subchannel_create_dialog_opened', {})
+    // channel_id=子区所属父群(groupNo 即父群 channelID,归一 bare id)。
+    Dap.shared.track('channel_subchannel_create_dialog_opened', {
+      channel_id: stripSpacePrefix(groupNo),
+    })
     this.setState({ createDialogVisible: true, createError: null });
   };
 

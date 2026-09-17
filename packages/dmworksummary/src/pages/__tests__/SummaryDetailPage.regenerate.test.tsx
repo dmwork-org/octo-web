@@ -14,6 +14,7 @@ vi.mock("@octo/base", async () => ({
     t: (key: string) => key,
     ForwardService: {},
     interpretForwardResult: vi.fn(),
+    Dap: { shared: { track: vi.fn() } },
     I18nContext: React.createContext({ t: (key: string) => key }),
 }));
 vi.mock("@octo/base/src/Components/VoiceInputButton", () => ({
@@ -218,7 +219,8 @@ describe("SummaryDetailPage regenerate dialog", () => {
         const submit = elements.find(node => node.type === "button" && node.props.children === "summary.detail.regenerate");
         expect(submit?.props.disabled).toBe(false);
         await page.handleRegenerateConfirm();
-        expect(team ? api.regenerateSummary : api.regeneratePersonalSummary).toHaveBeenCalledWith(1, { topic: "instruction" });
+        // DAP-271 finding 6：第三参为 prev_status（就近取自 detail.status；本用例 detail 未设 status → undefined）。
+        expect(team ? api.regenerateSummary : api.regeneratePersonalSummary).toHaveBeenCalledWith(1, { topic: "instruction" }, undefined);
         expect(api.saveGenerationConfig).not.toHaveBeenCalled();
         expect(page.state.detail?.title).toBe("Legacy title");
         if (!team) expect(page.state.detail?.topic).toBe("Preferred topic");
@@ -252,7 +254,7 @@ describe("SummaryDetailPage regenerate dialog", () => {
                 start: startOfLocalDay(rangeStart).toISOString(),
                 end: endOfLocalDay(rangeEnd).toISOString(),
             },
-        });
+        }, undefined);
         expect(stream).toHaveBeenCalledWith(1);
         expect(api.createSchedule).not.toHaveBeenCalled();
         expect(page.state.showRegenerateModal).toBe(false);
@@ -379,7 +381,7 @@ describe("SummaryDetailPage regenerate dialog", () => {
 
     expect(api.regenerateSummary).toHaveBeenCalledWith(1, {
       topic: "New project summary",
-    });
+    }, undefined);
     });
 
     it("keeps a voice transcription in the mode active when recording began", () => {

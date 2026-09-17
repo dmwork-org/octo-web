@@ -155,7 +155,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
 
   function handleSelectedTagsChange(next: string[]) {
     // 用户增删 tag 过滤;原先误用 GET /plugin_tags 加载 tag 列表推断。
-    Dap.shared.track("market_tag_filtered", {});
+    Dap.shared.track("market_tag_filtered", { market_type: "skill" });
     setSelectedTags(next);
   }
 
@@ -333,7 +333,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                   role="menuitem"
                   data-testid="skill-publish-method-manual"
                   onClick={() => {
-                    Dap.shared.track("market_manual_publish_dialog_opened", {});
+                    Dap.shared.track("market_manual_publish_dialog_opened", { market_type: "skill" });
                     setPublishMenuOpen(false);
                     // Plain upload, not a review resubmit — clear any review
                     // context left over from an earlier 提交审核 click.

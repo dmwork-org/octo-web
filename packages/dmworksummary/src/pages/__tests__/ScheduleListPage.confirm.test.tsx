@@ -57,7 +57,8 @@ describe("ScheduleListPage.handleUpdate — V5 confirm_policy passthrough", () =
 
         expect(api.updateSchedule).toHaveBeenCalledWith(
             5,
-            expect.objectContaining({ confirm_policy: 1 })
+            expect.objectContaining({ confirm_policy: 1 }),
+            undefined, // B-1：handleUpdate 直调无 uiHint(ScheduleForm 才透传)
         );
     });
 
@@ -80,7 +81,8 @@ describe("ScheduleListPage.handleUpdate — V5 confirm_policy passthrough", () =
 
         expect(api.updateSchedule).toHaveBeenCalledWith(
             6,
-            expect.objectContaining({ confirm_policy: 1 })
+            expect.objectContaining({ confirm_policy: 1 }),
+            undefined, // B-1：handleUpdate 直调无 uiHint
         );
     });
 
@@ -188,7 +190,7 @@ describe("legacy schedule recovery controls", () => {
             title: "Updated",
             interval_days: 14,
             run_time: "10:00",
-        }));
+        }), undefined); // B-1：handleUpdate 直调无 uiHint
         expect(api.createSchedule).not.toHaveBeenCalled();
         expect(api.listSchedules).toHaveBeenCalledOnce();
         expect(page.state.editingSchedule).toBeNull();

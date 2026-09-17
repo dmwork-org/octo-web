@@ -7,6 +7,7 @@ import type {
     SourceItem,
     SummaryModeType,
     ScheduleUnit,
+    ScheduleUiHint,
 } from "../types/summary";
 import {
     getTimeRangeTypeOptions,
@@ -18,7 +19,8 @@ import SourceSelector from "./SourceSelector";
 
 interface ScheduleFormProps {
     initialValues?: Partial<CreateScheduleParams>;
-    onSubmit: (values: CreateScheduleParams) => void;
+    // B-1：第二参数携带 UI 单位真值，供调用方透传给埋点（区分「每 N 周」与「每 N*7 天」）。
+    onSubmit: (values: CreateScheduleParams, uiHint?: ScheduleUiHint) => void;
     onCancel?: () => void;
     loading?: boolean;
 }
@@ -120,7 +122,7 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
             run_time,
             time_range_type: timeRangeType,
             sources: cleanSources,
-        });
+        }, { unit: config.unit, every: config.every });
     }, [title, summaryMode, unit, every, runTime, dayOfWeek, dayOfMonth, timeRangeType, sources, onSubmit]);
 
     return (

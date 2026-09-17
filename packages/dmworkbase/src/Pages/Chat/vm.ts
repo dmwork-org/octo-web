@@ -12,6 +12,7 @@ import { getImConnectStatus } from "../../im-runtime/connectStatus";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { chatPageTitleController } from "./chatPageTitleController";
 import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import { getCurrentImConversationStore } from "../../im-runtime/currentConversationStore";
 import { applyImSpaceContext } from "../../im-runtime/spaceContext";
 import { captureCurrentImConversationSyncContext } from "../../im-runtime/conversationSyncContext";
@@ -175,7 +176,9 @@ export class ChatVM extends ProviderListener {
         await WKApp.conversationProvider.clearConversationMessages(conversationWrap.conversation);
         if (!contextIsCurrent()) return;
         // Only explicit clear actions emit this business event, not generic offset requests.
-        Dap.shared.track("conversation_cleared", {});
+        Dap.shared.track("conversation_cleared", {
+            channel_id: stripSpacePrefix(channel.channelID),
+        });
         conversationWrap.conversation.lastMessage = undefined;
         conversationWrap.conversation.unread = 0;
         if (WKApp.shared.currentSpaceId && channel.channelType === ChannelTypePerson &&

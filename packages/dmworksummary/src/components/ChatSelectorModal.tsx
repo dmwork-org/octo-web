@@ -307,7 +307,8 @@ export default class ChatSelectorModal extends Component<Props, State> {
         } else {
             if (localSelected.length >= maxSelect) return;
             // 仅「选中」(add)一沿采集,取消勾选不计;原先误用 GET /summary-chat-candidates 列表加载推断。
-            Dap.shared.track("smart_summary_scope_channel_selected", {});
+            // DAP-266：补 channel_count（本次选中后的已选频道数 = 现有 + 1）。
+            Dap.shared.track("smart_summary_scope_channel_selected", { channel_count: localSelected.length + 1 });
             this.setState({ localSelected: [...localSelected, item] });
         }
     };

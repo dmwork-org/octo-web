@@ -40,6 +40,11 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // market_searched 需带 has_result(结果计数),而检索的 debounce 与结果 fetch 解耦在两个 effect。
+  // DAP-271 finding 3：按 **query identity** 管理待上报状态——记录「待上报的检索词」,仅当某次首页
+  // fetch 用的正是该检索词且成功时消费一次。失败/取消/清空/被新检索词替换时相应清除或改写,避免把
+  // 普通列表(清空关键词)或另一条检索误记成本次检索成功。null 表示当前无待上报检索。绝不采 keyword 文本。
+  const pendingSearchQueryRef = useRef<string | null>(null);
 
   const fetchPage = useCallback(
     async (nextCursor?: string | null) => {
@@ -118,9 +123,29 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
         );
         setTotal(page.total);
         setCursor(page.nextCursor);
+        // 检索触发的首页拉取成功后发 market_searched(market_type='skill'),带 has_result。
+        // DAP-271 finding 3：仅首页(!isMore)、且本次 fetch 用的检索词(debouncedQuery)正是待上报的检索词
+        // (query identity 匹配)时消费一次;分类/标签/加载更多、以及清空关键词后的普通列表 fetch 都不发。
+        if (
+          !isMore &&
+          pendingSearchQueryRef.current !== null &&
+          pendingSearchQueryRef.current === debouncedQuery
+        ) {
+          pendingSearchQueryRef.current = null;
+          Dap.shared.track("market_searched", {
+            market_type: "skill",
+            has_result: page.total > 0,
+          });
+        }
       } catch (err) {
         if (controller.signal.aborted) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
+        // DAP-271 finding 3：本次检索请求失败——清除对应待上报标记,避免清空关键词后普通列表成功被误记
+        //   成本次检索成功。仅清除与当前失败 fetch 检索词一致的标记(被更新检索词替换的场景已由上面
+        //   的 identity 匹配天然隔离)。
+        if (pendingSearchQueryRef.current === debouncedQuery) {
+          pendingSearchQueryRef.current = null;
+        }
         setError(
           err instanceof Error
             ? err.message
@@ -139,9 +164,12 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedQuery(query);
-      // 埋点 317:遥测 fire-and-forget，放在 setDebouncedQuery 之后 —— debounce 主逻辑先落地;
-      // track() 内部以 safe() 自吞异常(Dap 未初始化 / 测试未 mock 时静默),不回灌到本回调。
-      if (query.trim()) Dap.shared.track("market_searched", {});
+      // 埋点 317:market_searched 移到结果 fetch 返回后再发,以带 has_result。这里按 query identity 记录
+      // 待上报的检索词,由 debouncedQuery 变化触发的下一次首页 fetch 成功后消费(见 fetchPage)。
+      // DAP-271 finding 3：清空关键词(trim 为空)时清除待上报标记——清空后的普通列表 fetch 不得发
+      //   market_searched;非空检索词则记录该词本身以做后续 identity 匹配。绝不采 keyword 文本。
+      const trimmed = query.trim();
+      pendingSearchQueryRef.current = trimmed ? query : null;
     }, 300);
     return () => window.clearTimeout(timer);
   }, [query]);

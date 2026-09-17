@@ -375,7 +375,7 @@ export default class McpMarketListPage extends Component<
   };
 
   /** Initial / filtered load. Resets offset and replaces items. */
-  async loadData() {
+  async loadData(): Promise<number | undefined> {
     const requestVersion = ++this.requestVersion;
     this.syncQuery();
     this.setState({ loading: true, loadingMore: false, offset: 0, error: null });
@@ -389,7 +389,7 @@ export default class McpMarketListPage extends Component<
         limit: PAGE_SIZE,
         offset: 0,
       });
-      if (requestVersion !== this.requestVersion) return;
+      if (requestVersion !== this.requestVersion) return undefined;
       const selectedCategoryMissing =
         resp.categories.length > 1 &&
         this.state.categoriesSelected.some(
@@ -407,7 +407,7 @@ export default class McpMarketListPage extends Component<
           },
           () => this.loadData()
         );
-        return;
+        return undefined;
       }
       this.setState({
         items: resp.items,
@@ -416,13 +416,20 @@ export default class McpMarketListPage extends Component<
         offset: resp.items.length,
         loading: false,
       });
+      // 返回本次首页命中总数,供 handleKeyword 发 market_searched 时就近取 has_result;
+      // 被后续请求覆盖(requestVersion 变化)或分类回退重查的分支返回 undefined → 不发本轮埋点。
+      return resp.total;
     } catch (err: unknown) {
-      if (requestVersion !== this.requestVersion) return;
+      if (requestVersion !== this.requestVersion) return undefined;
       this.setState({
         loading: false,
         items: [],
         error: t(mcpListErrorI18nKey(err)),
       });
+      // DAP-271 finding 4：请求失败返回 undefined(明确「无有效结果」),与「成功但零命中」(return 0)
+      //   区分开——handleKeyword 只在 total !== undefined 时打点,故失败不再被伪装成 has_result=false 的
+      //   零命中搜索。只有真正取得搜索结果(含成功零命中)才发 market_searched。
+      return undefined;
     }
   }
 
@@ -789,10 +796,17 @@ export default class McpMarketListPage extends Component<
     this.setState({ keyword: value });
     if (this.searchTimer) clearTimeout(this.searchTimer);
     this.searchTimer = setTimeout(() => {
-      this.loadData();
-      // 埋点 317:遥测 fire-and-forget，放在 loadData 之后 —— 搜索主逻辑先落地;track() 内部
-      // 以 safe() 自吞异常(Dap 未初始化 / 测试未 mock 时静默),不回灌到本回调。
-      if (value.trim()) Dap.shared.track("market_searched", {});
+      // 埋点 317:market_searched 移到 loadData 结果返回后再发,以带 has_result(首页是否有命中)。
+      // market_type='mcp'(本页为 MCP 市场)。track() 内部 safe() 自吞异常,不回灌本回调。
+      const searched = value.trim();
+      void this.loadData().then((total) => {
+        if (searched && total !== undefined) {
+          Dap.shared.track("market_searched", {
+            market_type: "mcp",
+            has_result: total > 0,
+          });
+        }
+      });
     }, 300);
   };
 
@@ -808,7 +822,11 @@ export default class McpMarketListPage extends Component<
     // market_category_filtered:仅在选中分类实际变化时计一次。原 TrackRules 的 mcp-category-pill
     // 点击规则对「重复点已选分类 / 空态点 all」也触发 → 虚增(见 review P2-7)。已移除该规则,改此处 gate。
     if (nextSel[0] !== prevSel[0] || nextSel.length !== prevSel.length) {
-      Dap.shared.track("market_category_filtered", {});
+      // market_type='mcp';category=选中的分类 key(all 或空态归 'all')。仅记枚举 key,不带名称。
+      Dap.shared.track("market_category_filtered", {
+        market_type: "mcp",
+        category: nextSel[0] ?? "all",
+      });
     }
     this.setState({ categoriesSelected: nextSel }, () => this.loadData());
   };
@@ -819,7 +837,7 @@ export default class McpMarketListPage extends Component<
    *  toggle several tags in one interaction. */
   private handleToggleTag = (tag: string) => {
     // 用户点 tag 过滤(选/取消都算一次过滤动作);原先误用 GET /plugin_tags 加载 tag 列表推断。
-    Dap.shared.track("market_tag_filtered", {});
+    Dap.shared.track("market_tag_filtered", { market_type: "mcp" });
     this.setState((prev) => ({
       tagsSelected: prev.tagsSelected.includes(tag)
         ? prev.tagsSelected.filter((t) => t !== tag)
@@ -830,7 +848,7 @@ export default class McpMarketListPage extends Component<
   private handleClearTags = () => {
     if (this.state.tagsSelected.length === 0) return;
     // 清空 tag 与逐个 toggle 改变同一 tagsSelected、触发同一 loadData(),同属过滤动作,一并计数(见二审 P2-3)。
-    Dap.shared.track("market_tag_filtered", {});
+    Dap.shared.track("market_tag_filtered", { market_type: "mcp" });
     this.setState({ tagsSelected: [] }, () => this.loadData());
   };
 
@@ -1030,7 +1048,7 @@ export default class McpMarketListPage extends Component<
                     role="menuitem"
                     data-testid="mcp-publish-method-manual"
                     onClick={() => {
-                      Dap.shared.track("market_manual_publish_dialog_opened", {})
+                      Dap.shared.track("market_manual_publish_dialog_opened", { market_type: "mcp" })
                       this.setState({ publishMenuOpen: false, createVisible: true })
                     }}
                   >

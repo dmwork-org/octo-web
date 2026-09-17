@@ -75,7 +75,11 @@ export default class MemberSelectorModal extends Component<Props, State> {
             this.setState({ localSelected: localSelected.filter((s) => s.user_id !== item.user_id) });
         } else {
             // 仅「选中」(add)一沿采集,取消勾选不计;原先误用 GET /summary-member-candidates 列表加载推断。
-            Dap.shared.track("smart_summary_scope_participant_selected", {});
+            // DAP-266：补 participant_count（选中后的已选人数）+ participant_source（搜索态/列表态,不带关键词文本）。
+            Dap.shared.track("smart_summary_scope_participant_selected", {
+                participant_count: localSelected.length + 1,
+                participant_source: this.state.keyword ? 'search' : 'list',
+            });
             this.setState({ localSelected: [...localSelected, item] });
         }
     };
