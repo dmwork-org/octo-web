@@ -31,9 +31,10 @@ vi.mock("../api/summaryApi", () => ({
   getSummaryShare: vi.fn(async () => ({ source_accessible: false })),
 }));
 vi.mock("../pages/SummaryListPage", () => ({
-  default: ({ onCreateNew, onViewDetail, refreshKey }: any) => (
+  default: ({ onCreateNew, onViewDetail, refreshKey, backgroundRefreshKey }: any) => (
     <div data-testid="workspace-list">
       <span data-testid="workspace-list-refresh">{refreshKey}</span>
+      <span data-testid="workspace-list-background-refresh">{backgroundRefreshKey}</span>
       <button onClick={() => onCreateNew("agent")}>create-agent</button>
       <button onClick={() => onCreateNew("unified")}>create-unified</button>
       <button onClick={() => onViewDetail(17)}>open-detail</button>
@@ -107,7 +108,12 @@ vi.mock("../pages/SummaryConfirmPage", () => ({
 }));
 
 vi.mock("../pages/ScheduleListPage", () => ({
-  default: ({ onBack }: any) => <button onClick={onBack}>schedule-back</button>,
+  default: ({ onBack, refreshKey }: any) => (
+    <div>
+      <span data-testid="schedule-refresh">{refreshKey}</span>
+      <button onClick={onBack}>schedule-back</button>
+    </div>
+  ),
 }));
 
 import SummaryWorkspace from "./SummaryWorkspace";
@@ -193,6 +199,7 @@ describe("SummaryWorkspace", () => {
       taskId: 23,
     });
     expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("1");
+    expect(screen.getByTestId("workspace-list-background-refresh")).toHaveTextContent("0");
 
     fireEvent.click(screen.getByText("open-confirm"));
     expect(onRouteChange).toHaveBeenLastCalledWith({
@@ -274,9 +281,31 @@ describe("SummaryWorkspace", () => {
 
     expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("0");
     act(() => invalidate());
-    expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("1");
+    expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("0");
+    expect(screen.getByTestId("workspace-list-background-refresh")).toHaveTextContent("1");
 
     view.unmount();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes summary invalidations to the schedules route", () => {
+    let invalidate = () => {};
+    const messaging = {
+      getCurrentUser: () => ({ uid: "u1", displayName: "User" }),
+      loadConversationMembers: vi.fn(async () => []),
+      openConversation: vi.fn(async () => {}),
+      notifySummaryCompleted: vi.fn(async () => {}),
+      requestForward: vi.fn(),
+      subscribeInvalidation: vi.fn((listener: () => void) => {
+        invalidate = listener;
+        return () => {};
+      }),
+    } satisfies SummaryMessagingPort;
+    render(<Harness initialRoute={{ view: "schedules" }} messaging={messaging} />);
+
+    expect(screen.getByTestId("schedule-refresh")).toHaveTextContent("0");
+    act(() => invalidate());
+    expect(screen.getByTestId("workspace-list-background-refresh")).toHaveTextContent("1");
+    expect(screen.getByTestId("schedule-refresh")).toHaveTextContent("1");
   });
 });
