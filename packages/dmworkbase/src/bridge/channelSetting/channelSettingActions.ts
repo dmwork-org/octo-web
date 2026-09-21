@@ -1,4 +1,4 @@
-import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import {
@@ -38,6 +38,7 @@ import {
   isChannelInfoFetchResultCurrent,
   patchImChannelInfoOrgData,
 } from "../../im-runtime/channelRuntime";
+import { captureCurrentImConversationSyncContext } from "../../im-runtime/conversationSyncContext";
 import { Dap } from "../../Service/Dap";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import PinnedService from "../../Service/PinnedService";
@@ -47,6 +48,7 @@ import {
 } from "../../im-runtime/currentConversationRuntime";
 
 export interface ChannelSettingActionRuntime {
+  captureContext?: () => () => boolean;
   addSubscribers(channel: Channel, uids: string[]): Promise<void>;
   clearConversationMessages(conversation: any): Promise<void>;
   createChannel(uids: string[]): Promise<{ group_no?: string } | undefined>;
@@ -114,6 +116,7 @@ interface ChannelSettingSubscriber {
 
 function defaultRuntime(): ChannelSettingActionRuntime {
   return {
+    captureContext: captureCurrentImConversationSyncContext,
     addSubscribers(channel, uids) {
       return addChannelSubscribersApi(channel, uids);
     },
@@ -230,9 +233,13 @@ function defaultRuntime(): ChannelSettingActionRuntime {
   };
 }
 
-const threadMuteCacheSyncVersions = new Map<string, number>();
+const muteCacheSyncVersions = new Map<string, number>();
+const pendingMuteSaves = new Map<string, {
+  promise: Promise<void>;
+  isCurrent: () => boolean;
+}>();
 
-function patchThreadMuteCache(
+function patchMuteCache(
   runtime: ChannelSettingActionRuntime,
   channel: Channel,
   mute: boolean
@@ -240,32 +247,37 @@ function patchThreadMuteCache(
   const channelInfo = runtime.getCurrentChannelInfo(channel);
   if (!channelInfo) return;
 
+  // SDK fetches can cache a bare peer alias under a Space-prefixed request key.
+  channelInfo.channel = channel;
   channelInfo.mute = mute;
-  patchImChannelInfoOrgData(channelInfo, {
-    thread: {
-      ...(channelInfo.orgData?.thread || {}),
-      mute: mute ? 1 : 0,
-    },
-  });
+  if (channel.channelType === ChannelTypeCommunityTopic) {
+    patchImChannelInfoOrgData(channelInfo, {
+      thread: {
+        ...(channelInfo.orgData?.thread || {}),
+        mute: mute ? 1 : 0,
+      },
+    });
+  }
   runtime.setCurrentChannelInfo(channelInfo);
   runtime.notifyCurrentChannelInfo(channelInfo);
 }
 
-function syncThreadMuteCacheAfterSave(
+function syncMuteCacheAfterSave(
   runtime: ChannelSettingActionRuntime,
   channel: Channel,
-  mute: boolean
+  mute: boolean,
+  isCurrent: () => boolean
 ) {
   const channelKey = channel.getChannelKey();
-  const version = (threadMuteCacheSyncVersions.get(channelKey) || 0) + 1;
-  threadMuteCacheSyncVersions.set(channelKey, version);
+  const version = (muteCacheSyncVersions.get(channelKey) || 0) + 1;
+  muteCacheSyncVersions.set(channelKey, version);
 
   const pendingFetches = runtime.getPendingChannelInfoFetches(channel);
-  patchThreadMuteCache(runtime, channel, mute);
+  patchMuteCache(runtime, channel, mute);
 
   if (!pendingFetches || pendingFetches.length === 0) {
-    if (threadMuteCacheSyncVersions.get(channelKey) === version) {
-      threadMuteCacheSyncVersions.delete(channelKey);
+    if (muteCacheSyncVersions.get(channelKey) === version) {
+      muteCacheSyncVersions.delete(channelKey);
     }
     return;
   }
@@ -275,13 +287,13 @@ function syncThreadMuteCacheAfterSave(
     void pendingFetch
       .catch(() => undefined)
       .then(() => {
-        if (threadMuteCacheSyncVersions.get(channelKey) !== version) return;
-        if (isChannelInfoFetchResultCurrent(pendingFetch)) {
-          patchThreadMuteCache(runtime, channel, mute);
+        if (muteCacheSyncVersions.get(channelKey) !== version) return;
+        if (isCurrent() && isChannelInfoFetchResultCurrent(pendingFetch)) {
+          patchMuteCache(runtime, channel, mute);
         }
         remainingFetches -= 1;
         if (remainingFetches === 0) {
-          threadMuteCacheSyncVersions.delete(channelKey);
+          muteCacheSyncVersions.delete(channelKey);
         }
       });
   });
@@ -510,17 +522,35 @@ export async function muteChannelSetting(params: {
   runtime?: ChannelSettingActionRuntime;
 }) {
   const runtime = runtimeOrDefault(params.runtime);
-  await runtime.muteChannel(params.channel, params.mute);
-  if (params.channel.channelType === ChannelTypeCommunityTopic) {
-    syncThreadMuteCacheAfterSave(runtime, params.channel, params.mute);
-  }
-  // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
-  // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,
-  // 已删除 body 规则;改到这里统一命令式单通道(见 M3)。
-  // 门控:仅在 updateChannelSetting 确会发出请求时才计点。畸形子区 channelID(解析失败)或
-  // 未知频道类型走静默 no-op,不该计一次 mute(见 #1452 review P2)。
-  if (channelSettingRequestIssued(params.channel)) {
-    Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute", channel_id: stripSpacePrefix(params.channel.channelID) });
+  const isCurrent = runtime.captureContext?.() ?? (() => true);
+  const key = params.channel.channelType === ChannelTypePerson
+    ? new Channel(stripSpacePrefix(params.channel.channelID), ChannelTypePerson).getChannelKey()
+    : params.channel.getChannelKey();
+  const previous = pendingMuteSaves.get(key);
+  const promise = (async () => {
+    // Serialize writes, not metadata reads, so the server sees the user's intent in order.
+    if (previous?.isCurrent()) await previous.promise.catch(() => undefined);
+    if (!isCurrent()) return;
+    await runtime.muteChannel(params.channel, params.mute);
+    // A successful save is authoritative even if the following metadata refresh fails.
+    if (isCurrent() && channelSettingRequestIssued(params.channel)) {
+      syncMuteCacheAfterSave(runtime, params.channel, params.mute, isCurrent);
+    }
+    // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
+    // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,
+    // 已删除 body 规则;改到这里统一命令式单通道(见 M3)。
+    // 门控:仅在 updateChannelSetting 确会发出请求时才计点。畸形子区 channelID(解析失败)或
+    // 未知频道类型走静默 no-op,不该计一次 mute(见 #1452 review P2)。
+    if (channelSettingRequestIssued(params.channel)) {
+      Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute", channel_id: stripSpacePrefix(params.channel.channelID) });
+    }
+  })();
+  const pending = { promise, isCurrent };
+  pendingMuteSaves.set(key, pending);
+  try {
+    await promise;
+  } finally {
+    if (pendingMuteSaves.get(key) === pending) pendingMuteSaves.delete(key);
   }
 }
 
