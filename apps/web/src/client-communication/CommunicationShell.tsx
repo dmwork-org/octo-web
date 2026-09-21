@@ -40,6 +40,9 @@ import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
 import { installSummaryRequests } from "./summaryRequests";
 import { createWorkspaceNavigationGuard } from "./workspaceNavigationGuard";
+import { getImChannelDisplayName, seedImChannelDisplayName } from "@octo/base/src/im-runtime/channelDisplayName";
+import { WorkspaceGroupProvider } from "@octo/base/src/features/workspaceGroup/WorkspaceGroupProvider";
+import { createWorkspaceGroupHost } from "./workspaceGroupHost";
 import "./index.css";
 
 type PendingNavigation = {
@@ -106,16 +109,8 @@ function openTarget(
   if (target.displayName || target.avatar || target.metadata) {
     const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
     info.channel = channel;
-    if (target.displayName) info.title = target.displayName;
-    else if (!info.title) info.title = target.channelId;
     if (target.avatar) info.logo = target.avatar;
-    const existingMetadata = info.orgData && typeof info.orgData === "object"
-      ? info.orgData
-      : {};
-    info.orgData = {
-      ...existingMetadata,
-      ...(target.metadata || {}),
-    };
+    seedImChannelDisplayName(info, target.displayName, target.metadata);
     setCurrentImChannelInfoCache(info);
     if (!findCurrentImConversation(channel)) {
       createCurrentEmptyImConversation(channel);
@@ -127,7 +122,8 @@ function openTarget(
       <NavigationCommitBoundary onCommit={() => onCommitted?.()}>
         {renderAppBotConversation({
           channelId: target.channelId,
-          displayName: target.displayName || target.channelId,
+          displayName: getImChannelDisplayName(getCurrentImChannelInfo(channel)) ||
+            target.displayName?.trim() || t("base.chatPage.nameUnavailable"),
         }, channel)}
       </NavigationCommitBoundary>,
     );
@@ -174,6 +170,7 @@ export function CommunicationShell({
   const currentTargetRef = useRef<ConversationTarget | undefined>();
   const workspaceReturnTargetRef = useRef<Channel | undefined>();
   const workspaceNavigationGuard = useMemo(() => createWorkspaceNavigationGuard(), []);
+  const workspaceGroups = useMemo(() => createWorkspaceGroupHost(bridge), [bridge]);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
@@ -376,6 +373,7 @@ export function CommunicationShell({
     };
 
     const dispose = bridge.onCommand((command: HostCommand) => {
+      workspaceGroups.handleCommand(command);
       if (command.type === "navigate") {
         if (command.target && !hasCompatibleTargetVariant(command.target)) {
           console.error("[client-communication] rejected incompatible conversation target", command.target);
@@ -475,7 +473,7 @@ export function CommunicationShell({
       WKApp.switchToMenuById = undefined;
       cancelNavigation();
     };
-  }, [activatePage, bridge, initialPage, cancelNavigation, navCommit, reportReadyWhenPrepared, runtimeOwned]);
+  }, [activatePage, bridge, initialPage, cancelNavigation, navCommit, reportReadyWhenPrepared, runtimeOwned, workspaceGroups]);
 
   useEffect(() => {
     if (runtimeOwned) return;
@@ -529,6 +527,7 @@ export function CommunicationShell({
   ), [activePage, contactsTitle]);
 
   return (
+    <WorkspaceGroupProvider value={workspaceGroups.host}>
     <WKBase onContext={(context) => {
       WKApp.shared.baseContext = context;
     }}>
@@ -550,5 +549,6 @@ export function CommunicationShell({
         />
       </div>
     </WKBase>
+    </WorkspaceGroupProvider>
   );
 }
