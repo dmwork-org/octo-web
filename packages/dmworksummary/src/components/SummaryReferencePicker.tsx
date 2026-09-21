@@ -190,8 +190,9 @@ export default class SummaryReferencePicker extends Component<
     };
 
     private handleSelect = (task: SummaryListItem) => {
-        // 埋点 301:agent 总结里选中一条历史总结作为引用（隐私 props 恒空）。
-        Dap.shared.track("smart_summary_agent_reference_added", {});
+        // 埋点 301:agent 总结里选中一条历史总结作为引用。
+        // DAP-266：补 referenced_summary_id（被引用总结的 task_id,标识非内容）。
+        Dap.shared.track("smart_summary_agent_reference_added", { referenced_summary_id: task.task_id });
         this.props.onSelect(task);
     };
 

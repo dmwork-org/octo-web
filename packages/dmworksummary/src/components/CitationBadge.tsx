@@ -1,6 +1,15 @@
 import React, { useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { Popover } from "@douyinfe/semi-ui";
-import { i18n, useI18n } from "@octo/base";
+import { Popover, Toast } from "@douyinfe/semi-ui";
+import {
+    buildDocLink,
+    Dap,
+    getDocsDocumentOpener,
+    getElectronLinksBridge,
+    i18n,
+    resolveDocLinkForExternalOpen,
+    useI18n,
+    webOrigin,
+} from "@octo/base";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
@@ -236,6 +245,52 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
 function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; badgeKey: string; closeKey: (key: string) => void }) {
     const { t } = useI18n();
     const messaging = useSummaryMessaging();
+    if (citation.document_id) {
+        return (
+            <button
+                type="button"
+                className="citation-jump-link"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    closeKey(badgeKey);
+                    const docId = citation.document_id!;
+                    const url = buildDocLink({ docId });
+                    const hostOpener = getDocsDocumentOpener();
+                    if (hostOpener) {
+                        void hostOpener({ docId, url }).catch(() => {
+                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                        });
+                        return;
+                    }
+                    const linksBridge = getElectronLinksBridge();
+                    if (linksBridge) {
+                        void linksBridge
+                            .openExternal(resolveDocLinkForExternalOpen(url, webOrigin()))
+                            .then((result) => {
+                                if (!result.ok) Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            })
+                            .catch(() => {
+                                Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            });
+                        return;
+                    }
+                    const opened = window.open("about:blank", "_blank");
+                    if (!opened) {
+                        Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                        return;
+                    }
+                    try {
+                        opened.opener = null;
+                    } catch {
+                        // Some browser sandboxes freeze the opener setter.
+                    }
+                    opened.location.href = url;
+                }}
+            >
+                {t("summary.citation.openDocument")}
+            </button>
+        );
+    }
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
@@ -246,6 +301,10 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
             <span style={{ fontSize: 12, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)', cursor: 'pointer' }}
                 onClick={(e) => {
                     e.stopPropagation();
+                    // DAP-218 M11：从引用预览「跳转到原文」手势。
+                    // DAP-266：spec 仅 summary_id；JumpLink 为引用叶子组件，summary_id 需穿透 CitationText
+                    //   渲染管线(9+ 处) plumb → 非就近，DEFER。
+                    Dap.shared.track("smart_summary_reference_jumped", {});
                     closeKey(badgeKey);
                     let channelId = citation.channel_id!;
                     const channelType = resolveChannelType(citation.channel_type);
@@ -273,7 +332,7 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
  * Click pins the popover (survives mouseleave), click again unpins. Hover
  * shows a temporary preview that fades on mouseleave.
  */
-function useHoverPin(pinned: boolean) {
+function useHoverPin(pinned: boolean, refCount?: number) {
     const [hovering, setHovering] = useState(false);
     const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -286,8 +345,16 @@ function useHoverPin(pinned: boolean) {
     const onMouseEnter = useCallback(() => {
         if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
         if (hovering || pinned) return;
-        openTimer.current = setTimeout(() => setHovering(true), HOVER_OPEN_DELAY_MS);
-    }, [hovering, pinned]);
+        openTimer.current = setTimeout(() => {
+            // DAP-218 M11：引用悬停预览真正展开(经 HOVER_OPEN_DELAY_MS 延迟)时发。
+            // DAP-266：补 ref_count（引用总条数,调用方经参数传入）。summary_id 为引用叶子组件,
+            //   需穿透 CitationText 渲染管线(9+ 处) plumb → 非就近,DEFER。
+            Dap.shared.track("smart_summary_reference_hovered", {
+                ...(refCount != null ? { ref_count: refCount } : {}),
+            });
+            setHovering(true);
+        }, HOVER_OPEN_DELAY_MS);
+    }, [hovering, pinned, refCount]);
 
     const onMouseLeave = useCallback(() => {
         if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; }
@@ -309,7 +376,7 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
     const shownIndex = displayIndex ?? index;
 
     const pinned = activeKey === badgeKey;
-    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
+    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned, citations.length);
 
     // Document-level Escape: works regardless of focus (e.g. after clicking jump link)
     useEffect(() => {
@@ -339,6 +406,16 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
                         {t("summary.citation.source", { values: { source: citation.source } })}
                     </div>
                 )}
+                {citation.document_id && (
+                    <div className="citation-msg-source">
+                        {t("summary.citation.documentLocation", {
+                            values: {
+                                version: citation.document_version ?? "-",
+                                chunk: citation.document_chunk ?? "-",
+                            },
+                        })}
+                    </div>
+                )}
                 <div className="citation-msg-body">{citation.content}</div>
             </div>
         </div>
@@ -352,6 +429,16 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
                     {formatTime(citation.sent_at)}
                 </span>
             </div>
+            {citation.document_id && (
+                <div className="citation-msg-source">
+                    {t("summary.citation.documentLocation", {
+                        values: {
+                            version: citation.document_version ?? "-",
+                            chunk: citation.document_chunk ?? "-",
+                        },
+                    })}
+                </div>
+            )}
             <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <ContextMessages messages={citation.context_before} />
@@ -388,9 +475,17 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
                 aria-expanded={visible}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
-                onClick={() => onBadgeClick(badgeKey)}
+                onClick={() => {
+                    // DAP-218 M11：点击引用角标「展开」预览时发(仅展开边,再点收起不计);props 留空。
+                    if (!pinned) Dap.shared.track("smart_summary_reference_clicked", { ref_count: citations.length });
+                    onBadgeClick(badgeKey);
+                }}
                 onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBadgeClick(badgeKey); }
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (!pinned) Dap.shared.track("smart_summary_reference_clicked", { ref_count: citations.length });
+                        onBadgeClick(badgeKey);
+                    }
                     if (e.key === 'Escape' && pinned) { e.preventDefault(); closeKey(badgeKey); }
                 }}
             >[{shownIndex}]</sup>
@@ -417,7 +512,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
     }, [indicesKey, displayIndices?.join(',')]);
 
     const pinned = activeKey === badgeKey;
-    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
+    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned, citations.length);
 
     // Document-level Escape: works regardless of focus (e.g. after clicking jump link)
     useEffect(() => {
@@ -453,6 +548,16 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                     {c.source && (
                         <div className="citation-msg-source">
                             {t("summary.citation.source", { values: { source: c.source } })}
+                        </div>
+                    )}
+                    {c.document_id && (
+                        <div className="citation-msg-source">
+                            {t("summary.citation.documentLocation", {
+                                values: {
+                                    version: c.document_version ?? "-",
+                                    chunk: c.document_chunk ?? "-",
+                                },
+                            })}
                         </div>
                     )}
                     <div className="citation-msg-body">{c.content}</div>
@@ -523,9 +628,17 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                 aria-expanded={visible}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
-                onClick={() => onBadgeClick(badgeKey)}
+                onClick={() => {
+                    // DAP-218 M11：点击引用角标「展开」预览时发(仅展开边,再点收起不计);props 留空。
+                    if (!pinned) Dap.shared.track("smart_summary_reference_clicked", { ref_count: citations.length });
+                    onBadgeClick(badgeKey);
+                }}
                 onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBadgeClick(badgeKey); }
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (!pinned) Dap.shared.track("smart_summary_reference_clicked", { ref_count: citations.length });
+                        onBadgeClick(badgeKey);
+                    }
                     if (e.key === 'Escape' && pinned) { e.preventDefault(); closeKey(badgeKey); }
                 }}
             >[{label}]</sup>

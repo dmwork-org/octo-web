@@ -73,9 +73,10 @@ describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
   it("§D shared pagination rejects stale work while disabled", () => {
     expect(paginationHookSrc).toMatch(/if\s*\(\s*!enabled\s*\|\|\s*\(cursor/);
     // The runSearch callback depends on the stale-guard trio plus the optional
-    // first-page onQueryStart hook (channel_search_query 埋点),避免闭包过期。
+    // first-page onQueryStart / onQueryComplete hooks (channel_search_query 埋点,
+    // has_result 需结果返回后才知),避免闭包过期。
     expect(paginationHookSrc).toMatch(
-      /\[enabled,\s*errorMessage,\s*search,\s*onQueryStart\]/
+      /\[enabled,\s*errorMessage,\s*search,\s*onQueryStart,\s*onQueryComplete\]/
     );
   });
 });

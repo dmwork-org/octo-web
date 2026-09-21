@@ -60,6 +60,10 @@ import {
 } from "../../Messages/InteractiveCard/agentProgressFallback";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
+import {
+    isImReadAttentionAllowed,
+    subscribeImReadAttention,
+} from "../../im-runtime/readAttentionHost";
 import { isSummaryTipContent } from "../../Messages/SummaryNotify/protocol";
 
 export interface FoldSessionParticipant {
@@ -154,6 +158,24 @@ export function matchBotfatherCommandEvent(text: string): string | undefined {
     return "botfather_command_sent"
 }
 
+/**
+ * DAP-271 finding 6：按消息内容类型判定「是否带附件」(message_sent.has_attachment)。
+ * 附件语义 = 携带媒体/文件负载的消息：图片/gif/语音/小视频/文件/富文本(图文混排)。
+ * 贴纸(lottie)/名片/互动卡/文档转发卡/纯文本/系统消息等非附件 → false。
+ * 仅依据 contentType 枚举派生，不读取任何正文/文件名。
+ */
+const ATTACHMENT_CONTENT_TYPES = new Set<number>([
+    MessageContentTypeConst.image,
+    MessageContentTypeConst.gif,
+    MessageContentTypeConst.voice,
+    MessageContentTypeConst.smallVideo,
+    MessageContentTypeConst.file,
+    MessageContentTypeConst.richText,
+])
+export function isAttachmentContentType(contentType: number | undefined): boolean {
+    return contentType != null && ATTACHMENT_CONTENT_TYPES.has(contentType)
+}
+
 export default class ConversationVM extends ProviderListener {
 
     private static nextMessageContainerSeq = 0
@@ -206,6 +228,8 @@ export default class ConversationVM extends ProviderListener {
     private reactionSyncController: ReturnType<typeof createMessageReactionSyncController>
     private readonly registerAsOpenConversation: boolean
     private readonly openConversationOwner = Symbol("openConversationOwner")
+    private gateAllowed: boolean = isImReadAttentionAllowed()
+    private unsubscribeReadAttention?: () => void
     private ownedOpenConversation?: Conversation
 
     fileDragEnter?: boolean // 文件拖拽上传（拖进来了）
@@ -911,7 +935,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
     private claimOpenConversation(conversation: Conversation): void {
-        if (!this.registerAsOpenConversation) {
+        if (!this.registerAsOpenConversation || !this.gateAllowed) {
             return
         }
         WKSDK.shared().conversationManager.openConversation = conversation
@@ -935,7 +959,43 @@ export default class ConversationVM extends ProviderListener {
         this.ownedOpenConversation = undefined
     }
 
+    private releaseOpenConversationIfDenied(): void {
+        if (this.gateAllowed) {
+            return
+        }
+        this.releaseOpenConversationOwnership()
+    }
+
+    private reclaimOpenConversationIfAllowed(): void {
+        if (!this.gateAllowed || !this.registerAsOpenConversation) {
+            return
+        }
+        if (!WKApp.shared.openChannel?.isEqual(this.channel)) {
+            return
+        }
+        if (!ConversationVM.openConversationOwner && this.currentConversation) {
+            this.claimOpenConversation(this.currentConversation)
+        }
+    }
+
+    private handleReadAttentionGateChange(allowed: boolean): void {
+        const previous = this.gateAllowed
+        this.gateAllowed = allowed
+        if (previous === allowed) {
+            return
+        }
+        if (allowed) {
+            this.reclaimOpenConversationIfAllowed()
+        } else {
+            this.releaseOpenConversationIfDenied()
+        }
+    }
+
     didMount(): void {
+        this.gateAllowed = isImReadAttentionAllowed()
+        this.unsubscribeReadAttention = subscribeImReadAttention(
+            (allowed) => this.handleReadAttentionGateChange(allowed),
+        )
 
         this.conversationListener = (conversation: Conversation, action: ConversationAction) => {
             if (!conversation.channel.isEqual(this.channel)) {
@@ -944,7 +1004,11 @@ export default class ConversationVM extends ProviderListener {
             if (action == ConversationAction.update) {
                 // 如果本地已读位置比服务端更新（browseToMessageSeq >= lastMessage.messageSeq），
                 // 说明用户已读完消息，不应该被服务端的旧未读数覆盖
-                if (this.lastMessage && this.browseToMessageSeq >= this.lastMessage.messageSeq) {
+                if (
+                    this.gateAllowed &&
+                    this.lastMessage &&
+                    this.browseToMessageSeq >= this.lastMessage.messageSeq
+                ) {
                     if (conversation.unread > 0) {
                         // 有意直接修改 conversation.unread（side effect），
                         // 确保 SDK 缓存的 Conversation 对象与本地已读状态保持一致
@@ -1210,6 +1274,8 @@ export default class ConversationVM extends ProviderListener {
     }
 
     didUnMount(): void {
+        this.unsubscribeReadAttention?.()
+        this.unsubscribeReadAttention = undefined
         this.releaseOpenConversationOwnership()
         WKSDK.shared().chatManager.removeMessageListener(this.messageListener)
         WKSDK.shared().chatManager.removeMessageStatusListener(this.messageStatusListener)
@@ -2728,6 +2794,9 @@ export default class ConversationVM extends ProviderListener {
                 // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
                 userId: WKApp.loginInfo.uid || null,
                 mentionedBots,
+                // DAP-271 finding 6：has_attachment——按 content.contentType 就近派生的布尔。附件=图片/gif/
+                // 语音/小视频/文件/富文本(图文混排);贴纸/名片/互动卡/纯文本等非附件为 false。仅布尔无正文。
+                hasAttachment: isAttachmentContentType(content.contentType),
             })
         }
         const messageWrap = new MessageWrap(message)

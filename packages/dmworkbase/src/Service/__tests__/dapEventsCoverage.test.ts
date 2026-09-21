@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { FETCH_RULES, FETCH_IGNORE } from '../FetchRules'
 import { BODY_RULES } from '../BodyRules'
@@ -74,6 +74,87 @@ describe('DAP_EVENTS.md 收敛物一致性(D1/D2 回归守卫)', () => {
         expect(
             undocumented,
             `以下规则表事件在 DAP_EVENTS.md 无文档行(新增规则须同步补收敛物):\n${undocumented.join('\n')}`,
+        ).toEqual([])
+    })
+})
+
+/**
+ * B-3(第三轮返工)相似问题守卫:im/base + summary + market 的**命令式** track 站点也必须有收敛物行。
+ * =====================================================================
+ * 旧 `dapEventsCoverage` 只钉「三张规则表 ⊆ 收敛物」,imperative `Dap.shared.track('<字面>')` 站点
+ * 不在规则表内 → 新增一个命令式事件却忘补 DAP_EVENTS.md 行时,没有任何守卫会红(第三轮 B-3 即此类:
+ * 4 个内联编辑 `*_edit_opened` 命令式事件缺行、多行肯定式谎报「props 恒空」)。本守卫补上这条边:
+ * **扫 im/base + summary + market 五个包的 `<pkg>/src`(排除测试),抽出字面量命令式事件名,断言每个都在
+ * DAP_EVENTS.md 有文档行。**
+ *
+ * 作用域刻意**只含**这五个包:§6 明确 fleet(dmloop/dmpersonal)/ doc(docs)模块源里发的 imperative/
+ * data-track 事件由 B-loop / B-docs 各自拥有、**不在本收敛物重述**,故不扫那些包(否则会对有意排除的
+ * 事件误红)。局限同 channelUniqueness:只能抽字符串字面量首参,`track(variable, ...)`(泛化收口)抽不到,
+ * 由各自单一收口点 + 单测保证。
+ */
+describe('DAP_EVENTS.md 收敛物一致性 —— 命令式站点 ⊆ 收敛物(B-3 相似问题守卫)', () => {
+    // 只扫 im/base + summary + market;不含 fleet/doc(§6 由 B-loop / B-docs 拥有,不在本收敛物)。
+    const SCOPED_PKGS = ['dmworkbase', 'dmworksummary', 'dmworkcontacts', 'dmworkmcp', 'dmworkskillmarket']
+    const SKIP = new Set(['node_modules', 'dist', 'build', '.next', 'coverage', '__tests__'])
+    const IMPERATIVE_RE = /\.track\(\s*['"]([a-zA-Z0-9_]+)['"]/g
+
+    function repoRoot(): string {
+        let dir = process.cwd()
+        for (let i = 0; i < 8; i++) {
+            if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir
+            const parent = resolve(dir, '..')
+            if (parent === dir) break
+            dir = parent
+        }
+        // 兜底:从 DAP_EVENTS.md 反推(从包目录跑时 cwd 可能在 dmworkbase 内)。
+        return resolve(findDapEventsMd(), '..', '..', '..', '..', '..')
+    }
+
+    function scopedSourceFiles(): string[] {
+        const root = repoRoot()
+        const out: string[] = []
+        const walk = (dir: string) => {
+            let entries: string[]
+            try { entries = readdirSync(dir) } catch { return }
+            for (const name of entries) {
+                if (SKIP.has(name)) continue
+                const full = join(dir, name)
+                let st
+                try { st = statSync(full) } catch { continue }
+                if (st.isDirectory()) walk(full)
+                else if (/\.(ts|tsx)$/.test(name) && !/\.(test|spec)\.tsx?$/.test(name)) out.push(full)
+            }
+        }
+        for (const p of SCOPED_PKGS) {
+            const src = join(root, 'packages', p, 'src')
+            if (existsSync(src)) walk(src)
+        }
+        return out
+    }
+
+    const files = scopedSourceFiles()
+    const imperativeEvents = new Set<string>()
+    for (const f of files) {
+        let src: string
+        try { src = readFileSync(f, 'utf8') } catch { continue }
+        for (const m of src.matchAll(IMPERATIVE_RE)) imperativeEvents.add(m[1])
+    }
+
+    it('自检:扫到了足够多的命令式事件(否则守卫空转)', () => {
+        expect(files.length).toBeGreaterThan(50)
+        expect(imperativeEvents.size).toBeGreaterThan(50)
+        // 稳定存在的命令式事件兜底(路径/正则失配时集合会退化,下面的 ⊆ 断言会恒真)。
+        expect(imperativeEvents.has('smart_summary_started')).toBe(true)
+        expect(imperativeEvents.has('thread_expanded')).toBe(true)
+        expect(imperativeEvents.has('contact_opened')).toBe(true)
+    })
+
+    it('每个 im/base+summary+market 命令式事件都在 DAP_EVENTS.md 有文档行', () => {
+        const documented = documentedEvents()
+        const undocumented = [...imperativeEvents].filter((e) => !documented.has(e)).sort()
+        expect(
+            undocumented,
+            `以下命令式事件在 DAP_EVENTS.md 无文档行(新增命令式埋点须同步补收敛物):\n${undocumented.join('\n')}`,
         ).toEqual([])
     })
 })

@@ -122,7 +122,8 @@ export class McpMarketModule implements IModule {
         m.onPress = (reentry?: boolean) => {
           // 重复点击已激活的市场菜单不计 module_entered(见二审 P2-4);宿主按 prevMenuId===id 传 reentry。
           if (!reentry) {
-            Dap.shared.track("market_module_entered", {});
+            // default_tab:点击市场菜单默认落地的 tab = 技能市场(下方 replaceToRoot 到 /mcp-market/skills)。
+            Dap.shared.track("market_module_entered", { default_tab: "skills" });
           }
           const page = WKApp.route.get("/mcp-market/skills");
           if (page && React.isValidElement(page)) {

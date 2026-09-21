@@ -115,6 +115,21 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         expect(sent[0].props.message_id).toBeUndefined()
     })
 
+    // DAP-271 finding 6：has_attachment 由生产者按 content 类型就近派生的布尔,经 intent 透传给 message_sent。
+    it('carries has_attachment=true from the send intent', async () => {
+        const { rememberSendIntent } = await freshTrack()
+        rememberSendIntent(120, { channelId: 'g12', channelType: 2, mentionAis: false, hasAttachment: true })
+        ackCb!({ reasonCode: 1, clientSeq: 120 })
+        expect(named('message_sent')[0].props).toMatchObject({ has_attachment: true })
+    })
+
+    it('defaults has_attachment=false when the intent omits it', async () => {
+        const { rememberSendIntent } = await freshTrack()
+        rememberSendIntent(121, { channelId: 'g13', channelType: 2, mentionAis: false })
+        ackCb!({ reasonCode: 1, clientSeq: 121 })
+        expect(named('message_sent')[0].props).toMatchObject({ has_attachment: false })
+    })
+
     it('ignores non-accepted sendack (reasonCode !== 1)', async () => {
         const { rememberSendIntent } = await freshTrack()
 

@@ -57,7 +57,11 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
     // market_category_filtered:仅在选中分类实际变化时计一次。原 TrackRules 的 skill-category-chip
     // 点击规则对「重复点已选分类」也触发 → 虚增(见 review P2-7)。已移除该规则,改此处 gate。
     if (categoryId !== activeId) {
-      Dap.shared.track("market_category_filtered", {});
+      // market_type='skill';category=选中的分类 id。仅记枚举 id,不带名称。
+      Dap.shared.track("market_category_filtered", {
+        market_type: "skill",
+        category: categoryId,
+      });
     }
     onChange(categoryId);
     setMoreOpen(false);

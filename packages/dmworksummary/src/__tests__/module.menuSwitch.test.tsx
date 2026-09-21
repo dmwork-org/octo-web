@@ -51,6 +51,7 @@ vi.mock("@octo/base", () => ({
       return state.switchToMenuById;
     },
     shared: state.shared,
+    loginInfo: { uid: "user-a" },
     routeLeft: { popToRoot: state.popToRoot },
     routeRight: {
       replaceToRoot: state.replaceToRoot,
@@ -102,6 +103,8 @@ vi.mock("../utils/summaryAttentionBadge", () => ({
   // 但 mock 缺一个导出就会让整个 init 抛错。
   acceptRemoteAttentionCount: vi.fn(),
   setSummaryAttentionPublisher: vi.fn(),
+  // external-mode guard referenced by attention.ts
+  isSummaryAttentionExternal: () => false,
 }));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,
@@ -399,6 +402,19 @@ describe("SummaryModule guarded menu switching", () => {
     expect(entry.props.derivedFromTask).toBe(task);
     expect(entry.props.source).toBe("detail_optimize");
     expect(entry.props.legacyInitialMode).toBe("agent");
+  });
+
+  it("assigns menu.shortTitle from summary.menu.titleShort for the NavRail collapsed short form (#1635)", () => {
+    // `Menus` is stubbed above as `class {}` so constructor args (title/icon)
+    // are dropped, but post-construction assignments (shortTitle, badge,
+    // onPress) still land on the returned instance. That is enough to pin the
+    // contract this change owns: the summary menu factory MUST assign
+    // shortTitle from translate("summary.menu.titleShort") so NavRail can
+    // render the short variant in the collapsed rail. The mocked translate
+    // returns the key verbatim (`(k) => k`); the concrete strings
+    // (`Summary` / `智能总结`) are locked by the i18n locale parity check.
+    const menu = summaryMenuFactory()() as { shortTitle?: string };
+    expect(menu.shortTitle).toBe("summary.menu.titleShort");
   });
 
   it("NavRail summary onPress opens the create page by default without pushing a duplicate list page", () => {

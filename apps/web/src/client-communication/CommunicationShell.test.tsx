@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -12,16 +12,26 @@ const mocks = vi.hoisted(() => {
   return {
     command,
     summaryRequest,
+    routeQueue: { held: false, commits: [] as Array<() => void> },
     getCurrentImChannelInfo: vi.fn(),
+    subscribeUnread: vi.fn((listener: (count: number) => void) => {
+      listener(0);
+      return vi.fn();
+    }),
     setCurrentImChannelInfoCache: vi.fn(),
     findCurrentImConversation: vi.fn(),
     createCurrentEmptyImConversation: vi.fn(),
     loadConversationMembers: vi.fn(async () => [{ uid: "user-1", name: "User 1" }]),
     requestForward: vi.fn(),
+    confirm: vi.fn((_props: { onOk: () => void; onCancel: () => void }) => ({
+      destroy: vi.fn(),
+    })),
     bridge: {
+      openSummary: vi.fn(async () => {}),
       getBootstrap: vi.fn(),
       reportReady: vi.fn(async () => {}),
       reportNavigation: vi.fn(async () => {}),
+      reportNavigationCommitted: vi.fn(async () => {}),
       reportUnread: vi.fn(),
       reportAuthExpired: vi.fn(),
       reportFatalError: vi.fn(),
@@ -56,16 +66,14 @@ vi.mock("@dmwork/summary/messaging", () => ({
   },
 }));
 
-vi.mock("../App/electronUnreadCount", () => ({
-  getElectronUnreadMessageCount: () => 0,
-}));
-
 vi.mock("@octo/contacts", () => ({
   ContactsList: () => {
     const [filter, setFilter] = React.useState("");
     return <input aria-label="contacts" value={filter} onChange={(event) => setFilter(event.target.value)} />;
   },
 }));
+
+vi.mock("@octo/base/src/Components/WKModal", () => ({ wkConfirm: mocks.confirm }));
 
 vi.mock("@dmwork/appbot/conversation", () => ({
   renderAppBotConversation: (target: { displayName: string }, channel: unknown) =>
@@ -96,71 +104,356 @@ vi.mock("@octo/base", () => {
     setReplaceToRoot: vi.fn(),
     setPop: vi.fn(),
     setPopToRoot: vi.fn(),
-    popToRoot: vi.fn(),
-    replaceToRoot: vi.fn(),
+    popToRoot() { this.setPopToRoot(); },
+    replaceToRoot(view) { this.setReplaceToRoot(view); },
+    pop() { this.setPop(); },
+    push(view) { this.setPush(view); },
   };
   const mittBus = {
     emit: vi.fn(),
     on: vi.fn(),
     off: vi.fn(),
   };
+  const shared = {
+    openChannel: null,
+    currentSpaceId: "space-a",
+    addListener: vi.fn(() => () => {}),
+    notifyListener: vi.fn(),
+  };
+  const wkApp = {
+    routeLeft: { ...route },
+    routeRight: { ...route },
+    currentMenuId: "chat",
+    switchToMenuById: undefined,
+    config: {},
+    loginInfo: { logout: vi.fn() },
+    endpoints: {
+      showConversation: vi.fn((channel, opts) => {
+        // EndpointCommon dispatches synchronously while chat is active:
+        // replace the current right route with a chat-content view.
+        wkApp.routeRight.replaceToRoot(
+          <div data-testid="chat-content-page" data-channel={channel.channelID}
+            ref={(node) => { if (node) opts?.onCommitted?.(); }} />,
+        );
+      }),
+    },
+    mittBus,
+    shared,
+  };
   return {
     ChatPage: () => <div>chat</div>,
+    applyImSpaceContext: (space?: { space_id: string; name: string }) => {
+      if (shared.currentSpaceId === (space?.space_id || "")) return false;
+      shared.currentSpaceId = space?.space_id || "";
+      mittBus.emit("space-changed", space);
+      return true;
+    },
     getCurrentImChannelInfo: mocks.getCurrentImChannelInfo,
+    getCurrentImUnreadObserver: () => ({ subscribe: mocks.subscribeUnread }),
     setCurrentImChannelInfoCache: mocks.setCurrentImChannelInfoCache,
     findCurrentImConversation: mocks.findCurrentImConversation,
     createCurrentEmptyImConversation: mocks.createCurrentEmptyImConversation,
     ThemeMode: { light: "light", dark: "dark" },
-    WKApp: {
-      routeLeft: { ...route },
-      routeRight: { ...route },
-      currentMenuId: "chat",
-      switchToMenuById: undefined,
-      config: {},
-      loginInfo: { logout: vi.fn() },
-      endpoints: { showConversation: vi.fn() },
-      mittBus,
-      shared: {
-        openChannel: null,
-        currentSpaceId: "space-a",
-        addListener: vi.fn(() => () => {}),
-        notifyListener: vi.fn(),
-      },
-    },
-    WKBase: ({ children, onContext }: any) => {
+    WKApp: wkApp,
+    WKBase: ({ children, onContext }) => {
       useEffect(() => onContext?.({}), [onContext]);
       return children;
     },
-    WKLayout: ({ contentLeft, contentRight, onLeftContext, onRightContext }: any) => {
-      useEffect(() => {
+    WKLayout: ({ contentLeft, contentRight, onLeftContext, onRightContext }) => {
+      const [rightView, setRightView] = React.useState(null);
+      React.useLayoutEffect(() => {
         const context = {
           push: vi.fn(),
-          replaceToRoot: vi.fn(),
+          replaceToRoot: (view) => {
+            if (mocks.routeQueue.held) mocks.routeQueue.commits.push(() => setRightView(view));
+            else setRightView(view);
+          },
           pop: vi.fn(),
-          popToRoot: vi.fn(),
+          popToRoot: () => setRightView(null),
         };
         onLeftContext?.(context);
         onRightContext?.(context);
       }, [onLeftContext, onRightContext]);
-      return <>{contentLeft}{contentRight}</>;
+      return <>{contentLeft}{rightView ?? contentRight}</>;
     },
     i18n: { setLocale: vi.fn() },
+    t: (key: string) => key,
     useI18n: () => ({ t: (key: string) => key }),
   };
 });
-
 import { CommunicationShell } from "./CommunicationShell";
 import { WKApp, i18n } from "@octo/base";
 import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
 import type { DesktopPresentation } from "./desktopPresentation";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
+import { createUnreadCountObserver } from "@octo/base/src/im-runtime/unreadObserver";
 
 describe("CommunicationShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.bridge.reportNavigationCommitted = vi.fn(async () => {});
     mocks.command.listener = undefined;
     mocks.summaryRequest.listener = undefined;
     mocks.getCurrentImChannelInfo.mockReturnValue(undefined);
+    mocks.routeQueue.held = false;
+    mocks.routeQueue.commits = [];
+    mocks.subscribeUnread.mockImplementation((listener) => {
+      listener(0);
+      return vi.fn();
+    });
+    WKApp.shared.openChannel = undefined;
+    WKApp.shared.pendingAttachmentGuard = undefined;
+  });
+
+  async function openWorkspaceGroup() {
+    const shell = render(<CommunicationShell bridge={mocks.bridge}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    WKApp.shared.openChannel = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][0];
+    WKApp.shared.pendingAttachmentGuard = () => false;
+    return shell;
+  }
+
+  const switchWorkspaceGroup = () => mocks.command.listener?.({
+    type: "navigate", page: "chat", presentation: "conversation",
+    target: { channelId: "group-b", channelType: 2, variant: "workspace-group" },
+  });
+
+  it("restores the original workspace selection when an attachment warning is cancelled", async () => {
+    await openWorkspaceGroup();
+    act(switchWorkspaceGroup);
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(() => mocks.confirm.mock.calls[0][0].onCancel());
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-selection-cancelled",
+      channel: { id: "group-a", type: 2 },
+      cancelledTarget: { id: "group-b", type: 2 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(switchWorkspaceGroup);
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(2));
+    act(() => mocks.confirm.mock.calls[1][0].onOk());
+    expect(WKApp.endpoints.showConversation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ channelID: "group-b" }), expect.any(Object),
+    );
+  });
+
+  it("guards subgroup navigation without changing the current workspace conversation on cancel", async () => {
+    await openWorkspaceGroup();
+    const open = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][1]!.workspaceEmbedding!.openConversation;
+    const channel = { channelID: "group-a____topic", channelType: 5 } as Parameters<typeof open>[0];
+    act(() => open(channel));
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    mocks.bridge.reportNavigation.mockClear();
+    act(() => mocks.confirm.mock.calls[0][0].onCancel());
+    await Promise.resolve();
+    expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+    act(() => open(channel));
+    act(() => mocks.confirm.mock.calls[1][0].onOk());
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-conversation",
+      channel: { id: "group-a____topic", type: 5 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["suspend", "spaceChanged", "navigate", "unmount"])(
+    "invalidates an attachment confirmation on %s",
+    async (action) => {
+      const shell = await openWorkspaceGroup();
+      act(switchWorkspaceGroup);
+      await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+      const dialog = mocks.confirm.mock.calls[0][0];
+      act(() => {
+        if (action === "unmount") shell.unmount();
+        else if (action === "spaceChanged") mocks.command.listener?.({
+          type: "spaceChanged", space: { id: "space-b", name: "B" },
+        });
+        else if (action === "navigate") mocks.command.listener?.({ type: "navigate", page: "contacts" });
+        else mocks.command.listener?.({ type: action });
+      });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+      mocks.bridge.reportNavigation.mockClear();
+      act(() => { dialog.onOk(); dialog.onCancel(); });
+      await Promise.resolve();
+      expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+      expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+      expect(mocks.confirm.mock.results[0].value.destroy).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("returns to full Messages when entry from a regular conversation is cancelled", async () => {
+    render(<CommunicationShell bridge={mocks.bridge}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="workspace" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", target: { channelId: "regular-group", channelType: 2 },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    WKApp.shared.openChannel = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][0];
+    WKApp.shared.pendingAttachmentGuard = () => false;
+    act(switchWorkspaceGroup);
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+    act(() => mocks.confirm.mock.calls[0][0].onCancel());
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-conversation", channel: { id: "regular-group", type: 2 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "workspace",
+      target: { channelId: "regular-group", channelType: 2 },
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not apply the workspace attachment guard to ordinary Messages navigation", async () => {
+    WKApp.shared.pendingAttachmentGuard = () => false;
+    render(<CommunicationShell bridge={mocks.bridge}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="workspace" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", target: { channelId: "regular-group", channelType: 2 },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.lastCall?.[1]?.preserveCurrentConversation).toBeUndefined();
+  });
+
+  it("opts into workspace embedding and sends subgroup clicks to full Messages without opening a panel", async () => {
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    const [channel, options] = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0];
+    expect(channel).toMatchObject({ channelID: "group-a", channelType: 2 });
+    expect(options?.workspaceEmbedding).toBeDefined();
+    options!.workspaceEmbedding!.openConversation({ channelID: "group-a____topic", channelType: 5 } as any);
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-conversation",
+      channel: { id: "group-a____topic", type: 5 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { channelId: "person-a", channelType: 1, variant: "workspace-group" },
+    { channelId: "group-a", channelType: 2, variant: "app-bot" },
+  ])("rejects incompatible legacy conversation target $variant/$channelType", async (target) => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "workspace", target,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
+    expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      "[client-communication] rejected incompatible conversation target",
+      target,
+    );
+    consoleError.mockRestore();
+  });
+
+  it("preserves the same workspace conversation across hide/show and restores default behavior on leaving", async () => {
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    const command = {
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    };
+    act(() => mocks.command.listener?.(command));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    WKApp.shared.openChannel = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][0];
+    act(() => {
+      mocks.command.listener?.({ type: "suspend" });
+      mocks.command.listener?.({ type: "resume" });
+      mocks.command.listener?.(command);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(() => mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[1][1]?.workspaceEmbedding).toBeUndefined();
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[1][1]?.preserveCurrentConversation).toBe(true);
+    act(() => mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2);
+    act(() => mocks.command.listener?.(command));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[2][1]?.preserveCurrentConversation).toBe(true);
+  });
+
+  it("publishes return events without remounting the retained contacts page", async () => {
+    const resumed = vi.fn();
+    window.addEventListener("octobuddy:resume", resumed);
+    const shell = render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    try {
+      act(() => mocks.command.listener?.({ type: "navigate", page: "contacts" }));
+      expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:active-menu-changed", { menuId: "contacts" });
+      const input = screen.getByLabelText("contacts");
+      fireEvent.change(input, { target: { value: "retained search" } });
+      act(() => {
+        mocks.command.listener?.({ type: "suspend" });
+        mocks.command.listener?.({ type: "resume" });
+      });
+      expect(resumed).toHaveBeenCalledTimes(1);
+      expect(WKApp.currentMenuId).toBe("contacts");
+      expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+      act(() => {
+        mocks.command.listener?.({ type: "suspend" });
+        mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true });
+      });
+      expect(resumed).toHaveBeenCalledTimes(2);
+      act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true }));
+      expect(resumed).toHaveBeenCalledTimes(2);
+      act(() => WKApp.switchToMenuById?.("chat"));
+      act(() => WKApp.switchToMenuById?.("contacts"));
+      expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:active-menu-changed", { menuId: "contacts" });
+      expect(screen.getByLabelText("contacts")).toBe(input);
+      expect(input).toHaveValue("retained search");
+    } finally {
+      shell.unmount();
+      window.removeEventListener("octobuddy:resume", resumed);
+    }
+  });
+
+  it("invalidates old workspace callbacks after another group or Space is selected", async () => {
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    const open = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][1]!.workspaceEmbedding!.openConversation;
+    act(() => mocks.command.listener?.({
+      type: "spaceChanged", space: { id: "space-b", name: "B" },
+    }));
+    mocks.bridge.reportNavigation.mockClear();
+    open({ channelID: "old-topic", channelType: 6 } as any);
+    await Promise.resolve();
+    expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("chat-content-page")).toBeNull();
   });
 
   it("keeps one embedded Contacts header and preserves child state while switching visible pages", async () => {
@@ -352,6 +645,69 @@ describe("CommunicationShell", () => {
     consoleSpy.mockRestore();
   });
 
+  it("does not install page-owned unread or summary handlers in runtime mode", () => {
+    render(
+      <React.StrictMode>
+        <CommunicationShell
+          bridge={mocks.bridge as any}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          runtimeOwned
+          onReady={vi.fn(async () => {})}
+        />
+      </React.StrictMode>,
+    );
+    expect(mocks.subscribeUnread).not.toHaveBeenCalled();
+    expect(mocks.bridge.reportUnread).not.toHaveBeenCalled();
+    expect(mocks.bridge.onSummaryRequest).not.toHaveBeenCalled();
+  });
+
+  it("forwards shared snapshots across StrictMode and bridge replacement without leaking subscriptions", () => {
+    let count = 7;
+    const changes = new Set<() => void>();
+    const disposeUpstream = vi.fn();
+    const subscribeChanges = vi.fn((listener: () => void) => {
+      changes.add(listener);
+      return () => { changes.delete(listener); disposeUpstream(); };
+    });
+    const observer = createUnreadCountObserver({
+      readCount: () => count,
+      subscribeChanges,
+      onError: (error) => { throw error; },
+    });
+    mocks.subscribeUnread.mockImplementation(observer.subscribe);
+    const nextBridge: OctoBuddyCommunicationBridge = { ...mocks.bridge, reportUnread: vi.fn() };
+    const onReady = vi.fn(async () => {});
+    const content = (bridge: OctoBuddyCommunicationBridge) => (
+      <React.StrictMode>
+        <CommunicationShell bridge={bridge} initialPage="chat" initialSpaceId="space-a"
+          initialPresentation="workspace" onReady={onReady} />
+      </React.StrictMode>
+    );
+    const shell = render(content(mocks.bridge));
+    try {
+      expect(changes.size).toBe(1);
+      expect(mocks.bridge.reportUnread).toHaveBeenLastCalledWith(7);
+      count = 3;
+      act(() => changes.forEach((changed) => changed()));
+      expect(mocks.bridge.reportUnread).toHaveBeenLastCalledWith(3);
+
+      shell.rerender(content(nextBridge));
+      expect(changes.size).toBe(1);
+      expect(nextBridge.reportUnread).toHaveBeenLastCalledWith(3);
+      mocks.bridge.reportUnread.mockClear();
+      count = 0;
+      act(() => changes.forEach((changed) => changed()));
+      expect(nextBridge.reportUnread).toHaveBeenLastCalledWith(0);
+      expect(mocks.bridge.reportUnread).not.toHaveBeenCalled();
+    } finally {
+      shell.unmount();
+    }
+    expect(changes.size).toBe(0);
+    expect(disposeUpstream).toHaveBeenCalledTimes(subscribeChanges.mock.calls.length);
+  });
+
   it("updates the document language when the host appearance changes", async () => {
     render(
       <CommunicationShell
@@ -412,6 +768,60 @@ describe("CommunicationShell", () => {
     }));
   });
 
+  it.each([
+    { displayName: "Host contact" },
+    { metadata: { displayName: "Host contact", robot: 1 } },
+  ])("normalizes a host-supplied name for the chat header: %o", async (hint) => {
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat",
+      target: { channelId: "peer", channelType: 1, ...hint },
+    }));
+    await waitFor(() => expect(mocks.setCurrentImChannelInfoCache).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Host contact", orgData: expect.objectContaining({ displayName: "Host contact" }) }),
+    ));
+  });
+
+  it("preserves remarks when host metadata supplies another name", async () => {
+    const cached = { channel: undefined, title: "Old", orgData: { remark: "My remark", online: 1 } };
+    mocks.getCurrentImChannelInfo.mockReturnValue(cached);
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat",
+      target: { channelId: "peer", channelType: 1, displayName: "New", metadata: { displayName: "New", remark: "" } },
+    }));
+    await waitFor(() => expect(cached).toMatchObject({
+      title: "New", orgData: { remark: "My remark", displayName: "My remark", online: 1 },
+    }));
+  });
+
+  it("does not seed a UID as a name when the host only supplies an avatar", async () => {
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat",
+      target: { channelId: "peer", channelType: 1, avatar: "avatar.png" },
+    }));
+    await waitFor(() => expect(mocks.setCurrentImChannelInfoCache).toHaveBeenCalled());
+    const info = mocks.setCurrentImChannelInfoCache.mock.calls[0][0];
+    expect(info.title).toBe("");
+    expect(info.orgData.displayName).toBeUndefined();
+    expect(mocks.createCurrentEmptyImConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create an empty recent conversation for a bare navigation target", async () => {
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", target: { channelId: "peer", channelType: 1 },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalled());
+    expect(mocks.createCurrentEmptyImConversation).not.toHaveBeenCalled();
+    expect(mocks.setCurrentImChannelInfoCache).not.toHaveBeenCalled();
+  });
+
   it("merges app metadata into an existing bot channel without dropping server fields", async () => {
     const cached = {
       channel: undefined,
@@ -459,7 +869,7 @@ describe("CommunicationShell", () => {
   });
 
   it("uses the Web app conversation view only for explicit app targets and restores regular chat", async () => {
-    render(
+    const { container } = render(
       <CommunicationShell
         bridge={mocks.bridge as any}
         initialPage="chat"
@@ -474,16 +884,18 @@ describe("CommunicationShell", () => {
       presentation: "conversation",
       target: { channelId: "bot-1", channelType: 1, displayName: "Docs Bot", variant: "app-bot" },
     }));
-    await waitFor(() => expect(WKApp.routeRight.replaceToRoot).toHaveBeenCalled());
-    const view = vi.mocked(WKApp.routeRight.replaceToRoot).mock.calls[0][0] as React.ReactElement;
-    expect(view.props.className).toBe("appbot-chat-wrap");
-    expect(view.props.children).toBe("Docs Bot");
+    // The app-bot view should be rendered directly in the right route.
+    await waitFor(() => {
+      expect(container.querySelector(".appbot-chat-wrap")).toBeTruthy();
+    });
+    expect(container.querySelector(".appbot-chat-wrap")?.textContent).toBe("Docs Bot");
     expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
 
     act(() => {
       mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" });
       mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" });
     });
+    // Restoring regular chat invokes showConversation for the previous app-bot target.
     await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledWith(
       expect.objectContaining({ channelID: "bot-1" }),
       expect.any(Object),
@@ -491,7 +903,7 @@ describe("CommunicationShell", () => {
   });
 
   it("does not reopen an app conversation when switching to contacts", async () => {
-    render(
+    const { container } = render(
       <CommunicationShell
         bridge={mocks.bridge as any}
         initialPage="chat"
@@ -504,11 +916,12 @@ describe("CommunicationShell", () => {
       type: "navigate", page: "chat",
       target: { channelId: "bot-1", channelType: 1, displayName: "Docs Bot", variant: "app-bot" },
     }));
-    await waitFor(() => expect(WKApp.routeRight.replaceToRoot).toHaveBeenCalled());
-    vi.mocked(WKApp.routeRight.replaceToRoot).mockClear();
+    await waitFor(() => expect(container.querySelector(".appbot-chat-wrap")).toBeTruthy());
     act(() => mocks.command.listener?.({ type: "navigate", page: "contacts", presentation: "workspace" }));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
-    expect(WKApp.routeRight.replaceToRoot).not.toHaveBeenCalled();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    // After switching to contacts, the app-bot view should be unmounted and
+    // no regular conversation should have been opened.
+    expect(container.querySelector(".appbot-chat-wrap")).toBeFalsy();
     expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
   });
 
@@ -639,5 +1052,324 @@ describe("CommunicationShell", () => {
       error: "Summary request context expired",
     }));
     expect(mocks.loadConversationMembers).not.toHaveBeenCalled();
+  });
+
+  describe("navigation commit", () => {
+    it("reports navigation commit after same-page navigation with target", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Target" },
+        });
+      });
+
+      await waitFor(() =>
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 42 })
+      );
+    });
+
+    it("does not commit when navigationId is absent (legacy)", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          target: { channelId: "c-1", channelType: 2 },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("only commits the latest navigation id and cancels stale one", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2 },
+        });
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 99,
+          target: { channelId: "c-2", channelType: 2 },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalledWith({ navigationId: 42 });
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 99 });
+      });
+    });
+
+    it("cancels navigation commit on space change", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+        });
+        mocks.command.listener?.({
+          type: "spaceChanged",
+          space: { id: "space-b", name: "Space B" },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("cancels navigation commit on suspend", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+        });
+        mocks.command.listener?.({ type: "suspend" });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("cancels navigation commit on session revoked", async () => {
+      const logout = vi.fn();
+      WKApp.loginInfo.logout = logout;
+
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+        });
+        mocks.command.listener?.({ type: "sessionRevoked" });
+      });
+
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+    });
+  });
+
+
+  describe("navigation commit DOM routing", () => {
+    it("waits for a held route queue commit and rejects the superseded subtree", async () => {
+      const { container } = render(
+        <CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+          initialPresentation="workspace" onReady={async () => {}} />,
+      );
+      mocks.routeQueue.held = true;
+      await act(async () => {
+        mocks.command.listener?.({
+          type: "navigate", page: "chat", navigationId: 41,
+          target: { channelId: "old", channelType: 2 },
+        });
+      });
+      expect(mocks.routeQueue.commits).toHaveLength(1);
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      expect(container.querySelector('[data-channel="old"]')).toBeNull();
+      await act(async () => {
+        mocks.command.listener?.({
+          type: "navigate", page: "chat", navigationId: 42,
+          target: { channelId: "new", channelType: 2 },
+        });
+      });
+      expect(mocks.routeQueue.commits).toHaveLength(2);
+      await act(async () => { mocks.routeQueue.commits[0](); });
+      expect(container.querySelector('[data-channel="old"]')).not.toBeNull();
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      await act(async () => { mocks.routeQueue.commits[1](); });
+      expect(container.querySelector('[data-channel="new"]')).not.toBeNull();
+      expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledExactlyOnceWith({ navigationId: 42 });
+    });
+
+    it("does not acknowledge before the routed conversation view has committed", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Target" },
+        });
+      });
+      await waitFor(() => {
+        expect(container.querySelector('[data-testid="chat-content-page"]')).toBeTruthy();
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 42 });
+      });
+    });
+
+    it("does not acknowledge a stale navigation after a newer one supersedes it", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Old" },
+        });
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 99,
+          target: { channelId: "c-2", channelType: 2, displayName: "New" },
+        });
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalledWith({ navigationId: 42 });
+      });
+      await waitFor(() => {
+        expect(container.querySelector('[data-testid="chat-content-page"]')).toBeTruthy();
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 99 });
+      });
+    });
+
+    it("drops pending target and does not acknowledge when suspend arrives before the routed commit", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="conversation"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Target" },
+        });
+        mocks.command.listener({ type: "suspend" });
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+      expect(container.querySelector('[data-testid="chat-content-page"]')).toBeFalsy();
+      expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
+    });
+
+    it("app-bot view renders and acknowledges after the routed subtree commits", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="conversation"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "bot-1", channelType: 1, displayName: "Docs Bot", variant: "app-bot" },
+        });
+      });
+      await waitFor(() => {
+        expect(container.querySelector(".appbot-chat-wrap")).toBeTruthy();
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 42 });
+      });
+    });
   });
 });

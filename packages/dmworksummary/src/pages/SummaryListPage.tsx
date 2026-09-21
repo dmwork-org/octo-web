@@ -4,6 +4,8 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
+import { fetchSummaryListPrefix, SummaryPaginationDriftError } from "../api/summaryListPagination";
+import { requestSummaryScheduleOpen, requestSummaryDetailAction } from "../utils/summaryDetailIntent";
 import {
   abandonSummaryAttentionRead,
   beginSummaryAttentionRead,
@@ -14,7 +16,7 @@ import type {
     ListSummariesParams,
     TaskStatusType,
 } from "../types/summary";
-import { TaskStatus } from "../types/summary";
+import { TaskStatus, TriggerType } from "../types/summary";
 import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import SummaryCard from "../components/SummaryCard";
@@ -24,6 +26,10 @@ import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
 
 type SummaryCreateEntryMode = "pending" | "unified" | "legacy";
+type SummaryReadPatch = (items: SummaryListItem[]) => SummaryListItem[];
+
+const MAX_ACTIVATION_REFRESH_ROWS = 100;
+const LOAD_MORE_RETRY_COOLDOWN_MS = 3000;
 
 interface SummaryListPageProps {
     channelId?: string;
@@ -31,6 +37,8 @@ interface SummaryListPageProps {
   embedded?: boolean;
   /** Host-owned refresh signal for a controlled workspace. */
   refreshKey?: number;
+  /** Host invalidation that keeps the retained list and pagination visible. */
+  backgroundRefreshKey?: number;
     /** Called when the user clicks the close button (panel mode only). */
     onClose?: () => void;
     /** Called when the user clicks "new summary" in panel mode. */
@@ -109,6 +117,12 @@ export default class SummaryListPage extends Component<
     // and closes the loadData-starts-first, loadMore-scrolls-after ordering.
     // Kept alongside loadDataSeq — the pair covers both interleavings.
     private isLoadingData = false;
+    private isLoadingMore = false;
+    private activationRefreshPending = false;
+    private loadMoreRetryAt = 0;
+    private paginationErrorVisible = false;
+    // Replay only reads received during each request, then release its patches.
+    private pendingReadPatches = new Set<SummaryReadPatch[]>();
     // Cleared by componentWillUnmount so any in-flight refresh's setState
     // becomes a no-op instead of restarting maybeStartBatchPoll on a
     // torn-down component.
@@ -131,8 +145,7 @@ export default class SummaryListPage extends Component<
     ).detail;
         const taskId = detail?.taskId;
         if (!detail || !taskId) return;
-        this.setState(({ items }) => ({
-      items: items.map((item) => {
+        const patch: SummaryReadPatch = (items) => items.map((item) => {
                 if (item.task_id !== taskId) return item;
                 // 看过 ≠ 已提交（owner 2026-08-26）：标读不清除待提交红点。
                 //
@@ -154,8 +167,9 @@ export default class SummaryListPage extends Component<
             (detail.needsAttention ?? Boolean(item.has_pending_invitation)) ||
             Boolean(pendingSubmission),
                 };
-            }),
-        }));
+            });
+        this.pendingReadPatches.forEach((patches) => patches.push(patch));
+        this.setState(({ items }) => ({ items: patch(items) }));
     };
 
     private handleDetailActive_ = (event: Event) => {
@@ -207,11 +221,29 @@ export default class SummaryListPage extends Component<
       prevProps.refreshKey !== this.props.refreshKey
     ) {
             this.loadData();
+        } else if (prevProps.backgroundRefreshKey !== this.props.backgroundRefreshKey) {
+            this.activationRefreshPending = true;
+            this.flushActivationRefresh();
         }
+    }
+
+    private flushActivationRefresh = () => {
+        if (!this.isMounted_ || !this.activationRefreshPending ||
+            this.isLoadingData || this.isLoadingMore) return;
+        this.activationRefreshPending = false;
+        void this.loadData({ silent: true, retainView: true });
+    };
+
+    private flushActivationAfterCommit() {
+        if (!this.isMounted_ || !this.activationRefreshPending) return;
+        // React may still be committing the foreground load's new page depth.
+        this.setState({}, this.flushActivationRefresh);
     }
 
     componentWillUnmount() {
         this.isMounted_ = false;
+        this.activationRefreshPending = false;
+        this.pendingReadPatches.clear();
         window.dispatchEvent(new CustomEvent("summary-list-unmount"));
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.stopBatchPoll();
@@ -250,7 +282,7 @@ export default class SummaryListPage extends Component<
         return { items: resp.items, total: resp.total };
     }
 
-    async loadData(opts: { silent?: boolean } = {}) {
+    async loadData(opts: { silent?: boolean; retainView?: boolean } = {}): Promise<number | undefined> {
         // Bump-and-capture sequence: this loadData's response is only allowed
         // to commit if no newer loadData/filter change has started meanwhile.
         // Extended in round-7 so loadMore also captures pre-await and drops
@@ -260,6 +292,25 @@ export default class SummaryListPage extends Component<
         // would still commit.
         const seq = ++this.loadDataSeq;
         const requestSpaceId = WKApp.shared.currentSpaceId;
+        const { pageSize, statusFilter, keyword } = this.state;
+        const channelId = this.props.channelId;
+        // Bound automatic refresh cost; deeper pages are fetched lazily again.
+        const pagesToReload = opts.retainView
+            ? Math.min(this.state.page, Math.max(1, Math.floor(MAX_ACTIVATION_REFRESH_ROWS / pageSize)))
+            : 1;
+        const isCurrent = () => seq === this.loadDataSeq &&
+            this.isMounted_ && WKApp.shared.currentSpaceId === requestSpaceId &&
+            (!opts.retainView || (
+                this.props.channelId === channelId &&
+                this.state.statusFilter === statusFilter &&
+                this.state.keyword === keyword
+            ));
+        const readPatches: SummaryReadPatch[] = [];
+        this.pendingReadPatches.add(readPatches);
+        if (!opts.retainView) {
+            this.activationRefreshPending = false;
+            this.loadMoreRetryAt = 0;
+        }
         // 领一个待关注计数的读取号，必须在 await 之前：号码代表“这份数据是
         // 什么时候向服务端要的”。列表与 page_size=1 探测是两个并行写者，按发出
         // 时刻排序；否则一个先发后到、快照更旧的列表响应会盖掉用户刚触发的
@@ -288,27 +339,29 @@ export default class SummaryListPage extends Component<
         // Silent refresh keeps the existing error banner if any (round-8
         // yujiawei P2-2): a user-visible error the user already saw must
         // not be erased by an automatic background refresh.
-    this.setState(
-      opts.silent ? { loading: true } : { loading: true, error: null }
-    );
+        if (!opts.retainView) {
+            if (!opts.silent) this.paginationErrorVisible = false;
+            this.setState(
+                opts.silent ? { loading: true } : { loading: true, error: null }
+            );
+        }
         try {
-            const { pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
                 page: 1,
                 page_size: pageSize,
                 status: statusFilter,
                 keyword: keyword || undefined,
-                origin_channel_id: this.props.channelId || undefined,
+                origin_channel_id: channelId || undefined,
             };
-            const resp = await api.listSummaries(params);
-            if (seq !== this.loadDataSeq) return;
-            // Post-await mount check (round-8 yujiawei P2-3): the entry
-            // isMounted_ guard cannot cover the await window; React 18 will
-            // drop setState on an unmounted fiber but the callback would
-            // still be scheduled. Also bind the response to the Space that
-            // issued it so an unmounted/late list cannot commit stale data.
-      if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId)
-        return;
+            const resp = opts.retainView
+                ? await fetchSummaryListPrefix(params, pagesToReload * pageSize, isCurrent)
+                : await api.listSummaries(params);
+            if (!resp || !isCurrent()) return;
+            this.loadMoreRetryAt = 0;
+            this.paginationErrorVisible = false;
+            const page = opts.retainView
+                ? Math.max(1, Math.min(pagesToReload, Math.ceil(resp.total / pageSize)))
+                : 1;
             // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
             // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
             // 用发请求前领的 ticket 提交：期间若有更新的读取发出，本次就是陈旧
@@ -336,9 +389,9 @@ export default class SummaryListPage extends Component<
                 }
             }
       this.setState(
-        {
-                items: resp.items,
-                page: 1,
+        () => ({
+                items: readPatches.reduce((items, patch) => patch(items), resp.items),
+                page,
                 total: resp.total,
                 loading: false,
                 // Round-9 yujiawei P2-3: a silent refresh that succeeds
@@ -347,33 +400,42 @@ export default class SummaryListPage extends Component<
                 // that sits above a perfectly fresh list.
                 error: null,
                 hasMore: resp.items.length < resp.total,
-        },
+        }),
         () => {
                 if (this.isMounted_) this.maybeStartBatchPoll();
         }
       );
+      // DAP-271 finding 6：返回本次已提交的结果总数,供 handleKeywordChange 就近取 has_result
+      //   (只有真正取得搜索结果才打点)。被更新请求超越/卸载/失败的分支返回 undefined → 不打点。
+      return resp.total;
         } catch (err: any) {
-            if (seq !== this.loadDataSeq) return;
-            if (!this.isMounted_) return;
+            if (!isCurrent()) return;
             // Background refresh (silent=true) must not surface a network
-            // banner to an idle user — just clear loading and leave the last
-            // good list visible. A user-triggered loadData still shows the
-            // banner + Retry so they can act on the failure.
-            if (opts.silent) {
+            // banner to an idle user. Exhausted pagination repairs still
+            // expose Retry so a persistently inconsistent list is actionable.
+            if (opts.silent && !(err instanceof SummaryPaginationDriftError)) {
                 this.setState({ loading: false });
-                return;
+                return undefined;
             }
+            this.paginationErrorVisible = false;
       this.setState({
-        error: err.message || t("summary.common.loadingFailed"),
+        error: err instanceof SummaryPaginationDriftError
+            ? t("summary.common.loadingFailed")
+            : err.message || t("summary.common.loadingFailed"),
         loading: false,
       });
+      return undefined;
         } finally {
+            this.pendingReadPatches.delete(readPatches);
             // Sequence-owned clear (round-9 yujiawei P2-2): with two
             // overlapping loadData calls, the older stale one returning
             // early at the seq check would otherwise clear the flag while
             // the newer one is still in flight. Only the current loadData
             // is allowed to release the guard.
-            if (seq === this.loadDataSeq) this.isLoadingData = false;
+            if (seq === this.loadDataSeq) {
+                this.isLoadingData = false;
+                this.flushActivationAfterCommit();
+            }
             // Ticket liveness: this loadData took a ticket
             // but never committed it (superseded by a newer loadData,
             // unmounted, Space changed, or the request failed). Release the
@@ -400,9 +462,11 @@ export default class SummaryListPage extends Component<
         // loading:true" ordering that reading state.loading would miss.
     if (
       this.state.loadingMore ||
+      this.isLoadingMore ||
       !this.state.hasMore ||
       this.state.loading ||
-      this.isLoadingData
+      this.isLoadingData ||
+      Date.now() < this.loadMoreRetryAt
     )
       return;
         // Also capture loadDataSeq: if any loadData starts and bumps it
@@ -411,33 +475,77 @@ export default class SummaryListPage extends Component<
         // The pair (isLoadingData at entry + seq at commit) closes both
         // orderings — loadData-first, loadMore-first — deterministically.
         const seq = this.loadDataSeq;
+        const requestSpaceId = WKApp.shared.currentSpaceId;
+        const { page, pageSize, statusFilter, keyword, total, items } = this.state;
+        const channelId = this.props.channelId;
+        const isCurrent = () => seq === this.loadDataSeq && this.isMounted_ &&
+            WKApp.shared.currentSpaceId === requestSpaceId && this.props.channelId === channelId &&
+            this.state.statusFilter === statusFilter && this.state.keyword === keyword;
+        const readPatches: SummaryReadPatch[] = [];
+        this.pendingReadPatches.add(readPatches);
+        this.isLoadingMore = true;
         this.setState({ loadingMore: true });
         try {
-            const nextPage = this.state.page + 1;
-            const { pageSize, statusFilter, keyword } = this.state;
+            const nextPage = page + 1;
             const params: ListSummariesParams = {
                 page: nextPage,
                 page_size: pageSize,
                 status: statusFilter,
                 keyword: keyword || undefined,
-                origin_channel_id: this.props.channelId || undefined,
+                origin_channel_id: channelId || undefined,
             };
-            const resp = await api.listSummaries(params);
-            if (seq !== this.loadDataSeq) {
-                this.setState({ loadingMore: false });
-                return;
+            let resp = await api.listSummaries(params);
+            if (!isCurrent()) return;
+            const combined = [...items, ...resp.items];
+            const uniqueCount = new Set(combined.map((item) => item.task_id)).size;
+            const repairPrefix = resp.total !== total || uniqueCount !== combined.length ||
+                items.length !== page * pageSize ||
+                resp.items.length !== Math.min(pageSize, Math.max(0, resp.total - page * pageSize));
+            if (repairPrefix) {
+                // Counts and server offsets are different things after drift.
+                // Repair the entire prefix instead of advancing past missing rows.
+                const repaired = await fetchSummaryListPrefix(params, nextPage * pageSize, isCurrent);
+                if (!repaired || !isCurrent()) return;
+                resp = repaired;
             }
+            this.loadMoreRetryAt = 0;
+            const clearPaginationError = this.paginationErrorVisible;
+            this.paginationErrorVisible = false;
       this.setState(
-        (prev) => ({
-                items: [...prev.items, ...resp.items],
-                page: nextPage,
+        (prev) => {
+            const fresh = readPatches.reduce((rows, patch) => patch(rows), resp.items);
+            const byId = new Map((repairPrefix ? fresh : [...prev.items, ...fresh])
+                .map((item) => [item.task_id, item]));
+            const nextItems = Array.from(byId.values());
+            return {
+                items: nextItems,
+                total: resp.total,
+                page: Math.max(1, Math.min(nextPage, Math.ceil(resp.total / pageSize))),
                 loadingMore: false,
-                hasMore: prev.items.length + resp.items.length < resp.total,
-        }),
-        () => this.maybeStartBatchPoll()
+                ...(clearPaginationError ? { error: null } : {}),
+                hasMore: nextItems.length < resp.total,
+            };
+        },
+        () => { if (this.isMounted_) this.maybeStartBatchPoll(); }
       );
-        } catch {
-            this.setState({ loadingMore: false });
+        } catch (err) {
+            if (isCurrent()) {
+                this.loadMoreRetryAt = Date.now() + LOAD_MORE_RETRY_COOLDOWN_MS;
+                const showPaginationError = err instanceof SummaryPaginationDriftError &&
+                    (!this.state.error || this.paginationErrorVisible);
+                if (showPaginationError) this.paginationErrorVisible = true;
+                this.setState({
+                    loadingMore: false,
+                    ...(showPaginationError
+                        ? { error: t("summary.common.loadingFailed") }
+                        : {}),
+                });
+            }
+        } finally {
+            this.pendingReadPatches.delete(readPatches);
+            this.isLoadingMore = false;
+            if (this.isMounted_) this.setState({ loadingMore: false });
+            this.flushActivationAfterCommit();
         }
     }
 
@@ -568,8 +676,9 @@ export default class SummaryListPage extends Component<
     }
 
     handleStatusChange = (value: string | number) => {
-        // 埋点 292:状态筛选切换（隐私 props 恒空，不采具体状态值）。
-        Dap.shared.track("smart_summary_status_filtered", {});
+        // 埋点 292:状态筛选切换。
+        // DAP-266：补 status（所选状态枚举值,标识非内容；空串=全部→'all'）。
+        Dap.shared.track("smart_summary_status_filtered", { status: value === "" ? "all" : value });
         const statusFilter = value === "" ? undefined : (value as TaskStatusType);
         this.setState({ statusFilter, page: 1 }, () => this.loadData());
     };
@@ -579,14 +688,26 @@ export default class SummaryListPage extends Component<
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.searchTimer = setTimeout(() => {
             // 埋点 291:去抖后「发生了一次搜索」，仅在有关键词时发，绝不采关键词值。
-            if (value.trim()) Dap.shared.track("smart_summary_searched", {});
-            this.setState({ page: 1 }, () => this.loadData());
+            // DAP-271 finding 6：has_result 需在 loadData 拿到结果后才知——移到结果返回后采集。
+            //   只在本次搜索关键词非空、且 loadData 返回了有效结果总数(未被更新请求超越/未失败)时打点;
+            //   loadData 返回 undefined(超越/卸载/失败)则不打点(与 mcp/skillmarket 同口径,失败不伪装零命中)。
+            const searched = value.trim();
+            this.setState({ page: 1 }, () => {
+                void this.loadData().then((total) => {
+                    if (searched && total !== undefined) {
+                        Dap.shared.track("smart_summary_searched", {
+                            has_result: total > 0,
+                        });
+                    }
+                });
+            });
         }, 400);
     };
 
     handleDelete = async (taskId: number) => {
         try {
-            await api.deleteSummary(taskId);
+            // DAP-271 finding 6：source 受控枚举 'list'（列表页删除入口）。
+            await api.deleteSummary(taskId, "list");
             Toast.success(t("summary.list.deleteSuccess"));
             // Always reload from page 1 after delete to avoid losing earlier pages
             this.loadData();
@@ -659,7 +780,13 @@ export default class SummaryListPage extends Component<
     handleRetry = async (taskId: number) => {
         try {
       const task = this.state.items.find((i) => i.task_id === taskId);
-            await api.regenerateSummary(taskId, { topic: task?.title || "" });
+            if (task?.trigger_type === TriggerType.AGENT) {
+                requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "retry");
+                this.handleCardClick(taskId);
+                return;
+            }
+            // DAP-271 finding 6：prev_status 就近取自已查到的 task.status（重生成前状态）。
+            await api.regenerateSummary(taskId, undefined, task?.status);
             Toast.success(t("summary.list.retrySuccess"));
             this.loadData();
         } catch (err: any) {
@@ -669,7 +796,8 @@ export default class SummaryListPage extends Component<
 
     handleCancel = async (taskId: number) => {
         try {
-            await api.cancelSummary(taskId);
+            // DAP-271 finding 6：source 受控枚举 'list'（列表页取消入口）。
+            await api.cancelSummary(taskId, "list");
             Toast.success(t("summary.list.cancelSuccess"));
             this.loadData();
         } catch (err: any) {
@@ -678,12 +806,8 @@ export default class SummaryListPage extends Component<
     };
 
     handleRegenerate = (taskId: number) => {
+        requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "regenerate");
         this.handleCardClick(taskId);
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-regenerate", { detail: { taskId } })
-      );
-        }, 300);
     };
 
     handleContinueOptimize = (taskId: number) => {
@@ -699,14 +823,13 @@ export default class SummaryListPage extends Component<
     };
 
     handleEdit = (taskId: number) => {
+        requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "edit");
         this.handleCardClick(taskId);
-        // 300ms delay allows detail page to mount and register event listener
-        // before dispatching the edit action event
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-edit", { detail: { taskId } })
-      );
-        }, 300);
+    };
+
+    handleSchedule = (taskId: number) => {
+        requestSummaryScheduleOpen(taskId, WKApp.shared?.currentSpaceId || "");
+        this.handleCardClick(taskId);
     };
 
     handleCreate = (mode: "normal" | "agent" = "normal") => {
@@ -715,7 +838,8 @@ export default class SummaryListPage extends Component<
         // 从「+」下拉显式选择 Agent 总结属于一次模式选择行为：创建页内切换已随本功能
         // 上移到列表页「+」，补发模式事件以保留 smart_summary_mode_switched 埋点维度。
         if (mode === "agent") {
-            Dap.shared.track("smart_summary_mode_switched", { to: "agent" });
+            // DAP-266：spec 键为 mode（此前误用 to）；对齐 result doc spec_props。
+            Dap.shared.track("smart_summary_mode_switched", { mode: "agent" });
         }
         if (this.props.onCreateNew) {
             // 面板模式：把所选模式透传给宿主（ChatSummaryPanel）供其 create 视图预置 initialMode。
@@ -972,8 +1096,8 @@ export default class SummaryListPage extends Component<
                                 onRegenerate={this.handleRegenerate}
                                 onContinueOptimize={this.handleContinueOptimize}
                                 onEdit={this.handleEdit}
+                                onSchedule={this.handleSchedule}
                                 onCancel={this.handleCancel}
-                                unifiedAgentActions={createEntryMode === "unified"}
                             />
                         ))}
                         {loadingMore && (

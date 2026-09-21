@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
+vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
 
 // SummaryDetailPage import wukongimjssdk，测试环境会拉起无关依赖导致解析失败，mock 掉。
 vi.mock('wukongimjssdk', () => ({
@@ -57,9 +59,13 @@ vi.mock('../../utils/summaryAttentionBadge', () => ({
 }));
 
 import * as api from '../../api/summaryApi';
-import { WKApp, Dap } from '@octo/base';
+import { WKApp, Dap, t } from '@octo/base';
+import * as octoBase from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
+import { requestSummaryScheduleOpen, consumeSummaryScheduleOpen, requestSummaryDetailAction, consumeSummaryDetailAction } from '../../utils/summaryDetailIntent';
+import { SummaryMode, TaskStatus, TriggerType } from '../../types/summary';
+import { startOfLocalDay, endOfLocalDay } from '../../components/TimeRangeSelector';
 import { summaryTestIds } from '../../utils/testIds';
 import { SummaryForwardContextExpiredError } from '../../host/forwardErrors';
 import type { SummaryForwardRequest, SummaryMessagingPort } from '../../host/types';
@@ -67,13 +73,18 @@ import { Toast } from '@douyinfe/semi-ui';
 
 vi.mock('../../api/summaryApi');
 
-function makePage(taskId: number | string) {
-    const page = new SummaryDetailPage({ taskId } as any);
+function makePage(taskId: number | string, props: Record<string, unknown> = {}) {
+    const page = new SummaryDetailPage({ taskId, ...props } as any);
     (page as any).context = { t: (k: string) => k };
-    (page as any).setState = function (this: any, patch: any) {
+    (page as any).setState = function (this: any, patch: any, callback?: () => void) {
         this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
+        callback?.();
     };
     return page;
+}
+
+function findScheduleAction(page: SummaryDetailPage) {
+    return collectElements(page.renderHeader()).find(element => element.props?.onClick === page.openScheduleModal);
 }
 
 describe('SummaryDetailPage forwarding feedback', () => {
@@ -206,7 +217,7 @@ const baseDetail = (over: any = {}) => ({
     trigger_type: 0,
     time_range_start: '',
     time_range_end: '',
-    sources: [],
+    sources: [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }],
     participants: [],
     result: null,
     error_message: null,
@@ -216,8 +227,283 @@ const baseDetail = (over: any = {}) => ({
     ...over,
 });
 
+describe('shared detail actions after navigation', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId);
+    });
+
+    it('waits for slow detail and personal loading before prefilling regeneration', async () => {
+        let resolveDetail!: (value: any) => void;
+        let resolvePersonal!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(resolve => { resolveDetail = resolve; }));
+        vi.mocked(api.getPersonalResult).mockReturnValue(new Promise(resolve => { resolvePersonal = resolve; }));
+        vi.mocked(api.getMembers).mockResolvedValue([]);
+        const page = makePage(1);
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'regenerate');
+        const loading = page.loadDetail();
+        expect(page.state.showRegenerateModal).toBe(false);
+        resolveDetail(baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.COMPLETED,
+            trigger_type: TriggerType.AGENT, generation_requirement: 'Saved original instruction' }));
+        await loading;
+        expect(page.state.showRegenerateModal).toBe(false);
+        resolvePersonal({ id: 7, content: 'old body', worker_status: 2 });
+        await vi.waitFor(() => expect(page.state.showRegenerateModal).toBe(true));
+        expect(page.state.regenerateTopic).toBe('Saved original instruction');
+        expect(consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId)).toBeNull();
+    });
+
+    it('list retry and detail retry both open full regeneration, even with no personal result', async () => {
+        const detail = baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.FAILED,
+            trigger_type: TriggerType.AGENT, generation_requirement: 'Saved original instruction' });
+        const fromList = makePage(1);
+        fromList.state = { ...fromList.state, loading: false, personalLoading: true, detail } as any;
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'retry');
+        fromList.componentDidUpdate(fromList.props);
+        const fromDetail = makePage(1);
+        fromDetail.state = { ...fromDetail.state, loading: false, detail } as any;
+        await fromDetail.handleRetry();
+        for (const page of [fromList, fromDetail]) {
+            expect(page.state.showRegenerateModal).toBe(true);
+            expect(page.state.regenerateMode).toBe('full');
+            expect(page.state.regenerateTopic).toBe('Saved original instruction');
+        }
+    });
+
+    it('reports an older backend instead of opening a disabled retry dialog', async () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false,
+            detail: baseDetail({ trigger_type: TriggerType.AGENT, status: TaskStatus.FAILED }) } as any;
+        await page.handleRetry();
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(Toast.error).toHaveBeenCalledWith(t('summary.generation.serviceUpgradeRequired'));
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+    });
+
+    it('retries a failed Workflow summary without replacing its saved instruction', async () => {
+        vi.mocked(api.regenerateSummary).mockResolvedValue({ task_id: 1 });
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false,
+            detail: baseDetail({ trigger_type: TriggerType.MANUAL, status: TaskStatus.FAILED,
+                generation_requirement: '', topic: '', title: 'Display title only' }) } as any;
+        (page as any).loadDetail = vi.fn();
+
+        await page.handleRetry();
+
+        // DAP-271 finding 6：retry 走 regenerateSummary(taskId, undefined, prev_status)。第二参(regenerate
+        //   body)仍恒为 undefined——不替换已保存指令；第三参补 prev_status(detail.status)。
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1, undefined, TaskStatus.FAILED);
+        expect((api.regenerateSummary as any).mock.calls[0][1]).toBeUndefined();
+    });
+
+    it.each([TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED])('allows both edit entries for terminal status %s with retained content', (status) => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalLoading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status,
+                permissions: { can_edit: status === TaskStatus.COMPLETED, can_edit_personal: true } }),
+            personalResult: { content: 'previous summary', worker_status: 3 } } as any;
+        expect(collectElements(page.renderPersonalSummary()).some(element =>
+            element.props?.onClick === page.handleStartEdit)).toBe(true);
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'edit');
+        page.componentDidUpdate(page.props);
+        expect(page.state.isEditing).toBe(true);
+    });
+
+    it.each(['empty', 'permission', 'running'] as const)('refuses card editing for %s', (reason) => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalLoading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: reason === 'running' ? TaskStatus.PROCESSING : TaskStatus.FAILED,
+                permissions: { can_edit: reason !== 'permission' } }),
+            personalResult: { content: reason === 'empty' ? '' : 'body', worker_status: 3 } } as any;
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'edit');
+        page.componentDidUpdate(page.props);
+        expect(page.state.isEditing).toBe(false);
+        expect(Toast.error).toHaveBeenCalledWith(t('summary.detail.editUnavailable'));
+    });
+
+    it('honors an explicit personal-edit denial rather than falling back to can_edit', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalLoading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.COMPLETED,
+                permissions: { can_edit: true, can_edit_personal: false } }),
+            personalResult: { content: 'body', worker_status: 2 } } as any;
+        page.handleStartEdit();
+        expect(page.state.isEditing).toBe(false);
+    });
+
+    it('renders failed metadata once alongside the retained personal body', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalExpanded: true,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.FAILED,
+                sources: [{ source_type: 1, source_id: 'group', source_name: 'Group' }] }),
+            personalResult: { content: 'retained body', worker_status: 3 } } as any;
+        const tree = page.render();
+        expect(collectByClass(tree, 'summary-detail-meta-time')).toHaveLength(1);
+        expect(collectByClass(tree, 'summary-detail-source-chips')).toHaveLength(1);
+        expect(collectByClass(tree, 'summary-detail-failed')).toHaveLength(1);
+    });
+
+    it('keeps team regeneration creator-only without changing collaboration rights', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_GROUP, status: TaskStatus.COMPLETED,
+                creator_id: 'another-user', participants: [{ user_id: WKApp.loginInfo.uid }] }) } as any;
+        expect(collectElements(page.renderHeader()).some(element =>
+            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(false);
+        page.state.detail!.creator_id = WKApp.loginInfo.uid;
+        expect(collectElements(page.renderHeader()).some(element =>
+            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(true);
+    });
+});
+
+describe('schedule intent waits for the matching loaded task', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        consumeSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        consumeSummaryScheduleOpen(2, WKApp.shared?.currentSpaceId || '');
+    });
+
+    it('does not open the outgoing page synchronously and consumes on a same-task update', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, detail: baseDetail({ topic: 'same task' }) as any, loading: false };
+        requestSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        expect(page.state.showScheduleConfig).toBe(false);
+        page.componentDidUpdate({ taskId: 1 }, page.state);
+        expect(page.state.showScheduleConfig).toBe(true);
+        page.componentWillUnmount();
+    });
+
+    it('keeps a click while detail is loading instead of dropping it after 300ms', async () => {
+        let resolve!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(res => { resolve = res; }));
+        const page = makePage(1);
+        requestSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        const loading = page.loadDetail();
+        expect(page.state.showScheduleConfig).toBe(false);
+        resolve(baseDetail({ topic: 'target instruction' }));
+        await loading;
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('target instruction');
+        page.componentWillUnmount();
+    });
+
+    it('clears old detail and refuses schedule writes before the new detail arrives', async () => {
+        let resolve!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(res => { resolve = res; }));
+        const page = makePage(2);
+        page.state = { ...page.state, detail: baseDetail({ task_id: 1, topic: 'old private instruction' }) as any, showScheduleConfig: true };
+        requestSummaryScheduleOpen(2, WKApp.shared?.currentSpaceId || '');
+        page.openScheduleModal();
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00', generationInstruction: 'old private instruction' });
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        const loading = page.loadDetail();
+        expect(page.state.detail).toBeNull();
+        expect(page.state.showScheduleConfig).toBe(false);
+        resolve(baseDetail({ task_id: 2, topic: 'new instruction' }));
+        await loading;
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('new instruction');
+        page.componentWillUnmount();
+    });
+
+    it('waits for the existing schedule instead of opening a default create form', async () => {
+        let resolve!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ schedule_id: 77 }) as any);
+        vi.mocked(api.getSchedule).mockReturnValue(new Promise(res => { resolve = res; }));
+        const page = makePage(1);
+        requestSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        await page.loadDetail();
+        expect(page.state.showScheduleConfig).toBe(false);
+        resolve({ schedule_id: 77, generation_instruction: 'scheduled instruction', cron_expr: '0 9 * * 1', is_active: true });
+        await Promise.resolve();
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('scheduled instruction');
+        page.componentWillUnmount();
+    });
+
+    it('does not invoke missing config APIs on an older backend', async () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ trigger_type: 3, summary_mode: 2 }) as any;
+        page.openScheduleModal();
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(page.state.showRegenerateModal).toBe(false);
+        page.state.regenerateMode = 'full';
+        page.state.regenerateTopic = 'instruction';
+        await page.handleRegenerateConfirm();
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+    });
+});
+
 describe('SummaryDetailPage — Blocking 5: scheduleItem must track current detail', () => {
     beforeEach(() => vi.clearAllMocks());
+
+    it('saves missing Agent configuration before opening scheduling, without generating or enabling a schedule', async () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({
+            status: 3, trigger_type: 3, summary_mode: 2, generation_requirement: '',
+            sources: [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }],
+        }) as any;
+        page.openScheduleModal();
+        expect(page.state.configuringForSchedule).toBe(true);
+        expect(page.state.showScheduleConfig).toBe(false);
+        page.state.regenerateTopic = 'Summarize progress and risks';
+        page.state.regenerateSources = [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }];
+        // Drive from local-midnight Dates exactly as TimeRangePicker's date-only
+        // onChange now emits, so the local→UTC full-day-boundary normalization
+        // production performs is actually exercised (PR#1674 review P1-3).
+        const rangeStart = new Date(2026, 8, 1);
+        const rangeEnd = new Date(2026, 8, 7);
+        page.state.regenerateRange = { start: rangeStart, end: rangeEnd };
+        vi.mocked(api.getSummaryDetail).mockResolvedValue({
+            ...page.state.detail!, generation_requirement: page.state.regenerateTopic,
+            sources: page.state.regenerateSources,
+            time_range_start: '2026-09-01T00:00:00Z', time_range_end: '2026-09-07T00:00:00Z',
+        });
+        await page.handleRegenerateConfirm();
+        expect(api.saveGenerationConfig).toHaveBeenCalledWith(1, {
+            topic: 'Summarize progress and risks',
+            // start is the START of the first day, end is the END of the last day —
+            // not the midnights a date-only picker yields.
+            time_range: {
+                start: startOfLocalDay(rangeStart).toISOString(),
+                end: endOfLocalDay(rangeEnd).toISOString(),
+            },
+        });
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('Summarize progress and risks');
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        expect(api.createSchedule).not.toHaveBeenCalled();
+    });
+
+    it('does not offer a chat picker to configure a source-less summary for scheduling', () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ trigger_type: TriggerType.AGENT, generation_requirement: '', sources: [] }) as any;
+        page.openScheduleModal();
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(Toast.warning).toHaveBeenCalledWith(t('summary.generation.scheduleSourceFixed'));
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+    });
+
+    it('explains why a consumed list-card schedule action cannot open', () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ permissions: { can_edit: true, can_schedule: false } }) as any;
+
+        page.openScheduleModal();
+
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(Toast.warning).toHaveBeenCalledWith(t('summary.generation.schedulePermissionDenied'));
+    });
+
+    it('opens bound schedule settings without calling the generic configuration endpoint', () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ trigger_type: TriggerType.AGENT, generation_requirement: '', schedule_id: 9 }) as any;
+        page.openScheduleModal();
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.configuringForSchedule).toBe(false);
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+    });
 
     it('clears stale scheduleItem when navigating to a detail with no schedule', async () => {
         // 模拟从「有定时」总结切到「无定时」总结：先有残留 scheduleItem。
@@ -896,6 +1182,7 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
             track.mockRestore();
         }
     });
+
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───
@@ -957,7 +1244,8 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         const pending = page.handleScheduleDisable();
         await Promise.resolve();
-        expect(api.toggleSchedule).toHaveBeenCalledWith(50, false);
+        // DAP-271 finding 6：timer_disabled 补 summary_id（入口快照 requestTaskId=1）。
+        expect(api.toggleSchedule).toHaveBeenCalledWith(50, false, 1);
 
         // 切到 task B（B 无定时）。
         (page as any).props = { taskId: 2 };
@@ -988,7 +1276,8 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         const pending = page.handleConfirmSchedule();
         await Promise.resolve();
-        expect(api.confirmSchedule).toHaveBeenCalledWith(60);
+        // DAP-271 finding 6：recurring_participation_confirmed 补 summary_id（入口快照 requestTaskId=1）。
+        expect(api.confirmSchedule).toHaveBeenCalledWith(60, 1);
 
         // 切到 task B。
         (page as any).props = { taskId: 2 };
@@ -1032,6 +1321,7 @@ describe('SummaryDetailPage — new schedule: one-step create (scope=task)', () 
         expect(api.createSchedule).toHaveBeenCalledTimes(1);
         expect(api.createSchedule).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'task', task_id: 1 }),
+            expect.anything(), // B-1：第二参数为 UI 单位真值 hint {unit, every}
         );
         // 不再有第二步绑定、也不再回滚。
         expect(api.updateSchedule).not.toHaveBeenCalled();
@@ -1090,6 +1380,7 @@ describe('SummaryDetailPage — V5 confirm_policy on schedule write paths', () =
 
         expect(api.createSchedule).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'task', task_id: 1, confirm_policy: 1 }),
+            expect.anything(), // B-1：第二参数为 UI 单位真值 hint
         );
     });
 
@@ -1129,6 +1420,7 @@ describe('SummaryDetailPage — V5 confirm_policy on schedule write paths', () =
         expect(api.updateSchedule).toHaveBeenCalledWith(
             7,
             expect.objectContaining({ scope: 'task', task_id: 1, confirm_policy: 1 }),
+            expect.anything(), // B-1：第三参数为 UI 单位真值 hint
         );
     });
 
@@ -1312,6 +1604,7 @@ describe('SummaryDetailPage — finding 1: 多人判定不被 members 二次异�
         // 多人 → confirm_policy=1，未因 members 未到而误判单人。
         expect(api.createSchedule).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'task', task_id: 1, confirm_policy: 1 }),
+            expect.anything(), // B-1：第二参数为 UI 单位真值 hint
         );
     });
 
@@ -1462,19 +1755,12 @@ describe('SummaryDetailPage — finding 2: scheduleLoading 期间 WAITING_CONFIR
 
 // ─── 需求1（本轮）：多人详情页定时入口可见性对齐普通任务 ───
 //
-// 背景：多人（BY_PERSON）详情页定时按钮之前被门控成
-//   `(summary_mode !== BY_PERSON || !personalResult || personalLoading) && renderScheduleButton()`
-// → 多人任务一旦 personalResult 已加载，header 的定时按钮被隐藏；
-// personalResult 未生成时又被塞进 personal 区（依赖 personalResult）→ 两处都不出。
-// 修复：renderScheduleButton() 仅依赖 permissions.can_edit / isEditing（其内部门控），
-// 与 personalResult / summary_mode 解耦；header 无条件渲染；personal 区不再重复渲染。
+// Exercise the live header dropdown, independent of personal-result loading.
+// An unused standalone button cannot prove the production entry is available.
 describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP 一致可见', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    // fail-before / pass-after 核心：BY_PERSON 且 personalResult 未生成时，
-    // renderScheduleButton() 仍须返回非 null（以前 header 门控会把它藏掉）。
-    // B1（第二轮）：定时按钮改判 permissions.can_schedule（任务级配置，creator 单/多人都可设）。
-    it('renderScheduleButton stays non-null for BY_PERSON even when personalResult is absent', () => {
+    it('header schedule action is available for BY_PERSON without a personal result', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1485,12 +1771,12 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             isEditing: false,
         };
         // 定时按钮与 personalResult 解耦，依然渲染。
-        expect((page as any).renderScheduleButton()).not.toBeNull();
+        expect(findScheduleAction(page)).toBeDefined();
     });
 
     // B1：定时按钮门控由 can_edit 改为 can_schedule。creator 多人任务后端给 can_schedule=true，
     // 即便（极端）can_edit=false 也应能设定时；非 creator can_schedule=false → 不渲染。
-    it('renderScheduleButton gated by can_schedule (renders when can_schedule=true even if can_edit=false)', () => {
+    it('header schedule action uses can_schedule independently of can_edit', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1498,10 +1784,10 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: false,
         };
-        expect((page as any).renderScheduleButton()).not.toBeNull();
+        expect(findScheduleAction(page)).toBeDefined();
     });
 
-    it('renderScheduleButton returns null without can_schedule (non-creator)', () => {
+    it('header hides schedule action without can_schedule', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1509,10 +1795,10 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: false,
         };
-        expect((page as any).renderScheduleButton()).toBeNull();
+        expect(findScheduleAction(page)).toBeUndefined();
     });
 
-    it('renderScheduleButton still gated by isEditing (returns null while editing)', () => {
+    it('header hides schedule action while editing', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1520,7 +1806,7 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: true,
         };
-        expect((page as any).renderScheduleButton()).toBeNull();
+        expect(findScheduleAction(page)).toBeUndefined();
     });
 
     // v2 对齐：定时按钮集中到 header actions，从团队框/个人区移除。
@@ -1557,6 +1843,280 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
         expect(json).not.toContain('summary.detail.editSchedule');
         // 但仍保留个人级操作：“提交给全部”。
         expect(json).toContain('summary.detail.submitToAll');
+    });
+});
+
+describe('SummaryDetailPage — document summaries never enter the schedule pipeline', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('does not expose the live header schedule action for a document source', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                permissions: { can_edit: true, can_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: null,
+            isEditing: false,
+            editingTeamSummary: false,
+        };
+
+        const json = JSON.stringify((page as any).renderHeader());
+        expect(json).not.toContain('summary.detail.setSchedule');
+        expect(json).not.toContain('summary.detail.editSchedule');
+    });
+
+    it('openScheduleModal warns and does not open for a document source', () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                permissions: { can_edit: true, can_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            showScheduleConfig: false,
+        };
+
+        page.openScheduleModal();
+
+        expect(Toast.warning).toHaveBeenCalledWith('文档总结暂不支持设置定时更新');
+        expect((page.state as any).showScheduleConfig).toBe(false);
+        expect(track).not.toHaveBeenCalledWith('smart_summary_timer_dialog_opened', {});
+        track.mockRestore();
+    });
+
+    it('defensively skips createSchedule when save is invoked directly', async () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: null,
+        };
+
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+
+        expect(api.createSchedule).not.toHaveBeenCalled();
+    });
+});
+
+describe('SummaryDetailPage — document source snapshot version', () => {
+    it('keeps the accessible source label concise without exposing source_version', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string) => ({
+                'summary.source.document': '文档',
+            }[key] || key),
+        };
+
+        expect((page as any).sourceLabel({
+            source_type: 4,
+            source_id: 'doc-1',
+            source_name: '项目复盘',
+            source_version: 'A6v+hvAJgQjBluHbCaAQq7eowQTFBQ==',
+        })).toBe('文档 · 项目复盘');
+    });
+
+    it('shows one aggregate snapshot explanation for all document sources', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string, options?: { values?: Record<string, unknown> }) =>
+                key === 'summary.source.documentSnapshotNotice'
+                    ? `基于以上 ${options?.values?.count} 份文档在 ${options?.values?.time} 的内容生成，后续修改不会影响本总结。`
+                    : key === 'summary.source.document'
+                        ? '文档'
+                        : key,
+        };
+
+        const tree = (page as any).renderSourceMetadata([
+            { source_type: 4, source_id: 'doc-1', source_name: '项目复盘', source_version: 'v1' },
+            { source_type: 4, source_id: 'doc-2', source_name: '方案说明', source_version: 'v2' },
+        ], '2026-09-20T03:40:00Z');
+        const notes = collectElements(tree).filter(el => el.props.className === 'summary-detail-source-note');
+
+        expect(notes).toHaveLength(1);
+        expect(JSON.stringify(notes[0])).toContain('基于以上 2 份文档在');
+        expect(JSON.stringify(tree)).not.toContain('v1');
+        expect(JSON.stringify(tree)).not.toContain('v2');
+    });
+
+    it('labels chat sources by type without a document snapshot badge', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string) => key === 'summary.source.groupChat' ? '群聊' : key,
+        };
+
+        expect((page as any).sourceLabel({
+            source_type: 1,
+            source_id: 'group-1',
+            source_name: '需求讨论群',
+        })).toBe('群聊 · 需求讨论群');
+    });
+});
+
+describe('SummaryDetailPage — document generation rendering', () => {
+    it.each([undefined, 0, -1, 9])('shows exactly one progress card while generating (schedule=%s)', (scheduleId) => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            loading: false,
+            detail: baseDetail({
+                summary_mode: SummaryMode.BY_PERSON,
+                status: TaskStatus.WAITING_CONFIRM,
+                schedule_id: scheduleId,
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            members: [],
+            personalResult: null,
+        };
+        const elements = collectElements(page.render());
+        expect(elements.filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(1);
+        expect(elements.some(el => el.props.description === 'summary.detail.documentScheduleUnsupported')).toBe(false);
+        expect(elements.some(el => el.props.description === 'summary.detail.legacyDocumentSchedule')).toBe((scheduleId ?? 0) > 0);
+        expect(elements.some(el => el.props.onClick === page.handleViewConfirm)).toBe(false);
+        expect(page.needsScheduleConfirm()).toBe(false);
+    });
+
+    it.each([1, 4])('stops generating feedback when personal content is ready (source=%s)', (sourceType) => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            loading: false,
+            detail: baseDetail({
+                summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.WAITING_CONFIRM,
+                sources: [{ source_type: sourceType, source_id: 'source-1' }],
+            }),
+            personalResult: { content: 'Ready summary', worker_status: 2 } as any,
+            workflowGateContent: false,
+        };
+        expect(collectElements(page.render()).filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(0);
+    });
+
+    it('preserves the single-person chat generating state', () => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state, loading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.WAITING_CONFIRM }),
+        };
+        const elements = collectElements(page.render());
+        expect(elements.filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(1);
+        expect(elements.some(el => el.props.description === 'summary.detail.legacyDocumentSchedule')).toBe(false);
+    });
+
+    it.each(['Unknown', '未知'])('uses the current locale fallback for unknown source types (%s)', (unknownLabel) => {
+        const page = makePage(1);
+        (page as any).context = { t: (key: string) => key === 'summary.common.unknown' ? unknownLabel : key };
+        const tree = (page as any).renderSourceMetadata([{ source_type: 99, source_id: 'future-source' }]);
+        expect(collectElements(tree).some(el => el.props['aria-label'] === `${unknownLabel} · future-source`)).toBe(true);
+        expect(JSON.stringify(tree)).not.toContain('undefined');
+    });
+});
+
+describe('SummaryDetailPage — legacy document schedules are disable-only', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    function legacyPage(active = true, canSchedule = true) {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            detail: baseDetail({
+                schedule_id: 9,
+                permissions: { can_schedule: canSchedule, can_view_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: {
+                schedule_id: 9, is_active: active, confirm_policy: 1,
+                participant_config: [WKApp.loginInfo.uid],
+            } as any,
+            scheduleLoading: false,
+        };
+        return page;
+    }
+
+    function disableAction(page: SummaryDetailPage) {
+        return collectElements(page.renderHeader())
+            .find(element => element.props?.onClick === page.handleScheduleDisable);
+    }
+
+    it('exposes only disable in the real header for an active legacy document schedule', () => {
+        const page = legacyPage();
+        expect(disableAction(page)).toBeDefined();
+        expect(findScheduleAction(page)).toBeUndefined();
+        expect(JSON.stringify(page.renderScheduleSummary())).toContain('summary.detail.legacyDocumentSchedule');
+        expect(page.needsScheduleConfirm()).toBe(false);
+        expect(page.renderScheduleConfirm()).toBeNull();
+    });
+
+    it('stops the existing schedule and then displays only its inactive status', async () => {
+        const page = legacyPage();
+        vi.mocked(api.toggleSchedule).mockResolvedValue({ schedule_id: 9, is_active: false } as any);
+        await disableAction(page)!.props.onClick();
+        expect(api.toggleSchedule).toHaveBeenCalledExactlyOnceWith(9, false, 1);
+        expect(page.state.scheduleItem?.is_active).toBe(false);
+        expect(disableAction(page)).toBeUndefined();
+        expect(findScheduleAction(page)).toBeUndefined();
+        expect(JSON.stringify(page.renderScheduleSummary())).toContain('summary.detail.scheduleDisabledHint');
+    });
+
+    it('leaves an active schedule visible and retryable when disabling fails', async () => {
+        const page = legacyPage();
+        vi.mocked(api.toggleSchedule).mockRejectedValueOnce(new Error('network'));
+        await page.handleScheduleDisable();
+        expect(page.state.scheduleItem?.is_active).toBe(true);
+        expect(page.state.scheduleDisabling).toBe(false);
+        expect(disableAction(page)).toBeDefined();
+        expect(Toast.error).toHaveBeenCalledWith('network');
+    });
+
+    it.each(['noPermission', 'inactive', 'wrongSchedule', 'wrongTask', 'loading', 'editing'] as const)(
+        'blocks the UI and direct disable handler for %s',
+        async (condition) => {
+            const page = legacyPage(condition !== 'inactive', condition !== 'noPermission');
+            if (condition === 'wrongSchedule') page.state.scheduleItem!.schedule_id = 99;
+            if (condition === 'wrongTask') page.state.detail!.task_id = 2;
+            if (condition === 'loading') page.state.scheduleLoading = true;
+            if (condition === 'editing') page.state.isEditing = true;
+            expect(disableAction(page)).toBeUndefined();
+            await page.handleScheduleDisable();
+            expect(api.toggleSchedule).not.toHaveBeenCalled();
+        }
+    );
+
+    it('does not display a schedule to viewers lacking both permissions', () => {
+        const page = legacyPage(true, false);
+        page.state.detail!.permissions!.can_view_schedule = false;
+        expect(page.renderScheduleSummary()).toBeNull();
+    });
+
+    it('prevents duplicate disable requests while one is pending', async () => {
+        const page = legacyPage();
+        let resolve!: (value: any) => void;
+        vi.mocked(api.toggleSchedule).mockReturnValueOnce(new Promise(next => { resolve = next; }));
+        const pending = page.handleScheduleDisable();
+        expect(disableAction(page)!.props.disabled).toBe(true);
+        await page.handleScheduleDisable();
+        expect(api.toggleSchedule).toHaveBeenCalledTimes(1);
+        resolve({ is_active: false });
+        await pending;
+    });
+
+    it.each([true, false])('never creates, updates, enables or confirms a legacy schedule (active=%s)', async (active) => {
+        const onViewConfirm = vi.fn();
+        const page = legacyPage(active);
+        (page as any).props = { ...page.props, onViewConfirm };
+        page.openScheduleModal();
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+        await page.handleConfirmSchedule();
+        (page as any).handleViewConfirm();
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        expect(api.updateSchedule).not.toHaveBeenCalled();
+        expect(api.toggleSchedule).not.toHaveBeenCalled();
+        expect(api.confirmSchedule).not.toHaveBeenCalled();
+        expect(onViewConfirm).not.toHaveBeenCalled();
     });
 });
 
@@ -1700,14 +2260,14 @@ describe('批次B 需求2：定时信息 gate=can_view_schedule（全员）, 设
         expect((page as any).renderScheduleSummary()).toBeNull();
     });
 
-    it('renderScheduleButton (设置) still gated by can_schedule (creator only)', () => {
+    it('live header schedule action remains creator-authorized', () => {
         const creator = makePage(1);
         creator.state = { ...(creator.state as any), detail: multiCollabDetail({ can_schedule: true }), isEditing: false };
-        expect((creator as any).renderScheduleButton()).not.toBeNull();
+        expect(findScheduleAction(creator)).toBeDefined();
 
         const viewer = makePage(1);
         viewer.state = { ...(viewer.state as any), detail: multiCollabDetail({ can_schedule: false, can_view_schedule: true }), isEditing: false };
-        expect((viewer as any).renderScheduleButton()).toBeNull();
+        expect(findScheduleAction(viewer)).toBeUndefined();
     });
 });
 
@@ -2210,7 +2770,10 @@ describe('批次B 回炉 F1：编辑态互斥 / 切 task 复位 / 编辑分支�
 
     it('进单人编辑态后团队/个人编辑态被关闭（互斥）', () => {
         const page = makePage(1);
-        page.state = { ...(page.state as any), editingTeamSummary: true, editingPersonalReport: true, isEditing: false };
+        page.state = { ...(page.state as any), editingTeamSummary: true, editingPersonalReport: true, isEditing: false,
+            loading: false, detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.COMPLETED,
+                permissions: { can_edit: true }, participants: [] }),
+            personalResult: { content: 'body', worker_status: 2 } };
         (page as any).handleStartEdit();
         expect((page.state as any).isEditing).toBe(true);
         expect((page.state as any).editingTeamSummary).toBe(false);
@@ -3297,5 +3860,54 @@ describe('SummaryDetailPage — 深链 string taskNo：loadPersonalResult 四入
         expect(api.getPersonalResult).toHaveBeenCalledWith(740);    // 终态刷新用数字
         expect(api.batchStatus).not.toHaveBeenCalledWith(['SUM-740']);
         expect(api.getPersonalResult).not.toHaveBeenCalledWith('SUM-740');
+    });
+});
+
+// DAP-271 finding 5:异步成功事件用「入口 taskId 快照」归因,切总结不错记到另一条。
+describe('DAP-271 finding 5 — 异步成功事件归因入口快照(切 task 不误记)', () => {
+    const messaging: SummaryMessagingPort = {
+        getCurrentUser: () => ({ uid: 'me', displayName: 'Me' }),
+        loadConversationMembers: async () => [],
+        openConversation: async () => {},
+        notifySummaryCompleted: async () => {},
+        requestForward: vi.fn(),
+        subscribeInvalidation: () => () => {},
+    };
+
+    it('forwarded: 入口 task=1,转发完成前切到 task=2,summary_id 仍记 1', () => {
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        const requestForward = vi.fn();
+        const page = new SummaryDetailPage({ taskId: 1, messaging: { ...messaging, requestForward } } as any);
+        (page as any).context = { t: (k: string) => k };
+        page.state = { ...page.state, detail: baseDetail({ result: { content: 'Summary text' } }) as any };
+
+        page.handleForwardToChat();
+        // 完成回调到达前用户切到 task 2。
+        (page as any).props = { taskId: 2, messaging: { ...messaging, requestForward } };
+        const request = requestForward.mock.calls[0][0];
+        request.onComplete?.({ kind: 'success', total: 3 });
+
+        const forwarded = track.mock.calls.find((c) => c[0] === 'smart_summary_forwarded');
+        expect(forwarded?.[1]).toMatchObject({ summary_id: 1, target_count: 3 });
+        track.mockRestore();
+    });
+
+    it('copied: 入口 task=1,复制 await 期间切到 task=2,summary_id 仍记 1', async () => {
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        let resolveCopy: (v: boolean) => void = () => {};
+        const copySpy = vi.spyOn(octoBase, 'copyToClipboard').mockReturnValue(new Promise<boolean>((res) => { resolveCopy = res; }));
+
+        const page = makePage(1);
+        (page as any).unmounted = false;
+        const pending = page.handleCopyContent('some copied text', 'personal-result');
+        // clipboard 兑现前切到 task 2。
+        (page as any).props = { taskId: 2 };
+        resolveCopy(true);
+        await pending;
+
+        const copied = track.mock.calls.find((c) => c[0] === 'smart_summary_copied');
+        expect(copied?.[1]).toMatchObject({ summary_id: 1 });
+        copySpy.mockRestore();
+        track.mockRestore();
     });
 });

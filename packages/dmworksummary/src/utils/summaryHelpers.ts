@@ -243,29 +243,13 @@ export function isReferenceable(item: { referenceable?: boolean; trigger_type: n
 }
 
 /**
- * 总结类型分类 — 单一 classifier（R4 yj P2-2）。
- *
- * icon、CSS class 和 label 全部由这个 kind 派生，消除「四路 label 配两路
- * icon」的分裂（此前定时总结会渲染快速总结的 icon，aria-label 与视觉不符）。
- *
- * - agent: trigger_type === AGENT
- * - scheduled: trigger_type === SCHEDULED 或 schedule_id > 0（0 表示无 schedule）
- * - multi: trigger_type === MANUAL 且 participants.length > 1
- * - quick: trigger_type === MANUAL 且 participants.length <= 1，以及未知类型兜底
+ * 用户可见类型只按参与人数区分团队/个人，生成引擎和定时设置不再单独分类。
+ * 保留既有 multi/quick 样式标识，icon、标签和引用选择器共享这个判定。
  */
-export type SummaryTypeKind = 'agent' | 'scheduled' | 'multi' | 'quick';
+export type SummaryTypeKind = 'multi' | 'quick';
 
 export function getSummaryTypeKind(item: SummaryListItem): SummaryTypeKind {
-    const isScheduled = item.trigger_type === TriggerType.SCHEDULED || (item.schedule_id != null && item.schedule_id > 0);
-    if (isScheduled) return 'scheduled';
-    switch (item.trigger_type) {
-        case TriggerType.AGENT:
-            return 'agent';
-        case TriggerType.MANUAL:
-            return (item.participants?.length ?? 0) > 1 ? 'multi' : 'quick';
-        default:
-            return 'quick';
-    }
+    return (item.participants?.length ?? 0) > 1 ? 'multi' : 'quick';
 }
 
 /**
@@ -280,25 +264,22 @@ export function getSummaryTypeLabel(
     item: SummaryListItem,
 ): string {
     switch (getSummaryTypeKind(item)) {
-        case 'scheduled':
-            return t("summary.summaryCard.scheduledType");
-        case 'agent':
-            return t("summary.summaryCard.agentType");
         case 'multi':
-            return t("summary.summaryCard.multiPersonType");
+            return t("summary.summaryCard.teamType");
         case 'quick':
         default:
-            return t("summary.summaryCard.quickType");
+            return t("summary.summaryCard.personalType");
     }
 }
 
 /** 信息来源类型 → 显示文本 */
-export function getSourceTypeLabel(type: SourceTypeValue): string {
+export function getSourceTypeLabel(type: SourceTypeValue, translate: (key: string) => string = t): string {
     switch (type) {
-        case SourceType.GROUP_CHAT: return t("summary.source.groupChat");
-        case SourceType.THREAD: return t("summary.source.thread");
-        case SourceType.DIRECT_MESSAGE: return t("summary.source.directMessage");
-        default: return t("summary.common.unknown");
+        case SourceType.GROUP_CHAT: return translate("summary.source.groupChat");
+        case SourceType.THREAD: return translate("summary.source.thread");
+        case SourceType.DIRECT_MESSAGE: return translate("summary.source.directMessage");
+        case SourceType.DOCUMENT: return translate("summary.source.document");
+        default: return translate("summary.common.unknown");
     }
 }
 
@@ -732,4 +713,16 @@ export function formatScheduleSummary(item: ScheduleItem): string {
     const nextPart = next ? ` · ${t("summary.detail.scheduleNextRun", { values: { time: next } })}` : "";
 
     return `${t("summary.detail.schedulePrefix")}${body}${nextPart}`;
+}
+
+/**
+ * DAP-266：把主题输入长度归一成分桶枚举（只上报长度分桶，绝不上报主题正文本身）。
+ * 供 smart_summary_theme_input 的 theme_len_bucket 使用；workbench 与创建页两处共用同一口径。
+ */
+export function themeLenBucket(len: number): string {
+    if (len <= 0) return "0";
+    if (len <= 10) return "1-10";
+    if (len <= 30) return "11-30";
+    if (len <= 100) return "31-100";
+    return "100+";
 }

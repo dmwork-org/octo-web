@@ -16,6 +16,8 @@ import {
   type SummaryWorkspaceRoute,
 } from "@dmwork/summary";
 import type { OctoBuddySummaryBridge, SummaryHostCommand } from "./hostBridge";
+import type { NavigationCommitController } from "../client-feature/navigationCommit";
+import { useNavigationCommit } from "../client-feature/useNavigationCommit";
 import { createReadyReporter } from "../client-feature/readyReporter";
 import "./index.css";
 
@@ -31,6 +33,7 @@ export function SummaryShell({
   initialSpaceId,
   onReady,
   onPresentationContext,
+  externalRuntime,
 }: {
   bridge: OctoBuddySummaryBridge;
   initialRoute: SummaryWorkspaceRoute;
@@ -40,6 +43,7 @@ export function SummaryShell({
     spaceId: string;
   }) => Promise<void>;
   onPresentationContext?: (state: { route: SummaryWorkspaceRoute; spaceId: string }) => void;
+  externalRuntime?: ReturnType<typeof import("./externalRuntime").installSummaryExternalRuntime>;
 }) {
   const [route, setRoute] = useState(initialRoute);
   const routeRef = useRef(route);
@@ -49,10 +53,22 @@ export function SummaryShell({
   const invalidationListeners = useRef(new Set<() => void>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const navCommit = useNavigationCommit(bridge);
+  const [navigation, setNavigation] = useState<{
+    token?: number;
+    controller?: NavigationCommitController;
+  }>();
 
   useLayoutEffect(() => {
     onPresentationContext?.({ route, spaceId: spaceIdRef.current });
   }, [route, workspaceRevision, onPresentationContext]);
+
+  // Release the page barrier once the host-navigate route has committed to the DOM.
+  useLayoutEffect(() => {
+    if (navigation?.token !== undefined && navigation.controller === navCommit) {
+      navigation.controller?.pageCommitted(navigation.token);
+    }
+  }, [route, navigation, navCommit]);
 
   const setControlledRoute = useCallback(
     (next: SummaryWorkspaceRoute, report = true) => {
@@ -127,11 +143,19 @@ export function SummaryShell({
   useEffect(() => {
     const dispose = bridge.onCommand((command: SummaryHostCommand) => {
       if (command.type === "navigate") {
+        const token = navCommit?.start({
+          navigationId: command.navigationId,
+          hasConversation: false,
+        });
+        setNavigation({ token, controller: navCommit });
         setControlledRoute(command.route, false);
         return;
       }
       if (command.type === "spaceChanged") {
-        if (spaceIdRef.current === command.space.id) return;
+        navCommit?.cancel();
+        if (externalRuntime) {
+          if (!externalRuntime.acceptSpace(command.runtime)) return;
+        } else if (spaceIdRef.current === command.space.id) return;
         scopeRevision.current++;
         invalidationListeners.current.clear();
         spaceIdRef.current = command.space.id;
@@ -161,30 +185,43 @@ export function SummaryShell({
         return;
       }
       if (command.type === "sessionRevoked") {
+        externalRuntime?.dispose();
+        navCommit?.cancel();
         WKApp.loginInfo.logout();
         window.location.reload();
         return;
       }
       if (command.type === "hostVisibilityChanged") {
+        const wasHidden =
+          document.documentElement.dataset.hostVisibility === "hidden";
         document.documentElement.dataset.hostVisibility = command.visible
           ? "visible"
           : "hidden";
         setSummaryAttentionRuntimeVisible(command.visible);
+        if (command.visible && wasHidden) {
+          invalidationListeners.current.forEach((listener) => listener());
+        }
         return;
       }
       if (command.type === "suspend") {
+        navCommit?.cancel();
         document.documentElement.dataset.hostVisibility = "hidden";
         return;
       }
       if (command.type === "resume") {
         document.documentElement.dataset.hostVisibility = "visible";
+        // Other renderers can create summaries while this workspace is detached.
+        invalidationListeners.current.forEach((listener) => listener());
         return;
       }
       // Unknown commands must not change visibility
       return;
     });
-    return dispose;
-  }, [bridge, setControlledRoute]);
+    return () => {
+      dispose();
+      navCommit?.dispose();
+    };
+  }, [bridge, setControlledRoute, externalRuntime, navCommit]);
 
   useEffect(() => {
     const reporter = createReadyReporter(
@@ -208,7 +245,7 @@ export function SummaryShell({
       key={workspaceRevision}
       route={route}
       onRouteChange={onWorkspaceRouteChange}
-      onBadgeChange={onBadgeChange}
+      onBadgeChange={externalRuntime ? undefined : onBadgeChange}
       messaging={messaging}
     />
   );

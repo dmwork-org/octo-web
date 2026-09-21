@@ -7,6 +7,7 @@ import { EndpointID } from "../../Service/Const";
 import WKApp from "../../App";
 import { Emoji, EmojiService } from "../../Service/EmojiService";
 import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import { StickerItem } from "../../Service/DataSource/DataSource";
 import ConversationContext from "../Conversation/context";
 import { t } from "../../i18n";
@@ -134,7 +135,12 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
         } else {
             // input_emoji_picker_opened:仅在「打开」这一支计数。原 TrackRules 的 input-emoji-btn 点击
             // 规则在开和关都触发(toggle),会把「关闭」也计成「打开」→ 翻倍(见 review P2-7)。已移除该规则。
-            Dap.shared.track("input_emoji_picker_opened", {})
+            // channel_id=当前会话(归一 bare id,取自 conversationContext.channel());埋点绝不改变业务行为,
+            // channel() 取不到时不带该字段(容错,不 throw)。
+            const emojiChannelId = this.props.conversationContext.channel?.()?.channelID
+            Dap.shared.track("input_emoji_picker_opened", {
+                channel_id: emojiChannelId ? stripSpacePrefix(emojiChannelId) : undefined,
+            })
             this.setState({ show: true, panelPos: this.computePanelPos() })
             window.addEventListener("resize", this.onResize)
         }

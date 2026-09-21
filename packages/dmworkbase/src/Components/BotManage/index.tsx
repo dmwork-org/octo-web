@@ -6,6 +6,7 @@ import WKModal from "../WKModal"
 import RoutePage from "../RoutePage"
 import { MentionFreeVM } from "../../bridge/profileDetail/BotManageVM"
 import { BotCardSettingsVM } from "../../bridge/profileDetail/BotCardSettingsVM"
+import { Dap } from "../../Service/Dap"
 import {
     BOT_CARD_DISPLAY_KEY,
     BOT_CARD_INTERACTION_KEY,
@@ -131,6 +132,8 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                                 <BotManageView
                                     labels={labels}
                                     onOpenMentionFree={() => {
+                                        // bot_no_mention_reply_opened(DAP-218 A 类):进入 L3「免@回答」列表的入口处,ai_id = robotId。
+                                        Dap.shared.track("bot_no_mention_reply_opened", { ai_id: robotId })
                                         context.push(
                                             <MentionFreeListContainer
                                                 vm={vm}
@@ -147,6 +150,8 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                                         )
                                     }}
                                     onOpenCardSettings={() => {
+                                        // bot_card_settings_opened(DAP-218 A 类):进入 L3「卡片消息设置」的入口处,ai_id = robotId。
+                                        Dap.shared.track("bot_card_settings_opened", { ai_id: robotId })
                                         context.push(
                                             <CardSettingsContainer
                                                 vm={this.ensureCardSettingsVM()}

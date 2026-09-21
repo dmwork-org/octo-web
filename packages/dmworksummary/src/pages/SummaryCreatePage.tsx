@@ -1,4 +1,4 @@
-import { Sparkles, X, Plus } from "lucide-react";
+import { FileText, Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
@@ -9,6 +9,7 @@ import {
     Modal,
 } from "@douyinfe/semi-ui";
 import { I18nContext, t, Dap } from "@octo/base";
+import type { DocSearchItem } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -26,6 +27,8 @@ import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotif
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
+import DocumentSelectorModal from "../features/documentSource/DocumentSelectorModal";
+import { shouldApplySourceSelection } from "../features/documentSource/selection";
 import TemplateCard from "../components/TemplateCard";
 import AgentChatPanel from "../components/AgentChatPanel";
 import RouteContext, {
@@ -39,6 +42,7 @@ import SummaryReferenceSidePanel from "../components/SummaryReferenceSidePanel";
 import { TOPIC_TEMPLATES } from "../constants/templates";
 import {
   MAX_CHAT_SELECT,
+  MAX_DOCUMENT_SELECT,
   SUMMARY_INPUT_MAX_LENGTH,
   TEMPLATE_CONTENT_MAX_LENGTH,
   TEMPLATE_NAME_MAX_LENGTH,
@@ -67,6 +71,7 @@ import {
     readAgentChatRequestId,
     writeAgentChatRequestId,
     clearAgentChatRequestId,
+    themeLenBucket,
 } from "../utils/summaryHelpers";
 import { trackAgentSummaryQuality } from "../utils/summaryQualityDiagnostics";
 import {
@@ -75,6 +80,7 @@ import {
   getTemplateEditableFields,
   deriveSummaryTitle,
   limitTemplateSummaryContent,
+  trackPresetTemplateEditOpened,
   type ResolvableTemplate,
 } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
@@ -113,13 +119,20 @@ interface SummaryCreatePageProps {
 interface SummaryCreatePageState {
     topic: string;
     appliedTemplateLabel: string;
+    /**
+     * DAP-271 finding 6：最近应用的模板来源(自定义/预置)。仅用于 smart_summary_started 的
+     * template_source 维度补齐（枚举，不含名称/正文）。套用模板时置位、重选/清空时清空。
+     */
+    appliedTemplateSource: "custom" | "preset" | null;
     customTemplateLimit: number;
   mode: "normal" | "agent";
     templates: ResolvableTemplate[];
     templatePlaceholderRange: [number, number] | null;
     selectedChats: ChatCandidate[];
+    selectedDocuments: DocSearchItem[];
     selectedMembers: MemberCandidate[];
     showChatSelector: boolean;
+    showDocumentSelector: boolean;
     showMemberSelector: boolean;
     memberSelectorChannel: Channel | null;
     memberSelectorExcluded: string[];
@@ -161,6 +174,7 @@ interface SummaryCreatePageState {
     savingTemplate: boolean;
     visibleChipCount: number;
     visibleMemberChipCount: number;
+    canSelectDocuments: boolean;
 }
 
 export default class SummaryCreatePage extends Component<
@@ -177,6 +191,7 @@ export default class SummaryCreatePage extends Component<
     state: SummaryCreatePageState = {
         topic: "",
         appliedTemplateLabel: "",
+        appliedTemplateSource: null,
         customTemplateLimit: 30,
         mode: this.props.initialMode === "agent" ? "agent" : "normal",
         templates: TOPIC_TEMPLATES,
@@ -186,8 +201,10 @@ export default class SummaryCreatePage extends Component<
             if (!ch) return [];
             return [channelToChatCandidate(ch)];
         })(),
+        selectedDocuments: [],
         selectedMembers: [],
         showChatSelector: false,
+        showDocumentSelector: false,
         showMemberSelector: false,
         memberSelectorChannel: null,
         memberSelectorExcluded: [],
@@ -211,10 +228,23 @@ export default class SummaryCreatePage extends Component<
         savingTemplate: false,
         visibleChipCount: 999,
         visibleMemberChipCount: 999,
+        canSelectDocuments:
+          !!WKApp.remoteConfig?.docsOn && !!WKApp.remoteConfig?.docsSearchOn,
     };
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
+    private unsubscribeRemoteConfig: (() => void) | null = null;
+
+    private syncDocumentCapability = () => {
+        const canSelectDocuments =
+          !!WKApp.remoteConfig?.docsOn && !!WKApp.remoteConfig?.docsSearchOn;
+        this.setState((current) => ({
+          canSelectDocuments,
+          showDocumentSelector:
+            canSelectDocuments ? current.showDocumentSelector : false,
+        }));
+    };
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
     private agentChannelId(): string | undefined {
@@ -324,6 +354,9 @@ export default class SummaryCreatePage extends Component<
 
     componentDidMount() {
         void this.loadTemplates();
+        this.unsubscribeRemoteConfig =
+          WKApp.remoteConfig?.addConfigChangeListener?.(this.syncDocumentCapability) ?? null;
+        this.syncDocumentCapability();
         // select-chat 宽度计算 + 芯片溢出检测
         this.updateSelectChatWidth();
         this.updateVisibleChipCount();
@@ -370,6 +403,8 @@ export default class SummaryCreatePage extends Component<
     }
 
     componentWillUnmount() {
+        this.unsubscribeRemoteConfig?.();
+        this.unsubscribeRemoteConfig = null;
         this.chipResizeObserver?.disconnect();
         // 防抖计时器若不清，卸载后仍可能补发 smart_summary_theme_input（用户已离开页面）。
         if (this.themeTrackTimer) {
@@ -386,6 +421,7 @@ export default class SummaryCreatePage extends Component<
         // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
     if (
       prevState.selectedChats !== this.state.selectedChats ||
+      prevState.selectedDocuments !== this.state.selectedDocuments ||
       prevState.mode !== this.state.mode
     ) {
             this.updateSelectChatWidth();
@@ -424,6 +460,8 @@ export default class SummaryCreatePage extends Component<
       editingTemplateDescription:
         getTemplateEditableFields(template).description,
         });
+        // M-I：预设模板卡「编辑」弹窗成功打开时上报（隐私守卫见 helper）。两站点共用 helper,pin 一次即覆盖。
+        trackPresetTemplateEditOpened(template);
     };
 
     private canCreateCustomTemplate = () => {
@@ -438,11 +476,19 @@ export default class SummaryCreatePage extends Component<
 
     private handleCustomTemplateCreate = () => {
         if (!this.canCreateCustomTemplate()) return;
+        // 已达上限时上面已 return,入口不可见不触发;此处 guard 通过、弹窗进入创建态才计一次。
+        // template_count_before 就近取当前已有自定义模板数,用于观察临近 30 上限时的打开行为。
+        const templateCountBefore = this.state.templates
+            .map((tpl) => resolveTemplate(tpl, this.context.t))
+            .filter((tpl) => tpl.is_custom).length;
         this.setState({
             editingTemplate: null,
             creatingCustomTemplate: true,
             editingTemplateLabel: "",
             editingTemplateDescription: "",
+        });
+        Dap.shared.track("smart_summary_custom_template_create_opened", {
+            template_count_before: templateCountBefore,
         });
     };
 
@@ -493,10 +539,18 @@ export default class SummaryCreatePage extends Component<
         this.setState({ savingTemplate: true });
         try {
             if (creatingCustomTemplate) {
-        const template = await api.createCustomTopicTemplate({
-          label,
-          description,
-        });
+        // DAP-266：template_count_after = 创建成功后的自定义模板总数（现有 + 1）。
+        //   与本页 canCreateCustomTemplate 同口径：先 resolveTemplate 再按 is_custom 计数。
+        const customCountBefore = this.state.templates
+            .map((tpl) => resolveTemplate(tpl, this.context.t))
+            .filter((tpl) => tpl.is_custom).length;
+        const template = await api.createCustomTopicTemplate(
+          {
+            label,
+            description,
+          },
+          { template_count_after: customCountBefore + 1 }
+        );
                 this.appendTemplateToState(template);
                 // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
                 // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
@@ -540,7 +594,14 @@ export default class SummaryCreatePage extends Component<
         if (!target?.is_custom) return;
         this.setState({ savingTemplate: true });
         try {
-            await api.deleteCustomTopicTemplate(target.id);
+            // DAP-266：template_count_after = 删除成功后的自定义模板总数（现有 − 1）。
+            //   与 canCreateCustomTemplate 同口径：先 resolveTemplate 再按 is_custom 计数。
+            const customCountBefore = this.state.templates
+                .map((tpl) => resolveTemplate(tpl, this.context.t))
+                .filter((tpl) => tpl.is_custom).length;
+            await api.deleteCustomTopicTemplate(target.id, {
+                template_count_after: Math.max(0, customCountBefore - 1),
+            });
             this.removeTemplateFromState(target.id);
             if (this.state.editingTemplate?.id === target.id) {
                 this.clearTemplateEditor();
@@ -585,8 +646,14 @@ export default class SummaryCreatePage extends Component<
     };
 
     private handleTemplateClick = (template: TopicTemplate) => {
-        // 埋点 296:套用主题模板（内置卡片与自定义卡片都汇流到此，隐私 props 恒空）。
-        Dap.shared.track("smart_summary_template_applied", {});
+        // 埋点 296:套用主题模板（内置卡片与自定义卡片都汇流到此）。
+        // DAP-266：补 template_type（自定义/预设,由 template.is_custom 就近判定）+ source（应用来源=create_page）。
+        // DAP-271 finding 6：记住来源(custom/preset)供后续 smart_summary_started 补 template_source。
+        const templateSource: "custom" | "preset" = template.is_custom ? "custom" : "preset";
+        Dap.shared.track("smart_summary_template_applied", {
+            template_type: templateSource,
+            source: "create_page",
+        });
         const { t: translate } = this.context;
         const { text, range } = computeTemplateSelection(template, {
             topic: translate("summary.templates.custom.promptTopic"),
@@ -599,6 +666,7 @@ export default class SummaryCreatePage extends Component<
         {
           topic: text,
           appliedTemplateLabel: template.label,
+          appliedTemplateSource: templateSource,
           templatePlaceholderRange: [start, end],
         },
         this.autoResizeTextarea
@@ -615,6 +683,7 @@ export default class SummaryCreatePage extends Component<
         {
           topic: text,
           appliedTemplateLabel: template.label,
+          appliedTemplateSource: templateSource,
           templatePlaceholderRange: null,
         },
         this.autoResizeTextarea
@@ -628,7 +697,7 @@ export default class SummaryCreatePage extends Component<
 
     private handleReselectTemplate = () => {
     this.setState(
-      { topic: "", appliedTemplateLabel: "", templatePlaceholderRange: null },
+      { topic: "", appliedTemplateLabel: "", appliedTemplateSource: null, templatePlaceholderRange: null },
       this.autoResizeTextarea
     );
         setTimeout(() => {
@@ -695,8 +764,12 @@ export default class SummaryCreatePage extends Component<
     };
 
     handleSubmit = async () => {
-        const { topic, selectedChats, selectedMembers } = this.state;
+        const { topic, selectedChats, selectedDocuments, selectedMembers } = this.state;
         if (!this.canSubmit()) return;
+        if (selectedDocuments.length > 0 && !this.state.canSelectDocuments) {
+            Toast.warning(t("summary.create.documentSourceUnavailable"));
+            return;
+        }
         // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
         // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
         if (this.themeTrackTimer) {
@@ -710,12 +783,22 @@ export default class SummaryCreatePage extends Component<
         // 共用一个收口点才能保证计数与 props 一致
         // (见二审 P1「smart_summary_started 双发」)。此处只把维度 props 透传给 createSummary。
         // trigger_mode 恒为 'normal'(agent 分支走 handleAgentSubmit,永不到此)。
+        // DAP-266：补 spec 维度 mode / channel_count / participant_count（就近取自
+        //   this.state.mode 与已选聊天/成员）。template_source（预设/自定义来源枚举）见下 appliedTemplateSource。
+        // DAP-271 finding 2：spec_props(权威 result doc) 确认 smart_summary_started 需 channel_ids。数组过不了
+        //   Dap sanitizer(仅留 primitive) → 按显式白名单键做**针对性安全编码**:把已选聊天 chat_id 逗号连接成
+        //   字符串(primitive,可存活),不泛化放行数组进 sanitizer。channel_count 同时保留。
         const startedProps = {
             object_id: this.props.channel?.channelID,
             source: this.props.source,
             entry_point: this.props.source,
             entry_source: this.props.source,
             trigger_mode: this.state.mode,
+            mode: this.state.mode,
+            channel_count: selectedChats.length,
+            channel_ids: selectedChats.map((c) => c.chat_id).join(","),
+            participant_count: selectedMembers.length,
+            ...(this.state.appliedTemplateSource ? { template_source: this.state.appliedTemplateSource } : {}),
         };
 
         this.setState({ submitting: true, error: null });
@@ -727,14 +810,20 @@ export default class SummaryCreatePage extends Component<
             };
 
             // 面板模式下传入 origin_channel_id，后端据此关联来源聊天
-            if (this.props.channel) {
+            if (this.props.channel && selectedDocuments.length === 0) {
                 const ch = this.props.channel;
                 params.origin_channel_id = ch.channelID;
                 // origin_channel_type 与 SourceType 一致: 1=群聊, 2=子区, 3=私聊
                 params.origin_channel_type = getOriginChannelType(ch);
             }
 
-            if (selectedChats.length > 0) {
+            if (selectedDocuments.length > 0) {
+                // 不传 source_name：summary backend 会从 Docs 当前版本快照解析并持久化权威标题。
+                params.sources = selectedDocuments.map((document) => ({
+                    source_type: SourceType.DOCUMENT,
+                    source_id: document.docId,
+                }));
+            } else if (selectedChats.length > 0) {
                 // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
                 // 避免把创建那一刻的群名冻结进定时配置，从而群改名后定时仍显示旧名。
                 params.sources = selectedChats.map((c) => ({
@@ -743,7 +832,7 @@ export default class SummaryCreatePage extends Component<
                 }));
             }
 
-            if (selectedMembers.length > 0) {
+            if (selectedDocuments.length === 0 && selectedMembers.length > 0) {
         params.participants = selectedMembers.map((m) => ({
           user_id: m.user_id,
         }));
@@ -1025,6 +1114,11 @@ export default class SummaryCreatePage extends Component<
                         onClick={(e) => {
                             // 阻止事件冒泡触发卡片 onClick (toggle SidePanel)
                             e.stopPropagation();
+                            // DAP-218 M11：移除 Agent 会话引用的历史总结手势(与 added 成对)。
+                            // DAP-266：补 referenced_summary_id（被移除引用的 task_id,标识非内容）。
+                            Dap.shared.track("smart_summary_agent_reference_removed", {
+                                referenced_summary_id: referencedTask.task_id,
+                            });
                             // 移除引用同时强制关闭 SidePanel(引用没了没意义再显示)
                             this.setState({ referencedTask: null, sidePanelOpen: false });
                             // 引用同步清持久化，避免 refresh 后又回填。
@@ -1106,12 +1200,19 @@ export default class SummaryCreatePage extends Component<
 
             // smart_summary_started 由 createAgentSummary 在 envelope code===0 后补发(见二审 P1/P2-2),
             // 与 normal 模式同一收口口径;trigger_mode 固定 'agent'。
+            // DAP-266：补 mode / channel_count / participant_count（agent 无参与者入口→0）。
+            //   template_source 此页 agent 分支无就近来源枚举 → DEFER。
+            // DAP-271 finding 2：channel_ids 按 spec 以逗号连接的字符串编码(数组过不了 sanitizer)。
             const result = await api.createAgentSummary(params, {
                 object_id: this.props.channel?.channelID,
                 source: this.props.source,
                 entry_point: this.props.source,
                 entry_source: this.props.source,
         trigger_mode: "agent",
+                mode: "agent",
+                channel_count: selectedChats.length,
+                channel_ids: selectedChats.map((c) => c.chat_id).join(","),
+                participant_count: 0,
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
@@ -1126,7 +1227,6 @@ export default class SummaryCreatePage extends Component<
                 trigger_mode: 'agent',
             });
             Toast.success(t('summary.create.agentSummaryCreated'));
-
             // 保存成功 → 销毁 chat session 工作台:
             //   1. 清 localStorage 里的 session_id(不然下次进 agent 会误恢复空 session)
             //   2. 重置组件内 state(messages/sessionId/referencedTask)
@@ -1213,12 +1313,13 @@ export default class SummaryCreatePage extends Component<
             customTemplateLimit,
             mode,
             templates,
-            selectedChats, selectedMembers,
-            showChatSelector, showMemberSelector,
+            selectedChats, selectedDocuments, selectedMembers,
+            showChatSelector, showDocumentSelector, showMemberSelector,
             memberSelectorChannel, memberSelectorExcluded, memberSelectorOnSelect,
             submitting, agentSubmitting, error, editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
             messages,
+            canSelectDocuments,
         } = this.state;
         const { t: translate } = this.context;
         // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
@@ -1232,6 +1333,7 @@ export default class SummaryCreatePage extends Component<
     const isCustomEditor =
       creatingCustomTemplate || !!editingTemplate?.is_custom;
         const templateEditorVisible = creatingCustomTemplate || !!editingTemplate;
+        const documentMode = selectedDocuments.length > 0;
 
         return (
       <div
@@ -1342,7 +1444,10 @@ export default class SummaryCreatePage extends Component<
                       clearTimeout(this.themeTrackTimer);
                                 this.themeTrackTimer = setTimeout(() => {
                       if (nextTopic.trim())
-                        Dap.shared.track("smart_summary_theme_input", {});
+                        // DAP-266：补 theme_len_bucket（长度分桶,非正文）。used_voice 此输入回调无语音标志 → DEFER。
+                        Dap.shared.track("smart_summary_theme_input", {
+                          theme_len_bucket: themeLenBucket(nextTopic.trim().length),
+                        });
                                 }, 600);
                             }}
                             onFocus={this.handleInputFocus}
@@ -1485,14 +1590,16 @@ export default class SummaryCreatePage extends Component<
             >
                             <div className="summary-workbench-select-chat-header">
                                 <span className="summary-workbench-select-chat-title">
-                                    {translate("summary.create.selectChat")}
+                                    {translate("summary.create.selectSource")}
                                     <i className="summary-workbench-required-asterisk">*</i>
                                 </span>
                                 <span className="summary-workbench-select-chat-hint">
-                                    （{translate("summary.create.archivedNotice")}）
+                                    （{translate(documentMode
+                                      ? "summary.create.documentOnlyHint"
+                                      : "summary.create.archivedNotice")}）
                                 </span>
                             </div>
-                            {selectedChats.length > 0 ? (
+                            {selectedChats.length > 0 || selectedDocuments.length > 0 ? (
                                 <div className="summary-workbench-chat-row">
                   <div
                     className="summary-workbench-chat-chips"
@@ -1538,28 +1645,64 @@ export default class SummaryCreatePage extends Component<
                                                 </button>
                                             </div>
                                         ))}
-                                        {selectedChats.length > this.state.visibleChipCount && (
+                                        {selectedDocuments.map((document, idx) => (
+                                            <div
+                                                key={document.docId}
+                                                className={`summary-workbench-chat-chip${
+                                                  idx >= this.state.visibleChipCount
+                                                    ? " summary-workbench-chat-chip--hidden"
+                                                    : ""
+                                                }`}
+                                            >
+                                                <FileText size={16} />
+                                                <span className="summary-workbench-chat-chip-name">
+                                                  {document.title || document.docId}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className="summary-workbench-chat-chip-close"
+                                                    onClick={() => this.setState({
+                                                      selectedDocuments: selectedDocuments.filter(
+                                                        (item) => item.docId !== document.docId
+                                                      ),
+                                                    })}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {(selectedChats.length + selectedDocuments.length) > this.state.visibleChipCount && (
                                             <Tooltip
-                                                content={selectedChats.map((c) => c.name).join("、")}
+                                                content={[
+                                                  ...selectedChats.map((c) => c.name),
+                                                  ...selectedDocuments.map((document) => document.title || document.docId),
+                                                ].join("、")}
                                                 position="top"
                                             >
                                                 <span className="summary-workbench-chat-chip-overflow">
                           ...+
-                          {selectedChats.length - this.state.visibleChipCount}
+                          {selectedChats.length + selectedDocuments.length - this.state.visibleChipCount}
                                                 </span>
                                             </Tooltip>
                                         )}
                                     </div>
-                                    <button
-                                        type="button"
-                                        className="summary-workbench-add-chat"
-                                        onClick={() => this.setState({ showChatSelector: true })}
-                                    >
-                                        <Plus size={16} />
-                                        <span>{translate("summary.create.selectChat")}</span>
-                                    </button>
+                                    {(!documentMode || canSelectDocuments) && (
+                                      <button
+                                          type="button"
+                                          className="summary-workbench-add-chat"
+                                          onClick={() => this.setState(documentMode
+                                            ? { showDocumentSelector: true }
+                                            : { showChatSelector: true })}
+                                      >
+                                          <Plus size={16} />
+                                          <span>{translate(documentMode
+                                            ? "summary.create.selectDocument"
+                                            : "summary.create.selectChat")}</span>
+                                      </button>
+                                    )}
                                 </div>
                             ) : (
+                              <div className="summary-workbench-source-actions">
                                 <button
                                     data-testid={summaryTestIds.createSelectChat}
                                     type="button"
@@ -1569,9 +1712,21 @@ export default class SummaryCreatePage extends Component<
                                     <Plus size={16} />
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
+                                {!this.props.channel && mode !== "agent" && canSelectDocuments && (
+                                  <button
+                                    data-testid={summaryTestIds.createSelectDocument}
+                                    type="button"
+                                    className="summary-workbench-add-chat"
+                                    onClick={() => this.setState({ showDocumentSelector: true })}
+                                  >
+                                    <Plus size={16} />
+                                    <span>{translate("summary.create.selectDocument")}</span>
+                                  </button>
+                                )}
+                              </div>
                             )}
                             {/* 选择参与者（仅普通模式；Agent 模式不提供多人协作入口） */}
-              {mode !== "agent" && (
+              {mode !== "agent" && !documentMode && (
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
                     <div
@@ -1672,10 +1827,32 @@ export default class SummaryCreatePage extends Component<
                     visible={showChatSelector}
                     selected={selectedChats}
                     maxSelect={MAX_CHAT_SELECT}
-          onConfirm={(chats) =>
-            this.setState({ selectedChats: chats, showChatSelector: false })
-          }
+          onConfirm={(chats) => {
+            this.setState((state) => {
+              const applySelection = shouldApplySourceSelection(state.selectedChats, chats);
+              return {
+                selectedChats: applySelection ? chats : state.selectedChats,
+                selectedDocuments: applySelection ? [] : state.selectedDocuments,
+                showChatSelector: false,
+              };
+            });
+          }}
                     onCancel={() => this.setState({ showChatSelector: false })}
+                />
+                <DocumentSelectorModal
+                  visible={showDocumentSelector && canSelectDocuments}
+                  selected={selectedDocuments}
+                  maxSelect={MAX_DOCUMENT_SELECT}
+                  onConfirm={(documents) => this.setState((state) => {
+                    const applySelection = shouldApplySourceSelection(state.selectedDocuments, documents);
+                    return {
+                      selectedDocuments: applySelection ? documents : state.selectedDocuments,
+                      selectedChats: applySelection ? [] : state.selectedChats,
+                      selectedMembers: applySelection ? [] : state.selectedMembers,
+                      showDocumentSelector: false,
+                    };
+                  })}
+                  onCancel={() => this.setState({ showDocumentSelector: false })}
                 />
                 <ChatSelectorModal
                     messaging={this.props.messaging}

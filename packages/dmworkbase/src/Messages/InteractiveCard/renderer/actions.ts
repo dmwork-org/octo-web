@@ -1,4 +1,5 @@
 import WKApp from "../../../App";
+import { Dap } from "../../../Service/Dap";
 import { isSafeUrl } from "../../../Utils/security";
 
 const SUMMARY_DETAIL_PATH_RE = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
@@ -28,6 +29,10 @@ export function openUrl(url: string): void {
   }
   if (summaryTaskNo && WKApp.openSummaryDetail) {
     // 卡片深链可能来自 https 生产域，本地调试是 http/端口；/s/<taskNo> 路径本身是内部详情信号。
+    // 通知交互卡点击 → 智能总结详情漏斗；深链不含总结 status，故仅上报 summary_id。
+    Dap.shared.track("smart_summary_notification_clicked", {
+      summary_id: summaryTaskNo,
+    });
     WKApp.openSummaryDetail(summaryTaskNo, summarySpace);
     return;
   }

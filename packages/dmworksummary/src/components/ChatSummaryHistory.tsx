@@ -152,7 +152,8 @@ export default class ChatSummaryHistory extends Component<
 
     private handleDelete = async (taskId: number) => {
         try {
-            await summaryApi.deleteSummary(taskId);
+            // DAP-271 finding 6：source 受控枚举 'history'（聊天内总结历史列表删除入口）。
+            await summaryApi.deleteSummary(taskId, "history");
             // Reuse the existing event mechanism so this list refreshes itself.
             window.dispatchEvent(new CustomEvent('chat-summary-deleted', {
                 detail: { channelId: this.props.channel.channelID },

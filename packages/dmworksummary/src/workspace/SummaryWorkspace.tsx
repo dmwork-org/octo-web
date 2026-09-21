@@ -28,6 +28,7 @@ export default function SummaryWorkspace({
 }: SummaryWorkspaceProps) {
   const { t } = useI18n();
   const [listRefreshKey, setListRefreshKey] = useState(0);
+  const [backgroundRefreshKey, setBackgroundRefreshKey] = useState(0);
   const messagingPort = useMemo(() => {
     const base = messaging ?? legacySummaryMessagingPort;
     if (!onOpenConversation) return base;
@@ -58,15 +59,20 @@ export default function SummaryWorkspace({
     () => setListRefreshKey((value) => value + 1),
     []
   );
+  const refreshRetainedList = useCallback(
+    () => setBackgroundRefreshKey((value) => value + 1),
+    []
+  );
 
   useEffect(
-    () => messagingPort.subscribeInvalidation(refreshList),
-    [messagingPort, refreshList]
+    () => messagingPort.subscribeInvalidation(refreshRetainedList),
+    [messagingPort, refreshRetainedList]
   );
 
   const showList = () => onRouteChange({ view: "list" });
-  const showCreate = (mode: "normal" | "agent" | "unified" = "normal") =>
+  const showCreate = (mode: "normal" | "agent" | "unified" = "normal") => {
     onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list" });
+  };
   const showDetail = (taskId: number) =>
     onRouteChange({ view: "detail", taskId });
   const refreshListAndShow = () => {
@@ -104,6 +110,7 @@ export default function SummaryWorkspace({
       case "detail":
         return (
           <SummaryDetailPage
+            key={currentRoute.taskId}
             taskId={currentRoute.taskId}
             originChannel={currentRoute.originConversation}
             emitSelection
@@ -127,13 +134,14 @@ export default function SummaryWorkspace({
       case "confirm":
         return (
           <SummaryConfirmPage
+            key={currentRoute.taskId}
             taskId={currentRoute.taskId}
             onBack={() => showDetail(currentRoute.taskId)}
             onDeclined={refreshListAndShow}
           />
         );
       case "schedules":
-        return <ScheduleListPage onBack={showList} />;
+        return <ScheduleListPage onBack={showList} refreshKey={listRefreshKey + backgroundRefreshKey} />;
       case "list":
         return null;
     }
@@ -149,8 +157,10 @@ export default function SummaryWorkspace({
           <SummaryListPage
             embedded
             refreshKey={listRefreshKey}
+            backgroundRefreshKey={backgroundRefreshKey}
             onCreateNew={showCreate}
             onViewDetail={showDetail}
+            onContinueOptimize={continueRefine}
           />
         </aside>
         {route.view !== "list" ? (

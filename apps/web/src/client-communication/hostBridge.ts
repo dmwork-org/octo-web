@@ -1,3 +1,7 @@
+import type { AttachmentPreviewHost } from "@octo/base/src/features/filePreview/attachmentHost";
+import type { LayoutAttachmentHost } from "@octo/base/src/features/filePreview/hostPreviewLayout";
+import type { WorkspaceGroupAction, WorkspaceGroupContext, WorkspaceGroupTarget } from "@octo/base/src/features/workspaceGroup/contract";
+
 export type CommunicationPage = "chat" | "contacts";
 export type CommunicationPresentation = "workspace" | "conversation";
 
@@ -9,7 +13,7 @@ export interface ConversationTarget {
   displayName?: string;
   avatar?: string;
   metadata?: Record<string, unknown>;
-  variant?: "app-bot";
+  variant?: "app-bot" | "workspace-group";
 }
 
 export interface CommunicationBootstrap {
@@ -33,6 +37,7 @@ export interface CommunicationBootstrap {
   };
   initialPage: CommunicationPage;
   initialPresentation: CommunicationPresentation;
+  runtime?: OwnerRuntimeBootstrap;
 }
 
 export type HostCommand =
@@ -41,18 +46,23 @@ export type HostCommand =
       page: CommunicationPage;
       presentation?: CommunicationPresentation;
       target?: ConversationTarget;
+      /** Optional positive safe-integer provided by the Client to acknowledge this navigation commit. */
+      navigationId?: number;
     }
   | { type: "spaceChanged"; space: { id: string; name: string } }
   | { type: "appearanceChanged"; theme: "light" | "dark"; locale: "zh-CN" | "en-US" }
   | { type: "suspend" }
   | { type: "resume" }
   | { type: "hostVisibilityChanged"; visible: boolean }
+  | { type: "filePreviewClosed"; requestId: string }
+  | { type: "filePreviewState"; requestId: string; phase: "loading" | "ready" | "error"; error?: string }
   | { type: "sessionRevoked" };
 
 export interface NavigationReport {
   page: CommunicationPage;
-  source: "host" | "contact-card" | "group-card" | "notification" | "internal";
+  source: "host" | "contact-card" | "group-card" | "notification" | "internal" | "workspace-conversation" | "workspace-selection-cancelled";
   channel?: { id: string; type: number };
+  cancelledTarget?: { id: string; type: number };
 }
 
 export type SummaryCapabilityRequest = {
@@ -63,6 +73,7 @@ export type SummaryCapabilityRequest = {
     | "notifySummaryCompleted"
     | "requestForward";
   payload: unknown;
+  runtimeScope?: RuntimeScope;
 };
 
 export interface SummaryCapabilityResponse {
@@ -91,9 +102,23 @@ export interface DocumentForwardRequest {
   requestId: string;
   spaceId: string;
   input: DocumentForwardInput;
+  runtimeScope?: RuntimeScope;
 }
 
 export interface OctoBuddyCommunicationBridge {
+  /** Client-only workspace navigation. Absent in older hosts and standalone Web. */
+  getWorkspaceGroupContext?(target: WorkspaceGroupTarget): Promise<WorkspaceGroupContext | null>;
+  openGroupWorkspace?(target: WorkspaceGroupAction): Promise<void>;
+  manageWorkspaceGroup?(target: WorkspaceGroupAction): Promise<void>;
+  onWorkspaceGroupChanged?(listener: (target: WorkspaceGroupTarget) => void): () => void;
+  publishForwardSurface?(update: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceUpdate): Promise<void>;
+  onForwardSurfaceAction?(listener: (command: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceCommand) => void): () => void;
+  reportRuntimeReady?(state: RuntimeReady): Promise<void>;
+  reportRuntimeSnapshot?(snapshot: RuntimeSnapshot): void;
+  reportRuntimeCommandResult?(result: RuntimeCommandResult): void;
+  onRuntimeCommand?(callback: (command: unknown) => void): () => void;
+  scheduleRuntimeTask?(timer: RuntimeTimer & { delayMs: number }): void;
+  cancelRuntimeTask?(timer: RuntimeTimer): void;
   getDesktopPresentation?(): Promise<import("./desktopPresentation").DesktopPresentation | null>;
   onDesktopPresentation?(callback: (state: import("./desktopPresentation").DesktopPresentation) => void): () => void;
   getDocumentPreview?: import("@octo/base/src/Service/DocumentPreviewService").DocumentPreviewTransport;
@@ -109,11 +134,14 @@ export interface OctoBuddyCommunicationBridge {
     spaceId: string;
     rendererVersion: string;
     documentForwardVersion?: 1;
+    navigationCommitVersion?: 1;
     desktopPresentationVersion?: 1;
     /** Complete page allowlist; older v1 renderers without this field support chat only. */
     desktopPresentationPages?: readonly CommunicationPage[];
   }): Promise<void>;
   reportNavigation(state: NavigationReport): Promise<void>;
+  /** Optional; when present the renderer advertises navigationCommitVersion: 1 and acknowledges navigate commits. */
+  reportNavigationCommitted?(params: { navigationId: number }): Promise<void>;
   reportUnread(count: number): void;
   reportAuthExpired(reason: string): void;
   reportFatalError(error: { message: string; stack?: string }): void;
@@ -131,6 +159,23 @@ export interface OctoBuddyCommunicationBridge {
   authorizeDocumentForward?(request: { requestId: string }): Promise<void>;
   respondDocumentForward?(response: SummaryCapabilityResponse): void;
   onCommand(callback: (command: HostCommand) => void): () => void;
+  /** Optional host port for message-attachment file preview. */
+  openFilePreview?: AttachmentPreviewHost["openFilePreview"];
+  cancelFilePreview?: AttachmentPreviewHost["cancelFilePreview"];
+  openFilePreviewInPlace?: LayoutAttachmentHost["openFilePreviewInPlace"];
+  setFilePreviewLayout?: LayoutAttachmentHost["setFilePreviewLayout"];
+  /**
+   * Independently optional host preference query; only its presence installs host policy.
+   * Additive v1 fields are ignored; changes to required fields or semantics need a new version.
+   */
+  getNotificationPreferences?(): Promise<{
+    version: 1;
+    desktopNotifications: boolean;
+    soundNotifications: boolean;
+    quickMuteScope: "popup" | "all";
+  }>;
+  /** Independently optional pause CMD subscription; works with the legacy store without host preferences. */
+  onNotificationPauseChanged?(callback: (value: unknown) => void): () => void;
 }
 
 declare global {
@@ -144,3 +189,4 @@ export function requireHostBridge(): OctoBuddyCommunicationBridge {
   if (!bridge) throw new Error("octoBuddy communication bridge is unavailable");
   return bridge;
 }
+import type { OwnerRuntimeBootstrap, RuntimeCommandResult, RuntimeReady, RuntimeScope, RuntimeSnapshot, RuntimeTimer } from "../client-feature/runtimeContract";

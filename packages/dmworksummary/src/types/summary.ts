@@ -30,6 +30,7 @@ export const SourceType = {
     GROUP_CHAT: 1,
     THREAD: 2,
     DIRECT_MESSAGE: 3,
+    DOCUMENT: 4,
 } as const;
 export type SourceTypeValue = (typeof SourceType)[keyof typeof SourceType];
 
@@ -45,6 +46,7 @@ export interface SourceItem {
     source_type: SourceTypeValue;
     source_id: string;
     source_name?: string;
+    source_version?: string;
 }
 
 /** 参与者 */
@@ -81,6 +83,9 @@ export interface CitationItem {
     channel_id?: string;
     message_seq?: number;
     channel_type?: number;
+    document_id?: string;
+    document_version?: string;
+    document_chunk?: number;
     context_before?: CitationContextMessage[];
     context_after?: CitationContextMessage[];
 }
@@ -242,6 +247,8 @@ export interface SummaryDetail {
     task_no: string;
     title: string;
     topic?: string;
+    /** Actual saved generation instruction; an Agent title is not a prompt. */
+    generation_requirement?: string;
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;
@@ -723,6 +730,18 @@ export interface MemberCandidate {
 
 /** 定时配置（内部状态用）：通用「数量 × 单位」组合 */
 export type ScheduleUnit = "day" | "week" | "month";
+
+/**
+ * B-1：定时埋点的「UI 单位真值」提示。scheduleToParams 把周调度编码为
+ * interval_days = every*7 + day_of_week，与「每 N 天」在提交参数层字节相同，
+ * 单看 params 无法区分（尤其周-不限周几 day_of_week:0 时）。因此写路径把用户在 UI
+ * 选择的原始 unit/every 作为可选提示透传给 track props 构造，frequency_unit/frequency_n
+ * 优先用它推导；缺省时才回退到 params 推导。不改后端提交形状。
+ */
+export interface ScheduleUiHint {
+    unit: ScheduleUnit;
+    every: number;
+}
 
 export interface ScheduleConfig {
     unit: ScheduleUnit;   // 天 / 周 / 月

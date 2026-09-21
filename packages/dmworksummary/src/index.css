@@ -508,19 +508,50 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     border-radius: var(--wk-r-full);
     transition: background-color 140ms ease, color 140ms ease;
 }
-.summary-card-type-icon--agent {
-    color: var(--wk-color-accent);
-    background: var(--wk-bg-selected);
+
+.summary-regenerate-config {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-4);
+    margin-block: var(--wk-sp-4);
+}
+
+.summary-regenerate-config-hint {
+    margin: 0;
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.summary-regenerate-config > div {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-1);
+}
+
+.summary-regenerate-config > div > button {
+    justify-content: flex-start;
+    width: 100%;
+    height: auto;
+    min-height: var(--wk-sp-8);
+    white-space: normal;
+    text-align: left;
+}
+
+.summary-confirm:has(.summary-regenerate-content) .summary-confirm-btn--dark {
+    background: var(--wk-text-primary);
+    color: var(--wk-bg-surface);
+}
+
+.summary-confirm:has(.summary-regenerate-content) .summary-confirm-btn:disabled {
+    background: var(--wk-bg-hover);
+    color: var(--wk-text-tertiary);
+    cursor: not-allowed;
 }
 .summary-card-type-icon--quick {
     color: var(--wk-color-info);
     background: var(--wk-color-info-bg);
 }
-/* R4 yj P2-2: 四种类型各自 icon/class，与 getSummaryTypeKind classifier 一致 */
-.summary-card-type-icon--scheduled {
-    color: var(--wk-color-warning);
-    background: var(--wk-color-warning-bg);
-}
+/* Personal/team classes match getSummaryTypeKind. */
 .summary-card-type-icon--multi {
     color: var(--wk-color-success);
     background: var(--wk-color-success-bg);
@@ -1077,6 +1108,32 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     margin-top: 4px;
 }
 
+.summary-detail-legacy-document-schedule {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--wk-sp-2);
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.summary-detail-legacy-document-schedule__disable {
+    flex-shrink: 0;
+    padding: var(--wk-sp-1) var(--wk-sp-2);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-sm);
+    background: var(--wk-bg-surface);
+    color: var(--wk-text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.summary-detail-legacy-document-schedule__disable:disabled {
+    color: var(--wk-text-tertiary);
+    cursor: wait;
+}
+
 .summary-detail-header-inner {
     margin: 0;
     padding: 12px 24px;
@@ -1326,26 +1383,76 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     text-align: left;
 }
 
+.summary-detail-source-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+}
+
+.summary-detail-source-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.summary-detail-source-label {
+    flex-shrink: 0;
+    font-size: 14px;
+    line-height: 24px;
+    color: var(--wk-summary-meta-text);
+}
+
 .summary-detail-source-chips {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px 12px;
     justify-content: flex-start;
+    min-width: 0;
 }
 
 .summary-detail-source-chip {
     display: inline-flex;
     align-items: center;
-    padding: 4px 12px;
+    gap: 4px;
     height: 24px;
-    background: var(--wk-summary-chip-bg);
-    border-radius: 99px;
+    max-width: 100%;
     font-size: 12px;
     font-weight: 400;
     line-height: 16px;
     color: var(--wk-text-secondary);
     white-space: nowrap;
+    min-width: 0;
+}
+
+.summary-detail-source-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--semi-color-primary);
+}
+
+.summary-detail-source-type {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--wk-text-primary);
+}
+
+.summary-detail-source-separator {
+    color: var(--wk-text-tertiary);
+}
+
+.summary-detail-source-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+}
+
+.summary-detail-source-note {
+    color: var(--wk-text-tertiary);
+    font-size: 12px;
+    line-height: 18px;
 }
 
 /* Divider between meta and content */
@@ -1424,21 +1531,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 
 .summary-detail-my-summary-header {
     margin-bottom: 0;
-}
-
-.summary-detail-agent-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--wk-sp-1);
-    flex: none;
-    padding: 0 var(--wk-sp-2);
-    border-radius: var(--wk-r-full);
-    background: var(--wk-ai-surface);
-    color: var(--wk-color-accent);
-    box-shadow: inset 0 0 0 1px var(--wk-ai-border);
-    font-size: var(--wk-text-size-xs);
-    font-weight: var(--wk-font-medium);
-    line-height: 20px;
 }
 
 .summary-detail-inline-edit.semi-button {
@@ -2174,12 +2266,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     flex: 1;
 }
 
-.summary-schedule-loading {
-    display: flex;
-    justify-content: center;
-    padding: 60px 0;
-}
-
 .summary-schedule-empty {
     text-align: center;
     padding: 60px 20px;
@@ -2213,8 +2299,14 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 .summary-schedule-card-meta {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: var(--wk-sp-2);
     font-size: 13px;
     margin-bottom: 6px;
+}
+
+.summary-schedule-list {
+    margin-top: var(--wk-sp-3);
 }
 
 .summary-schedule-card-sources {
@@ -2568,6 +2660,12 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 
 .summary-workbench-add-chat .semi-icon {
     color: var(--wk-color-accent);
+}
+
+.summary-workbench-source-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-4);
 }
 
 /* Chat chips - selected chats display */
@@ -2933,6 +3031,14 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
         padding: 16px;
     }
 
+    .summary-detail-source-row {
+        width: 100%;
+    }
+
+    .summary-detail-source-name {
+        max-width: min(160px, 40vw);
+    }
+
     .summary-detail-result,
     .summary-detail-personal,
     .summary-detail-team,
@@ -3051,6 +3157,14 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 400;
+}
+
+.selected-sources-note {
+    padding: 8px 14px;
+    border-top: 1px solid var(--semi-color-border);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+    line-height: 18px;
 }
 
 .selected-sources-empty {

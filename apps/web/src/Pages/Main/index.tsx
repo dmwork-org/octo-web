@@ -1,4 +1,4 @@
-import { WKApp, WKLayout, Provider, WKModal, t, Dap } from "@octo/base";
+import { WKApp, WKLayout, Provider, WKModal, t, Dap, applyImSpaceContext, captureCurrentImConversationSyncContext } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
@@ -14,7 +14,6 @@ import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import {
     requestGuardedSpaceChange,
-    publishInitialSpaceResolution,
 } from "./spaceChange";
 import {
     clearLastSpaceId,
@@ -24,6 +23,7 @@ import {
 import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
 import { buildSpaceAdminUrl } from "./spaceAdminUrl";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
+import { CHAT_CONTENT_MIN_WIDTH } from "@octo/base/src/Pages/Chat/responsiveLayout";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
 
@@ -89,8 +89,18 @@ export class MainPage extends Component<{}, MainPageState> {
     }
 
     private unsubscribeRemoteConfig?: () => void;
+    private mounted = false;
+    private lifecycleRevision = 0;
+
+    private captureSpaceRequestContext(): () => boolean {
+        const revision = this.lifecycleRevision;
+        const contextIsCurrent = captureCurrentImConversationSyncContext();
+        return () => this.mounted && revision === this.lifecycleRevision && contextIsCurrent();
+    }
 
     componentDidMount() {
+        this.mounted = true;
+        this.lifecycleRevision++;
         // 注册菜单刷新回调，触发父组件 re-render（原 TabNormalScreen componentDidMount 里的逻辑）
         WKApp.menus.setRefresh = () => { this.forceUpdate(); };
         this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
@@ -101,7 +111,9 @@ export class MainPage extends Component<{}, MainPageState> {
             this.forceUpdate();
         });
 
+        const contextIsCurrent = this.captureSpaceRequestContext();
         SpaceService.shared.getMySpaces().then(spaces => {
+            if (!contextIsCurrent()) return;
             this.setState({ allSpaces: spaces });
             const previousSpaceId = WKApp.shared.currentSpaceId || "";
             const selectedSpace = resolveInitialSpaceForUser(
@@ -110,29 +122,29 @@ export class MainPage extends Component<{}, MainPageState> {
                 previousSpaceId,
             );
             if (selectedSpace) {
-                WKApp.shared.currentSpaceId = selectedSpace.space_id;
                 persistActiveSpace(WKApp.loginInfo.uid, selectedSpace.space_id);
+                applyImSpaceContext(selectedSpace);
             } else {
-                WKApp.shared.currentSpaceId = '';
+                applyImSpaceContext(undefined);
                 WKApp.shared.spaceChecked = false;
                 clearLastSpaceId(WKApp.loginInfo.uid);
                 localStorage.removeItem("currentSpaceId");
             }
-            publishInitialSpaceResolution(
-                previousSpaceId,
-                selectedSpace,
-                (event, space) => WKApp.mittBus.emit(event, space),
-            );
+            if (selectedSpace) WKApp.mittBus.emit("space-ready", selectedSpace);
             try { WKApp.shared.notifyListener(); } catch (_) {}
             // dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
             // Toast 无法跨 full-reload 存活。我们用 sessionStorage 把 notice 带过来，
             // 在主界面挂载、Space 列表就绪之后再弹出。放在 .then() 内确保 spaces 已加载，
             // 切换按钮按下时用户 Space 信息可用。
             this.showPostJoinToastIfPending();
-        }).catch((e) => { console.error('[NavRail] Failed to load spaces:', e); });
+        }).catch((e) => {
+            if (contextIsCurrent()) console.error('[NavRail] Failed to load spaces:', e);
+        });
     }
 
     componentWillUnmount() {
+        this.mounted = false;
+        this.lifecycleRevision++;
         // 清理菜单刷新回调，避免组件卸载后触发 forceUpdate
         WKApp.menus.setRefresh = undefined;
         this.unsubscribeRemoteConfig?.();
@@ -175,38 +187,44 @@ export class MainPage extends Component<{}, MainPageState> {
         //   冷启动都会触发,不只切空间(见 review P1-3)。仅在目标与当前不同(确有切换)时计一次。
         const prevSpaceId = WKApp.shared.currentSpaceId || "";
         if (spaceId && spaceId !== prevSpaceId) {
-            Dap.shared.track("space_switched", {});
+            // DAP-218 A 类补属性:from_space/to_space(spec)。事件名 merge base 起已在此发,
+            //   仅缺 spec 属性 —— 就地补齐,不新增 emit、不改触发条件(仍仅真切换时计一次)。
+            Dap.shared.track("space_switched", { from_space: prevSpaceId, to_space: spaceId });
         }
         // 同步更新 currentSpaceId 与持久化，并立刻 emit space-changed，
         // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId
         // （此前这些更新都放在 getMySpaces().then 内，存在网络 race）。
-        WKApp.shared.currentSpaceId = spaceId;
         persistActiveSpace(WKApp.loginInfo.uid, spaceId);
         const existing = this.state.allSpaces.find(s => s.space_id === spaceId);
-        if (existing) {
-            WKApp.mittBus.emit("space-changed", existing);
-        }
+        applyImSpaceContext(existing || { space_id: spaceId, name: "" });
         WKApp.shared.notifyListener();
 
         // 后台刷新 Space 列表（用户可能新加入/离开 Space），完成后再补一次
         // 事件给那些以 Space 对象为入参的监听者（首次拿不到 existing 的情况）。
+        const contextIsCurrent = this.captureSpaceRequestContext();
         SpaceService.shared.getMySpaces().then(spaces => {
+            if (!contextIsCurrent()) return;
             this.setState({ allSpaces: spaces, showJoinSpace: false });
             if (!existing) {
                 const target = spaces.find(s => s.space_id === spaceId);
                 if (target) WKApp.mittBus.emit("space-changed", target);
             }
         }).catch(() => {
+            if (!contextIsCurrent()) return;
             Toast.error(t("app.main.spaceListRefreshFailed"));
         });
     };
 
     handleSpaceSelected = (spaceId: string) => {
+        const contextIsCurrent = this.captureSpaceRequestContext();
+        if (!contextIsCurrent()) return;
         requestGuardedSpaceChange(
             spaceId,
             WKApp.shared.currentSpaceId || "",
             requestMailWorkspaceSwitch,
-            this.applySpaceSelection,
+            (nextSpaceId) => {
+                if (contextIsCurrent()) this.applySpaceSelection(nextSpaceId);
+            },
         );
     };
 
@@ -271,6 +289,7 @@ export class MainPage extends Component<{}, MainPageState> {
                             {...(showOnboardingGate ? { inert: "" } : {})}
                         >
                             <WKLayout
+                                contentMinWidth={vm.currentMenus?.id === "chat" ? CHAT_CONTENT_MIN_WIDTH : undefined}
                                 onRenderTab={() => (
                                     <NavRail
                                         // Space

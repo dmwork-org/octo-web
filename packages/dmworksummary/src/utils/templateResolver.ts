@@ -3,6 +3,7 @@ import type {
     TopicTemplate,
     TopicTemplatePlaceholder,
 } from '../types/summary';
+import { Dap } from '@octo/base';
 
 type TranslateFn = (key: string, options?: { values?: Record<string, unknown>; defaultValue?: string }) => string;
 
@@ -22,6 +23,23 @@ export function getTemplateEditableFields(template: TopicTemplate): {
         label: template.label,
         description: template.description,
     };
+}
+
+/**
+ * M-I：预设模板卡「编辑」弹窗成功打开时上报 smart_summary_preset_template_edit_opened。
+ * 有两个 emit 站点（TemplateSelectorModal 与 SummaryCreatePage.handleTemplateEdit），
+ * 抽成单一 helper 两处共用、隐私守卫只需 pin 一次即可覆盖两侧。
+ *
+ * DAP-271 P1 隐私红线：**不上报用户自由输入的模板名称**(被个人覆盖的预设 label 可含客户/项目/私人内容)。
+ *   改用非 PII 的 template_id(TopicTemplate.id,稳定不透明标识) + is_custom=false；自定义模板编辑不计入本事件
+ *   (spec 限定预设)，由 `!template.is_custom` 守卫保证。绝不带任何 *_name 自由文本键。
+ */
+export function trackPresetTemplateEditOpened(template: TopicTemplate): void {
+    if (template.is_custom) return;
+    Dap.shared.track("smart_summary_preset_template_edit_opened", {
+        template_id: template.id,
+        is_custom: false,
+    });
 }
 
 export function deriveSummaryTitle(topic: string): string {

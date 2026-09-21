@@ -25,7 +25,9 @@ vi.mock('../../api/summaryApi', () => ({
 vi.mock('../../utils/summaryHelpers', () => ({
     formatDateOnly: (value: string) => value.slice(0, 10),
     getSummaryTypeKind: () => 'quick',
-    getSummaryTypeLabel: (t: (key: string) => string) => t('summary.summaryCard.quickType'),
+    getSummaryTypeLabel: (t: (key: string) => string) => t('summary.summaryCard.personalType'),
+    isReferenceable: (item: { referenceable?: boolean; trigger_type: number }) =>
+        item.referenceable ?? item.trigger_type === 3,
     getStatusLabel: (status: number) => {
         const labels: Record<number, string> = { 0: '待处理', 1: '待确认', 2: '进行中', 3: '已完成', 4: '失败', 5: '已取消' };
         return labels[status] ?? '未知';
@@ -211,7 +213,7 @@ describe('ChatSummaryHistory', () => {
             await flushPromises();
         });
 
-        expect(mockDeleteSummary).toHaveBeenCalledWith(7);
+        expect(mockDeleteSummary).toHaveBeenCalledWith(7, 'history');
         expect(onDeleted).toHaveBeenCalled();
         const event = onDeleted.mock.calls[0][0] as CustomEvent;
         expect(event.detail).toEqual({ channelId: 'ch1' });
@@ -247,7 +249,7 @@ describe('ChatSummaryHistory', () => {
             await flushPromises();
         });
 
-        expect(mockDeleteSummary).toHaveBeenCalledWith(7);
+        expect(mockDeleteSummary).toHaveBeenCalledWith(7, 'history');
         expect(mockToastError).toHaveBeenCalledWith('删除失败');
         expect(onDeleted).not.toHaveBeenCalled();
 

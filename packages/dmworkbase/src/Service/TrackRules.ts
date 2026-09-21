@@ -155,8 +155,9 @@ export const TRACK_RULES: TrackRule[] = [
     // ---- onboarding / 设置（agent D）。
     { event: 'onboarding_opensource_clicked', testid: 'onboarding-opensource-link', on: 'click' },
     { event: 'onboarding_about_clicked', testid: 'onboarding-about-link', on: 'click' },
-    { event: 'settings_onboarding_guide_reopened', testid: 'nav-settings-onboarding', on: 'click' },
-    { event: 'settings_notification_toggled', testid: 'nav-settings-notification-toggle', on: 'click' },
+    // settings_onboarding_guide_reopened / settings_notification_toggled 的空挂规则(DOM 无对应
+    //   testid、从不命中)已移除 —— 二者改由 settingsPages.tsx 命令式发(reopened 在引导行 onClick、
+    //   toggled 在通知 Switch onChange 带 {enabled}),留着空挂规则只会在未来有人补 testid 时造成双记(DAP-218)。
     { event: 'my_info_opened', testid: 'nav-user-avatar', on: 'click' },
 
     // doc 画板类事件(whiteboard_bg_changed / element_added / zoomed / saved_to_file /

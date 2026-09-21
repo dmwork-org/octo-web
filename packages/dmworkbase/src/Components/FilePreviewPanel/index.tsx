@@ -1,9 +1,11 @@
+import { useHtmlAttachmentActions } from "../../bridge/html-attachment/useHtmlAttachmentActions";
 import React from "react";
 import { X, Download, ExternalLink } from "lucide-react";
 import { fileRendererRegistry } from "./registry";
 import { downloadFile } from "../../Utils/download";
 import { FilePreviewInfo, FilePreviewPanelProps, getExtension } from "./types";
 import { useI18n } from "../../i18n";
+import { HostFilePreviewSlot } from "../../features/filePreview/HostFilePreviewSlot";
 import "./index.css";
 
 /**
@@ -16,17 +18,33 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   showOpenExternal = true,
 }) => {
   const { t } = useI18n();
+  const htmlActions = useHtmlAttachmentActions(file?.hostPreview ? null : file);
 
   if (!file) return null;
+  if (file.hostPreview) {
+    return (
+      <div className="wk-file-preview-panel" data-desktop-overlay="">
+        <HostFilePreviewSlot {...file.hostPreview} onClose={onClose} />
+      </div>
+    );
+  }
 
   const ext = getExtension(file.extension, file.name);
   const { renderer: Renderer } = fileRendererRegistry.getRenderer(ext);
 
   const handleDownload = () => {
+    if (htmlActions.enabled) {
+      void htmlActions.download();
+      return;
+    }
     void downloadFile(file.url, file.name || "file");
   };
 
   const handleOpenExternal = () => {
+    if (htmlActions.enabled) {
+      htmlActions.open();
+      return;
+    }
     window.open(file.url, "_blank");
   };
 
@@ -53,7 +71,10 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
           )}
           <button
             className="wk-file-preview-action"
-            title={t("base.filePreview.download")}
+            title={t(htmlActions.pending
+              ? "base.htmlAttachment.preparing"
+              : "base.filePreview.download")}
+            disabled={htmlActions.pending}
             onClick={handleDownload}
           >
             <Download size={18} />

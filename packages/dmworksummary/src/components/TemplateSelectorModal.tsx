@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { Empty, Modal, Spin } from "@douyinfe/semi-ui";
 import { Plus } from "lucide-react";
+import { Dap } from "@octo/base";
 import * as summaryApi from "../api/summaryApi";
 import type { SummaryWorkbenchTemplateScope } from "../bridge/summaryWorkbench/protocol";
 import {
@@ -21,6 +22,7 @@ import type {
 import {
   computeTemplateSelection,
   getTemplateEditableFields,
+  trackPresetTemplateEditOpened,
 } from "../utils/templateResolver";
 import TemplateCard from "./TemplateCard";
 import "./TemplateSelectorModal.css";
@@ -29,7 +31,10 @@ type VersionedTopicTemplate = TopicTemplate & { version?: number };
 
 export interface TemplateSelectorDataSource {
   load: () => Promise<TopicTemplatesResponse>;
-  create: (payload: CustomTopicTemplatePayload) => Promise<TopicTemplate>;
+  create: (
+    payload: CustomTopicTemplatePayload,
+    trackProps?: Record<string, unknown>
+  ) => Promise<TopicTemplate>;
   updateBuiltIn: (
     templateId: string,
     payload: CustomTopicTemplatePayload
@@ -39,7 +44,7 @@ export interface TemplateSelectorDataSource {
     payload: CustomTopicTemplatePayload
   ) => Promise<TopicTemplate>;
   resetBuiltIn: (templateId: string) => Promise<TopicTemplate>;
-  deleteCustom: (templateId: string) => Promise<void>;
+  deleteCustom: (templateId: string, trackProps?: Record<string, unknown>) => Promise<void>;
 }
 
 export interface TemplateSelectorLabels {
@@ -121,6 +126,9 @@ export function topicTemplateToWorkbenchScope(
     templateId: template.id,
     label: template.label,
     requirement: resolvedTemplate.text,
+    // DAP-271 finding 6：透传 is_custom（自定义模板，含被覆盖的预置=custom 语义仍按 is_custom 判定）
+    //   到 workbench scope，供 template_applied.template_type / started.template_source 补齐。
+    isCustom: Boolean(template.is_custom),
     ...(typeof version === "number" ? { version } : {}),
   };
 }
@@ -244,6 +252,10 @@ export default function TemplateSelectorModal({
     setEditingLabel("");
     setEditingDescription("");
     setMutationError("");
+    // 已达上限时上面已 return,入口不可见不触发;guard 通过、弹窗进入创建态才计一次。
+    Dap.shared.track("smart_summary_custom_template_create_opened", {
+      template_count_before: customTemplates.length,
+    });
   };
 
   const startEditing = (template: TopicTemplate) => {
@@ -253,6 +265,8 @@ export default function TemplateSelectorModal({
     setEditingLabel(editable.label);
     setEditingDescription(editable.description);
     setMutationError("");
+    // M-I：预设模板卡「编辑」弹窗成功打开时上报（隐私守卫见 helper）。两站点共用 helper,pin 一次即覆盖。
+    trackPresetTemplateEditOpened(template);
   };
 
   const closeEditor = () => {
@@ -269,7 +283,11 @@ export default function TemplateSelectorModal({
       creatingCustomTemplate ? labels.createFailed : labels.updateFailed,
       async () => {
         if (creatingCustomTemplate) {
-          const created = await dataSource.create({ label, description });
+          // DAP-266：template_count_after = 创建成功后的自定义模板总数（现有 + 1）。
+          const created = await dataSource.create(
+            { label, description },
+            { template_count_after: customTemplates.length + 1 }
+          );
           setTemplates((current: TopicTemplate[]) => [...current, created]);
         } else if (editingTemplate) {
           const update = editingTemplate.is_custom
@@ -306,7 +324,10 @@ export default function TemplateSelectorModal({
     if (!pendingDelete?.is_custom || mutationBusy) return;
     const target = pendingDelete;
     await runMutation(labels.deleteFailed, async () => {
-      await dataSource.deleteCustom(target.id);
+      // DAP-266：template_count_after = 删除成功后的自定义模板总数（现有 − 1）。
+      await dataSource.deleteCustom(target.id, {
+        template_count_after: Math.max(0, customTemplates.length - 1),
+      });
       setTemplates((current: TopicTemplate[]) =>
         current.filter((template: TopicTemplate) => template.id !== target.id)
       );

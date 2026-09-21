@@ -1,5 +1,6 @@
 import { ProviderListener } from "../../Service/Provider"
 import { extractErrorMsg } from "../../Service/APIClient"
+import { Dap } from "../../Service/Dap"
 import BotManageService, {
     type BotGroupsListResponse,
     type BotGroupItem,
@@ -361,6 +362,13 @@ export class MentionFreeVM extends ProviderListener {
             this.groups = this.groups.map((g) =>
                 g.group_no === groupNo ? { ...g, no_mention: next } : g,
             )
+            // bot_no_mention_reply_toggled(DAP-218 A 类):仅在写入被后端确认(2xx)后发,
+            //   与 card_message_setting_toggled 放 flush 成功后一致。ai_id=robotId、group_id=群号、enabled=开关态。
+            Dap.shared.track("bot_no_mention_reply_toggled", {
+                ai_id: requestedUid,
+                group_id: groupNo,
+                enabled: next,
+            })
             this.notifyListener()
             return true
         } catch (e) {

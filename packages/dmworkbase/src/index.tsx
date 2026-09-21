@@ -7,6 +7,7 @@ export * from './Service/Thread'
 export * from './Service/Module'
 export * from './Service/Menus'
 export * from './Service/APIClient'
+export { default as APIClient } from './Service/APIClient'
 export * from './Service/Dap'
 export * from './Service/apiLanguage'
 export * from './Service/apiFetch'
@@ -32,6 +33,14 @@ export * from './im-runtime/chatRuntime'
 export * from './im-runtime/currentChatRuntime'
 export * from './im-runtime/conversationRuntime'
 export * from './im-runtime/currentConversationRuntime'
+export * from './im-runtime/unreadCount'
+export * from './im-runtime/unreadObserver'
+export * from './im-runtime/currentUnreadObserver'
+export * from './im-runtime/conversationSnapshot'
+export * from './im-runtime/conversationSyncContext'
+export * from './im-runtime/currentConversationSync'
+export * from './im-runtime/currentConversationStore'
+export * from './im-runtime/spaceContext'
 export * from './im-runtime/messageContentRuntime'
 export * from './im-runtime/currentMessageContentRuntime'
 export * from './im-runtime/reminderRuntime'
@@ -149,6 +158,13 @@ export { default as SpaceSettings } from "./Components/SpaceSettings"
 export * from "./Service/SpaceService"
 export { default as UserService } from "./Service/UserService"
 export type { UserProfile, UserProfileRequestOptions } from "./Service/UserService"
+export { default as SearchService } from "./Service/SearchService"
+export type {
+  DocSearchDocType,
+  DocSearchItem,
+  DocSearchQuery,
+  DocSearchResponse,
+} from "./Service/SearchTypes"
 
 export type { JoinApprovalStatus } from "./EndpointCommon"
 export { toJoinApprovalStatus } from "./EndpointCommon"
@@ -190,3 +206,4 @@ export { Channel, ChannelTypePerson } from 'wukongimjssdk'
 // for the channel-normalisation contract (#1261 review round 6).
 export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel, normaliseImDriveChannelID, imDriveTransferSourceKey } from './Service/SpacePrefix'
 export { resolveCardActionChannelId } from './Messages/InteractiveCard/cardAction'
+export * from "./im-runtime/readAttentionHost"

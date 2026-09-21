@@ -226,7 +226,7 @@ function NotificationsSettingsPage({ environment }: { environment: import("../..
       <SettingsRow title={t("base.navRail.settingsCenter.row.muteScope")} description={t("base.navRail.settingsCenter.row.muteScopeDescription")} trailing={<select className="wk-settings-center__demo-select" aria-label={t("base.navRail.settingsCenter.row.muteScope")} value={muteScope} onChange={(event) => quickMuteStore.setScope(event.target.value as typeof muteScope)}><option value="sound">{t("base.navRail.settingsCenter.value.soundOnly")}</option><option value="sound-and-popup">{t("base.navRail.settingsCenter.value.soundAndPopup")}</option></select>} />
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.desktopSystemNotifications")}>
-      <SettingsRow title={t("base.navRail.settingsCenter.row.notificationOptions")} description={isDesktop ? t("base.navRail.settingsCenter.row.notificationOptionsDesktopDescription") : t("base.navRail.settingsCenter.row.notificationOptionsWebDescription")} trailing={<Switch checked={notificationsEnabled} onChange={(checked) => { setNotificationsEnabled(checked); WKApp.shared.notificationIsClose = !checked; }} aria-label={t("base.navRail.settingsCenter.row.notificationOptions")} />} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.notificationOptions")} description={isDesktop ? t("base.navRail.settingsCenter.row.notificationOptionsDesktopDescription") : t("base.navRail.settingsCenter.row.notificationOptionsWebDescription")} trailing={<Switch checked={notificationsEnabled} onChange={(checked) => { setNotificationsEnabled(checked); WKApp.shared.notificationIsClose = !checked; Dap.shared.track("settings_notification_toggled", { enabled: checked }); }} aria-label={t("base.navRail.settingsCenter.row.notificationOptions")} />} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.systemPermission")} description={isDesktop ? t("base.navRail.settingsCenter.row.systemPermissionDesktopDescription") : t("base.navRail.settingsCenter.row.systemPermissionWebDescription")} trailing={<span className="wk-settings-center__row-actions"><SettingsStatusTag tone={permissionTone} label={permissionLabel} />{permission === "default" && <button type="button" className="wk-settings-center__manage-button" onClick={() => { void requestPermission(); }}>{t("base.navRail.settingsCenter.action.authorize")}</button>}{isDesktop && (permission === "denied" || permission === "managed") && <button type="button" className="wk-settings-center__manage-button" onClick={() => { void openNotificationSettings(); }}>{t("base.navRail.settingsCenter.action.openSystemSettings")}</button>}</span>} />
     </SettingsSection>
   </SettingsPageFrame>;
@@ -248,8 +248,11 @@ function AboutSettingsPage({ environment, onAbout, aboutUpdateStatus = { status:
       : aboutUpdateStatus.status === "latest"
         ? t("base.navRail.settingsCenter.about.latestVersionDescription")
         : t("base.navRail.settingsCenter.about.webUpdateDescription");
-  const externalLink = (label: string, href: string) => {
+  const externalLink = (label: string, href: string, trackEvent?: string) => {
     const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+      // settings_changelog_viewed(DAP-218 A 类):在外链行点击处命令式计一次。
+      //   放在 electron 桥早返回之前,web / 桌面两路都发;入口本身无网络请求故无 fetch 通道可依。
+      if (trackEvent) Dap.shared.track(trackEvent, {});
       const linksBridge = getElectronLinksBridge();
       if (!linksBridge) return;
 
@@ -275,12 +278,12 @@ function AboutSettingsPage({ environment, onAbout, aboutUpdateStatus = { status:
       <div className="wk-settings-center__about-update-actions">{!isDesktop && <SettingsStatusTag tone={statusTone} label={statusLabel} />}<button type="button" className="wk-settings-center__about-update" onClick={onAbout}>{updateAvailable && !isDesktop ? t("base.navRail.settingsCenter.action.refresh") : t("base.navRail.settingsCenter.action.checkUpdate")}</button></div>
     </div>
     <SettingsSection title={t("base.navRail.settingsCenter.section.help")}>
-      {onOpenOnboarding && <SettingsRow title={t("base.navRail.settingsCenter.row.guide")} onClick={onOpenOnboarding} trailing={<ChevronIcon />} />}
+      {onOpenOnboarding && <SettingsRow title={t("base.navRail.settingsCenter.row.guide")} onClick={() => { Dap.shared.track("settings_onboarding_guide_reopened", {}); onOpenOnboarding(); }} trailing={<ChevronIcon />} />}
       {externalLink(t("base.navRail.settingsCenter.row.feedback"), "https://github.com/Mininglamp-OSS/octo-web/issues/new")}
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.productInfo")}>
       {externalLink(t("base.navRail.settingsCenter.row.productManual"), productManualUrl)}
-      {externalLink(t("base.navRail.settingsCenter.row.changelog"), "/changelog")}
+      {externalLink(t("base.navRail.settingsCenter.row.changelog"), "/changelog", "settings_changelog_viewed")}
       {externalLink(t("base.navRail.settingsCenter.row.officialWebsite"), "https://www.mininglamp.com/")}
       {externalLink(t("base.navRail.settingsCenter.row.openSource"), "https://github.com/Mininglamp-OSS")}
       {externalLink(t("base.navRail.settingsCenter.row.license"), "https://github.com/Mininglamp-OSS/octo-web/blob/main/LICENSE")}
@@ -300,6 +303,11 @@ function voiceShortcutLabel(shortcut: VoiceShortcut, os: "windows" | "macos") { 
 function voiceModeLabel(mode: VoiceSettings["speakingMode"]) { return t(mode === "hold" ? "base.navRail.settingsCenter.value.hold" : "base.navRail.settingsCenter.value.toggle"); }
 function VoiceInputSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
   const settings = useVoiceSettings();
+  React.useEffect(() => {
+    // settings_voice_opened(DAP-218 A 类):语音设置页挂载即计一次。原 FetchRules 的
+    //   GET /voice/local-config 通道被排除(挂载即拉、且被页内其他请求淹没),故退命令式。
+    Dap.shared.track("settings_voice_opened", {});
+  }, []);
   React.useEffect(() => {
     let active = true;
     const load = () => {
@@ -402,7 +410,7 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
       await acceptVoiceInput(spaceId, consentChecked, () => WKApp.shared.currentSpaceId === spaceId);
       voiceSettingsStore.acknowledge();
       voiceSettingsStore.set({ enabled: true });
-      Dap.shared.track("settings_voice_toggled", { enabled: true });
+      Dap.shared.track("settings_voice_toggled", { setting: "voice_input", enabled: true });
       setShowConsent(false);
     } catch {
       Toast.error(t("base.navRail.settingsCenter.value.saveFailed"));
@@ -413,13 +421,13 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
   const toggle = (enabled: boolean) => {
     if (!enabled) {
       voiceSettingsStore.set({ enabled: false });
-      Dap.shared.track("settings_voice_toggled", { enabled: false });
+      Dap.shared.track("settings_voice_toggled", { setting: "voice_input", enabled: false });
       return;
     }
     if (settings.consent?.protocolVersion !== VOICE_PROTOCOL_VERSION) setShowConsent(true);
     else {
       voiceSettingsStore.set({ enabled: true });
-      Dap.shared.track("settings_voice_toggled", { enabled: true });
+      Dap.shared.track("settings_voice_toggled", { setting: "voice_input", enabled: true });
     }
   };
   const authorize = async () => { if (!navigator.mediaDevices?.getUserMedia) return; try { const stream = await navigator.mediaDevices.getUserMedia({ audio: settings.microphoneDeviceId ? { deviceId: { exact: settings.microphoneDeviceId } } : true }); stream.getTracks().forEach((track) => track.stop()); await refreshDevices(); await refreshPermission(); } catch { await refreshPermission(); } };

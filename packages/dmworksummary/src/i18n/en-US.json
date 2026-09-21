@@ -74,6 +74,9 @@
     "groupChat": "Group chat",
     "thread": "Thread",
     "directMessage": "Direct message",
+    "document": "Document",
+    "documentSnapshotNotice": "Generated from {{count}} document sources as of {{time}}. Later edits do not affect this summary.",
+    "documentSnapshotNoticeWithoutTime": "Generated from {{count}} document sources captured for this summary. Later edits do not affect it.",
     "label": "Source: ",
     "selectedHeader": "Selected sources",
     "empty": "No sources",
@@ -149,7 +152,8 @@
     "everyNMonths": "Every {{months}} month(s){{at}}"
   },
   "menu": {
-    "title": "AI Summary"
+    "title": "AI Summary",
+    "titleShort": "Summary"
   },
   "list": {
     "needsAttention": "Needs attention",
@@ -175,7 +179,11 @@
     "templatesTitle": "Try these templates",
     "submitting": "Summarizing...",
     "success": "Summary task created",
+    "selectSource": "Select source",
     "selectChat": "Select chats",
+    "selectDocument": "Select documents",
+    "documentOnlyHint": "Document summaries are single-user and manual only",
+    "documentSourceUnavailable": "Document summaries are currently disabled. Remove documents and try again.",
     "selectMembers": "Select participants",
     "selectedMembers": "{{count}} participants selected",
     "start": "Quick summary",
@@ -197,9 +205,28 @@
     "titleRequired": "Title is required",
     "saving": "Saving...",
     "noOutputToSave": "No summary content to save yet. Please chat with AI first to generate content.",
-    "agentSummaryCreated": "AI summary saved",
+    "agentSummaryCreated": "Summary saved",
     "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
     "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
+  },
+  "documentPicker": {
+    "title": "Select documents",
+    "searchPlaceholder": "Search document titles",
+    "selectedCount": "{{count}} / {{max}} selected",
+    "loading": "Loading documents…",
+    "source": {
+      "recent": "Recent",
+      "mine": "My documents"
+    },
+    "empty": {
+      "recent": "No recent documents available",
+      "mine": "No owned documents available"
+    },
+    "noResults": "No matching documents",
+    "loadMore": "Load more",
+    "loadMoreFailed": "Couldn't load more documents. Please retry.",
+    "supportedTypesHint": "Documents and HTML only; spreadsheets and whiteboards aren't supported",
+    "searchFailed": "Document loading failed. Please retry."
   },
   "workbench": {
     "title": "Summary assistant",
@@ -207,6 +234,7 @@
     "empty": "Tell me what you want to summarize, and I'll work with the context you've selected",
     "context": {
       "chat": "Select chats",
+      "document": "Select documents",
       "participant": "Select participants",
       "template": "Template",
       "timeRange": "Time range",
@@ -291,6 +319,7 @@
     "placeholder": {
       "initial": "Describe what you want summarized and how",
       "chatSelected": "Describe how to summarize the selected chats, and I'll create a preview you can refine",
+      "documentSelected": "Send now to summarize the selected documents, or add instructions",
       "participantsSelected": "Describe or refine the team summary request, and I'll prepare the task",
       "structuredReady": "Send now to generate the final summary, or add more instructions",
       "teamConfirmation": "Add more instructions, or confirm and start the collaboration",
@@ -407,12 +436,10 @@
   },
   "schedule": {
     "pageTitle": "Scheduled summaries",
-    "new": "New",
     "empty": "No scheduled summaries",
-    "createFirst": "Create first scheduled task",
     "fallbackTitle": "Scheduled task #{{id}}",
     "deleteTitle": "Confirm deletion",
-    "deleteContent": "Delete this scheduled summary?",
+    "deleteContent": "Delete this schedule?",
     "createModalTitle": "New scheduled summary",
     "editModalTitle": "Edit scheduled summary",
     "createSuccess": "Scheduled summary created",
@@ -420,6 +447,9 @@
     "deleted": "Deleted",
     "enabled": "Enabled",
     "paused": "Paused",
+    "pause": "Pause scheduled updates",
+    "resumed": "Resumed",
+    "resume": "Resume scheduled updates",
     "form": {
       "title": "Title",
       "titlePlaceholder": "Scheduled summary title",
@@ -520,6 +550,7 @@
     "botCreatedByFor": "Created by {{bot}} on behalf of {{owner}}",
     "contentTitle": "📝 Summary content",
     "edited": "Edited",
+    "editUnavailable": "Editing is unavailable. Check that the summary has content, you have permission, and generation is not in progress.",
     "generatedAt": "Generated {{time}}",
     "lastEditedAt": "Last edited {{time}}",
     "mySummary": "My summary",
@@ -591,6 +622,8 @@
     "scheduleBindFailedOrphan": "Binding the schedule failed and the automatic rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list.",
     "setSchedule": "Set schedule",
     "editSchedule": "Edit schedule",
+    "documentScheduleUnsupported": "Document summaries do not support scheduled updates yet.",
+    "legacyDocumentSchedule": "Document summaries cannot run on a schedule. Existing schedules can only be turned off.",
     "disableSchedule": "Turn off schedule",
     "scheduleDisabled": "Schedule turned off",
     "scheduleDisabledHint": "Schedule is off",
@@ -653,9 +686,22 @@
     "convertErrEncoding": "The content encoding is invalid and cannot be converted",
     "convertErrDocType": "This document type does not support body import"
   },
+  "generation": {
+    "sources": "Summary sources",
+    "selectSources": "Select chats",
+    "timeRange": "Time range",
+    "savedByDefault": "These settings will be saved for future use.",
+    "scheduleUpdate": "Scheduled updates",
+    "continueSchedule": "Save and configure scheduled updates",
+    "completeConfig": "Complete summary settings",
+    "serviceUpgradeRequired": "Update the summary service to use this feature.",
+    "schedulePermissionDenied": "You do not have permission to schedule updates for this summary.",
+    "scheduleSourceFixed": "Scheduled updates use this summary's existing chats. Chats cannot be added or replaced. Create a summary with the required sources first.",
+    "scheduleDetailOnly": "Create scheduled updates from the corresponding summary detail page. Existing schedules can still be edited here."
+  },
   "summaryCard": {
-    "agentType": "Agent summary",
-    "quickType": "Quick summary",
+    "personalType": "Personal summary",
+    "teamType": "Team summary",
     "createdBy": "Created by {{name}}",
     "deleteTitle": "Confirm deletion",
     "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",
@@ -682,9 +728,7 @@
     "confirmDeleteTitle": "Delete?",
     "confirmDeleteDesc": "This cannot be undone.",
     "confirmLeaveTitle": "Leave?",
-    "confirmLeaveDesc": "You will no longer participate in this summary.",
-    "scheduledType": "Scheduled summary",
-    "multiPersonType": "Multi-person summary"
+    "confirmLeaveDesc": "You will no longer participate in this summary."
   },
   "editor": {
     "saveSuccess": "Saved",
@@ -706,6 +750,8 @@
     "source": "Source: {{source}}",
     "sourceDefault": "Unknown source",
     "multipleSources": "Multiple sources",
+    "openDocument": "Open document →",
+    "documentLocation": "Version {{version}} · chunk {{chunk}}",
     "referenceTag": "Citation [{{index}}]",
     "member": "Member: {{name}}"
   },

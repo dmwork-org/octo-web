@@ -6,13 +6,15 @@ import React, {
   useState,
 } from "react";
 import { Input, Modal, Spin, Toast } from "@douyinfe/semi-ui";
-import { Dap, useI18n } from "@octo/base";
+import { Dap, useI18n, type DocSearchItem } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryMessagingPort } from "../../host";
+import { themeLenBucket } from "../../utils/summaryHelpers";
 import SummaryDetailPage from "../../pages/SummaryDetailPage";
 import ChatSelectorModal from "../../components/ChatSelectorModal";
 import SummaryReferencePicker from "../../components/SummaryReferencePicker";
 import SummaryReferenceSidePanel from "../../components/SummaryReferenceSidePanel";
+import DocumentSelectorModal from "../documentSource/DocumentSelectorModal";
 import TemplateSelectorModal, {
   type TemplateSelectorLabels,
 } from "../../components/TemplateSelectorModal";
@@ -21,6 +23,7 @@ import TimeRangeSelector, {
 } from "../../components/TimeRangeSelector";
 import {
   MAX_CHAT_SELECT,
+  MAX_DOCUMENT_SELECT,
   MAX_PARTICIPANT_SELECT,
 } from "../../constants/limits";
 import { TOPIC_TEMPLATES } from "../../constants/templates";
@@ -69,14 +72,17 @@ import {
   canSelectParticipants,
   canGenerateFromScope,
   chatCandidatesToScope,
+  documentsToScope,
   emptySummaryWorkbenchScope,
   memberCandidatesToScope,
   participantSourceChannels,
   participantSourceKey,
   removeScopeContext,
   replaceSelectedChannels,
+  replaceSelectedDocuments,
   retainValidParticipants,
   scopeChannelsToCandidates,
+  scopeDocumentsToItems,
   scopeParticipantsToCandidates,
   type WorkbenchMemberCandidate,
 } from "./scope";
@@ -160,8 +166,7 @@ function hasAcceptedHydratedTurn(
     card ||
       messages.some(
         (message) =>
-          message.role === "assistant" &&
-          message.resultType !== "error"
+          message.role === "assistant" && message.resultType !== "error"
       )
   );
 }
@@ -180,7 +185,8 @@ export default function SummaryWorkbenchFeature({
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
   const [referencePreviewId] = useState(createReferencePreviewId);
-  const currentUserId = messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
+  const currentUserId =
+    messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
   const initialScope = useMemo(
     () => initialScopeFor(channel, derivedFromTask),
     [channel?.channelID, channel?.channelType, derivedFromTask?.task_id]
@@ -215,6 +221,10 @@ export default function SummaryWorkbenchFeature({
   const [referencePreviewOpen, setReferencePreviewOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState("");
+  const [documentSelectorAvailable, setDocumentSelectorAvailable] = useState(
+    () =>
+      Boolean(WKApp.remoteConfig?.docsOn && WKApp.remoteConfig?.docsSearchOn)
+  );
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(true);
@@ -380,9 +390,7 @@ export default function SummaryWorkbenchFeature({
   const participantsPresent = workbench.scope.participants.length > 0;
   useEffect(() => {
     participantLoadSeq.current += 1;
-    if (
-      pendingParticipantPruneRef.current?.sourceKey !== participantScopeKey
-    ) {
+    if (pendingParticipantPruneRef.current?.sourceKey !== participantScopeKey) {
       pendingParticipantPruneRef.current = null;
     }
     setParticipantCandidateState((current) =>
@@ -413,6 +421,21 @@ export default function SummaryWorkbenchFeature({
   useEffect(() => {
     return () => {
       if (themeTrackTimer.current) clearTimeout(themeTrackTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncDocumentCapability = () => {
+      setDocumentSelectorAvailable(
+        Boolean(WKApp.remoteConfig?.docsOn && WKApp.remoteConfig?.docsSearchOn)
+      );
+    };
+    syncDocumentCapability();
+    const unsubscribe =
+      WKApp.remoteConfig?.addConfigChangeListener?.(syncDocumentCapability) ??
+      null;
+    return () => {
+      unsubscribe?.();
     };
   }, []);
 
@@ -476,13 +499,33 @@ export default function SummaryWorkbenchFeature({
     if (notifiedTaskIds.current.has(taskId)) return;
     notifiedTaskIds.current.add(taskId);
     markAgentSummaryNotificationEligible(taskId);
-    Dap.shared.track("smart_summary_started", {
-      object_id: channel?.channelID,
-      source,
-      entry_point: source,
-      entry_source: source,
-      trigger_mode: triggerMode,
-    });
+    // DAP-247/S6（architect 裁定 · spec-props.md:333 P0）：smart_summary_started 只对应 normal
+    // 「快速总结」路径;agent 创建路径不发 started,发 smart_summary_agent_saved（spec:441，props =
+    // { message_count }）。agent 分支若沿用 started 会污染快速总结漏斗(错误 P0 数据)。
+    if (triggerMode === "agent") {
+      // message_count 就近取自 workbench 会话消息条数,对齐 AgentChatPanel 用 messages.length 的口径。
+      Dap.shared.track("smart_summary_agent_saved", {
+        message_count: workbench.viewState.messages.length,
+      });
+    } else {
+      Dap.shared.track("smart_summary_started", {
+        object_id: channel?.channelID,
+        source,
+        entry_point: source,
+        entry_source: source,
+        trigger_mode: triggerMode,
+        // DAP-266：补 spec 维度 mode / channel_count / participant_count（就近取自 workbench.scope）。
+        // DAP-271 finding 2：spec 确认需 channel_ids → 按显式键把 chatId 逗号连接成字符串(primitive,过得了
+        //   sanitizer)，不泛化放行数组。finding 6：template_source 由 scope.template.isCustom 就近派生。
+        mode: triggerMode,
+        channel_count: workbench.scope.selectedChannels.length,
+        channel_ids: workbench.scope.selectedChannels.map((c) => c.chatId).join(","),
+        participant_count: workbench.scope.participants.length,
+        ...(workbench.scope.template
+          ? { template_source: workbench.scope.template.isCustom ? "custom" : "preset" }
+          : {}),
+      });
+    }
     window.dispatchEvent(
       new CustomEvent("chat-summary-created", {
         detail: {
@@ -516,6 +559,9 @@ export default function SummaryWorkbenchFeature({
     workbench.scope,
     composerHasCustomText
   );
+  const documentScopeUnavailable =
+    (workbench.scope.documents ?? []).length > 0 &&
+    !documentSelectorAvailable;
   const participantScopeReady =
     workbench.scope.participants.length === 0 ||
     (Boolean(participantScopeKey) &&
@@ -538,6 +584,15 @@ export default function SummaryWorkbenchFeature({
       ? { ...item, label: referencedTask.title || item.label }
       : item
   );
+  const availableContextKinds: SummaryWorkbenchContextKind[] =
+    (workbench.scope.documents ?? []).length > 0
+      ? ["chat", ...(documentSelectorAvailable ? (["document"] as const) : [])]
+      : [
+          "chat",
+          ...(documentSelectorAvailable ? (["document"] as const) : []),
+          "participant",
+          "time_range",
+        ];
   const viewState = {
     ...workbench.viewState,
     contextItems,
@@ -545,6 +600,7 @@ export default function SummaryWorkbenchFeature({
     isSending: busy,
     canSend:
       !busy &&
+      !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
         (!templateLocked && structuredGenerate) ||
@@ -562,6 +618,7 @@ export default function SummaryWorkbenchFeature({
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
     referencePreviewOpen,
     referencePreviewId,
+    availableContextKinds,
   };
 
   const updateScopeWithPreviewGuard = (
@@ -604,8 +661,8 @@ export default function SummaryWorkbenchFeature({
   ) => {
     const previousInputValue = workbench.viewState.inputValue;
     const previousHasSubmitted = hasSubmitted;
-    const previousTemplateGalleryOpen = templateGalleryOpen;
     const previousTemplateFilledComposer = templateFilledComposer.current;
+    const previousTemplateGalleryOpen = templateGalleryOpen;
     const responsePromise = request();
 
     templateFilledComposer.current = null;
@@ -624,6 +681,10 @@ export default function SummaryWorkbenchFeature({
   };
 
   const send = async () => {
+    if (documentScopeUnavailable) {
+      Toast.warning(t("summary.create.documentSourceUnavailable"));
+      return;
+    }
     if (!viewState.canSend) return;
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
@@ -654,7 +715,11 @@ export default function SummaryWorkbenchFeature({
         : workbench.send(message, inputOrigin)
     );
     if (isAcceptedResponse(response)) {
-      Dap.shared.track("smart_summary_agent_message_sent", {});
+      // DAP-266：补 has_reference（是否携带引用总结）。duration_seconds（请求耗时）此处无起始
+      //   时间戳可取 → DEFER。
+      Dap.shared.track("smart_summary_agent_message_sent", {
+        has_reference: workbench.scope.referencedTaskIds.length > 0,
+      });
     }
     observeWorkflow(response);
   };
@@ -702,6 +767,7 @@ export default function SummaryWorkbenchFeature({
       setTemplateGalleryOpen(true);
       return;
     }
+    if (kind === "document" && !documentSelectorAvailable) return;
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
       Toast.info(t("summary.workbench.notice.selectSingleChatForParticipants"));
       return;
@@ -736,48 +802,51 @@ export default function SummaryWorkbenchFeature({
     });
   };
 
-  const templateLabels = useMemo<TemplateSelectorLabels>(() => ({
-    title: t("summary.workbench.selector.templateTitle"),
-    builtInTitle: t("summary.create.templatesTitle"),
-    customTitle: (count, limit) =>
-      t("summary.templates.custom.myTemplatesTitleWithCount", {
-        values: { count, limit },
-      }),
-    customSectionTitle: t("summary.templates.custom.myTemplatesTitle"),
-    customCountLabel: (count, limit) => `${count}/${limit}`,
-    create: t("summary.templates.custom.new"),
-    edit: t("summary.templates.custom.edit"),
-    delete: t("summary.templates.custom.delete"),
-    reset: t("summary.templates.custom.reset"),
-    cancel: t("summary.common.cancel"),
-    save: t("summary.common.save"),
-    clear: t("summary.workbench.selector.clearTemplate"),
-    loading: t("summary.common.loading"),
-    empty: t("summary.templates.custom.emptyTitle"),
-    loadFailed: t("summary.common.loadingFailed"),
-    retry: t("summary.common.retry"),
-    limitReached: t("summary.templates.custom.limitReached"),
-    createTitle: t("summary.templates.custom.createTitle"),
-    editTitle: t("summary.templates.custom.editTitle"),
-    nameLabel: t("summary.templates.custom.nameLabel"),
-    descriptionLabel: t("summary.templates.custom.descriptionLabel"),
-    namePlaceholder: t("summary.templates.custom.namePlaceholder"),
-    descriptionPlaceholder: t(
-      "summary.templates.custom.descriptionPlaceholder"
-    ),
-    customPromptTopic: t("summary.templates.custom.promptTopic"),
-    customPromptContext: t("summary.templates.custom.promptContext"),
-    editHint: t("summary.templates.custom.editHint"),
-    deleteConfirmTitle: t("summary.templates.custom.deleteConfirmTitle"),
-    deleteConfirmContent: (name) =>
-      t("summary.templates.custom.deleteConfirmContent", {
-        values: { name },
-      }),
-    createFailed: t("summary.templates.custom.createFailed"),
-    updateFailed: t("summary.templates.custom.saveFailed"),
-    resetFailed: t("summary.templates.custom.resetFailed"),
-    deleteFailed: t("summary.templates.custom.deleteFailed"),
-  }), [t]);
+  const templateLabels = useMemo<TemplateSelectorLabels>(
+    () => ({
+      title: t("summary.workbench.selector.templateTitle"),
+      builtInTitle: t("summary.create.templatesTitle"),
+      customTitle: (count, limit) =>
+        t("summary.templates.custom.myTemplatesTitleWithCount", {
+          values: { count, limit },
+        }),
+      customSectionTitle: t("summary.templates.custom.myTemplatesTitle"),
+      customCountLabel: (count, limit) => `${count}/${limit}`,
+      create: t("summary.templates.custom.new"),
+      edit: t("summary.templates.custom.edit"),
+      delete: t("summary.templates.custom.delete"),
+      reset: t("summary.templates.custom.reset"),
+      cancel: t("summary.common.cancel"),
+      save: t("summary.common.save"),
+      clear: t("summary.workbench.selector.clearTemplate"),
+      loading: t("summary.common.loading"),
+      empty: t("summary.templates.custom.emptyTitle"),
+      loadFailed: t("summary.common.loadingFailed"),
+      retry: t("summary.common.retry"),
+      limitReached: t("summary.templates.custom.limitReached"),
+      createTitle: t("summary.templates.custom.createTitle"),
+      editTitle: t("summary.templates.custom.editTitle"),
+      nameLabel: t("summary.templates.custom.nameLabel"),
+      descriptionLabel: t("summary.templates.custom.descriptionLabel"),
+      namePlaceholder: t("summary.templates.custom.namePlaceholder"),
+      descriptionPlaceholder: t(
+        "summary.templates.custom.descriptionPlaceholder"
+      ),
+      customPromptTopic: t("summary.templates.custom.promptTopic"),
+      customPromptContext: t("summary.templates.custom.promptContext"),
+      editHint: t("summary.templates.custom.editHint"),
+      deleteConfirmTitle: t("summary.templates.custom.deleteConfirmTitle"),
+      deleteConfirmContent: (name) =>
+        t("summary.templates.custom.deleteConfirmContent", {
+          values: { name },
+        }),
+      createFailed: t("summary.templates.custom.createFailed"),
+      updateFailed: t("summary.templates.custom.saveFailed"),
+      resetFailed: t("summary.templates.custom.resetFailed"),
+      deleteFailed: t("summary.templates.custom.deleteFailed"),
+    }),
+    [t]
+  );
 
   const timeRangeLabels: TimeRangeSelectorLabels = {
     last7Days: t("summary.timeRange.last7d"),
@@ -856,7 +925,12 @@ export default function SummaryWorkbenchFeature({
       // P1-4 (yujiawei review 5087124100): the workbench path lost this event —
       // its sole sink was the legacy SummaryCreatePage. Same payload shape as
       // the legacy emitter: no content, intent only.
-      Dap.shared.track("smart_summary_template_applied", {});
+      // DAP-266：补 source（应用来源=workbench）。
+      // DAP-271 finding 6：template_type 由 template.isCustom 就近派生（scope 已透传 is_custom）。
+      Dap.shared.track("smart_summary_template_applied", {
+        template_type: template.isCustom ? "custom" : "preset",
+        source: "workbench",
+      });
     });
   };
 
@@ -928,7 +1002,11 @@ export default function SummaryWorkbenchFeature({
               themeTrackTimer.current = setTimeout(() => {
                 themeTrackTimer.current = null;
                 if (value.trim())
-                  Dap.shared.track("smart_summary_theme_input", {});
+                  // DAP-266：补 theme_len_bucket（长度分桶,非正文）。used_voice（是否语音输入）
+                  //   此输入回调无语音来源标志 → DEFER。
+                  Dap.shared.track("smart_summary_theme_input", {
+                    theme_len_bucket: themeLenBucket(value.trim().length),
+                  });
               }, 600);
             },
             onSend: () => void send(),
@@ -972,6 +1050,34 @@ export default function SummaryWorkbenchFeature({
             workbench.scope,
             chatCandidatesToScope(chats)
           );
+          if (result.scope === workbench.scope) {
+            setOpenSelector(null);
+            return;
+          }
+          updateScopeWithPreviewGuard(result.scope, () => {
+            setOpenSelector(null);
+            if (result.participantsCleared) {
+              Toast.info(t("summary.workbench.notice.participantsCleared"));
+            }
+          });
+        }}
+        onCancel={() => setOpenSelector(null)}
+      />
+
+      <DocumentSelectorModal
+        visible={openSelector === "document" && documentSelectorAvailable}
+        selected={scopeDocumentsToItems(workbench.scope.documents ?? [])}
+        maxSelect={MAX_DOCUMENT_SELECT}
+        onConfirm={(documents: DocSearchItem[]) => {
+          if (busy) return;
+          const result = replaceSelectedDocuments(
+            workbench.scope,
+            documentsToScope(documents)
+          );
+          if (result.scope === workbench.scope) {
+            setOpenSelector(null);
+            return;
+          }
           updateScopeWithPreviewGuard(result.scope, () => {
             setOpenSelector(null);
             if (result.participantsCleared) {

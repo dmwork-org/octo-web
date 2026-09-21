@@ -9,6 +9,7 @@ import { getVoiceOs, SettingsPage } from "./settingsPages";
 import type { AboutUpdateStatus } from "./settingsPages";
 import SecretsSettingsPanel from "../SecretsSettings/SecretsSettingsPanel";
 import { shouldShowVoiceShortcuts, voiceSettingsStore } from "../../Service/VoiceSettingsStore";
+import { Dap } from "../../Service/Dap";
 
 const settingsIcons = { general: SlidersHorizontal, account: UserRound, notifications: Bell, voice: Mic, "desktop-behavior": Monitor, downloads: FolderDown, "trusted-domains": ShieldCheck, shortcuts: Keyboard, devices: MonitorSmartphone, about: Info } as const;
 
@@ -73,6 +74,11 @@ export default function SettingsCenter({ visible, isDesktop = false, environment
       setSelectedId("general");
       setSecondaryPage(null);
     }
+  }, [visible]);
+  React.useEffect(() => {
+    // settings_menu_opened(DAP-218 A 类):设置弹层打开(visible→true)时命令式计一次。
+    //   原 FetchRules /version.json 通道不代表打开;弹层挂载即渲染但 visible 门控真正的展现。
+    if (visible) Dap.shared.track("settings_menu_opened", {});
   }, [visible]);
   React.useEffect(() => {
     if (selectedId === "shortcuts" && !shouldShowVoiceShortcuts(voiceSettings, getVoiceOs(runtimeEnvironment))) {

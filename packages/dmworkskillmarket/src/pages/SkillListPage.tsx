@@ -39,6 +39,11 @@ interface SkillListPageProps {
 
 const TOAST_DURATION = 3000;
 const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boolean }> = [
+  // 综合 leads the list and is the default sort. Its order is decided by the
+  // backend (the request layer already passes `sort: "comprehensive"` through),
+  // so no client-side `descending` direction is sent — it stays omitted like the
+  // other options.
+  { value: "comprehensive", labelKey: "skillMarket.sort.comprehensive" },
   { value: "latest", labelKey: "skillMarket.sort.latest" },
   { value: "downloads", labelKey: "skillMarket.sort.hottest" },
 ];
@@ -50,7 +55,9 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   // strip that used to flip it was removed in the market UI restructure.
   const mine = variant === "mine";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [sort, setSort] = useState<SkillSort>("latest");
+  // 综合 (comprehensive) is the public market default. The mine variant has no
+  // visible sort control, so it keeps its existing latest-first behavior.
+  const [sort, setSort] = useState<SkillSort>(mine ? "latest" : "comprehensive");
   const list = useSkills({ mine, selectedTags, sort });
   // Review state for the "我的" surface. `mode=mine` is applicant-scoped (no
   // reviewer role needed), but the public catalog shows no review state at all,
@@ -155,7 +162,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
 
   function handleSelectedTagsChange(next: string[]) {
     // 用户增删 tag 过滤;原先误用 GET /plugin_tags 加载 tag 列表推断。
-    Dap.shared.track("market_tag_filtered", {});
+    Dap.shared.track("market_tag_filtered", { market_type: "skill" });
     setSelectedTags(next);
   }
 
@@ -333,7 +340,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                   role="menuitem"
                   data-testid="skill-publish-method-manual"
                   onClick={() => {
-                    Dap.shared.track("market_manual_publish_dialog_opened", {});
+                    Dap.shared.track("market_manual_publish_dialog_opened", { market_type: "skill" });
                     setPublishMenuOpen(false);
                     // Plain upload, not a review resubmit — clear any review
                     // context left over from an earlier 提交审核 click.

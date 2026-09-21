@@ -1,6 +1,7 @@
 import React from 'react';
-import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import * as octoBase from '@octo/base';
 import CitationText from './CitationText';
 import type { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
 import { SummaryMessagingProvider } from '../host';
@@ -23,6 +24,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
             )}
         </span>
     ),
+    Toast: { warning: vi.fn() },
 }));
 
 // wukongimjssdk is pulled in transitively by CitationBadge for the normal [n]
@@ -74,6 +76,48 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('renders snapshot compound citations in first-appearance order with clickable real sources', () => {
+        const content = '预算 [9,73]。ROI [88]。再次引用 [9]。';
+        const citations = [
+            makeCitation({ index: 9, message_seq: 109, content: '预算来源 A' }),
+            makeCitation({ index: 73, message_seq: 173, content: '预算来源 B' }),
+            makeCitation({ index: 88, message_seq: 188, content: 'ROI 来源' }),
+        ];
+        const original = JSON.stringify(citations);
+        render(<CitationText content={content} citations={citations} disableTeamMemberPreview />);
+        expect(activeBadges().map(b => b.textContent)).toEqual(['[1,2]', '[3]', '[1]']);
+        fireEvent.click(badgeByText('[1,2]')!);
+        expect(screen.getByTestId('popover-content').textContent).toContain('预算来源 A');
+        expect(screen.getByTestId('popover-content').textContent).toContain('预算来源 B');
+        fireEvent.click(badgeByText('[3]')!);
+        expect(screen.getByTestId('popover-content').textContent).toContain('ROI 来源');
+        expect(JSON.stringify(citations)).toBe(original);
+    });
+
+    it('does not give absent historical sources fake buttons or consume display numbers', () => {
+        render(<CitationText content="缺失 [9,73]，年份 [2026]，有效 [88]" citations={[makeCitation({ index: 88 })]} />);
+        expect(activeBadges().map(b => b.textContent)).toEqual(['[1]']);
+        expect(document.body.textContent).toContain('[9,73]');
+        expect(document.body.textContent).toContain('[2026]');
+    });
+
+    it('expands a complete range into the existing group popover', () => {
+        render(<CitationText content="依据 [93–95]" citations={[93, 94, 95].map(index =>
+            makeCitation({ index, message_seq: index, content: `Source ${index}` }))} />);
+        fireEvent.click(badgeByText('[1,2,3]')!);
+        for (const index of [93, 94, 95]) {
+            expect(screen.getByTestId('popover-content').textContent).toContain(`Source ${index}`);
+        }
+    });
+
+    it('excludes Markdown code and link labels from normalization and reading-order labels', () => {
+        render(<CitationText
+            content={'`[9,73]`\n\n~~~\n[9,73]\n~~~\n\n[see [9,73]](https://example.test)\n\n实际 [88]'}
+            citations={[9, 73, 88].map(index => makeCitation({ index }))} />);
+        expect(activeBadges().map(b => b.textContent)).toEqual(['[1]']);
+        expect(screen.getByRole('link').textContent).toBe('see [9,73]');
+    });
+
     it('delegates citation navigation to the messaging host', () => {
         const openConversation = vi.fn(async () => {});
         const messaging = {
@@ -108,6 +152,66 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
             channelType: 1,
             messageSeq: 88,
         });
+    });
+
+    it('opens a document citation at /d/:docId with snapshot coordinates visible', () => {
+        const opened = { opener: window, location: { href: '' }, closed: false } as unknown as Window;
+        const open = vi.spyOn(window, 'open').mockReturnValue(opened);
+
+        render(
+            <CitationText
+                content="文档引用 [1]"
+                citations={[
+                    makeCitation({
+                        channel_id: undefined,
+                        channel_type: undefined,
+                        message_seq: undefined,
+                        document_id: 'doc-42',
+                        document_version: 'v7',
+                        document_chunk: 3,
+                        source: '项目复盘',
+                    }),
+                ]}
+            />,
+        );
+
+        fireEvent.click(badgeByText('[1]')!);
+        expect(screen.getByText('版本 v7 · 分片 3')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('打开文档 →'));
+
+        expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+        expect(opened.opener).toBeNull();
+        expect(opened.location.href).toBe(`${window.location.origin}/d/doc-42`);
+        open.mockRestore();
+    });
+
+    it('uses the registered docs opener before browser fallback', async () => {
+        const opener = vi.fn(async () => {});
+        const openerSpy = vi.spyOn(octoBase, 'getDocsDocumentOpener').mockReturnValue(opener);
+        const open = vi.spyOn(window, 'open');
+
+        render(
+            <CitationText
+                content="文档引用 [1]"
+                citations={[makeCitation({
+                    channel_id: undefined,
+                    channel_type: undefined,
+                    message_seq: undefined,
+                    document_id: 'doc-42',
+                })]}
+            />,
+        );
+
+        fireEvent.click(badgeByText('[1]')!);
+        fireEvent.click(screen.getByText('打开文档 →'));
+
+        await waitFor(() => expect(opener).toHaveBeenCalledWith({
+            docId: 'doc-42',
+            url: `${window.location.origin}/d/doc-42`,
+        }));
+        expect(open).not.toHaveBeenCalled();
+        openerSpy.mockRestore();
+        open.mockRestore();
     });
 
     it('keeps same-sequence citations from different channels as distinct messages', () => {

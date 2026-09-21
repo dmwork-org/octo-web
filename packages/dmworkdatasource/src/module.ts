@@ -12,6 +12,7 @@ import { createSyncMessageExtraCallback } from "./im-callbacks/messageExtras";
 import { createReminderDoneCallback } from "./im-callbacks/reminderDone";
 import { createSyncRemindersCallback } from "./im-callbacks/reminders";
 import { createSyncSubscribersCallback } from "./im-callbacks/subscribers";
+import { captureCurrentImConversationSyncContext } from "@octo/base";
 
 export default class DataSourceModule implements IModule {
     id(): string {
@@ -58,6 +59,7 @@ export default class DataSourceModule implements IModule {
                 WKApp.dataSource.channelDataSource.threadGet(groupNo, shortId),
             extractUID: DataSourceModule.extractUID,
             getSubscribeCacheMap: () => getImSubscribeCacheMap(WKSDK.shared()),
+            captureContext: captureCurrentImConversationSyncContext,
         })
     }
 
@@ -118,6 +120,7 @@ export default class DataSourceModule implements IModule {
         WKSDK.shared().config.provider.syncConversationsCallback = createSyncConversationsCallback({
             postConversationSync: (path, body) => WKApp.apiClient.post(path, body),
             getCurrentSpaceId: () => WKApp.shared.currentSpaceId || "",
+            captureContext: captureCurrentImConversationSyncContext,
             setChannelSpace: (key, spaceId) => WKApp.shared.channelSpaceMap.set(key, spaceId),
             setChannelMySourceSpace: (key, sourceSpaceId) =>
                 WKApp.shared.channelMySourceSpaceMap.set(key, sourceSpaceId),

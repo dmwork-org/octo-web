@@ -9,6 +9,7 @@ import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
 import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
 import BotManageModal from "../BotManage";
+import { Dap } from "../../Service/Dap";
 import { I18nContext, t } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
 import type { ReplaceMode, SelectionRange } from "../VoiceInputButton";
@@ -275,6 +276,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
 
     handleOpenBotManage = (event?: React.MouseEvent) => {
         event?.stopPropagation();
+        // bot_manage_opened(DAP-218 A 类):打开「Bot 管理」模块的入口动作处计一次,ai_id = bot uid。
+        Dap.shared.track("bot_manage_opened", { ai_id: this.props.uid });
         this.vm.openBotManage();
     };
 

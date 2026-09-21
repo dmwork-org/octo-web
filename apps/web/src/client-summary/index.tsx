@@ -28,8 +28,10 @@ import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContrac
 import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { SummaryShell } from "./SummaryShell";
 import { requireSummaryHostBridge } from "./hostBridge";
+import { installSummaryExternalRuntime } from "./externalRuntime";
 import { reportSummaryStartupFailure } from "./startupFailure";
 import { installFeaturePresentation } from "../client-feature/desktop/featurePresentation";
+import { hasNavigationCommitBridge } from "../client-feature/navigationCommit";
 import "../client-feature/desktop/presentation.css";
 import "./desktop-summary.css";
 
@@ -83,9 +85,12 @@ async function main() {
   WKApp.remoteConfig.startRequestConfig();
   installDocsAdapter(host, bootstrap);
   Dap.shared.init();
-  initializeSummaryAttentionRuntime({ observeIm: false });
+  const externalRuntime = bootstrap.runtime?.summaryAttention === "external"
+    ? installSummaryExternalRuntime(host, bootstrap.runtime) : undefined;
+  if (!externalRuntime) initializeSummaryAttentionRuntime({ observeIm: false });
   WKApp.mittBus.emit("space-ready");
-  startSummaryAttentionPolling();
+  if (!externalRuntime) startSummaryAttentionPolling();
+  if (externalRuntime) window.addEventListener("pagehide", () => externalRuntime.dispose(), { once: true });
 
   const root = document.getElementById("root")!;
   let context = { route: bootstrap.initialRoute, spaceId: bootstrap.space.id };
@@ -103,6 +108,7 @@ async function main() {
             bridge={host}
             initialRoute={bootstrap.initialRoute}
             initialSpaceId={bootstrap.space.id}
+            externalRuntime={externalRuntime}
             onPresentationContext={(next) => { context = next; }}
             onReady={({ route, spaceId }) =>
               presentation.reportReady({
@@ -110,6 +116,11 @@ async function main() {
                 route,
                 spaceId,
                 rendererVersion: WKApp.config.appVersion,
+                ...(externalRuntime ? {
+                  externalSummaryAttentionVersion: 1 as const,
+                  runtime: externalRuntime.getScope(),
+                } : {}),
+                ...(hasNavigationCommitBridge(host) ? { navigationCommitVersion: 1 as const } : {}),
               })
             }
           />
