@@ -1,4 +1,4 @@
-import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -95,10 +95,12 @@ function createRuntime(
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe("channel setting actions", () => {
@@ -454,6 +456,202 @@ describe("channel setting actions", () => {
     expect(runtime.remarkChannel).toHaveBeenCalledWith(channel, "remark");
   });
 
+  it.each([
+    [ChannelTypePerson, true],
+    [ChannelTypePerson, false],
+    [ChannelTypeGroup, true],
+    [ChannelTypeGroup, false],
+  ] as const)("updates cached mute after saving type %s to %s", async (type, mute) => {
+    const channel = new Channel("mute-cache", type);
+    const info = Object.assign(new ChannelInfo(), {
+      channel, title: "Known name", mute: !mute, top: true,
+      orgData: { displayName: "Known name", robot: 1 },
+    });
+    const runtime = createRuntime({ getCurrentChannelInfo: vi.fn(() => info) });
+
+    await muteChannelSetting({ channel, mute, runtime });
+
+    expect(info).toMatchObject({
+      mute, top: true, title: "Known name", orgData: { displayName: "Known name", robot: 1 },
+    });
+    expect(info.orgData.thread).toBeUndefined();
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledWith(info);
+    expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledWith(info);
+  });
+
+  it("does not change cached mute when saving fails", async () => {
+    const channel = new Channel("mute-failure", ChannelTypeGroup);
+    const info = Object.assign(new ChannelInfo(), { channel, mute: false });
+    const error = { status: 403, msg: "Save denied" };
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => info),
+      muteChannel: vi.fn().mockRejectedValue(error),
+    });
+
+    await expect(muteChannelSetting({ channel, mute: true, runtime })).rejects.toBe(error);
+
+    expect(info.mute).toBe(false);
+    expect(runtime.setCurrentChannelInfo).not.toHaveBeenCalled();
+    expect(runtime.notifyCurrentChannelInfo).not.toHaveBeenCalled();
+  });
+
+  it.each([ChannelTypePerson, ChannelTypeGroup, ChannelTypeCommunityTopic])(
+    "serializes type %s saves so a slower first response cannot undo the last intent",
+    async type => {
+      const channel = new Channel("group____thread", type);
+      const info = Object.assign(new ChannelInfo(), { channel, mute: false, orgData: {} });
+      const firstSave = deferred();
+      const secondSave = deferred();
+      let serverMute = false;
+      const runtime = createRuntime({
+        getCurrentChannelInfo: vi.fn(() => info),
+        muteChannel: vi.fn(async (_channel, mute) => {
+          await (mute ? firstSave.promise : secondSave.promise);
+          serverMute = mute;
+        }),
+      });
+      const first = muteChannelSetting({ channel, mute: true, runtime });
+      const second = muteChannelSetting({ channel, mute: false, runtime });
+      const initialRequestCount = vi.mocked(runtime.muteChannel).mock.calls.length;
+      secondSave.resolve();
+      await Promise.resolve();
+      firstSave.resolve();
+      await Promise.all([first, second]);
+
+      expect(initialRequestCount).toBe(1);
+      expect(runtime.muteChannel).toHaveBeenNthCalledWith(1, channel, true);
+      expect(runtime.muteChannel).toHaveBeenNthCalledWith(2, channel, false);
+      expect(serverMute).toBe(false);
+      expect(info.mute).toBe(false);
+      if (type === ChannelTypeCommunityTopic) expect(info.orgData.thread.mute).toBe(0);
+    },
+  );
+
+  it("continues queued saves after a failure and releases the completed queue", async () => {
+    const channel = new Channel("mute-queue-failure", ChannelTypePerson);
+    const info = Object.assign(new ChannelInfo(), { channel, mute: true });
+    const firstSave = deferred();
+    const failure = { status: 403, msg: "Save denied" };
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => info),
+      muteChannel: vi.fn().mockReturnValueOnce(firstSave.promise).mockResolvedValue(undefined),
+    });
+    const first = muteChannelSetting({ channel, mute: true, runtime });
+    const failed = expect(first).rejects.toBe(failure);
+    const second = muteChannelSetting({ channel, mute: false, runtime });
+    const initialRequestCount = vi.mocked(runtime.muteChannel).mock.calls.length;
+    firstSave.reject(failure);
+    await Promise.all([failed, second]);
+
+    expect(initialRequestCount).toBe(1);
+    expect(info.mute).toBe(false);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+    await muteChannelSetting({ channel, mute: true, runtime });
+    expect(runtime.muteChannel).toHaveBeenCalledTimes(3);
+    expect(info.mute).toBe(true);
+  });
+
+  it("shares the save queue for bare and Space-prefixed aliases of the same person", async () => {
+    const scoped = new Channel(`s${"a".repeat(32)}_peer`, ChannelTypePerson);
+    const bare = new Channel("peer", ChannelTypePerson);
+    const save = deferred();
+    const runtime = createRuntime({
+      muteChannel: vi.fn().mockReturnValueOnce(save.promise).mockResolvedValue(undefined),
+    });
+    const first = muteChannelSetting({ channel: scoped, mute: true, runtime });
+    const second = muteChannelSetting({ channel: bare, mute: false, runtime });
+    const initialRequestCount = vi.mocked(runtime.muteChannel).mock.calls.length;
+    save.resolve();
+    await Promise.all([first, second]);
+
+    expect(initialRequestCount).toBe(1);
+    expect(runtime.muteChannel).toHaveBeenNthCalledWith(1, scoped, true);
+    expect(runtime.muteChannel).toHaveBeenNthCalledWith(2, bare, false);
+  });
+
+  it("does not block another channel behind an outstanding save", async () => {
+    const firstChannel = new Channel("mute-queue-first", ChannelTypePerson);
+    const otherChannel = new Channel("mute-queue-other", ChannelTypePerson);
+    const firstSave = deferred();
+    const runtime = createRuntime({
+      muteChannel: vi.fn().mockReturnValueOnce(firstSave.promise).mockResolvedValue(undefined),
+    });
+    const first = muteChannelSetting({ channel: firstChannel, mute: true, runtime });
+    const other = muteChannelSetting({ channel: otherChannel, mute: true, runtime });
+    await other;
+    const requestCountBeforeFirstResponse = vi.mocked(runtime.muteChannel).mock.calls.length;
+    firstSave.resolve();
+    await first;
+
+    expect(requestCountBeforeFirstResponse).toBe(2);
+  });
+
+  it("keeps the last successful value if the queued opposite save fails", async () => {
+    const channel = new Channel("mute-last-save-fails", ChannelTypePerson);
+    const info = Object.assign(new ChannelInfo(), { channel, mute: false });
+    const firstSave = deferred();
+    const failure = { status: 403, msg: "Save denied" };
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => info),
+      muteChannel: vi.fn().mockReturnValueOnce(firstSave.promise).mockRejectedValueOnce(failure),
+    });
+    const first = muteChannelSetting({ channel, mute: true, runtime });
+    const second = muteChannelSetting({ channel, mute: false, runtime });
+    const failed = expect(second).rejects.toBe(failure);
+    firstSave.resolve();
+    await Promise.all([first, failed]);
+
+    expect(info.mute).toBe(true);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops expired queued saves without blocking a fresh context on the same channel", async () => {
+    const channel = new Channel("mute-queue-context", ChannelTypePerson);
+    const info = Object.assign(new ChannelInfo(), { channel, mute: false });
+    const oldSave = deferred();
+    let context = 0;
+    const runtime = createRuntime({
+      captureContext: () => {
+        const captured = context;
+        return () => context === captured;
+      },
+      getCurrentChannelInfo: vi.fn(() => info),
+      muteChannel: vi.fn().mockReturnValueOnce(oldSave.promise).mockResolvedValue(undefined),
+    });
+    const old = muteChannelSetting({ channel, mute: true, runtime });
+    const expired = muteChannelSetting({ channel, mute: false, runtime });
+    context++;
+    const fresh = muteChannelSetting({ channel, mute: true, runtime });
+    await fresh;
+    const requestCountBeforeOldResponse = vi.mocked(runtime.muteChannel).mock.calls.length;
+    oldSave.resolve();
+    await Promise.all([old, expired]);
+
+    expect(requestCountBeforeOldResponse).toBe(2);
+    expect(runtime.muteChannel).toHaveBeenCalledTimes(2);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+    expect(info.mute).toBe(true);
+  });
+
+  it("does not apply a completed save to a different context", async () => {
+    const save = deferred();
+    const channel = new Channel("mute-context", ChannelTypeGroup);
+    const info = Object.assign(new ChannelInfo(), { channel, mute: false });
+    let current = true;
+    const runtime = createRuntime({
+      captureContext: () => () => current,
+      getCurrentChannelInfo: vi.fn(() => info),
+      muteChannel: vi.fn(() => save.promise),
+    });
+    const pending = muteChannelSetting({ channel, mute: true, runtime });
+    current = false;
+    save.resolve();
+    await pending;
+
+    expect(info.mute).toBe(false);
+    expect(runtime.setCurrentChannelInfo).not.toHaveBeenCalled();
+  });
+
   it("uses the dedicated pinned contract for child threads", async () => {
     const runtime = createRuntime();
     const channel = new Channel(
@@ -502,16 +700,16 @@ describe("channel setting actions", () => {
     expect(Dap.shared.track).not.toHaveBeenCalled();
   });
 
-  it("reapplies the latest saved thread mute after an older fetch resolves last", async () => {
+  it.each([ChannelTypePerson, ChannelTypeGroup, ChannelTypeCommunityTopic])("reapplies saved mute for type %s after an older fetch resolves last", async (type) => {
     const oldFetch = deferred();
-    const channel = new Channel(
-      "group-1____thread-1",
-      ChannelTypeCommunityTopic
-    );
+    const channel = new Channel("group-1____thread-1", type);
+    const orgData = () => type === ChannelTypeCommunityTopic
+      ? { thread: { status: 1, mute: 0 } }
+      : { displayName: "Known name" };
     let cachedChannelInfo = {
       channel,
       mute: false,
-      orgData: { thread: { status: 1, mute: 0 } },
+      orgData: orgData(),
     } as any;
     const runtime = createRuntime({
       getCurrentChannelInfo: vi.fn(() => cachedChannelInfo),
@@ -521,23 +719,64 @@ describe("channel setting actions", () => {
     await muteChannelSetting({ channel, mute: true, runtime });
 
     expect(cachedChannelInfo.mute).toBe(true);
-    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    if (type === ChannelTypeCommunityTopic) expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
     expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
 
     // The SDK's older request lands after the PUT and replaces the cache object.
     cachedChannelInfo = {
       channel,
       mute: false,
-      orgData: { thread: { status: 1, mute: 0 } },
+      orgData: orgData(),
     } as any;
     oldFetch.resolve();
     await oldFetch.promise;
     await Promise.resolve();
 
     expect(cachedChannelInfo.mute).toBe(true);
-    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    if (type === ChannelTypeCommunityTopic) expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    else expect(cachedChannelInfo.orgData).toEqual({ displayName: "Known name" });
     expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(2);
     expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the latest saved mute when a shared older fetch settles", async () => {
+    const oldFetch = deferred();
+    const channel = new Channel("mute-latest", ChannelTypePerson);
+    let info = Object.assign(new ChannelInfo(), { channel, mute: false });
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => info),
+      getPendingChannelInfoFetches: vi.fn(() => [oldFetch.promise]),
+    });
+    await muteChannelSetting({ channel, mute: true, runtime });
+    await muteChannelSetting({ channel, mute: false, runtime });
+    info = Object.assign(new ChannelInfo(), { channel, mute: true });
+    oldFetch.resolve();
+    await oldFetch.promise;
+    await Promise.resolve();
+
+    expect(info.mute).toBe(false);
+  });
+
+  it("does not repair an older fetch into the next context's cache", async () => {
+    const oldFetch = deferred();
+    const channel = new Channel("mute-expired-repair", ChannelTypePerson);
+    let current = true;
+    let info = Object.assign(new ChannelInfo(), { channel, mute: false });
+    const runtime = createRuntime({
+      captureContext: () => () => current,
+      getCurrentChannelInfo: vi.fn(() => info),
+      getPendingChannelInfoFetches: vi.fn(() => [oldFetch.promise]),
+    });
+    await muteChannelSetting({ channel, mute: true, runtime });
+    expect(info.mute).toBe(true);
+    current = false;
+    info = Object.assign(new ChannelInfo(), { channel, mute: false });
+    oldFetch.resolve();
+    await oldFetch.promise;
+    await Promise.resolve();
+
+    expect(info.mute).toBe(false);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
   });
 
   it("repairs after each older thread info fetch settles", async () => {

@@ -5,6 +5,7 @@ import { MessageBaseCellProps, MessageCell } from "../MessageCell";
 import { SummaryCardContent } from "./SummaryCardContent";
 import SummaryCardView from "./SummaryCardView";
 import WKApp from "../../App";
+import { Dap } from "../../Service/Dap";
 import { I18nContext } from "../../i18n";
 
 function formatShortDate(dateStr: string, locale: string): string {
@@ -33,7 +34,13 @@ export class SummaryCardCell extends MessageCell<MessageBaseCellProps> {
       ? start === end ? start : t("base.summaryCard.coverage", { values: { start, end } })
       : "";
 
-    const openLegacy = () => WKApp.openSummaryDetail?.(content.taskNo || content.taskId, content.spaceId);
+    const openLegacy = () => {
+      // 会话总结卡点击 → 智能总结详情漏斗；卡片内容不含总结 status，故仅上报 summary_id。
+      Dap.shared.track("smart_summary_notification_clicked", {
+        summary_id: content.taskNo || content.taskId,
+      });
+      WKApp.openSummaryDetail?.(content.taskNo || content.taskId, content.spaceId);
+    };
     const conversationChannel = context.channel?.() || message.channel;
     const originChannel = conversationChannel
       ? { channelId: conversationChannel.channelID, channelType: conversationChannel.channelType }
