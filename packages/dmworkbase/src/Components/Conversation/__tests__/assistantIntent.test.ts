@@ -1005,9 +1005,17 @@ describe("Conversation attachment and viewport helpers", () => {
     ;(conversation as any).lastVisiableMessage = vi.fn(() => message)
     conversation.updateBrowseToMessageSeq({} as any)
     expect((conversation as any).vm.browseToMessageSeq).toBe(5)
-    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledExactlyOnceWith({ reconcileRead: true })
     conversation.updateReminderDoneIfNeed(null)
     expect(refresh).toHaveBeenCalledTimes(1)
+    // A retained Client view can revisit the same read position with stale spaceUnread.
+    conversation.updateBrowseToMessageSeq({} as any)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    expect(refresh).toHaveBeenLastCalledWith({ reconcileRead: true })
+    ;(conversation as any).lastVisiableMessage.mockReturnValue({ messageSeq: 3 })
+    conversation.updateBrowseToMessageSeq({} as any)
+    expect((conversation as any).vm.browseToMessageSeq).toBe(5)
+    expect(refresh).toHaveBeenLastCalledWith({ reconcileRead: false })
   })
 
   it("resolves digest text and mention highlights from edited or original content", () => {
@@ -1468,6 +1476,28 @@ describe("Conversation attachment and viewport helpers", () => {
     expect((conversation as any).vm.browseToMessageSeq).toBe(4)
   })
 
+  it.each([undefined, NaN, Infinity, 0, -1])(
+    "ignores an unconfirmed visible message sequence %s until ACK",
+    (messageSeq) => {
+      const conversation = new Conversation({ channel })
+      const refreshNewMsgCount = vi.fn()
+      const vm = { browseToMessageSeq: 8, refreshNewMsgCount }
+      const message = { messageSeq }
+      ;(conversation as any).vm = vm
+      ;(conversation as any).lastVisiableMessage = vi.fn(() => message)
+
+      conversation.updateBrowseToMessageSeq(null)
+      conversation.updateBrowseToMessageSeq(null)
+      expect(vm.browseToMessageSeq).toBe(8)
+      expect(refreshNewMsgCount).not.toHaveBeenCalled()
+
+      message.messageSeq = 9
+      conversation.updateBrowseToMessageSeq(null)
+      expect(vm.browseToMessageSeq).toBe(9)
+      expect(refreshNewMsgCount).toHaveBeenCalledExactlyOnceWith({ reconcileRead: true })
+    }
+  )
+
   it("renders message cells for revoke, flame, system, and ordinary messages", () => {
     const conversation = new Conversation({ channel })
     const revoke = { clientMsgNo: "r", contentType: 1, revoke: true, messageSeq: 1, locateRemind: false }
@@ -1675,11 +1705,21 @@ describe("Conversation attachment and viewport helpers", () => {
   it("covers attention listener, beforeunload cleanup, and standalone message rules", async () => {
     const conversation = new Conversation({ channel })
     const attention = vi.spyOn(conversation as any, "updateBrowseToMessageSeqAndReminderDoneIfNeed").mockImplementation(() => {})
-    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => { callback(0); return 0 })
+    const frames: FrameRequestCallback[] = []
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    })
     ;(conversation as any).vm = { lastMessage: { messageSeq: 2 } }
+    ;(conversation as any)._attentionMounted = true
     ;(conversation as any)._vmAttentionListener()
     ;(conversation as any)._vmAttentionListener()
+    expect(frames).toHaveLength(1)
+    frames.shift()!(0)
     expect(attention).toHaveBeenCalledTimes(1)
+    ;(conversation as any)._vmAttentionListener()
+    frames.shift()!(0)
+    expect(attention).toHaveBeenCalledTimes(2)
     attention.mockRestore()
     expect((conversation as any).canRecordReadAttention(null)).toBe(false)
     const viewport = document.createElement("div")
@@ -1691,6 +1731,9 @@ describe("Conversation attachment and viewport helpers", () => {
     const previousMenu = (app as any).currentMenuId
     ;(app as any).currentMenuId = "chat"
     expect((conversation as any).canRecordReadAttention(viewport)).toBe(true)
+    document.documentElement.dataset.hostVisibility = "hidden"
+    expect((conversation as any).canRecordReadAttention(viewport)).toBe(false)
+    delete document.documentElement.dataset.hostVisibility
     ;(app as any).currentMenuId = previousMenu
     viewport.remove()
     ;(conversation as any).canRecordReadAttention = vi.fn(() => true)
