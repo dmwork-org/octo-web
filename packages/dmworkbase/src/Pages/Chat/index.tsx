@@ -813,6 +813,7 @@ export class ChatContentPage extends Component<
     this.layoutObserver?.update(
       hasAuxiliary
         ? this.state.showChannelSearch ? "search" :
+          this.state.showSummaryPanel ? "summary" :
           threadContext ? (this.state.previewFile ? "threadPreview" : "thread") : !!this.state.previewFile
         : false
     );
@@ -1529,7 +1530,8 @@ export class ChatContentPage extends Component<
       hostPreviewSource.channelId === channel.channelID &&
       hostPreviewSource.channelType === channel.channelType);
     const auxiliaryVisible = !workspaceEmbedding && !hostPreviewingParent &&
-      !!(showThreadPanel || previewFile || showChannelSearch);
+      !!(showThreadPanel || previewFile || showChannelSearch || showSummaryPanel);
+    const summaryVisible = auxiliaryVisible && showSummaryPanel;
     const parentHidden = auxiliaryVisible &&
       (panelLayout === "overlay" || previewInThreadContext);
     return (
@@ -1544,7 +1546,7 @@ export class ChatContentPage extends Component<
           !workspaceEmbedding && showChannelSearch && "wk-chat-channel-search-open",
           !workspaceEmbedding && (showThreadPanel || previewFile) && "wk-chat-threadpanel-open",
           !workspaceEmbedding && showThreadPanel && !previewFile && "wk-chat-threadpanel-compact",
-          !workspaceEmbedding && showSummaryPanel && "wk-chat-summary-panel-open",
+          summaryVisible && "wk-chat-summary-panel-open",
           !workspaceEmbedding && webhookIssuePreviewTarget && "wk-chat-webhook-preview-open"
         )}
       >
@@ -1785,7 +1787,7 @@ export class ChatContentPage extends Component<
           )}
 
         {!workspaceEmbedding && showSummaryPanel && (
-          <div className="wk-summary-panel" data-desktop-overlay="">
+          <div className="wk-summary-panel" hidden={!summaryVisible} data-desktop-overlay="">
             {WKApp.endpoints.chatSummaryPanel(
               channel,
               () => this.setState({ showSummaryPanel: false }),

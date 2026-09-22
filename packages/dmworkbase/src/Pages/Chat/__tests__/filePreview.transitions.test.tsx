@@ -4,6 +4,7 @@ import { Channel } from "wukongimjssdk";
 import WKApp from "../../../App";
 import type { FilePreviewInfo } from "../../../Components/FilePreviewPanel/types";
 import {
+  notifyHostAttachmentClosed,
   setWebAttachmentHost,
   subscribeHostAttachmentPreview,
   type AttachmentPreviewResult,
@@ -227,6 +228,78 @@ describe.each(["accepted", "unsupported"] as const)("late host %s after panel tr
 });
 
 describe("accepted native preview ownership", () => {
+  it.each(["split", "overlay"] as const)(
+    "hides an already-open summary during non-inline takeover and restores its %s layout",
+    async (panelLayout) => {
+      const page = createPage();
+      page.setState({ contentLayout: { panelLayout, navigationCollapsed: false } });
+      WKApp.mittBus.emit("wk:toggle-summary-panel", summaryEvent);
+      await settle();
+      expect(page.state.showSummaryPanel).toBe(true);
+
+      WKApp.mittBus.emit("wk:file-preview", file);
+      await settle();
+      expect(host.openFilePreview).toHaveBeenCalledOnce();
+      const request = vi.mocked(host.openFilePreview).mock.calls[0][0];
+      finish({ status: "accepted" });
+      await settle();
+
+      expect(page.state.hostPreviewSource).toEqual(request.locator);
+      expect(page.state.showSummaryPanel).toBe(true);
+      expect(host.cancelFilePreview).not.toHaveBeenCalled();
+      const root = page.render();
+      if (!React.isValidElement<Record<string, unknown> & { children?: React.ReactNode }>(root)) throw new Error("Missing chat root");
+      expect(root.props.className).not.toContain("wk-chat-summary-panel-open");
+      expect(root.props["data-chat-panel-layout"]).toBeUndefined();
+      expect(root.props["data-chat-parent-hidden"]).toBeUndefined();
+      expect(root.props["data-chat-thread-hidden"]).toBe(true);
+      const summary = React.Children.toArray(root.props.children).find(child =>
+        React.isValidElement<{ className?: string }>(child) && child.props.className === "wk-summary-panel",
+      );
+      if (!React.isValidElement<{ hidden?: boolean }>(summary)) throw new Error("Missing mounted summary");
+      expect(summary.props.hidden).toBe(true);
+
+      notifyHostAttachmentClosed(request.requestId);
+      await settle();
+
+      expect(page.state.hostPreviewSource).toBeNull();
+      expect(page.state.showSummaryPanel).toBe(true);
+      const restored = page.render();
+      if (!React.isValidElement<Record<string, unknown> & { children?: React.ReactNode }>(restored)) throw new Error("Missing chat root");
+      expect(restored.props.className).toContain("wk-chat-summary-panel-open");
+      expect(restored.props["data-chat-panel-layout"]).toBe(panelLayout);
+      expect(restored.props["data-chat-thread-hidden"]).toBeUndefined();
+      expect(restored.props["data-chat-parent-hidden"]).toBe(panelLayout === "overlay" || undefined);
+      const restoredSummary = React.Children.toArray(restored.props.children).find(child =>
+        React.isValidElement<{ className?: string }>(child) && child.props.className === "wk-summary-panel",
+      );
+      if (!React.isValidElement<{ hidden?: boolean }>(restoredSummary)) throw new Error("Missing restored summary");
+      expect(restoredSummary.props.hidden).toBe(false);
+    },
+  );
+
+  it.each(["inline", "fallback"] as const)(
+    "%s preview still replaces an already-open summary",
+    async (mode) => {
+      if (mode === "inline") {
+        host.openFilePreviewInPlace = vi.fn().mockResolvedValue({ status: "accepted" });
+        host.setFilePreviewLayout = vi.fn().mockResolvedValue(undefined);
+      }
+      const page = createPage();
+      WKApp.mittBus.emit("wk:toggle-summary-panel", summaryEvent);
+      await settle();
+      WKApp.mittBus.emit("wk:file-preview", file);
+      await settle();
+      if (mode === "fallback") {
+        finish({ status: "unsupported" });
+        await settle();
+      }
+      expect(page.state.showSummaryPanel).toBe(false);
+      expect(page.state.previewFile).toMatchObject(file);
+      expect(host.cancelFilePreview).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(transitions)("$name releases an already accepted source", async (transition) => {
     const page = createPage();
     transition.prepare?.(page);
@@ -277,5 +350,55 @@ describe("accepted native preview ownership", () => {
     expect(page.state.previewFile).toMatchObject({ ...file, hostPreview: { requestId: request.requestId } });
     expect(host.cancelFilePreview).not.toHaveBeenCalled();
     expect(page.state.hostPreviewSource).toEqual(request.locator);
+  });
+
+  it.each(["split", "overlay"] as const)(
+    "renders the summary open state in %s layout and clears the accepted host source",
+    async (panelLayout) => {
+      const page = createPage();
+      page.setState({ contentLayout: { panelLayout, navigationCollapsed: false } });
+      harness(page)._onFilePreview(file);
+      await settle();
+      const request = vi.mocked(host.openFilePreview).mock.calls[0][0];
+      finish({ status: "accepted" });
+      await settle();
+      expect(page.state.hostPreviewSource).toMatchObject({ channelId: channel.channelID });
+
+      WKApp.mittBus.emit("wk:toggle-summary-panel", summaryEvent);
+      await settle();
+
+      expect(page.state.hostPreviewSource).toBeNull();
+      expect(page.state.showSummaryPanel).toBe(true);
+      expect(host.cancelFilePreview).toHaveBeenCalledWith({ version: 1, requestId: request.requestId });
+      const root = page.render();
+      if (!React.isValidElement<Record<string, unknown>>(root)) throw new Error("Missing chat root");
+      expect(root.props.className).toContain("wk-chat-summary-panel-open");
+      expect(root.props["data-chat-panel-layout"]).toBe(panelLayout);
+      expect(root.props["data-chat-thread-hidden"]).toBeUndefined();
+      expect(root.props["data-chat-parent-hidden"]).toBe(panelLayout === "overlay" || undefined);
+    },
+  );
+
+  it("does not resurrect stale host preview state when acceptance lands after summary opens", async () => {
+    const page = createPage();
+    page.setState({ contentLayout: { panelLayout: "split", navigationCollapsed: false } });
+    harness(page)._onFilePreview(file);
+    await settle();
+
+    WKApp.mittBus.emit("wk:toggle-summary-panel", summaryEvent);
+    await settle();
+    expect(page.state.showSummaryPanel).toBe(true);
+
+    finish({ status: "accepted" });
+    await settle();
+
+    expect(page.state.hostPreviewSource).toBeNull();
+    expect(page.state.showSummaryPanel).toBe(true);
+    const root = page.render();
+    if (!React.isValidElement<Record<string, unknown>>(root)) throw new Error("Missing chat root");
+    expect(root.props.className).toContain("wk-chat-summary-panel-open");
+    expect(root.props["data-chat-panel-layout"]).toBe("split");
+    expect(root.props["data-chat-thread-hidden"]).toBeUndefined();
+    expect(root.props["data-chat-parent-hidden"]).toBeUndefined();
   });
 });
