@@ -7,6 +7,9 @@
   min-height: 0;
   box-sizing: border-box;
   overflow: hidden;
+  overflow-y: auto;
+  container-type: inline-size;
+  container-name: wk-summary-workbench;
   color: var(--wk-text-primary);
   background: var(--wk-bg-surface);
   font: var(--wk-text-body);
@@ -46,6 +49,12 @@
   gap: var(--wk-sp-6);
   width: min(100%, var(--wk-summary-workbench-content-width));
   margin: 0 auto;
+  min-width: 0;
+}
+
+.wk-summary-workbench__heading > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .wk-summary-workbench__header-actions {
@@ -55,6 +64,8 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--wk-sp-2);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .wk-summary-workbench__reference-context {
@@ -620,12 +631,13 @@
     var(--wk-summary-workbench-content-width)
   );
   min-width: 0;
-  min-height: 0;
+  /* Preserve a usable template viewport when header and composer fill a short window. */
+  min-height: calc(var(--wk-sp-12) * 3);
   margin: var(--wk-sp-4) auto var(--wk-sp-6);
   overflow: hidden;
 }
 
-@media (max-width: 959px) {
+@container wk-summary-workbench (max-width: 959px) {
   .wk-summary-workbench__heading {
     align-items: flex-start;
   }
@@ -640,11 +652,7 @@
   }
 }
 
-@media (max-width: 719px) {
-  .wk-summary-workbench {
-    overflow-y: auto;
-  }
-
+@container wk-summary-workbench (max-width: 719px) {
   .wk-summary-workbench__header-actions,
   .wk-summary-workbench__reference-context {
     justify-content: flex-start;
@@ -672,11 +680,6 @@
   .wk-summary-workbench__context-panel,
   .wk-summary-workbench__error {
     width: calc(100% - var(--wk-sp-8));
-  }
-
-  .wk-summary-workbench__context-panel {
-    flex: 0 0 auto;
-    overflow: visible;
   }
 
   .wk-summary-workbench__composer-toolbar {
