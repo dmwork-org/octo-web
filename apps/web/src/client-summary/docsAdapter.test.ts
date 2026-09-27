@@ -2,7 +2,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OctoBuddySummaryBridge } from './hostBridge';
-import { installDocsAdapter } from './docsAdapter';
+import { installDocsAdapter, installDocsAdapterLifecycle } from './docsAdapter';
+import { DocumentSourceService } from '@dmwork/summary/src/Service/DocumentSourceService';
 
 const { fakeWKApp, ENDPOINT_IDS, API_ORIGIN } = vi.hoisted(() => {
   const methods: Record<string, { handler: (p: any, spaceId?: string) => any }> = {};
@@ -15,6 +16,9 @@ const { fakeWKApp, ENDPOINT_IDS, API_ORIGIN } = vi.hoisted(() => {
         _methods: methods,
         setMethod(sid: string, handler: (p: any, spaceId?: string) => any) {
           this._methods[sid] = { handler };
+        },
+        removeMethod(sid: string) {
+          delete this._methods[sid];
         },
         get(sid: string) { return this._methods[sid]; },
       },
@@ -29,6 +33,7 @@ const { fakeWKApp, ENDPOINT_IDS, API_ORIGIN } = vi.hoisted(() => {
 vi.mock('@octo/base', async () => ({
   WKApp: fakeWKApp,
   EndpointID: ENDPOINT_IDS,
+  DEFAULT_REQUEST_TIMEOUT_MS: 20_000,
   ...await import('../../../../packages/dmworkbase/src/bridge/docs/documentLink'),
 }));
 
@@ -76,6 +81,22 @@ describe('installDocsAdapter', () => {
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsConvertMarkdown)).toBeUndefined();
     });
 
+    it.each([1, "true", null])('does not install the docs list transport for malformed capability %s', (value) => {
+      bridge.listDocuments = vi.fn();
+      installDocsAdapter(bridge, { capabilities: { docsList: value as any } });
+      expect(bridge.listDocuments).not.toHaveBeenCalled();
+      expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+        '[client-summary] docs list adapter not installed: invalid capability flag',
+      );
+    });
+
+    it('does not install the docs list transport when the bridge method is missing', () => {
+      installDocsAdapter(bridge, { capabilities: { docsList: true } });
+      expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+        '[client-summary] docs list adapter not installed: missing bridge method',
+      );
+    });
+
     it.each([1, "true", null])('diagnoses malformed capability %s without installing', (value) => {
       bridge.convertMarkdown = vi.fn();
       bridge.openDocument = vi.fn();
@@ -108,9 +129,74 @@ describe('installDocsAdapter', () => {
     it('registers both endpoints when all conditions met', () => {
       bridge.convertMarkdown = vi.fn();
       bridge.openDocument = vi.fn();
-      installDocsAdapter(bridge, { capabilities: { docsConversion: true }, session: { apiOrigin: API_ORIGIN } });
+      const dispose = installDocsAdapter(bridge, {
+        capabilities: { docsConversion: true },
+        session: { apiOrigin: API_ORIGIN },
+      });
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsConvertMarkdown)).toBeDefined();
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsOpenDocument)).toBeDefined();
+      dispose();
+      expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsConvertMarkdown)).toBeUndefined();
+      expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsOpenDocument)).toBeUndefined();
+    });
+
+    it('installs the host document list transport without using the renderer API client', async () => {
+      bridge.listDocuments = vi.fn().mockResolvedValue({
+        items: [{ docId: 'doc-1', title: '资料', docType: 'doc', updatedAt: '2026-09-27T00:00:00Z' }],
+        total: 1,
+      });
+      installDocsAdapter(bridge, { capabilities: { docsList: true } });
+
+      await expect(new DocumentSourceService().listDocuments('mine', ' 项目 ', { page: 2 }))
+        .resolves.toMatchObject({ items: [{ docId: 'doc-1' }], total: 1 });
+      expect(bridge.listDocuments).toHaveBeenCalledWith({
+        source: 'mine',
+        keyword: '项目',
+        pagination: { page: 2 },
+        pageSize: 50,
+        docTypes: ['doc', 'html'],
+      });
+    });
+
+    it('removes the previous host list transport when the adapter is reinstalled without docsList', async () => {
+      bridge.listDocuments = vi.fn().mockResolvedValue({
+        items: [{ docId: 'doc-1', title: '资料', docType: 'doc', updatedAt: '' }],
+        total: 1,
+      });
+      installDocsAdapter(bridge, { capabilities: { docsList: true } });
+      const previousBridge = bridge.listDocuments;
+
+      installDocsAdapter({ ...bridge, listDocuments: undefined }, {
+        capabilities: { docsList: false },
+      });
+
+      await expect(new DocumentSourceService().listDocuments('recent', ''))
+        .rejects.toThrow();
+      expect(previousBridge).not.toHaveBeenCalled();
+    });
+
+    it('keeps the host list transport across bfcache pagehide and reinstalls it on pageshow', async () => {
+      bridge.listDocuments = vi.fn().mockResolvedValue({
+        items: [{ docId: 'doc-1', title: '资料', docType: 'doc', updatedAt: '' }],
+        total: 1,
+      });
+      const dispose = installDocsAdapterLifecycle(bridge, {
+        capabilities: { docsList: true },
+      });
+      const pagehide = new Event('pagehide');
+      Object.defineProperty(pagehide, 'persisted', { value: true });
+      window.dispatchEvent(pagehide);
+
+      await new DocumentSourceService().listDocuments('recent', '');
+      expect(bridge.listDocuments).toHaveBeenCalledTimes(1);
+
+      const pageshow = new Event('pageshow');
+      Object.defineProperty(pageshow, 'persisted', { value: true });
+      window.dispatchEvent(pageshow);
+      await new DocumentSourceService().listDocuments('recent', '');
+      expect(bridge.listDocuments).toHaveBeenCalledTimes(2);
+
+      dispose();
     });
     it.each([`${API_ORIGIN}/`, 'https://EXAMPLE.com:443/api/v1'])('normalizes configured origin %s', async (apiOrigin) => {
       bridge.convertMarkdown = vi.fn().mockResolvedValue({ ok: true, value: { docId: 'doc-1', url: `${API_ORIGIN}/d/doc-1` } });
