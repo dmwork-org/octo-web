@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import axios from "axios";
-import { APIClient } from "@octo/base";
-import { DocumentSourceService } from "./DocumentSourceService";
+import { APIClient, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
+import {
+  DocumentSourceService,
+  installDocumentSourceTransport,
+} from "./DocumentSourceService";
 
 describe("DocumentSourceService", () => {
   it("skips malformed rows and normalizes display fields without losing valid documents", async () => {
@@ -248,6 +251,64 @@ describe("DocumentSourceService", () => {
       if (originalGet)
         Object.defineProperty(APIClient.shared, "get", originalGet);
       else Reflect.deleteProperty(APIClient.shared, "get");
+    }
+  });
+
+  it("uses the host document transport without exposing API routing parameters", async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    const dispose = installDocumentSourceTransport({ list });
+    try {
+      await new DocumentSourceService().listDocuments("mine", "项目", { page: 2 });
+      expect(list).toHaveBeenCalledWith({
+        source: "mine",
+        keyword: "项目",
+        pagination: { page: 2 },
+        pageSize: 50,
+        docTypes: ["doc", "html"],
+      });
+    } finally {
+      dispose();
+    }
+  });
+
+  it("rejects a host document list request that never settles", async () => {
+    vi.useFakeTimers();
+    let dispose: (() => void) | undefined;
+    try {
+      const list = vi.fn().mockReturnValue(new Promise<never>(() => {}));
+      dispose = installDocumentSourceTransport({ list });
+      const request = new DocumentSourceService().listDocuments("recent", "");
+      const rejected = expect(request).rejects.toThrow(
+        "document list request timed out",
+      );
+
+      await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS);
+      await rejected;
+    } finally {
+      dispose?.();
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores the previous host transport when the newer adapter is disposed", async () => {
+    const previousList = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    const nextList = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    const disposePrevious = installDocumentSourceTransport({ list: previousList });
+    const disposeNext = installDocumentSourceTransport({ list: nextList });
+    try {
+      disposeNext();
+      await new DocumentSourceService().listDocuments("recent", "");
+      expect(previousList).toHaveBeenCalledWith({
+        source: "recent",
+        keyword: "",
+        pagination: {},
+        pageSize: 50,
+        docTypes: ["doc", "html"],
+      });
+      expect(nextList).not.toHaveBeenCalled();
+    } finally {
+      disposePrevious();
+      disposeNext();
     }
   });
 });
