@@ -55,6 +55,10 @@ interface UseGlobalChatSearchOptions {
   filters: GlobalSearchFilters;
   dataSource: GlobalSearchDataSource;
   isActive: boolean;
+  /** A conversation selected on the aggregate search surface. */
+  preferredConversationKey?: string;
+  /** Aggregate previews only need the overview returned by the group search. */
+  loadConversationDetails?: boolean;
 }
 
 const idleOverview: OverviewState = {
@@ -245,6 +249,8 @@ export function useGlobalChatSearch({
   filters,
   dataSource,
   isActive,
+  preferredConversationKey,
+  loadConversationDetails = true,
 }: UseGlobalChatSearchOptions) {
   const [overview, setOverview] = useState<OverviewState>(idleOverview);
   const [selectedKey, setSelectedKey] = useState<string>();
@@ -253,6 +259,29 @@ export function useGlobalChatSearch({
   const overviewAbortRef = useRef<AbortController>();
   const resultAbortRef = useRef<AbortController>();
   const loadingMoreRef = useRef(false);
+  const preferredConversationKeyRef = useRef(preferredConversationKey);
+  // A key passed from the All tab is an initial-selection hint, not a
+  // persistent selection. Later overview refreshes must preserve an explicit
+  // choice made in the chat panel.
+  const hasConsumedPreferredConversationRef = useRef(false);
+  const [overviewRetry, setOverviewRetry] = useState(0);
+
+  useEffect(() => {
+    if (preferredConversationKeyRef.current !== preferredConversationKey) {
+      preferredConversationKeyRef.current = preferredConversationKey;
+      hasConsumedPreferredConversationRef.current = false;
+    }
+    if (
+      preferredConversationKey &&
+      !hasConsumedPreferredConversationRef.current &&
+      overview.conversations.some(
+        (conversation) => conversation.key === preferredConversationKey
+      )
+    ) {
+      setSelectedKey(preferredConversationKey);
+      hasConsumedPreferredConversationRef.current = true;
+    }
+  }, [overview.conversations, preferredConversationKey]);
 
   const selectedConversation = useMemo(
     () => overview.conversations.find((item) => item.key === selectedKey),
@@ -304,7 +333,20 @@ export function useGlobalChatSearch({
           dataSource
         );
         setOverview(next);
-        setSelectedKey(next.conversations[0]?.key);
+        const preferredKey = preferredConversationKeyRef.current;
+        const shouldApplyPreferredKey =
+          !!preferredKey && !hasConsumedPreferredConversationRef.current;
+        setSelectedKey(
+          shouldApplyPreferredKey &&
+            next.conversations.some(
+              (conversation) => conversation.key === preferredKey
+            )
+            ? preferredKey
+            : next.conversations[0]?.key
+        );
+        // Consume this navigation hint after the first overview, even if its
+        // key is absent. It must never override a later manual selection.
+        hasConsumedPreferredConversationRef.current = true;
       } catch (error) {
         if (!controller.signal.aborted && !isCancelledRequest(error)) {
           setOverview({ ...idleOverview, status: "error" });
@@ -316,12 +358,12 @@ export function useGlobalChatSearch({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [dataSource, filters, isActive, keyword]);
+  }, [dataSource, filters, isActive, keyword, overviewRetry]);
 
   useEffect(() => {
     resultAbortRef.current?.abort();
     loadingMoreRef.current = false;
-    if (!isActive || !selectedConversation) {
+    if (!isActive || !loadConversationDetails || !selectedConversation) {
       setResult(idleResult);
       return;
     }
@@ -363,10 +405,18 @@ export function useGlobalChatSearch({
       });
 
     return () => controller.abort();
-  }, [dataSource, filters, isActive, keyword, selectedConversation]);
+  }, [
+    dataSource,
+    filters,
+    isActive,
+    keyword,
+    loadConversationDetails,
+    selectedConversation,
+  ]);
 
   const loadMore = useCallback(async () => {
     if (
+      !loadConversationDetails ||
       !selectedConversation ||
       !result.hasMore ||
       !result.nextCursor ||
@@ -414,6 +464,7 @@ export function useGlobalChatSearch({
     dataSource,
     filters,
     keyword,
+    loadConversationDetails,
     result.hasMore,
     result.nextCursor,
     selectedConversation,
@@ -425,6 +476,7 @@ export function useGlobalChatSearch({
     selectedConversation,
     result,
     selectConversation: setSelectedKey,
+    retryOverview: () => setOverviewRetry((attempt) => attempt + 1),
     loadMore,
   };
 }
