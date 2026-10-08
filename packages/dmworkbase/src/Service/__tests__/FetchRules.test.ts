@@ -470,13 +470,11 @@ describe('FETCH_RULES — doc path 通道(T1 同窗内嵌,/api/v1/docs/*)', () =
         expect(matchFetchEvent(idx, 'DELETE', '/api/v1/docs/d1')).toBe('document_deleted')
     })
 
-    it('成员管理 PUT/DELETE 归一 document_share_managed;GET(打开面板)与 creators 均不计', () => {
-        // R13 B4:GET /docs/:id/members 是面板打开的成员列表加载(读,非「管理」动作,且真实写后的
-        // 回读会双计)→ 已移出本表,钉死为 undefined;只保留 PUT(改角色)/ DELETE(移除)两个写端点。
+    it('成员管理写端点不走通用 FetchRules，避免与 MemberPanel 命令式属性事件双计', () => {
         expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/d1/members')).toBeUndefined()
-        expect(matchFetchEvent(idx, 'PUT', '/api/v1/docs/d1/members')).toBe('document_share_managed')
-        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/docs/d1/members/u1')).toBe('document_share_managed')
-        // /docs/recent/creators 段数同 /docs/:id/members,但既不落 module_entered(已移出)也不落 share_managed。
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/docs/d1/members')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/docs/d1/members/u1')).toBeUndefined()
+        // /docs/recent/creators 段数同 /docs/:id/members,但既不落 module_entered 也不落 share_managed。
         expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/recent/creators')).toBeUndefined()
     })
 })

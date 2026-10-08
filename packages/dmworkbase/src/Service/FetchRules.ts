@@ -246,11 +246,9 @@ export const FETCH_RULES: FetchRule[] = [
     //   结构性缺失(document_forward_panel_opened 全进分母、仅授权转发进分子)。改由转发发送成功路径命令式
     //   发射(WKBase.runDocForward 在 ForwardService.send 后、至少一个目标成功时计一次,与 message_forwarded
     //   同款),覆盖默认转发路径、不受授权开关影响,故永不得再回 FETCH_RULES(见 FetchRules.test.ts 负向 pin)。
-    // 131 document_share_managed:MemberPanel 的 PUT(改角色)/ DELETE(移除)两个写端点归一。
-    //   GET /docs/:id/members(打开面板拉成员列表)不在本表 —— 是「读」非「管理」动作,且真实写(PUT/DELETE)
-    //   成功后面板回读同一 GET 会二次命中 → 双计。只保留写端点,读端点按 FetchRules.ts:123 收益门剔除(R13 B4)。
-    { method: 'PUT', path: '/api/v1/docs/:id/members', event: 'document_share_managed' },
-    { method: 'DELETE', path: '/api/v1/docs/:id/members/:seg', event: 'document_share_managed' },
+    // document_share_managed is emitted by the Docs MemberPanel only after each member mutation
+    // succeeds, with doc identity/action/permission props. Do not map these endpoints here or the
+    // same PUT/DELETE would be counted twice with empty props.
     { method: 'GET', path: '/api/v1/docs/:id/export/file', event: 'document_exported' },
     { method: 'DELETE', path: '/api/v1/docs/:id', event: 'document_deleted' },
     // apps_module_entered 不在此通道(十二审 🔴 P1-3)—— GET /app_bot/available 由 useAppBots 在**每次切换空间**

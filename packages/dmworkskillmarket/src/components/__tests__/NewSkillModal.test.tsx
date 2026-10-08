@@ -61,6 +61,10 @@ const nameMismatch = /必须保持为|skillMarket\.upload\.nameMismatch/;
 const upgradeNotice = /审核通过后才会替换在架内容|skillMarket\.review\.upgradeNotice/;
 const firstListingNotice = /审核通过后组织内成员可见|skillMarket\.review\.firstListingNotice/;
 const changelogPlaceholder = /简述本次提交的变更内容|skillMarket\.review\.changelogPlaceholder/;
+const versionPlaceholder = /例如 1\.2\.0|skillMarket\.form\.versionPlaceholder/;
+const leaveUpgradeTitle = /确认离开升级？|skillMarket\.confirm\.leaveUpgradeTitle/;
+const upgradeUnsavedMessage = /当前填写的版本信息、发布说明及已上传文件尚未保存|skillMarket\.confirm\.upgradeUnsavedMessage/;
+const keepEditing = /继续编辑|skillMarket\.confirm\.keepEditing/;
 // The scope radio ("提交组织审核" / "仅自己可见（私有）") is replaced by a real
 // visibility choice that is STORED on the plugin. Each radio's accessible name
 // is its label + hint, so these match on the heading fragment only.
@@ -557,6 +561,204 @@ describe("NewSkillModal", () => {
   });
 
   describe("review mode", () => {
+    it("closes an untouched upgrade without showing a leave confirmation", async () => {
+      const onClose = vi.fn();
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={onClose}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+          reviewInitial={{ version: "1.1.0", changelog: "上次未通过的说明" }}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(leaveUpgradeTitle)).not.toBeInTheDocument();
+    });
+
+    it("switches a dirty upgrade to one in-place leave page and preserves edits on return", async () => {
+      const onClose = vi.fn();
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={onClose}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />
+      );
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+          target: { files: [zipFile("upgrade.zip")] },
+        });
+      });
+      await waitFor(() =>
+        expect(screen.getByText("upgrade.zip")).toBeInTheDocument()
+      );
+
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), {
+        target: { value: "2.0.0" },
+      });
+      fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), {
+        target: { value: "保留这份发布说明" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      expect(screen.getByText(leaveUpgradeTitle)).toBeInTheDocument();
+      expect(screen.getByText(upgradeUnsavedMessage)).toBeInTheDocument();
+      expect(
+        screen.queryByPlaceholderText(versionPlaceholder)
+      ).not.toBeInTheDocument();
+
+      const keepEditingButton = screen.getByRole("button", {
+        name: keepEditing,
+      });
+      await waitFor(() => expect(keepEditingButton).toHaveFocus());
+      fireEvent.click(keepEditingButton);
+
+      expect(screen.getByDisplayValue("2.0.0")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("保留这份发布说明")).toBeInTheDocument();
+      expect(screen.getByText("upgrade.zip")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: cancelButton })).toHaveFocus()
+      );
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("keeps the upload-specific warning when leaving an upgrade mid-upload", async () => {
+      let finishUpload!: () => void;
+      vi.mocked(api.uploadFile).mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishUpload = resolve;
+        }),
+      );
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />
+      );
+
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [zipFile("uploading.zip")] },
+      });
+      await waitFor(() => expect(screen.getByText(uploadProgress)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+
+      expect(screen.getByText(leaveUpgradeTitle)).toBeInTheDocument();
+      expect(screen.getByText(busyMessage)).toBeInTheDocument();
+      const keepUploadingButton = screen.getByRole("button", { name: keepUploading });
+      await waitFor(() => expect(keepUploadingButton).toHaveFocus());
+      fireEvent.click(keepUploadingButton);
+      expect(screen.getByText(uploadProgress)).toBeInTheDocument();
+
+      await act(async () => finishUpload());
+    });
+
+    it("stops showing the upload warning when the upload fails behind the leave page", async () => {
+      let failUpload!: (reason: Error) => void;
+      vi.mocked(api.uploadFile).mockReturnValueOnce(
+        new Promise<void>((_resolve, reject) => {
+          failUpload = reject;
+        }),
+      );
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />
+      );
+
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [zipFile("uploading.zip")] },
+      });
+      await waitFor(() => expect(screen.getByText(uploadProgress)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+      expect(screen.getByText(busyMessage)).toBeInTheDocument();
+
+      await act(async () => failUpload(new Error("upload failed")));
+
+      await waitFor(() => {
+        expect(screen.queryByText(busyMessage)).not.toBeInTheDocument();
+        expect(screen.getByText(upgradeUnsavedMessage)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: keepEditing })).toBeInTheDocument();
+      });
+    });
+
+    it("treats Escape and the close icon as safe returns from the leave page", async () => {
+      const onClose = vi.fn();
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={onClose}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />
+      );
+
+      const versionInput = screen.getByPlaceholderText(versionPlaceholder);
+      fireEvent.change(versionInput, { target: { value: "2.0.0" } });
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+      expect(screen.getByText(leaveUpgradeTitle)).toBeInTheDocument();
+
+      fireEvent.keyDown(screen.getByRole("dialog"), {
+        key: "Escape",
+        code: "Escape",
+      });
+      await waitFor(() =>
+        expect(screen.getByDisplayValue("2.0.0")).toBeInTheDocument()
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /关闭|base\.common\.close/ })
+      );
+      expect(screen.getByText(leaveUpgradeTitle)).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("button", { name: /关闭|base\.common\.close/ })
+      );
+
+      expect(screen.getByDisplayValue("2.0.0")).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("discards a dirty upgrade only through the explicit danger action", () => {
+      const onClose = vi.fn();
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={onClose}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />
+      );
+
+      fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), {
+        target: { value: "不要保存" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+      const leave = screen.getByRole("button", { name: leaveButton });
+
+      expect(leave).toHaveClass("skill-market-leave-confirm__leave");
+      fireEvent.click(leave);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it("submits an upgrade with the newly uploaded package as its content", async () => {
       const onCreated = vi.fn();
       const onClose = vi.fn();
