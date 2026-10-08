@@ -252,7 +252,8 @@ describe('中央映射通道 —— 表内「一手势一事件」守卫(重复�
                 'webhook_deleted',
                 // dap350 §8 step3 fleet/doc 新增(单次手势只命中其一 / 有意 rollup):
                 'skill_created',            // 281:新建(POST /skills)与导入(POST /skills/import)同为「创建 skill」
-                'document_share_managed',   // doc:成员写端点 PUT(改角色)+ DELETE(移除)归一「管理共享」;GET(面板打开,读)已移出(R13 B4)
+                // document_share_managed 已从 FETCH_RULES 移除,改由 docs MemberPanel 命令式上报;
+                // 它在本表不再是重复映射,故不得留在白名单(否则「白名单不得腐烂」守卫会红)。
             ]),
         },
         {
