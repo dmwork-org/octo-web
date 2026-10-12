@@ -2,19 +2,12 @@ import type { AttachmentPreviewHost } from "@octo/base/src/features/filePreview/
 import type { LayoutAttachmentHost } from "@octo/base/src/features/filePreview/hostPreviewLayout";
 import type { WorkspaceGroupAction, WorkspaceGroupContext, WorkspaceGroupTarget } from "@octo/base/src/features/workspaceGroup/contract";
 
-export type CommunicationPage = "chat" | "contacts";
-export type CommunicationPresentation = "workspace" | "conversation";
-
-export interface ConversationTarget {
-  channelId: string;
-  channelType: number;
-  messageSeq?: number;
-  openChannelSearch?: boolean;
-  displayName?: string;
-  avatar?: string;
-  metadata?: Record<string, unknown>;
-  variant?: "app-bot" | "workspace-group";
-}
+export type {
+  CommunicationPage,
+  CommunicationPresentation,
+  ConversationTarget,
+} from "../client-feature/navigationContract";
+import type { CommunicationPage, CommunicationPresentation, ConversationTarget } from "../client-feature/navigationContract";
 
 export interface CommunicationBootstrap {
   bridgeVersion: 1;
@@ -106,8 +99,12 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
-  /** Client-only workspace navigation. Absent in older hosts and standalone Web. */
+  /** Optional native region capture. Image bytes return only to the initiating composer. */
+  captureScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["captureScreenshot"];
+  cancelScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["cancelScreenshot"];
+  /** Legacy host read, unused by Web; retained only for older bridge compatibility. */
   getWorkspaceGroupContext?(target: WorkspaceGroupTarget): Promise<WorkspaceGroupContext | null>;
+  /** Client-only native actions. Display data is queried directly by Web. */
   openGroupWorkspace?(target: WorkspaceGroupAction): Promise<void>;
   manageWorkspaceGroup?(target: WorkspaceGroupAction): Promise<void>;
   onWorkspaceGroupChanged?(listener: (target: WorkspaceGroupTarget) => void): () => void;

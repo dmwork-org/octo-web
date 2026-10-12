@@ -49,6 +49,17 @@ export type MittEvents = {
   /** 主聊天框头部搜索入口点击：请求打开该频道的会话内搜索面板（与信息栏「查找聊天内容」同一效果）。 */
   "wk:open-channel-search": { channelId: string; channelType: number };
   "wk:switch-sidebar-tab": string;
+  /**
+   * An entry outside the conversation list opened a chat.  The Chat page owns
+   * the in-memory presentation state that temporarily places this conversation
+   * immediately below the real pinned conversations.
+   */
+  "wk:temporarily-pin-conversation": {
+    channel: import("wukongimjssdk").Channel;
+    fromSearch?: boolean;
+  };
+  /** A left-sidebar click opened a chat and must not create a temporary pin. */
+  "wk:sidebar-conversation-opened": import("wukongimjssdk").Channel;
   "wk:file-preview": {
     url: string;
     sourceUrl?: string;
@@ -120,6 +131,7 @@ export type MittEvents = {
    * （如合并转发选择器）在缓存被回填后再 load 一次,避免读到清空中间态。
    */
   "conversation-list-refreshed": undefined;
+  "sidebar-reload": undefined;
   /**
    * 频道头像发生变化（上传/更新）时广播。订阅者（例如 WKAvatar）可依据 channelID +
    * channelType 匹配后刷新自身缓存的 avatar URL，避免整页刷新。
@@ -328,6 +340,8 @@ export type {
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
+  /** 联系方式未被部署方明确启用时，资料页必须保持隐藏。 */
+  profileContactInfoOn: boolean = false;
   messagesSearchOn: boolean = false; // 会话内聊天记录搜索开关，默认关闭
   docsSearchOn: boolean = false; // 云文档全文搜索开关，默认关闭；与 docsOn(模块入口)解耦，独立灰度
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
@@ -535,6 +549,7 @@ export class WKRemoteConfig {
       const wasSuccessful = this.requestSuccess;
       const previousDisableUserCreateSpace = this.disableUserCreateSpace;
       const previousMessagesSearchOn = this.messagesSearchOn;
+      const previousProfileContactInfoOn = this.profileContactInfoOn;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
       const previousMessageReaction = this.messageReaction;
       const previousStickerUploadLimits = this.stickerUploadLimits;
@@ -553,6 +568,7 @@ export class WKRemoteConfig {
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
       this.messagesSearchOn = parseRemoteBool(result["messages_search_on"]);
+      this.profileContactInfoOn = parseRemoteBool(result["profile_contact_info_on"]);
       this.disableUserCreateSpace = parseRemoteBool(
         result["disable_user_create_space"]
       );
@@ -584,6 +600,7 @@ export class WKRemoteConfig {
       if (
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
         previousMessagesSearchOn !== this.messagesSearchOn ||
+        previousProfileContactInfoOn !== this.profileContactInfoOn ||
         previousStickerCustomEnabled !== this.stickerCustomEnabled ||
         !messageReactionCapabilityEqual(
           previousMessageReaction,

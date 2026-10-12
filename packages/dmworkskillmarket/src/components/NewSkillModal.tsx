@@ -66,6 +66,8 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const iconInputRef = useRef<HTMLInputElement | null>(null);
   const tagFieldRef = useRef<HTMLDivElement | null>(null);
+  const leaveConfirmActionsRef = useRef<HTMLDivElement | null>(null);
+  const leaveConfirmWasOpenRef = useRef(false);
   const abortRef = useRef(false);
   const [stage, setStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -123,18 +125,25 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     return DEFAULT_CREATE_VERSION;
   }, [reviewSkill, reviewInitial]);
 
-  const dirty = Boolean(
-    file ||
-    name.trim() ||
-    displayName.trim() ||
-    tags.length ||
-    tagDraft.trim() ||
-    categoryId ||
-    (isReviewMode ? version !== reviewDefaultVersion : version !== DEFAULT_CREATE_VERSION) ||
-    changelog.trim() ||
-    iconBlob ||
-    createdPluginId,
-  );
+  const dirty = isReviewMode
+    ? Boolean(
+        file ||
+        parseTaskId ||
+        version !== reviewDefaultVersion ||
+        changelog !== (reviewInitial?.changelog ?? ""),
+      )
+    : Boolean(
+        file ||
+        name.trim() ||
+        displayName.trim() ||
+        tags.length ||
+        tagDraft.trim() ||
+        categoryId ||
+        version !== DEFAULT_CREATE_VERSION ||
+        changelog.trim() ||
+        iconBlob ||
+        createdPluginId,
+      );
 
   function getTagDraftError() {
     const next = tagDraft.trim();
@@ -290,6 +299,32 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     reset();
     onClose();
   }
+
+  const showUpgradeLeaveConfirm = isUpgrade && confirmClose !== null;
+  // `confirmClose` records why the leave page was opened, but an upload can
+  // finish or fail while that page is visible. Use the live pipeline state so
+  // the warning never claims a completed upload is still running.
+  const upgradeLeaveReason: "busy" | "dirty" = busy ? "busy" : "dirty";
+
+  useEffect(() => {
+    const wasOpen = leaveConfirmWasOpenRef.current;
+    leaveConfirmWasOpenRef.current = showUpgradeLeaveConfirm;
+    let frame = 0;
+
+    if (showUpgradeLeaveConfirm) {
+      frame = window.requestAnimationFrame(() => {
+        leaveConfirmActionsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      });
+    } else if (wasOpen && visible) {
+      frame = window.requestAnimationFrame(() => {
+        document
+          .querySelector<HTMLButtonElement>(".skill-market-edit-cancel")
+          ?.focus();
+      });
+    }
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [showUpgradeLeaveConfirm, visible]);
 
   async function startUpload(nextFile: File) {
     const validationError = validateZipFile(nextFile);
@@ -639,11 +674,13 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     }
   }
 
-  const modalTitle = isReviewMode
-    ? reviewSkill && reviewSkill.visibility !== "private"
-      ? t("skillMarket.plugin.actionUpgrade")
-      : t("skillMarket.plugin.actionPublish")
-    : t("skillMarket.form.createTitle");
+  const modalTitle = showUpgradeLeaveConfirm
+    ? t("skillMarket.confirm.leaveUpgradeTitle")
+    : isReviewMode
+      ? reviewSkill && reviewSkill.visibility !== "private"
+        ? t("skillMarket.plugin.actionUpgrade")
+        : t("skillMarket.plugin.actionPublish")
+      : t("skillMarket.form.createTitle");
 
 
   // Changelog is required when scope is "review"; hide the asterisk and relax
@@ -656,12 +693,39 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     <>
       <WKModal
         visible={visible}
-        onCancel={requestClose}
+        onCancel={() => {
+          if (confirmClose) {
+            setConfirmClose(null);
+            return;
+          }
+          requestClose();
+        }}
         title={modalTitle}
         size="lg"
-        className="skill-market-workflow-modal"
+        className={
+          showUpgradeLeaveConfirm
+            ? "skill-market-workflow-modal skill-market-workflow-modal--leave-confirm"
+            : "skill-market-workflow-modal"
+        }
         footer={
-          confirmClose ? (
+          showUpgradeLeaveConfirm ? (
+            <div ref={leaveConfirmActionsRef} className="skill-market-leave-confirm__actions">
+              <WKButton variant="secondary" onClick={() => setConfirmClose(null)}>
+                {t(
+                  upgradeLeaveReason === "busy"
+                    ? "skillMarket.confirm.keepUploading"
+                    : "skillMarket.confirm.keepEditing"
+                )}
+              </WKButton>
+              <WKButton
+                className="skill-market-leave-confirm__leave"
+                variant="danger"
+                onClick={confirmLeave}
+              >
+                {t("skillMarket.confirm.leave")}
+              </WKButton>
+            </div>
+          ) : confirmClose ? (
             <InlineConfirmBar
               message={t(
                 confirmClose === "busy"
@@ -696,7 +760,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
             />
           ) : (
           <>
-            <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
+            <WKButton className="skill-market-edit-cancel" variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
             {isReviewMode ? (
               <WKButton
                 variant="primary"
@@ -735,6 +799,23 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           )
         }
       >
+        {showUpgradeLeaveConfirm ? (
+          <section
+            className="skill-market-leave-confirm"
+            role="alert"
+          >
+            <span className="skill-market-leave-confirm__icon" aria-hidden="true">
+              <AlertCircle size={28} />
+            </span>
+            <p>
+              {t(
+                upgradeLeaveReason === "busy"
+                  ? "skillMarket.confirm.busyMessage"
+                  : "skillMarket.confirm.upgradeUnsavedMessage"
+              )}
+            </p>
+          </section>
+        ) : (
         <section className="skill-market-form skill-market-form--workflow">
           {error && (
             <div className="skill-market-form__error">
@@ -1064,6 +1145,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
             </>
           )}
         </section>
+        )}
       </WKModal>
       <IconCropModal
         visible={!!iconCropFile}

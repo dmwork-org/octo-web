@@ -195,7 +195,9 @@ describe("GlobalSearchVM", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(vm.searchResult.friends[0].channel_id).toBe("new");
     expect(vm.searchError).toBeNull();
-    expect(vm.notifyListener).toHaveBeenCalledTimes(notificationsBeforeStaleFailure);
+    expect(vm.notifyListener).toHaveBeenCalledTimes(
+      notificationsBeforeStaleFailure
+    );
   });
 
   it("concatenates load-more messages and guards duplicate loads", async () => {
@@ -207,7 +209,9 @@ describe("GlobalSearchVM", () => {
     const first = new Promise((resolve) => {
       resolveFirst = resolve;
     });
-    const firstMessages = Array.from({ length: 20 }, (_, index) => message(`m${index + 1}`));
+    const firstMessages = Array.from({ length: 20 }, (_, index) =>
+      message(`m${index + 1}`)
+    );
     mocks.searchLegacyGlobal
       .mockResolvedValueOnce(result({ messages: firstMessages }))
       .mockReturnValueOnce(first);
@@ -244,6 +248,22 @@ describe("GlobalSearchVM", () => {
     expect(vm.notifyListener).toHaveBeenCalled();
   });
 
+  it("raises the legacy loading latch for direct mount-path searches", async () => {
+    let resolveSearch!: (value: ReturnType<typeof result>) => void;
+    mocks.searchLegacyGlobal.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSearch = resolve;
+      })
+    );
+    const vm = new GlobalSearchVM();
+
+    vm.requestSearch();
+
+    expect(vm.legacyLoading).toBe(true);
+    resolveSearch(result());
+    await vi.waitFor(() => expect(vm.legacyLoading).toBe(false));
+  });
+
   it("resets pagination and changes content type when switching to files", () => {
     mocks.searchLegacyGlobal.mockResolvedValue(result());
     const vm = new GlobalSearchVM();
@@ -276,6 +296,19 @@ describe("GlobalSearchVM", () => {
     vm.channel = {} as any;
     expect(vm.searchInChannel).toBe(true);
     expect(vm.tabList.map((tab) => tab.itemKey)).toEqual(["all", "files"]);
+  });
+
+  it("opens global search on the aggregate all tab", () => {
+    const vm = new GlobalSearchVM();
+
+    expect(vm.selectedTabKey).toBe("all");
+    expect(vm.tabList.map((tab) => tab.itemKey).slice(0, 5)).toEqual([
+      "all",
+      "contacts",
+      "groups",
+      "messages",
+      "files",
+    ]);
   });
 
   it("clears file filtering when switching from files back to messages", () => {

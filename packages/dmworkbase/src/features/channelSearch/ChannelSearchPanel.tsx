@@ -237,6 +237,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       if (!locateTarget.isCurrentChannel || !conversationContext) {
         WKApp.endpoints.showConversation(locateTarget.channel, {
           initLocateMessageSeq: locateTarget.messageSeq,
+          fromSearch: true,
         });
         return;
       }
@@ -388,11 +389,19 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
             <button
               className="wk-channel-search-filter-trigger"
               type="button"
+              title={t("base.channelSearch.filter.title")}
+              aria-expanded={filterOpen}
               onClick={toggleFilterOpen}
             >
               <Filter size={16} />
-              {t("base.channelSearch.filter.title")}
-              {filterCount > 0 && <span>{filterCount}</span>}
+              <span className="wk-channel-search-filter-label">
+                {t("base.channelSearch.filter.title")}
+              </span>
+              {filterCount > 0 && (
+                <span className="wk-channel-search-filter-count">
+                  {filterCount}
+                </span>
+              )}
             </button>
             <FilterPopover
               open={filterOpen}

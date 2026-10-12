@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import React from "react";
+import React, { useState } from "react";
 import MeInfoPanel from "./MeInfoPanel";
 import "./index.css";
 
@@ -8,6 +8,8 @@ interface MeInfoPreviewProps {
     shortNo: string;
     gender: string;
     realname: string;
+    phone?: string;
+    email?: string;
     isRealnameVerified: boolean;
     editingName?: boolean;
     savingName?: boolean;
@@ -24,12 +26,44 @@ function MeInfoPreview({
     shortNo,
     gender,
     realname,
+    phone,
+    email,
     isRealnameVerified,
     editingName,
     savingName,
     uploadingAvatar,
     showExperimentalFeatures,
 }: MeInfoPreviewProps) {
+    const [copyStatus, setCopyStatus] = useState("");
+    const copyContact = async (value: string) => {
+        try {
+            await navigator.clipboard?.writeText(value);
+            setCopyStatus("已复制");
+        } catch {
+            setCopyStatus("复制失败");
+        }
+    };
+    const phoneValue = phone === "This user has not added this information"
+        ? phone
+        : phone && <button
+            type="button"
+            className="wk-profile-contact-copy"
+            onClick={() => copyContact(phone)}
+            title="Copy"
+        >
+            {phone}
+        </button>;
+    const emailValue = email === "This user has not added this information"
+        ? email
+        : email && <button
+            type="button"
+            className="wk-profile-contact-copy"
+            onClick={() => copyContact(email)}
+            title="Copy"
+        >
+            {email}
+        </button>;
+
     return <div className="wk-meinfo">
         <MeInfoPanel
             avatar={<PreviewAvatar text={name.slice(0, 1) || "M"} />}
@@ -42,6 +76,8 @@ function MeInfoPreview({
             securityTitle="Account security"
             avatarLabel="Avatar"
             nameLabel="Name"
+            phoneLabel="Phone"
+            emailLabel="Email"
             shortNoLabel="OCTO ID"
             qrcodeLabel="My QR code"
             genderLabel="Gender"
@@ -55,6 +91,8 @@ function MeInfoPreview({
             cancelLabel="Cancel"
             nameValue={name}
             nameDraft={name}
+            phoneValue={phoneValue}
+            emailValue={emailValue}
             genderValue={gender}
             realnameValue={realname}
             showExperimentalFeatures={!!showExperimentalFeatures}
@@ -72,6 +110,7 @@ function MeInfoPreview({
             onRealnameClick={() => undefined}
             onShowExperimentalFeatures={() => undefined}
         />
+        <span className="wk-meinfo-story-copy-status" role="status">{copyStatus}</span>
     </div>
 }
 
@@ -90,6 +129,8 @@ const meta: Meta<typeof MeInfoPreview> = {
         shortNo: "octo_1001",
         gender: "Female",
         realname: "Verified · 2026-07",
+        phone: "+86 13800138000",
+        email: "alice@example.com",
         isRealnameVerified: true,
         editingName: false,
         savingName: false,
@@ -155,5 +196,14 @@ export const LongText: Story = {
         gender: "Female",
         realname: "Verified · 2026-07",
         showExperimentalFeatures: true,
+        email: `${"very.long.email.".repeat(8)}@example.com`,
+    },
+};
+
+export const MissingContacts: Story = {
+    name: "Missing contacts",
+    args: {
+        phone: "This user has not added this information",
+        email: "This user has not added this information",
     },
 };

@@ -7,6 +7,7 @@ import TabAll from "../../Components/GlobalSearch/tab-all";
 import TabContacts from "../../Components/GlobalSearch/tab-contacts";
 import TabGroup from "../../Components/GlobalSearch/tab-group";
 import TabFile from "../../Components/GlobalSearch/tab-file";
+import GlobalSearchAllPanel from "../../Components/GlobalSearch/GlobalSearchAllPanel";
 import { Channel } from "wukongimjssdk";
 import GlobalContentSearchPanel from "../../Components/GlobalSearch/GlobalContentSearchPanel";
 import DocSearchPanel from "../../Components/GlobalSearch/DocSearchPanel";
@@ -70,6 +71,7 @@ export interface GlobalSearchState {
   filters: GlobalSearchFilters;
   fileTypeCategoryKeys: string[];
   searchValue: string;
+  selectedConversationKey?: string;
 }
 
 export default class GlobalSearch extends Component<
@@ -138,6 +140,9 @@ export default class GlobalSearch extends Component<
       fileTypeCategoryKeys:
         meta?.fileTypeCategoryKeys ??
         (filters.fileExts.length > 0 ? prev.fileTypeCategoryKeys : []),
+      // The All-tab conversation is only an initial-selection hint. A filter
+      // change starts a new search, so it must not restore that old choice.
+      selectedConversationKey: undefined,
     }));
   };
 
@@ -145,8 +150,10 @@ export default class GlobalSearch extends Component<
     const currentKey = this.vm.selectedTabKey;
     const contentTabInvolved =
       currentKey !== key &&
-      (currentKey === "messages" ||
+      (currentKey === "all" ||
+        currentKey === "messages" ||
         currentKey === "files" ||
+        key === "all" ||
         key === "messages" ||
         key === "files");
     if (!contentTabInvolved) {
@@ -157,8 +164,20 @@ export default class GlobalSearch extends Component<
       {
         filters: defaultGlobalSearchFilters(),
         fileTypeCategoryKeys: [],
+        selectedConversationKey: undefined,
       },
       () => this.vm.onTabClick(key)
+    );
+  };
+
+  private handleOpenConversation = (conversationKey: string) => {
+    this.setState(
+      {
+        filters: defaultGlobalSearchFilters(),
+        fileTypeCategoryKeys: [],
+        selectedConversationKey: conversationKey,
+      },
+      () => this.vm.onTabClick("messages")
     );
   };
 
@@ -183,6 +202,7 @@ export default class GlobalSearch extends Component<
       const channel = new Channel(item.channelId, item.channelType);
       WKApp.endpoints.showConversation(channel, {
         initLocateMessageSeq: item.messageSeq,
+        fromSearch: true,
       });
     } catch (err) {
       // showConversation is expected to be present in the runtime;
@@ -284,6 +304,28 @@ export default class GlobalSearch extends Component<
           showSharedFilter ? " has-filter" : ""
         }`}
       >
+        <div className="wk-search-tabs__panel" style={panelStyle("all")}>
+          <GlobalSearchAllPanel
+            keyword={vm.keyword}
+            friends={vm.searchResult?.friends}
+            groups={vm.searchResult?.groups}
+            legacyLoading={vm.legacyLoading}
+            legacyError={!!vm.searchError}
+            dataSource={this.globalDataSource}
+            filters={this.state.filters}
+            isActive={currentKey === "all"}
+            contentSearchEnabled={this.contentSearchEnabled}
+            docsEnabled={vm.docsSearchEnabled}
+            driveEnabled={vm.driveSearchEnabled}
+            onSelectTab={this.handleTabChange}
+            onOpenConversation={this.handleOpenConversation}
+            onClick={onClickOf}
+            onLocateMessage={this.handleLocate}
+            onOpenDoc={this.handleOpenDoc}
+            onOpenDriveHit={this.handleOpenDriveHit}
+            hideModal={this.props.hideModal}
+          />
+        </div>
         <div className="wk-search-tabs__panel" style={panelStyle("contacts")}>
           <TabContacts
             friends={vm.searchResult?.friends}
@@ -307,6 +349,7 @@ export default class GlobalSearch extends Component<
               onLocateMessage={this.handleLocate}
               isActive={currentKey === "messages"}
               filters={this.state.filters}
+              preferredConversationKey={this.state.selectedConversationKey}
             />
           ) : (
             disabledCopy
@@ -331,40 +374,24 @@ export default class GlobalSearch extends Component<
             />
           )}
         </div>
-        <div className="wk-search-tabs__panel" style={panelStyle("docs")}>
-          <DocSearchPanel
-            keyword={vm.keyword}
-            dataSource={this.globalDataSource}
-            // Gate the panel on docsOn && docsSearchOn as well as the selected
-            // tab: the tab LIST is gated in GlobalSearchVM, but selectedTabKey
-            // can stay "docs" if either flag is revoked mid-session (remote-config
-            // refresh). Without this the tab button disappears while the panel
-            // keeps querying a now-disabled feature. remoteConfig is an
-            // always-fresh singleton and the config listener force-updates
-            // this component, so the panel deactivates on the same refresh.
-            isActive={
-              currentKey === "docs" &&
-              WKApp.remoteConfig.docsOn &&
-              WKApp.remoteConfig.docsSearchOn
-            }
-            onOpenDoc={this.handleOpenDoc}
-          />
-        </div>
-        {/* Drive tab. Conditionally mounted so a deployment without both flags
-            never renders the panel at all (the tab LIST is gated in
-            GlobalSearchVM on driveOn && driveSearchOn; this mirror-gates the
-            panel). isActive gates the actual search so a hidden-but-mounted
-            panel stays idle. */}
-        {WKApp.remoteConfig.driveOn && WKApp.remoteConfig.driveSearchOn && (
+        {/* Use the tab-list gates for mounting too, so disabled cloud search
+            cannot run even when a previously selected tab key remains. */}
+        {vm.docsSearchEnabled && (
+          <div className="wk-search-tabs__panel" style={panelStyle("docs")}>
+            <DocSearchPanel
+              keyword={vm.keyword}
+              dataSource={this.globalDataSource}
+              isActive={currentKey === "docs"}
+              onOpenDoc={this.handleOpenDoc}
+            />
+          </div>
+        )}
+        {vm.driveSearchEnabled && (
           <div className="wk-search-tabs__panel" style={panelStyle("drive")}>
             <DriveSearchPanel
               keyword={vm.keyword}
               dataSource={this.globalDataSource}
-              isActive={
-                currentKey === "drive" &&
-                !!WKApp.remoteConfig.driveOn &&
-                !!WKApp.remoteConfig.driveSearchOn
-              }
+              isActive={currentKey === "drive"}
               onOpenDriveHit={this.handleOpenDriveHit}
             />
           </div>

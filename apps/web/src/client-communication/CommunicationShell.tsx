@@ -40,6 +40,7 @@ import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
 import { installSummaryRequests } from "./summaryRequests";
 import { createWorkspaceNavigationGuard } from "./workspaceNavigationGuard";
+import { isCompatibleConversationTarget } from "../client-feature/navigationContract";
 import { getImChannelDisplayName, seedImChannelDisplayName } from "@octo/base/src/im-runtime/channelDisplayName";
 import { WorkspaceGroupProvider } from "@octo/base/src/features/workspaceGroup/WorkspaceGroupProvider";
 import { createWorkspaceGroupHost } from "./workspaceGroupHost";
@@ -87,9 +88,7 @@ function reportUnread(bridge: OctoBuddyCommunicationBridge, count: number) {
 }
 
 function hasCompatibleTargetVariant(target: ConversationTarget): boolean {
-  if (target.variant === "app-bot") return target.channelType === 1;
-  if (target.variant === "workspace-group") return target.channelType === 2;
-  return true;
+  return isCompatibleConversationTarget(target);
 }
 
 function assertCompatibleTargetVariant(target: ConversationTarget): void {
@@ -170,7 +169,12 @@ export function CommunicationShell({
   const currentTargetRef = useRef<ConversationTarget | undefined>();
   const workspaceReturnTargetRef = useRef<Channel | undefined>();
   const workspaceNavigationGuard = useMemo(() => createWorkspaceNavigationGuard(), []);
-  const workspaceGroups = useMemo(() => createWorkspaceGroupHost(bridge), [bridge]);
+  const workspaceGroups = useMemo(() => createWorkspaceGroupHost(bridge, () => ({
+    spaceId: spaceIdRef.current,
+    sessionRevision: WKApp.loginInfo.sessionRevision,
+    ready: Boolean(WKApp.loginInfo.uid && WKApp.loginInfo.token),
+    apiOrigin: WKApp.apiClient.config.apiURL,
+  }), (listener) => WKApp.shared.addListener(listener)), [bridge]);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
@@ -373,7 +377,7 @@ export function CommunicationShell({
     };
 
     const dispose = bridge.onCommand((command: HostCommand) => {
-      workspaceGroups.handleCommand(command);
+      if (command.type !== "spaceChanged") workspaceGroups.handleCommand(command);
       if (command.type === "navigate") {
         if (command.target && !hasCompatibleTargetVariant(command.target)) {
           console.error("[client-communication] rejected incompatible conversation target", command.target);
@@ -409,20 +413,24 @@ export function CommunicationShell({
       }
 
       if (command.type === "spaceChanged") {
-        cancelNavigation();
-        currentTargetRef.current = undefined;
-        appTargetRef.current = undefined;
-        workspaceReturnTargetRef.current = undefined;
-        if (workspaceTargetRef.current) WKApp.routeRight.popToRoot();
-        workspaceTargetRef.current = undefined;
         if (spaceIdRef.current !== command.space.id) summaryScopeRevision.current++;
         spaceIdRef.current = command.space.id;
-        document.documentElement.dataset.spaceId = command.space.id;
-        if (!runtimeOwned) {
-          applyImSpaceContext({
-            space_id: command.space.id,
-            name: command.space.name,
-          });
+        try {
+          cancelNavigation();
+          currentTargetRef.current = undefined;
+          appTargetRef.current = undefined;
+          workspaceReturnTargetRef.current = undefined;
+          if (workspaceTargetRef.current) WKApp.routeRight.popToRoot();
+          workspaceTargetRef.current = undefined;
+          document.documentElement.dataset.spaceId = command.space.id;
+          if (!runtimeOwned) {
+            applyImSpaceContext({
+              space_id: command.space.id,
+              name: command.space.name,
+            });
+          }
+        } finally {
+          workspaceGroups.handleCommand(command);
         }
         WKApp.shared.notifyListener();
         return;
@@ -452,6 +460,7 @@ export function CommunicationShell({
           : "hidden";
         if (command.visible && wasHidden) {
           window.dispatchEvent(new CustomEvent("octobuddy:resume"));
+          WKApp.mittBus.emit("wk:app-foreground");
         }
         return;
       }
@@ -462,6 +471,9 @@ export function CommunicationShell({
         }
         document.documentElement.dataset.hostVisibility = command.type === "suspend" ? "hidden" : "visible";
         window.dispatchEvent(new CustomEvent(`octobuddy:${command.type}`));
+        if (command.type === "resume") {
+          WKApp.mittBus.emit("wk:app-foreground");
+        }
       }
     });
     commandListenerReadyRef.current = true;
