@@ -207,3 +207,6 @@ export { Channel, ChannelTypePerson } from 'wukongimjssdk'
 export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel, normaliseImDriveChannelID, imDriveTransferSourceKey } from './Service/SpacePrefix'
 export { resolveCardActionChannelId } from './Messages/InteractiveCard/cardAction'
 export * from "./im-runtime/readAttentionHost"
+export * from "./im-runtime/shadowCapture"
+export * from "./im-runtime/shadowCaptureAdapters"
+export * from "./im-runtime/shadowCaptureRuntime"

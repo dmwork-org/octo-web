@@ -4,6 +4,7 @@ export interface ImChatManagerRuntime<TMessage = unknown> {
   addCMDListener: (listener: ImChatListener<TMessage>) => void;
   removeCMDListener: (listener: ImChatListener<TMessage>) => void;
   addMessageListener: (listener: ImChatListener<TMessage>) => void;
+  removeMessageListener?: (listener: ImChatListener<TMessage>) => void;
 }
 
 export interface ImChatRuntimeSdk<TMessage = unknown> {
@@ -29,4 +30,11 @@ export function removeImCommandListener<TMessage>(
   listener: ImChatListener<TMessage>
 ) {
   sdk.chatManager.removeCMDListener(listener);
+}
+
+export function removeImMessageListener<TMessage>(
+  sdk: ImChatRuntimeSdk<TMessage>,
+  listener: ImChatListener<TMessage>,
+) {
+  sdk.chatManager.removeMessageListener?.(listener);
 }
