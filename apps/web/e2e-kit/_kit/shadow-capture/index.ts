@@ -7,14 +7,38 @@ import type {
 
 export const COMMUNICATION_SHADOW_CAPTURE_KEY = "__octoCommunicationShadowCapture__";
 
+export type ShadowCaptureChannelInput = {
+  channelID: string;
+  channelType: number;
+};
+
+export type ShadowCaptureSyncOptions = Partial<{
+  startMessageSeq: number;
+  endMessageSeq: number;
+  limit: number;
+  pullMode: number;
+}>;
+
 export type ShadowCapturePageApi = {
-  start(options?: { manifest?: ShadowCaptureManifest; captureReads?: boolean }): {
+  start(options?: {
+    manifest?: ShadowCaptureManifest;
+    captureReads?: boolean;
+    captureCommandOutcomes?: boolean;
+  }): {
     active: true;
     manifest: ShadowCaptureManifest;
   };
   read(): ShadowCaptureDocument | null;
   dispose(): ShadowCaptureDocument | null;
   isActive(): boolean;
+  syncMessages(
+    channel: ShadowCaptureChannelInput,
+    options?: ShadowCaptureSyncOptions,
+  ): Promise<{ count: number; messageSequences: number[] }>;
+  markConversationUnread(
+    channel: ShadowCaptureChannelInput,
+    unread?: number,
+  ): Promise<void>;
 };
 
 export async function waitForCommunicationShadowCapture(page: Page): Promise<void> {
@@ -27,7 +51,11 @@ export async function waitForCommunicationShadowCapture(page: Page): Promise<voi
 
 export async function startCommunicationShadowCapture(
   page: Page,
-  options: { manifest?: ShadowCaptureManifest; captureReads?: boolean } = {},
+  options: {
+    manifest?: ShadowCaptureManifest;
+    captureReads?: boolean;
+    captureCommandOutcomes?: boolean;
+  } = {},
 ): Promise<void> {
   await waitForCommunicationShadowCapture(page);
   await page.evaluate(
@@ -37,6 +65,37 @@ export async function startCommunicationShadowCapture(
       api.start(input);
     },
     { key: COMMUNICATION_SHADOW_CAPTURE_KEY, options },
+  );
+}
+
+export async function runCommunicationShadowHistory(
+  page: Page,
+  channel: ShadowCaptureChannelInput,
+  options: ShadowCaptureSyncOptions = {},
+): Promise<{ count: number; messageSequences: number[] }> {
+  await waitForCommunicationShadowCapture(page);
+  return page.evaluate(
+    ({ key, channel: input, options: syncOptions }) => {
+      const api = (globalThis as Record<string, unknown>)[key] as ShadowCapturePageApi | undefined;
+      if (!api) throw new Error("Communication shadow capture hook is unavailable");
+      return api.syncMessages(input, syncOptions);
+    },
+    { key: COMMUNICATION_SHADOW_CAPTURE_KEY, channel, options },
+  );
+}
+
+export async function markCommunicationShadowRead(
+  page: Page,
+  channel: ShadowCaptureChannelInput,
+): Promise<void> {
+  await waitForCommunicationShadowCapture(page);
+  await page.evaluate(
+    ({ key, channel: input }) => {
+      const api = (globalThis as Record<string, unknown>)[key] as ShadowCapturePageApi | undefined;
+      if (!api) throw new Error("Communication shadow capture hook is unavailable");
+      return api.markConversationUnread(input, 0);
+    },
+    { key: COMMUNICATION_SHADOW_CAPTURE_KEY, channel },
   );
 }
 

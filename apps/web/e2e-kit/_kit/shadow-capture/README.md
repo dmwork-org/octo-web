@@ -14,10 +14,11 @@ captured document was produced by the Communication runtime listener path.
 
 Current contract boundary (deliberately not a complete C2 artifact):
 
-- The underlying Web adapter can capture history pages and command outcomes
-  behind its internal opt-in, but this browser hook intentionally starts the
-  bounded trace with realtime/read capture only. Exported fixture documents
-  therefore do not include history message pages or `command.outcome` yet.
+- `startCommunicationShadowCapture` can opt into `captureCommandOutcomes`.
+  The test-only bridge also exposes `syncMessages(channel, options)` and
+  `markConversationUnread(channel, 0)`, which delegate to the installed
+  provider and therefore produce real history message pages, read events, and
+  `command.outcome` records in the bounded trace.
 - Local pending messages are not emitted by the capture hook yet.
 - The fixture therefore proves runtime capture and replay shape for the covered
   events; it must not be described as complete C2 parity.

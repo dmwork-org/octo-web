@@ -1,9 +1,14 @@
-import { WKApp, createCurrentImShadowTrace } from "@octo/base";
+import {
+  SyncMessageOptions,
+  WKApp,
+  createCurrentImShadowTrace,
+} from "@octo/base";
 import type {
   CurrentImShadowTrace,
   ShadowCaptureDocument,
   ShadowCaptureManifest,
 } from "@octo/base";
+import { Channel } from "wukongimjssdk";
 
 /**
  * Test-only bridge for exporting the Communication owner's IM projection.
@@ -20,7 +25,20 @@ export const COMMUNICATION_SHADOW_CAPTURE_KEY =
 export type CommunicationShadowCaptureStartOptions = {
   manifest?: ShadowCaptureManifest;
   captureReads?: boolean;
+  captureCommandOutcomes?: boolean;
 };
+
+export type CommunicationShadowChannelInput = {
+  channelID: string;
+  channelType: number;
+};
+
+export type CommunicationShadowSyncOptions = Partial<{
+  startMessageSeq: number;
+  endMessageSeq: number;
+  limit: number;
+  pullMode: number;
+}>;
 
 export type CommunicationShadowCaptureApi = {
   start(options?: CommunicationShadowCaptureStartOptions): {
@@ -30,6 +48,16 @@ export type CommunicationShadowCaptureApi = {
   read(): ShadowCaptureDocument | null;
   dispose(): ShadowCaptureDocument | null;
   isActive(): boolean;
+  /** Test-only command seam; delegates to the installed provider unchanged. */
+  syncMessages(
+    channel: CommunicationShadowChannelInput,
+    options?: CommunicationShadowSyncOptions,
+  ): Promise<{ count: number; messageSequences: number[] }>;
+  /** Test-only command seam; delegates to markConversationUnread(channel, unread). */
+  markConversationUnread(
+    channel: CommunicationShadowChannelInput,
+    unread?: number,
+  ): Promise<void>;
 };
 
 type CaptureWindow = Window & {
@@ -65,6 +93,7 @@ export function installCommunicationShadowCaptureHook(): CommunicationShadowCapt
       const manifest = options.manifest ?? DEFAULT_MANIFEST;
       active = createCurrentImShadowTrace(manifest, {
         captureReads: options.captureReads ?? true,
+        captureCommandOutcomes: options.captureCommandOutcomes ?? false,
       });
       last = undefined;
       return { active: true, manifest: active.toDocument().manifest };
@@ -86,6 +115,28 @@ export function installCommunicationShadowCaptureHook(): CommunicationShadowCapt
     isActive() {
       return active !== undefined;
     },
+
+    async syncMessages(channel, options = {}) {
+      const opts = new SyncMessageOptions();
+      Object.assign(opts, options);
+      const messages = await WKApp.conversationProvider.syncMessages(
+        toCommunicationChannel(channel),
+        opts,
+      );
+      return {
+        count: messages.length,
+        messageSequences: messages
+          .map((message) => message.messageSeq)
+          .filter((sequence): sequence is number => Number.isSafeInteger(sequence)),
+      };
+    },
+
+    markConversationUnread(channel, unread = 0) {
+      return WKApp.conversationProvider.markConversationUnread(
+        toCommunicationChannel(channel),
+        unread,
+      );
+    },
   };
 
   Object.defineProperty(view, COMMUNICATION_SHADOW_CAPTURE_KEY, {
@@ -95,6 +146,10 @@ export function installCommunicationShadowCaptureHook(): CommunicationShadowCapt
     writable: false,
   });
   return api;
+}
+
+function toCommunicationChannel(input: CommunicationShadowChannelInput): Channel {
+  return new Channel(input.channelID, input.channelType);
 }
 
 /** Resolve a stable manifest while keeping the default fixture deterministic. */
