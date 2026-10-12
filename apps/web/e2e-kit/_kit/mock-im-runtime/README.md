@@ -98,6 +98,12 @@ startMessageSeq, limit, returnedSeqs }>`
 `WKSDK.shared().chatManager.notifyMessageListeners(msg)` from test 侧
 (fake ConnectManager 不主动 push,test 决定何时推)。
 
+对 Communication shadow capture 用例，`installFakeProvider` 还会挂一个受控
+的 `window.__mockImEmitMessage__(seedMessage)`。它先通过同一 `toMessage` seed
+适配器构造 SDK `Message`，再调用 `ChatManager.notifyMessageListeners`，让
+capture 走真实 runtime listener 路径。该 seam 只在 `VITE_E2E_MOCK_IM=1` 下
+存在，不属于生产协议。
+
 ## 已迁 case
 
 - C1 创建分组 (empty seed,只需 IM=Connected)

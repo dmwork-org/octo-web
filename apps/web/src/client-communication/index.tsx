@@ -12,7 +12,7 @@ import { ContactsModule } from "@octo/contacts";
 import { DataSourceModule } from "@octo/datasource";
 import { SummaryCommunicationModule } from "@dmwork/summary/communication";
 import { registerEnterpriseModules } from "virtual:octo-enterprise-modules";
-import { WKSDK } from "wukongimjssdk";
+import { Channel, WKSDK } from "wukongimjssdk";
 import { version as pkgVersion } from "../../package.json";
 import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
@@ -107,6 +107,13 @@ async function main() {
     const { mountCommunicationUi } = await import("./mountUi");
     await mountCommunicationUi(host, bootstrap);
   }
+  await enableCommunicationShadowCaptureIfE2E();
+}
+
+async function enableCommunicationShadowCaptureIfE2E(): Promise<void> {
+  if (import.meta.env.VITE_E2E_MOCK_IM !== "1") return;
+  const { installCommunicationShadowCaptureHook } = await import("./shadowCaptureE2E");
+  installCommunicationShadowCaptureHook();
 }
 
 async function enableMockImIfE2E(): Promise<void> {
@@ -126,9 +133,13 @@ async function enableMockImIfE2E(): Promise<void> {
     (window as unknown as {
       __octoCommunicationE2E__?: {
         getOpenChannel: () => { channelID?: string; channelType?: number } | null;
+        setOpenChannel: (channel: { channelID: string; channelType: number } | null) => void;
       };
     }).__octoCommunicationE2E__ = {
       getOpenChannel: () => WKApp.shared.openChannel || null,
+      setOpenChannel: (channel) => {
+        WKApp.shared.openChannel = channel ? new Channel(channel.channelID, channel.channelType) : undefined;
+      },
     };
   } catch (error) {
     console.warn("[communication-e2e] mock IM disabled:", error);

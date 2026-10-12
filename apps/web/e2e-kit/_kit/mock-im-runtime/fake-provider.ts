@@ -273,6 +273,19 @@ export function installFakeProvider(seed: MockSeed): void {
 
   // 5. hook 到 window,让 baseline main.tsx 可以再拉 seed 更新（P1+）
   (window as any).__mockImSeed__ = seed;
+  // Controlled test seam for Communication shadow capture.  It constructs a
+  // real SDK Message through the same seed adapter used by syncMessages and
+  // dispatches it through ChatManager listeners; capture tests therefore
+  // observe the Communication runtime event path instead of writing JSON
+  // directly into a trace.
+  (window as any).__mockImEmitMessage__ = (message: MockMessageSeed) => {
+    const model = toMessage(message);
+    const notify = (sdk.chatManager as any).notifyMessageListeners;
+    if (typeof notify !== "function") {
+      throw new Error("[mock-im-runtime] ChatManager.notifyMessageListeners unavailable");
+    }
+    notify.call(sdk.chatManager, model);
+  };
   // spy: 初始化 syncMessages 调用日志（test 断言分页请求语义用）
   if (!(window as unknown as { __mockImSyncMessageLog__?: unknown[] }).__mockImSyncMessageLog__) {
     (window as unknown as { __mockImSyncMessageLog__: unknown[] }).__mockImSyncMessageLog__ = [];
