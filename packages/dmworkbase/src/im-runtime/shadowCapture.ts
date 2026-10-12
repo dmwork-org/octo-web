@@ -70,6 +70,7 @@ export type ShadowCaptureCommandOutcome = {
   command: 'send' | 'history' | 'read' | 'reconnect'
   status: 'accepted' | 'rejected' | 'unknown' | 'failed'
   clientMsgNo?: string
+  channel?: ShadowCaptureChannel
   errorCode?: string
   detail?: unknown
 }

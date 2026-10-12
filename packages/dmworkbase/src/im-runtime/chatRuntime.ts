@@ -1,4 +1,7 @@
 export type ImChatListener<TMessage = unknown> = (message: TMessage) => void;
+export type ImMessageStatusListener<TMessage = unknown> = (
+  message: TMessage
+) => void;
 
 export interface ImChatManagerRuntime<TMessage = unknown> {
   addCMDListener: (listener: ImChatListener<TMessage>) => void;
@@ -37,4 +40,26 @@ export function removeImMessageListener<TMessage>(
   listener: ImChatListener<TMessage>,
 ) {
   sdk.chatManager.removeMessageListener?.(listener);
+}
+
+export function addImMessageStatusListener<TMessage>(
+  sdk: ImChatRuntimeSdk<TMessage> & {
+    chatManager: {
+      addMessageStatusListener: (listener: ImMessageStatusListener<TMessage>) => void;
+    };
+  },
+  listener: ImMessageStatusListener<TMessage>
+) {
+  sdk.chatManager.addMessageStatusListener(listener);
+}
+
+export function removeImMessageStatusListener<TMessage>(
+  sdk: ImChatRuntimeSdk<TMessage> & {
+    chatManager: {
+      removeMessageStatusListener: (listener: ImMessageStatusListener<TMessage>) => void;
+    };
+  },
+  listener: ImMessageStatusListener<TMessage>
+) {
+  sdk.chatManager.removeMessageStatusListener(listener);
 }

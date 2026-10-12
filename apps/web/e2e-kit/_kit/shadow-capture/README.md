@@ -14,9 +14,10 @@ captured document was produced by the Communication runtime listener path.
 
 Current contract boundary (deliberately not a complete C2 artifact):
 
-- `message.upsert` currently covers realtime listener delivery. History message
-  pages are not emitted as message events by this capture adapter yet.
-- `command.outcome` is not emitted by the capture hook yet.
+- The underlying Web adapter can capture history pages and command outcomes
+  behind its internal opt-in, but this browser hook intentionally starts the
+  bounded trace with realtime/read capture only. Exported fixture documents
+  therefore do not include history message pages or `command.outcome` yet.
 - Local pending messages are not emitted by the capture hook yet.
 - The fixture therefore proves runtime capture and replay shape for the covered
   events; it must not be described as complete C2 parity.

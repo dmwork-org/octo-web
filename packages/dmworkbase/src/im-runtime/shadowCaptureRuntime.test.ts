@@ -27,6 +27,7 @@ const app = vi.hoisted(() => {
     },
     conversationProvider: {
       markConversationUnread: vi.fn().mockResolvedValue(undefined),
+      syncMessages: vi.fn().mockResolvedValue([]),
     },
     mittBus: {
       on,
@@ -59,7 +60,10 @@ import WKSDK, {
   Message,
   ConversationAction,
 } from "wukongimjssdk";
-import { createCurrentImShadowTrace } from "./shadowCaptureRuntime";
+import {
+  createCurrentImShadowCaptureBindings,
+  createCurrentImShadowTrace,
+} from "./shadowCaptureRuntime";
 import type {
   ShadowCaptureManifest,
   ShadowCaptureScope,
@@ -97,6 +101,8 @@ const scopeB: ShadowCaptureScope = {
 
 const sdk = WKSDK.shared();
 const messageListeners = new Set<(message: Message) => void>();
+const messageStatusListeners = new Set<(packet: any) => void>();
+const connectStatusListeners = new Set<(status: number, reasonCode?: number) => void>();
 let originalRemoveMessageListener: unknown;
 
 function conversation(): Conversation {
@@ -128,8 +134,11 @@ beforeEach(() => {
   app.conversationProvider.markConversationUnread
     .mockClear()
     .mockResolvedValue(undefined);
+  app.conversationProvider.syncMessages = vi.fn().mockResolvedValue([]);
   sdk.conversationManager.conversations = [];
   messageListeners.clear();
+  messageStatusListeners.clear();
+  connectStatusListeners.clear();
   const chatManager = sdk.chatManager as any;
   vi.spyOn(chatManager, "addMessageListener").mockImplementation(
     (listener: any) => {
@@ -140,6 +149,27 @@ beforeEach(() => {
   chatManager.removeMessageListener = (listener: any) => {
     messageListeners.delete(listener);
   };
+  vi.spyOn(chatManager, "addMessageStatusListener").mockImplementation(
+    (listener: any) => {
+      messageStatusListeners.add(listener);
+    }
+  );
+  vi.spyOn(chatManager, "removeMessageStatusListener").mockImplementation(
+    (listener: any) => {
+      messageStatusListeners.delete(listener);
+    }
+  );
+  const connectManager = sdk.connectManager as any;
+  vi.spyOn(connectManager, "addConnectStatusListener").mockImplementation(
+    (listener: any) => {
+      connectStatusListeners.add(listener);
+    }
+  );
+  vi.spyOn(connectManager, "removeConnectStatusListener").mockImplementation(
+    (listener: any) => {
+      connectStatusListeners.delete(listener);
+    }
+  );
 });
 
 afterEach(() => {
@@ -234,6 +264,183 @@ describe("current Web runtime shadow capture", () => {
       .toDocument()
       .events.find((event) => event.type === "message.upsert") as any;
     expect(messageEvent.message.payload.ignored).toBeUndefined();
+  });
+
+  it("captures send, history, and reconnect outcomes without crossing SDK objects", async () => {
+    const current = conversation();
+    const store = {
+      conversations: [current],
+      freshness: "ready",
+      findConversation: () => current,
+    } as any;
+    const syncMessages = app.conversationProvider.syncMessages;
+    syncMessages.mockResolvedValueOnce([current.lastMessage]);
+    const trace = createCurrentImShadowTrace(manifest, {
+      sdk,
+      store,
+      getScope: () => scopeA,
+      captureCommandOutcomes: true,
+    });
+
+    await app.conversationProvider.syncMessages(current.channel, {
+      startMessageSeq: 0,
+      limit: 30,
+    });
+    syncMessages.mockRejectedValueOnce(
+      Object.assign(new Error("history offline"), { code: "OFFLINE" })
+    );
+    await expect(
+      app.conversationProvider.syncMessages(current.channel, {
+        startMessageSeq: 7,
+        limit: 30,
+      })
+    ).rejects.toThrow("history offline");
+
+    for (const listener of Array.from(messageStatusListeners)) {
+      listener({
+        clientSeq: 41,
+        messageID: "server-m1",
+        messageSeq: 8,
+        reasonCode: 1,
+      });
+      listener({ clientSeq: 42, reasonCode: 5 });
+    }
+    for (const listener of Array.from(connectStatusListeners)) {
+      listener(1);
+      listener(3, 408);
+    }
+    trace.dispose();
+
+    const outcomes = trace
+      .toDocument()
+      .events.filter((event) => event.type === "command.outcome");
+    expect(outcomes).toEqual([
+      expect.objectContaining({
+        outcome: expect.objectContaining({
+          command: "history",
+          status: "accepted",
+          channel: { id: "group-a", type: 2 },
+        }),
+      }),
+      expect.objectContaining({
+        outcome: expect.objectContaining({
+          command: "history",
+          status: "failed",
+          channel: { id: "group-a", type: 2 },
+          errorCode: "OFFLINE",
+        }),
+      }),
+      expect.objectContaining({
+        outcome: expect.objectContaining({
+          command: "send",
+          status: "accepted",
+          detail: { clientSeq: 41, messageID: "server-m1", messageSeq: 8, reasonCode: 1 },
+        }),
+      }),
+      expect.objectContaining({
+        outcome: expect.objectContaining({
+          command: "send",
+          status: "rejected",
+          errorCode: "5",
+        }),
+      }),
+      expect.objectContaining({
+        outcome: expect.objectContaining({
+          command: "reconnect",
+          status: "accepted",
+        }),
+      }),
+      expect.objectContaining({
+        outcome: expect.objectContaining({
+          command: "reconnect",
+          status: "failed",
+          errorCode: "408",
+        }),
+      }),
+    ]);
+    expect(trace.toDocument().events).not.toContainEqual(
+      expect.objectContaining({ sdk })
+    );
+    expect(trace.toDocument().events).toContainEqual(
+      expect.objectContaining({
+        type: "message.upsert",
+        source: "history",
+        scope: scopeA,
+        message: expect.objectContaining({ id: "m1", sequence: 7 }),
+      })
+    );
+  });
+
+  it("keeps the originating scope for late history/read results and restores shared wrappers", async () => {
+    let scope = scopeA;
+    const current = conversation();
+    sdk.conversationManager.conversations = [current];
+    const store = {
+      conversations: [current],
+      freshness: "ready",
+      findConversation: () => current,
+    } as any;
+    const syncMessages = app.conversationProvider.syncMessages;
+    const markConversationUnread = app.conversationProvider.markConversationUnread;
+    let resolveHistory!: (value: unknown[]) => void;
+    let resolveRead!: () => void;
+    syncMessages.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveHistory = resolve; })
+    );
+    markConversationUnread.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveRead = resolve; })
+    );
+    const first = createCurrentImShadowTrace(manifest, {
+      sdk,
+      store,
+      getScope: () => scope,
+      captureReads: true,
+      captureCommandOutcomes: true,
+    });
+    const second = createCurrentImShadowTrace(manifest, {
+      sdk,
+      store,
+      getScope: () => scope,
+      captureCommandOutcomes: true,
+    });
+    const wrapped = app.conversationProvider.syncMessages;
+    const pending = wrapped(current.channel, {});
+    const pendingRead = app.conversationProvider.markConversationUnread(current.channel, 0);
+    scope = scopeB;
+    resolveHistory([current.lastMessage]);
+    await pending;
+    resolveRead();
+    await pendingRead;
+
+    first.dispose();
+    expect(app.conversationProvider.syncMessages).toBe(wrapped);
+    second.dispose();
+    expect(app.conversationProvider.syncMessages).toBe(syncMessages);
+    expect(first.toDocument().events).toContainEqual(
+      expect.objectContaining({
+        type: "command.outcome",
+        scope: scopeA,
+        outcome: expect.objectContaining({ command: "history" }),
+      })
+    );
+    expect(first.toDocument().events).toContainEqual(
+      expect.objectContaining({
+        type: "unread.read",
+        scope: scopeA,
+      })
+    );
+
+    const bindings = createCurrentImShadowCaptureBindings({
+      sdk,
+      store,
+      getScope: () => scopeA,
+      captureCommandOutcomes: true,
+    });
+    const release = bindings.onCommandOutcome?.(() => {
+      throw new Error("observer must not change provider outcome");
+    });
+    await expect(app.conversationProvider.syncMessages(current.channel, {})).resolves.toEqual([]);
+    release?.();
   });
 
   it("restores the provider method and listener ownership after capture disposal", async () => {
