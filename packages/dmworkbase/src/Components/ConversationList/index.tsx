@@ -70,6 +70,7 @@ import {
 } from "../../bridge/channelSetting/channelSettingActions";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { hideConversation } from "./hideConversation";
+import { markConversationRead } from "./markConversationRead";
 import { Dap } from "../../Service/Dap";
 import { channelOpenedTrackPayload, resolveAiPeer } from "../../Service/channelOpenedTracking";
 import { isMessageAuthorAi } from "../Conversation/replyAiIdentity";
@@ -411,6 +412,7 @@ export default class ConversationList extends Component<
   typingListener!: TypingListener;
   private unsubscribeChannelInfoListener?: () => void;
   private unmounted = false;
+  private lifecycleRevision = 0;
   private listRef = React.createRef<HTMLDivElement>();
   private itemRefs = new Map<string, HTMLDivElement>();
   private lastRenderableItems: ConversationWrap[] = [];
@@ -455,6 +457,7 @@ export default class ConversationList extends Component<
   }
 
   componentDidMount() {
+    this.lifecycleRevision++;
     this.unmounted = false;
     this.channelListener = (channelInfo: ChannelInfo) => {
       this.setState({});
@@ -490,6 +493,7 @@ export default class ConversationList extends Component<
   }
 
   componentWillUnmount() {
+    this.lifecycleRevision++;
     this.unmounted = true;
     if (
       this.scrollFrame !== null &&
@@ -1703,49 +1707,54 @@ export default class ConversationList extends Component<
                       isVisible: () => false,
                     }
                   );
-                  void WKApp.apiClient
-                    .put("conversation/clearUnread", {
-                      channel_id: channel.channelID,
-                      channel_type: channel.channelType,
-                      unread: 0,
-                    })
-                    .then(() => {
+                  const sdk = WKSDK.shared();
+                  const lifecycleRevision = this.lifecycleRevision;
+                  const accountId = WKApp.loginInfo.uid;
+                  const spaceId = WKApp.shared.currentSpaceId || "";
+                  void markConversationRead({
+                    isCurrent: () => !this.unmounted &&
+                      this.lifecycleRevision === lifecycleRevision && WKSDK.shared() === sdk,
+                    clearUnread: () => WKApp.conversationProvider.markConversationUnread(channel, 0),
+                    updateLocalConversation: () => {
                       conv.conversation.unread = 0;
                       if (
-                        WKApp.shared.currentSpaceId &&
+                        spaceId &&
                         channel.channelType === ChannelTypePerson &&
                         conv.conversation.extra?.spaceUnread !== undefined
                       ) {
                         conv.conversation.extra.spaceUnread = 0;
                       }
-                      WKSDK.shared().conversationManager.notifyConversationListeners(
+                      sdk.conversationManager.notifyConversationListeners(
                         conv.conversation,
                         ConversationAction.update
                       );
+                    },
+                    updateFollowingUnread: () => {
                       WKApp.mittBus.emit("sidebar-unread-updated" as any, {
                         channelId: channel.channelID,
                         channelType: channel.channelType,
                         unread: 0,
                       });
+                    },
+                    publishUnreadCleared: () => {
                       getBrowserUnreadConversationSync().publish({
-                        accountId: WKApp.loginInfo.uid,
-                        spaceId: WKApp.shared.currentSpaceId || "",
+                        accountId,
+                        spaceId,
                         channelId: channel.channelID,
                         channelType: channel.channelType,
                         unread: 0,
                       });
-                      WKApp.mittBus.emit("sidebar-reload" as any);
-                      if (doneMentionReminderIDs.length > 0) {
-                        return WKSDK.shared().reminderManager.done(
-                          doneMentionReminderIDs
-                        );
-                      }
-                    })
-                    .catch((err) => {
+                    },
+                    reloadFollowingSidebar: () => WKApp.mittBus.emit("sidebar-reload" as any),
+                    finishReminders: () => doneMentionReminderIDs.length > 0
+                      ? sdk.reminderManager.done(doneMentionReminderIDs)
+                      : undefined,
+                    onError: (err: any) => {
                       Toast.error(
                         err?.msg || t("base.conversationList.error.clearUnreadFailed")
                       );
-                    });
+                    },
+                  });
                 },
               });
             }
