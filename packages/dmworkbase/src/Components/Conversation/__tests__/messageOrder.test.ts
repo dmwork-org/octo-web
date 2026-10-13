@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const sdkState = vi.hoisted(() => ({
     sendingQueues: new Map<number, unknown>(),
     channelInfos: new Map<string, any>(),
     syncMessages: vi.fn(),
+    syncMessageExtras: vi.fn(),
     send: vi.fn(),
     conversation: null as any,
     openConversation: undefined as any,
@@ -73,6 +74,7 @@ vi.mock("wukongimjssdk", () => {
                     removeConversationListener: () => {},
                 },
                 chatManager: {
+                    syncMessageExtras: sdkState.syncMessageExtras,
                     sendingQueues: sdkState.sendingQueues,
                     send: sdkState.send,
                     addMessageListener: (listener: any) => { sdkState.messageListener = listener },
@@ -124,8 +126,8 @@ vi.mock("wukongimjssdk", () => {
 
 vi.mock("../../../App", () => ({
     default: {
-        loginInfo: { uid: "me" },
-        apiClient: { config: { apiURL: "https://test.invalid/" } },
+        loginInfo: { uid: "me", token: "token-a", sessionRevision: 0 },
+        apiClient: { config: { apiURL: "https://test.invalid/", originRevision: 0 } },
         config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
         mittBus: { on: () => {}, off: () => {}, emit: sdkState.emit },
@@ -133,7 +135,7 @@ vi.mock("../../../App", () => ({
             markConversationUnread: sdkState.markConversationUnread,
             syncMessages: sdkState.syncMessages,
         },
-        shared: { currentSpaceId: "", notifyMessageDeleteListener: () => {} },
+        shared: { currentSpaceId: "", spaceRevision: 0, notifyMessageDeleteListener: () => {} },
         endpointManager: { setMethod: (_id: string, handler: any) => { sdkState.clearChannelHandler = handler }, removeMethod: vi.fn() },
     },
 }))
@@ -226,6 +228,8 @@ import ConversationVM from "../vm"
 import { Channel, MessageStatus } from "wukongimjssdk"
 import { SUMMARY_TIP_TEMPLATE } from "../../../Messages/SummaryNotify/protocol"
 import WKApp from "../../../App"
+import { createImOwnerAdmission, type ImOwnerAdmission } from "../../../im-runtime/ownerAdmission"
+import { installImOwnerAdmission, uninstallImOwnerAdmission } from "../../../im-runtime/ownerAdmissionHost"
 
 const channel = new Channel("g1", 2)
 
@@ -294,6 +298,8 @@ describe("ConversationVM message ordering", () => {
         sdkState.sendingQueues.clear()
         sdkState.channelInfos.clear()
         sdkState.syncMessages.mockReset()
+        sdkState.syncMessageExtras.mockReset()
+        WKApp.loginInfo.uid = "me"
         sdkState.send.mockReset()
         sdkState.conversation = null
         sdkState.openConversation = undefined
@@ -1779,6 +1785,213 @@ describe("ConversationVM message ordering", () => {
         vm.clearFoldSessionAnimation("missing")
         vm.clearFoldSessionSummaryHighlight("missing")
         vm.clearTimer?.()
+        vm.didUnMount()
+    })
+})
+
+
+/** The four real history entry points share the same owner/lifetime acceptance matrix. */
+describe("ConversationVM history error and stale-publication matrix", () => {
+    let owner: ImOwnerAdmission | undefined
+    beforeEach(() => {
+        sdkState.syncMessages.mockReset()
+        sdkState.syncMessageExtras.mockReset()
+        sdkState.conversation = null
+        sdkState.sendingQueues.clear()
+        ConversationVM.sendQueue.clear()
+        WKApp.loginInfo.uid = "me"
+        WKApp.shared.currentSpaceId = "space-a"
+        document.body.innerHTML = ""
+    })
+    afterEach(() => {
+        if (owner) {
+            if (owner.snapshot().phase === "active") owner.quiesce(owner.snapshot().generation + 1)
+            uninstallImOwnerAdmission(owner)
+            owner = undefined
+        }
+        vi.unstubAllGlobals()
+    })
+
+    function deferred<T>() {
+        let resolve!: (value: T) => void
+        let reject!: (error: unknown) => void
+        const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+        return { promise, resolve, reject }
+    }
+    const requests = [
+        { name: "initial", run: (vm: ConversationVM) => vm.syncMessages() },
+        { name: "around", run: (vm: ConversationVM) => vm.requestMessagesAroundMessageSeq(56) },
+        { name: "older", run: (vm: ConversationVM) => vm.pulldownMessages() },
+        { name: "newer", run: (vm: ConversationVM) => vm.pullupMessages() },
+    ]
+    function seededVM() {
+        const vm = new ConversationVM(channel)
+        const existing = [wrap({ clientMsgNo: "existing", messageSeq: 50 })]
+        vm.messagesOfOrigin = existing
+        vm.messages = existing
+        vm.pullupHasMore = true
+        vm.pulldownFinished = false
+        vm.pendingMessages = [wrap({ clientMsgNo: "pending", messageSeq: 51 })]
+        return vm
+    }
+
+    for (const request of requests) {
+        it(`${request.name}: current failure preserves data and pagination, clears loading, and rejects the original error`, async () => {
+            const error = new Error("history failed")
+            sdkState.syncMessages.mockRejectedValue(error)
+            const vm = seededVM()
+            const before = vm.messagesOfOrigin
+            const pending = vm.pendingMessages
+            const refresh = vi.spyOn(vm, "refreshMessages")
+            const notify = vi.spyOn(vm, "notifyListener")
+            await expect(request.run(vm)).rejects.toBe(error)
+            expect(vm.loading).toBe(false)
+            expect(vm.messagesOfOrigin).toBe(before)
+            expect(vm.pendingMessages).toBe(pending)
+            expect(vm.pullupHasMore).toBe(true)
+            expect(vm.pulldownFinished).toBe(false)
+            expect(refresh).not.toHaveBeenCalled()
+            expect(notify).toHaveBeenCalled()
+        })
+
+        for (const scope of ["owner", "space", "account", "unmount", "newer-request"] as const) {
+            for (const settlement of ["success", "failure"] as const) {
+                it(`${request.name}: ${scope} rejects stale ${settlement} without publishing or clearing current state`, async () => {
+                    if (scope === "owner") {
+                        owner = createImOwnerAdmission()
+                        installImOwnerAdmission(owner)
+                    }
+                    const response = deferred<any[]>()
+                    sdkState.syncMessages.mockReturnValue(response.promise)
+                    const vm = seededVM()
+                    const waiting = request.run(vm)
+                    if (scope === "owner") {
+                        owner!.quiesce(1)
+                        owner!.prepare(2)
+                        owner!.activate(2)
+                    } else if (scope === "space") {
+                        WKApp.shared.currentSpaceId = "space-b"
+                        WKApp.shared.currentSpaceId = "space-a"
+                        ;(WKApp.shared as any).spaceRevision += 2
+                    } else if (scope === "account") {
+                        WKApp.loginInfo.uid = "other"
+                        WKApp.loginInfo.uid = "me"
+                        ;(WKApp.loginInfo as any).sessionRevision += 2
+                    } else if (scope === "unmount") {
+                        vm.didUnMount()
+                    } else {
+                        sdkState.syncMessages.mockReturnValue(deferred<any[]>().promise)
+                        void vm.syncMessages()
+                    }
+                    // State and notifications established by the newer owner/request are authoritative.
+                    const before = vm.messagesOfOrigin
+                    const pending = vm.pendingMessages
+                    const loading = vm.loading
+                    const refresh = vi.spyOn(vm, "refreshMessages")
+                    const notify = vi.spyOn(vm, "notifyListener")
+                    if (settlement === "success") response.resolve([rawMessage(49), rawMessage(50)])
+                    else response.reject(new Error("stale history failed"))
+                    await expect(waiting).resolves.toBeUndefined()
+                    expect(vm.messagesOfOrigin).toBe(before)
+                    expect(vm.pendingMessages).toBe(pending)
+                    expect(vm.loading).toBe(loading)
+                    expect(vm.pullupHasMore).toBe(true)
+                    expect(vm.pulldownFinished).toBe(false)
+                    expect(refresh).not.toHaveBeenCalled()
+                    expect(notify).not.toHaveBeenCalled()
+                })
+            }
+        }
+    }
+
+    it("around: one rejected leg never publishes a partial window when the other resolves later", async () => {
+        const older = deferred<any[]>()
+        const newer = deferred<any[]>()
+        sdkState.syncMessages.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+        const vm = seededVM()
+        const before = vm.messagesOfOrigin
+        const refresh = vi.spyOn(vm, "refreshMessages")
+        const waiting = vm.requestMessagesAroundMessageSeq(56)
+        older.reject(new Error("older failed"))
+        await expect(waiting).rejects.toThrow("older failed")
+        newer.resolve([rawMessage(56)])
+        await Promise.resolve()
+        expect(vm.messagesOfOrigin).toBe(before)
+        expect(refresh).not.toHaveBeenCalled()
+        expect(vm.loading).toBe(false)
+    })
+
+    it.each(["initial", "around", "older", "newer"])("%s: ignores deferred render completion after owner revoke", async (name) => {
+        owner = createImOwnerAdmission()
+        installImOwnerAdmission(owner)
+        sdkState.syncMessages.mockResolvedValue([rawMessage(49), rawMessage(50)])
+        const vm = seededVM()
+        let afterRender: (() => void) | undefined
+        vi.spyOn(vm, "refreshMessages").mockImplementation((_messages, callback) => { afterRender = callback })
+        const scroll = vi.spyOn(vm, "scrollToBottom")
+        const callback = vi.fn()
+        if (name === "initial") await vm.syncMessages(undefined, callback)
+        else if (name === "around") await vm.requestMessagesAroundMessageSeq(56, callback)
+        else await requests.find((request) => request.name === name)!.run(vm)
+        const viewport = document.createElement("div")
+        viewport.id = vm.messageContainerId
+        viewport.scrollTop = 100
+        document.body.append(viewport)
+        expect(afterRender).toBeDefined()
+        owner.quiesce(1)
+        afterRender!()
+        expect(vm.loading).toBe(true)
+        expect(viewport.scrollTop).toBe(100)
+        expect(scroll).not.toHaveBeenCalled()
+        expect(callback).not.toHaveBeenCalled()
+    })
+
+    it("does not let an earlier render callback clear the loading flag of a newer history request", async () => {
+        sdkState.syncMessages.mockResolvedValueOnce([rawMessage(50)])
+        const vm = seededVM()
+        let afterRender: (() => void) | undefined
+        vi.spyOn(vm, "refreshMessages").mockImplementation((_messages, callback) => { afterRender = callback })
+        const scroll = vi.spyOn(vm, "scrollToBottom")
+        await vm.syncMessages()
+        sdkState.syncMessages.mockReturnValueOnce(deferred<any[]>().promise)
+        void vm.syncMessages()
+        afterRender!()
+        expect(vm.loading).toBe(true)
+        expect(scroll).not.toHaveBeenCalled()
+    })
+
+    it("does not apply a queued scroll offset to a viewport after account/Space ABA", () => {
+        const vm = seededVM()
+        let afterFrame: FrameRequestCallback | undefined
+        vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { afterFrame = callback; return 1 })
+        vm.scrollToMessage(vm.messagesOfOrigin[0], 35)
+        const viewport = document.createElement("div")
+        viewport.id = vm.messageContainerId
+        viewport.scrollTop = 100
+        document.body.append(viewport)
+        ;(WKApp.shared as any).spaceRevision += 2
+        afterFrame!(0)
+        expect(viewport.scrollTop).toBe(100)
+    })
+
+    it.each(["success", "failure"])("CMD extras: discards deferred %s after owner revoke", async (settlement) => {
+        owner = createImOwnerAdmission()
+        installImOwnerAdmission(owner)
+        const response = deferred<any[]>()
+        sdkState.syncMessageExtras.mockReturnValue(response.promise)
+        const vm = seededVM()
+        ;(vm.messages[0] as any).remoteExtra = {}
+        vi.spyOn(vm, "requestMessagesOfFirstPage").mockResolvedValue(undefined)
+        vm.didMount()
+        const update = vi.spyOn(vm, "updateMessageByMessageExtras")
+        sdkState.cmdListener({ channel, content: { cmd: "syncMessageExtra", param: {} } })
+        expect(sdkState.syncMessageExtras).toHaveBeenCalledOnce()
+        owner.quiesce(1)
+        if (settlement === "success") response.resolve([{ messageID: "old", extraVersion: 1 }])
+        else response.reject(new Error("stale extras failed"))
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(update).not.toHaveBeenCalled()
         vm.didUnMount()
     })
 })
