@@ -18,7 +18,8 @@ export function isImOwnerWorkAllowed(): boolean {
 export function captureImOwnerWorkContext(): () => boolean {
     const owner = installed
     const generation = owner?.snapshot().generation
-    return () => installed === owner && (!owner || (
+    const allowed = !owner || owner.snapshot().phase === 'active'
+    return () => allowed && installed === owner && (!owner || (
         owner.snapshot().phase === 'active' && owner.snapshot().generation === generation
     ))
 }
