@@ -1,5 +1,6 @@
 import WKSDK, { Channel, ChannelInfo } from "wukongimjssdk";
 import { captureCurrentImConversationSyncContext } from "./conversationSyncContext";
+import { beginImOwnerOperation, captureImOwnerWorkContext } from "./ownerAdmissionHost";
 import { hasSpacePrefix, stripSpacePrefix } from "../Service/SpacePrefix";
 import {
   getImChannelInfo,
@@ -27,8 +28,10 @@ export function createOwnedChannelInfoFetcher(
     if (!provider || !callback) return Promise.resolve(undefined);
 
     const channelKey = channel.getChannelKey();
+    const ownerIsCurrent = captureImOwnerWorkContext();
     const contextIsCurrent = captureCurrentImConversationSyncContext();
     const reqIsCurrent = () =>
+      ownerIsCurrent() &&
       isOwnerCurrent() &&
       contextIsCurrent() &&
       WKSDK.shared() === sdk &&
@@ -49,6 +52,10 @@ export function createOwnedChannelInfoFetcher(
       pendingReqs.get(channelKey)?.requestId === requestId &&
       getImChannelInfo(sdk, channel) === prevCached &&
       getImChannelInfoRevision(sdk, channel) === prevRevision;
+
+    // This runtime replaces the SDK's channel fetcher. Retain its own ticket
+    // through provider completion and cache publication, including rejection.
+    const operation = beginImOwnerOperation('conversation');
 
     let accepted = false;
     let promise: Promise<ChannelInfo | undefined>;
@@ -83,6 +90,7 @@ export function createOwnedChannelInfoFetcher(
     } catch (syncError) {
       promise = Promise.reject(syncError);
     }
+    promise = promise.finally(() => operation.release());
 
     trackChannelInfoFetchPromise(
       sdk.channelManager, channel, promise, () => accepted && reqIsCurrent(),
