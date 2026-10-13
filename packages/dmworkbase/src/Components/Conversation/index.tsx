@@ -24,6 +24,7 @@ import { ForwardService, ForwardOptions, ForwardResult } from "../../Service/For
 import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../../Service/forwardResultToast";
 
 import Provider from "../../Service/Provider";
+import { flushConversationReadOnUnload } from "../../Service/unloadConversationRead";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
 import { selectDoneReminderIDs } from "./reminderDone";
@@ -574,20 +575,15 @@ export class Conversation
     this._beforeUnloadHandler = () => {
       // Use sendBeacon for reliable delivery during page unload
       if (this.vm && this.vm.needSetUnread) {
-        const apiURL = WKApp.apiClient.config.apiURL;
-        const url = `${apiURL}conversation/clearUnread`;
-        const data = JSON.stringify({
-          channel_id: this.props.channel.channelID,
-          channel_type: this.props.channel.channelType,
-          unread: this.vm.unreadCount > 0 ? this.vm.unreadCount : 0,
-        });
-        const token = WKApp.loginInfo.token || "";
-        fetch(url, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", token: token },
-          body: data,
-          keepalive: true,
-        });
+        // This best-effort unload write is tracked until fetch actually settles.
+        void flushConversationReadOnUnload({
+          apiURL: WKApp.apiClient.config.apiURL,
+          token: WKApp.loginInfo.token || "",
+          spaceId: WKApp.shared.currentSpaceId || "",
+          channelId: this.props.channel.channelID,
+          channelType: this.props.channel.channelType,
+          unread: this.vm.unreadCount,
+        })?.catch(() => {});
       }
       this.dealloc();
     };
