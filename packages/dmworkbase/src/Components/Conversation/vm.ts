@@ -201,6 +201,7 @@ export default class ConversationVM extends ProviderListener {
     private readContextIsCurrent?: () => boolean
     private readSyncDisposed = false
     private readSyncRevision = 0
+    private historyRequestRevision = 0
 
     pullupHasMore: boolean = false // 上拉是否有更多
     pulldownFinished: boolean = false // 下拉完成
@@ -1110,10 +1111,12 @@ export default class ConversationVM extends ProviderListener {
                 }
             } else if (cmdContent.cmd === 'syncMessageExtra') { // 同步消息扩展
                 if (message.channel.isEqual(this.channel)) {
+                    const isCurrent = this.captureMessagePublicationContext()
+                    if (!isCurrent()) return
                     WKSDK.shared().chatManager.syncMessageExtras(this.channel, this.findMaxExtraVersion()).then((messageExtras) => {
-                        this.updateMessageByMessageExtras(messageExtras)
+                        if (isCurrent()) this.updateMessageByMessageExtras(messageExtras)
                     }).catch((err) => {
-                        console.error('[ConversationVM] syncMessageExtras failed:', err)
+                        if (isCurrent()) console.error('[ConversationVM] syncMessageExtras failed:', err)
                     })
                 }
 
@@ -2128,6 +2131,19 @@ export default class ConversationVM extends ProviderListener {
         return 0
     }
 
+    private captureMessagePublicationContext(): () => boolean {
+        const lifetimeRevision = this.readSyncRevision
+        const contextIsCurrent = captureCurrentImConversationSyncContext()
+        return () => !this.readSyncDisposed && lifetimeRevision === this.readSyncRevision &&
+            contextIsCurrent() && (!this.readContextIsCurrent || this.readContextIsCurrent())
+    }
+
+    private captureHistoryRequest(): () => boolean {
+        const revision = ++this.historyRequestRevision
+        const contextIsCurrent = this.captureMessagePublicationContext()
+        return () => revision === this.historyRequestRevision && contextIsCurrent()
+    }
+
     // 同步消息
     async syncMessages(
         initMessageSeq?: number,
@@ -2135,6 +2151,8 @@ export default class ConversationVM extends ProviderListener {
         locateOffsetY: number = 0,
         highlightLocatedMessage: boolean = false,
     ) {
+        const isCurrent = this.captureHistoryRequest()
+        if (!isCurrent()) return
         this.loading = true
         this.liveFoldRevokeClientMsgNos.clear()
         this.notifyListener()
@@ -2157,11 +2175,14 @@ export default class ConversationVM extends ProviderListener {
                 opts.pullMode = PullMode.Up
             }
         }
+        if (!isCurrent()) return
         const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            if (!isCurrent()) return
             this.loading = false
             this.notifyListener()
             throw error
         })
+        if (!isCurrent()) return
 
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
@@ -2207,17 +2228,20 @@ export default class ConversationVM extends ProviderListener {
 
         this.messagesOfOrigin = allMessages
         this.refreshAndLocateMessages(allMessages, initMessage, true, () => {
+            if (!isCurrent()) return
             this.loading = false
             if (stateCallback) {
                 stateCallback()
             }
             // loading 完成后，主动确保 bot 消息的 channelInfo 已载入
             // 修复：loading 期间 channelInfoListener 会被跳过，导致 AI 标识不显示
-            this.ensureBotChannelInfos()
-        }, locateOffsetY)
+            if (isCurrent()) this.ensureBotChannelInfos()
+        }, locateOffsetY, isCurrent)
     }
 
     async requestMessagesAroundMessageSeq(messageSeq: number, stateCallback?: () => void) {
+        const isCurrent = this.captureHistoryRequest()
+        if (!isCurrent()) return
         if (!messageSeq || messageSeq <= 0) {
             if (stateCallback) {
                 stateCallback()
@@ -2242,14 +2266,18 @@ export default class ConversationVM extends ProviderListener {
         newerOpts.pullMode = PullMode.Up
         newerOpts.startMessageSeq = anchorStartMessageSeq
 
-        const [olderRemoteMessages, newerRemoteMessages] = await Promise.all([
+        if (!isCurrent()) return
+        const remoteWindow = await Promise.all([
             WKApp.conversationProvider.syncMessages(this.channel, olderOpts),
             WKApp.conversationProvider.syncMessages(this.channel, newerOpts),
         ]).catch((error) => {
+            if (!isCurrent()) return
             this.loading = false
             this.notifyListener()
             throw error
         })
+        if (!isCurrent() || !remoteWindow) return
+        const [olderRemoteMessages, newerRemoteMessages] = remoteWindow
         const toAvailableMessageWraps = (remoteMessages?: Message[]) => {
             const messages = new Array<Message>()
             if (remoteMessages && remoteMessages.length > 0) {
@@ -2294,11 +2322,12 @@ export default class ConversationVM extends ProviderListener {
 
         this.messagesOfOrigin = allMessages
         this.refreshMessages(this.messagesOfOrigin, () => {
+            if (!isCurrent()) return
             this.loading = false
             if (stateCallback) {
                 stateCallback()
             }
-            this.ensureBotChannelInfos()
+            if (isCurrent()) this.ensureBotChannelInfos()
         })
     }
 
@@ -2349,10 +2378,12 @@ export default class ConversationVM extends ProviderListener {
     }
 
     // 刷新消息列表并定位到某条消息
-    refreshAndLocateMessages(messages: MessageWrap[], locateMessage?: MessageWrap, scrollBottom?: boolean, callback?: () => void, locateOffsetY: number = 0) {
+    refreshAndLocateMessages(messages: MessageWrap[], locateMessage?: MessageWrap, scrollBottom?: boolean, callback?: () => void, locateOffsetY: number = 0, isCurrent: () => boolean = this.captureMessagePublicationContext()) {
+        if (!isCurrent()) return
         this.refreshMessages(messages, () => {
+            if (!isCurrent()) return
             if (locateMessage) {
-                this.scrollToMessage(locateMessage, locateOffsetY)
+                this.scrollToMessage(locateMessage, locateOffsetY, isCurrent)
             } else if (scrollBottom) {
                 this.scrollToBottom(false)
             }
@@ -2454,6 +2485,9 @@ export default class ConversationVM extends ProviderListener {
             return
         }
 
+        const isCurrent = this.captureHistoryRequest()
+        if (!isCurrent()) return
+
         const minMessage = this.getMessageMin();
         if (minMessage?.messageSeq === 1) { // 如果最小messageSeq=1 说明下拉没消息了直接return
             return
@@ -2472,11 +2506,14 @@ export default class ConversationVM extends ProviderListener {
         opts.pullMode = PullMode.Down
         opts.startMessageSeq = minMessage.messageSeq - 1
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+        if (!isCurrent()) return
+        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            if (!isCurrent()) return
             this.loading = false
             this.notifyListener()
             throw error
         })
+        if (!isCurrent() || !remoteMessages) return
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2492,6 +2529,7 @@ export default class ConversationVM extends ProviderListener {
         this.messagesOfOrigin = ConversationVM.deduplicateMessages(this.messagesOfOrigin)
         this.messagesOfOrigin = this.sortMessages(this.messagesOfOrigin)
         this.refreshMessages(this.messagesOfOrigin, () => {
+            if (!isCurrent()) return
             const nextViewport = document.getElementById(this.messageContainerId) as HTMLElement | null
             if (nextViewport) {
                 nextViewport.scrollTop = getPulldownRestoredScrollTop({
@@ -2510,6 +2548,9 @@ export default class ConversationVM extends ProviderListener {
             return
         }
 
+        const isCurrent = this.captureHistoryRequest()
+        if (!isCurrent()) return
+
         const maxMessage = this.getMessageMax()
         if (maxMessage == null || maxMessage.messageSeq <= 0) { // 没有消息直接return
             return
@@ -2521,11 +2562,14 @@ export default class ConversationVM extends ProviderListener {
         opts.pullMode = PullMode.Up
         opts.startMessageSeq = maxMessage.messageSeq
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+        if (!isCurrent()) return
+        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            if (!isCurrent()) return
             this.loading = false
             this.notifyListener()
             throw error
         })
+        if (!isCurrent() || !remoteMessages) return
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2547,8 +2591,9 @@ export default class ConversationVM extends ProviderListener {
         }
         this.messagesOfOrigin = ConversationVM.deduplicateMessages(this.messagesOfOrigin)
         this.refreshAndLocateMessages(this.messagesOfOrigin, undefined, false, () => {
+            if (!isCurrent()) return
             this.loading = false
-        })
+        }, 0, isCurrent)
     }
 
     // 获取当前消息列表的最小序列号的消息
@@ -2698,7 +2743,8 @@ export default class ConversationVM extends ProviderListener {
     }
 
     // 滚动到指定的消息
-    scrollToMessage(message: MessageWrap, offsetY: number = 0) {
+    scrollToMessage(message: MessageWrap, offsetY: number = 0, isCurrent: () => boolean = this.captureMessagePublicationContext()) {
+        if (!isCurrent()) return
         const viewport = document.getElementById(this.messageContainerId)
         const element = this.messageScrollElement(message)
         const keepOffsetY = Number.isFinite(offsetY) ? Math.max(0, offsetY) : 0
@@ -2712,6 +2758,7 @@ export default class ConversationVM extends ProviderListener {
         });
         if (keepOffsetY > 0) {
             const restoreOffset = () => {
+                if (!isCurrent()) return
                 const nextViewport = document.getElementById(this.messageContainerId)
                 if (nextViewport) {
                     nextViewport.scrollTop += keepOffsetY

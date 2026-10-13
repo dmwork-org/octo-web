@@ -1,7 +1,9 @@
 import WKApp from "../App";
+import { captureImOwnerWorkContext } from "./ownerAdmissionHost";
 
 /** No listeners: field revisions also catch transitions that return to the same value. */
 export function captureCurrentImConversationSyncContext(): () => boolean {
+  const ownerIsCurrent = captureImOwnerWorkContext();
   const app = WKApp.shared;
   const login = WKApp.loginInfo;
   const config = WKApp.apiClient.config;
@@ -14,6 +16,7 @@ export function captureCurrentImConversationSyncContext(): () => boolean {
   const apiURL = config.apiURL;
 
   return () => (
+    ownerIsCurrent() &&
     WKApp.shared === app &&
     WKApp.loginInfo === login &&
     WKApp.apiClient.config === config &&
