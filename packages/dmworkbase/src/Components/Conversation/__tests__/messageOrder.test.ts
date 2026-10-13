@@ -1921,6 +1921,21 @@ describe("ConversationVM history error and stale-publication matrix", () => {
         expect(vm.loading).toBe(false)
     })
 
+    it("a no-op locate request does not invalidate the history request already in flight", async () => {
+        const response = deferred<any[]>()
+        sdkState.syncMessages.mockReturnValueOnce(response.promise)
+        const vm = seededVM()
+        vi.spyOn(vm, "refreshMessages").mockImplementation((_messages, callback) => { callback?.() })
+        const waiting = vm.syncMessages()
+        const callback = vi.fn()
+        await vm.requestMessagesAroundMessageSeq(0, callback)
+        response.resolve([rawMessage(49)])
+        await waiting
+        expect(callback).toHaveBeenCalledOnce()
+        expect(vm.messagesOfOrigin.some((message) => message.messageSeq === 49)).toBe(true)
+        expect(vm.loading).toBe(false)
+    })
+
     it.each(["initial", "around", "older", "newer"])("%s: ignores deferred render completion after owner revoke", async (name) => {
         owner = createImOwnerAdmission()
         installImOwnerAdmission(owner)

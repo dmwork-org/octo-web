@@ -2240,14 +2240,14 @@ export default class ConversationVM extends ProviderListener {
     }
 
     async requestMessagesAroundMessageSeq(messageSeq: number, stateCallback?: () => void) {
-        const isCurrent = this.captureHistoryRequest()
-        if (!isCurrent()) return
         if (!messageSeq || messageSeq <= 0) {
-            if (stateCallback) {
+            if (this.captureMessagePublicationContext()() && stateCallback) {
                 stateCallback()
             }
             return
         }
+        const isCurrent = this.captureHistoryRequest()
+        if (!isCurrent()) return
 
         this.loading = true
         this.initLocateMessageSeq = 0
