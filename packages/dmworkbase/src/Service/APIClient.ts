@@ -2,9 +2,12 @@ import axios, { AxiosResponse } from "axios";
 import { buildAcceptLanguage } from "./apiLanguage";
 import { isAuthExpiredApiError, normalizeApiError, NormalizedApiError } from "./apiError";
 import { registerRequestTemplate } from "./apiPath";
+import { assertMessageOwnerHttpCurrent, runMessageOwnerHttp } from "./messageOwnerHttp";
 
 declare module "axios" {
     interface AxiosRequestConfig {
+        /** Local owner guard; never serialized as a header or body. */
+        imOwnerIsCurrent?: () => boolean;
         /** Internal host-client flag; never serialized as an HTTP header. */
         suppressSpaceId?: boolean;
         /** Let a standalone surface own its expired-session recovery flow. */
@@ -47,6 +50,8 @@ export class APIClientConfig {
      * GH Mininglamp-OSS/octo-web#1038
      */
     spaceIdCallback?:()=>string|undefined
+    /** Desktop session/Space revision, including transitions back to the same values. */
+    imContextRevisionCallback?: () => string;
     // private _apiURL: string = "/api/v1/" // 正式打包用此地址
 
 
@@ -102,6 +107,7 @@ export default class APIClient {
         // 单个请求仍可通过 config.timeout 覆盖（如上传走更长的超时）。
         axios.defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS
         axios.interceptors.request.use(function (config) {
+            assertMessageOwnerHttpCurrent(config.imOwnerIsCurrent);
             config.headers = config.headers || {};
             config.headers["Accept-Language"] = buildAcceptLanguage();
             // 埋点路由模板登记(见 apiPath.ts):唯一知道 baseURL 的地方,把 apiPath 产出的
@@ -139,8 +145,11 @@ export default class APIClient {
         });
 
         axios.interceptors.response.use(function (response) {
+            assertMessageOwnerHttpCurrent(response.config?.imOwnerIsCurrent);
             return response;
         }, function (error) {
+            // A late 401 from an old owner must not log out the current session.
+            assertMessageOwnerHttpCurrent(error?.config?.imOwnerIsCurrent);
             const normalized = normalizeApiError({
                 data: error?.response?.data,
                 httpStatus: error?.response?.status,
@@ -167,7 +176,8 @@ export default class APIClient {
     }
 
      get<T>(path: string, config?: RequestConfig) {
-       return this.wrapResult<T>(axios.get(path, {
+       return this.request(path, isCurrent => this.wrapResult<T>(axios.get(path, {
+        imOwnerIsCurrent: isCurrent,
         params: config?.param,
         headers: config?.headers,
         responseType: config?.responseType,
@@ -175,10 +185,11 @@ export default class APIClient {
         signal: config?.signal,
         suppressSpaceId: config?.suppressSpaceId,
         suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
-    }), config)
+    }), config))
     }
     post(path: string, data?: any, config?: RequestConfig) {
-        return this.wrapResult(axios.post(path, data, {
+        return this.request(path, isCurrent => this.wrapResult(axios.post(path, data, {
+            imOwnerIsCurrent: isCurrent,
             baseURL: config?.baseURL,
             headers: config?.headers,
             responseType: config?.responseType,
@@ -186,38 +197,57 @@ export default class APIClient {
             signal: config?.signal,
             suppressSpaceId: config?.suppressSpaceId,
             suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
-        }), config)
+        }), config))
     }
 
     put(path: string, data?: any, config?: RequestConfig) {
-        return this.wrapResult(axios.put(path, data, {
+        return this.request(path, isCurrent => this.wrapResult(axios.put(path, data, {
+            imOwnerIsCurrent: isCurrent,
             params: config?.param,
             headers: config?.headers,
             timeout: config?.timeout,
+            signal: config?.signal,
             suppressSpaceId: config?.suppressSpaceId,
             suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
-        }), config)
+        }), config))
     }
 
     patch(path: string, data?: any, config?: RequestConfig) {
-        return this.wrapResult(axios.patch(path, data, {
+        return this.request(path, isCurrent => this.wrapResult(axios.patch(path, data, {
+            imOwnerIsCurrent: isCurrent,
             params: config?.param,
             headers: config?.headers,
             timeout: config?.timeout,
+            signal: config?.signal,
             suppressSpaceId: config?.suppressSpaceId,
             suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
-        }), config)
+        }), config))
     }
 
     delete(path: string, config?: RequestConfig) {
-        return this.wrapResult(axios.delete(path, {
+        return this.request(path, isCurrent => this.wrapResult(axios.delete(path, {
+            imOwnerIsCurrent: isCurrent,
             params: config?.param,
             data: config?.data,
             headers: config?.headers,
             timeout: config?.timeout,
+            signal: config?.signal,
             suppressSpaceId: config?.suppressSpaceId,
             suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
-        }), config)
+        }), config))
+    }
+
+    private request<T>(path: string, run: (isCurrent?: () => boolean) => Promise<T>): Promise<T> {
+        return runMessageOwnerHttp({ path, run, captureContext: () => {
+            const config = this.config;
+            const token = config.tokenCallback?.();
+            const space = config.spaceIdCallback?.();
+            const revision = config.imContextRevisionCallback?.();
+            const originRevision = config.originRevision;
+            return () => this.config === config && config.originRevision === originRevision &&
+                config.tokenCallback?.() === token && config.spaceIdCallback?.() === space &&
+                config.imContextRevisionCallback?.() === revision;
+        } });
     }
 
     private async wrapResult<T = APIResp>(result: Promise<AxiosResponse>, config?: RequestConfig): Promise<T|any> {

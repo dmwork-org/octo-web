@@ -1,11 +1,10 @@
 import { IConversationProvider, WKApp, SyncMessageOptions, Convert } from "@octo/base";
-import axios from "axios";
 import { Conversation, Message, Channel, MessageExtra } from "wukongimjssdk";
 
 export class ConversationProvider implements IConversationProvider {
 
     async deleteConversation(channel: Channel): Promise<void> {
-        return axios.delete(`conversations/${channel.channelID}/${channel.channelType}`)
+        return WKApp.apiClient.delete(`conversations/${channel.channelID}/${channel.channelType}`)
     }
 
     // 删除消息
@@ -23,7 +22,7 @@ export class ConversationProvider implements IConversationProvider {
             })
         }
 
-        return await axios.delete("message", {
+        return await WKApp.apiClient.delete("message", {
             data: params
         })
     }
@@ -79,7 +78,7 @@ export class ConversationProvider implements IConversationProvider {
     }
 
     clearConversationMessages(conversation: Conversation): Promise<void> {
-        return axios.post("message/offset", {
+        return WKApp.apiClient.post("message/offset", {
             channel_id: conversation.channel.channelID,
             channel_type: conversation.channel.channelType,
             message_seq: conversation.lastMessage?.messageSeq || 0,
