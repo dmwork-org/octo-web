@@ -156,4 +156,23 @@ describe('createSyncSubscribersCallback', () => {
 
     expect(deps.setChannelInfoForCache).not.toHaveBeenCalled()
   })
+
+  it.each(['resolve', 'reject'] as const)('rejects a stale %s without touching robot cache', async mode => {
+    const deps = createDeps()
+    let current = true
+    let resolve!: (value: unknown) => void
+    let reject!: (error: Error) => void
+    deps.getMembers.mockReturnValue(new Promise((yes, no) => { resolve = yes; reject = no }))
+    const existing = { orgData: { robot: 0 } }
+    deps.getPersonChannelInfo.mockReturnValue(existing)
+    const callback = createSyncSubscribersCallback({ ...deps, captureContext: () => () => current })
+    const work = callback(new Channel('g1', 2), 0)
+    current = false
+    if (mode === 'resolve') resolve([{ uid: 'bot1', role: 0, robot: 1 }])
+    else reject(new Error('obsolete member request'))
+    await expect(work).rejects.toMatchObject({ code: 'owner_stale' })
+    expect(existing.orgData.robot).toBe(0)
+    expect(deps.avatarUser).not.toHaveBeenCalled()
+    expect(deps.setChannelInfoForCache).not.toHaveBeenCalled()
+  })
 })

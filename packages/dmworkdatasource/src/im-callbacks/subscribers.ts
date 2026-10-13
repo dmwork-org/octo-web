@@ -1,11 +1,13 @@
 import { ChannelTypeCommunityTopic, GroupRole, parseThreadChannelId } from "@octo/base"
 import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk"
+import { ImOwnerAdmissionError } from "@octo/base/src/im-runtime/ownerAdmission"
 
 export interface SyncSubscribersCallbackDeps {
     getMembers: (path: string) => Promise<any>
     avatarUser: (uid: string) => string
     getPersonChannelInfo: (uid: string) => ChannelInfo | undefined
     setChannelInfoForCache: (channelInfo: ChannelInfo) => void
+    captureContext?: () => () => boolean
 }
 
 function toSubscriber(memberMap: any, avatarUser: (uid: string) => string): Subscriber {
@@ -28,6 +30,11 @@ export function createSyncSubscribersCallback(deps: SyncSubscribersCallbackDeps)
         channel: Channel,
         version: number,
     ): Promise<Array<Subscriber>> {
+        const isCurrent = deps.captureContext?.() ?? (() => true)
+        const assertCurrent = () => {
+            if (!isCurrent()) throw new ImOwnerAdmissionError('owner_stale')
+        }
+        assertCurrent()
         // 子区（ChannelTypeCommunityTopic）使用父群聊 ID 拉取成员列表
         let groupId = channel.channelID
         if (channel.channelType === ChannelTypeCommunityTopic) {
@@ -36,7 +43,11 @@ export function createSyncSubscribersCallback(deps: SyncSubscribersCallbackDeps)
                 groupId = parsed.groupNo
             }
         }
-        const resp = await deps.getMembers(`groups/${groupId}/membersync?version=${version}&limit=10000`)
+        const resp = await deps.getMembers(`groups/${groupId}/membersync?version=${version}&limit=10000`).catch(error => {
+            assertCurrent()
+            throw error
+        })
+        assertCurrent()
         const members = []
         if (resp) {
             for (let i = 0; i < resp.length; i++) {
@@ -52,6 +63,7 @@ export function createSyncSubscribersCallback(deps: SyncSubscribersCallbackDeps)
 
         // 将 robot 字段同步到 person channelInfo 缓存，确保消息列表能正确显示 AI 标识
         for (const member of members) {
+            assertCurrent()
             if (member.orgData?.robot === 1) {
                 const existing = deps.getPersonChannelInfo(member.uid)
                 if (existing) {
