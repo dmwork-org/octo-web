@@ -2,6 +2,7 @@ import "@octo/base/src/theme/tokens.css";
 import "../index.css";
 import {
   BaseModule,
+  captureCurrentImConversationSyncContext,
   Dap,
   IM_DEVICE_FLAG_PC,
   ThemeMode,
@@ -26,6 +27,9 @@ import { installHostForwardSurface } from "./forwardSurface";
 import { installHostNotificationPolicyAdapter } from "./notificationPolicyAdapter";
 import { resolveForwardSurfaceAvatar } from "./forwardSurfaceAvatar";
 import { assertBackgroundRuntimeHost, startCommunicationRuntime } from "./runtime/start";
+import { installCommunicationMessageOwner } from "./runtime/messageOwner";
+import { installMessageOwnerSdk } from "./runtime/messageOwnerSdk";
+import { captureCommunicationConnectionContext } from "./runtime/messageOwnerContext";
 import "../client-feature/desktop/presentation.css";
 import "../client-feature/desktop/summary.css";
 import "./desktop-presentation.css";
@@ -46,6 +50,8 @@ async function main() {
   });
   WKApp.apiClient.config.tokenCallback = () => WKApp.loginInfo.token;
   WKApp.apiClient.config.spaceIdCallback = () => WKApp.shared.currentSpaceId;
+  WKApp.apiClient.config.imContextRevisionCallback = () =>
+    `${WKApp.loginInfo.sessionRevision}/${WKApp.shared.spaceRevision}`;
   Dap.shared.setTokenProvider(() => WKApp.loginInfo.token);
   WKApp.config.appVersion = import.meta.env.VITE_VERSION || pkgVersion;
   WKApp.config.appName = "Octo";
@@ -90,22 +96,36 @@ async function main() {
 
   await enableClientFeatureMocks("communication");
   await enableMockImIfE2E();
-  WKApp.shared.startup({ loadLoginInfo: false, isPC: true });
-  if (
-    WKApp.loginInfo.deviceFlag !== IM_DEVICE_FLAG_PC ||
-    WKSDK.shared().config.deviceFlag !== IM_DEVICE_FLAG_PC
-  ) {
-    throw new Error("Communication renderer requires the PC IM device flag");
-  }
-  WKApp.config.themeMode = bootstrap.appearance.theme === "dark" ? ThemeMode.dark : ThemeMode.light;
-  document.documentElement.dataset.theme = bootstrap.appearance.theme;
-  Dap.shared.init();
+  const messages = bootstrap.runtime
+    ? installCommunicationMessageOwner(admission => installMessageOwnerSdk(WKSDK.shared(), admission, {
+        captureContext: captureCurrentImConversationSyncContext,
+        captureConnectionContext: captureCommunicationConnectionContext,
+      }))
+    : undefined;
+  try {
+    WKApp.shared.startup({ loadLoginInfo: false, isPC: true });
+    if (
+      WKApp.loginInfo.deviceFlag !== IM_DEVICE_FLAG_PC ||
+      WKSDK.shared().config.deviceFlag !== IM_DEVICE_FLAG_PC
+    ) {
+      throw new Error("Communication renderer requires the PC IM device flag");
+    }
+    WKApp.config.themeMode = bootstrap.appearance.theme === "dark" ? ThemeMode.dark : ThemeMode.light;
+    document.documentElement.dataset.theme = bootstrap.appearance.theme;
+    Dap.shared.init();
 
-  if (bootstrap.runtime) {
-    await startCommunicationRuntime(host, bootstrap);
-  } else {
-    const { mountCommunicationUi } = await import("./mountUi");
-    await mountCommunicationUi(host, bootstrap);
+    if (bootstrap.runtime) {
+      await startCommunicationRuntime(host, bootstrap, messages);
+    } else {
+      const { mountCommunicationUi } = await import("./mountUi");
+      await mountCommunicationUi(host, bootstrap);
+    }
+  } catch (error) {
+    messages?.revoke();
+    if (messages) void messages.stop().catch(() => {
+      console.error("[communication-runtime] message_owner_stop_failed");
+    });
+    throw error;
   }
   await enableCommunicationShadowCaptureIfE2E();
   await enableCommunicationProductionSidebarCaptureIfRequested();

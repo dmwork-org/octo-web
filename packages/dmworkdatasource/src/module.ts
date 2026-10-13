@@ -71,6 +71,7 @@ export default class DataSourceModule implements IModule {
                 getImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson)),
             setChannelInfoForCache: (channelInfo) =>
                 setImChannelInfoCache(WKSDK.shared(), channelInfo),
+            captureContext: captureCurrentImConversationSyncContext,
         })
     }
 
@@ -111,8 +112,9 @@ export default class DataSourceModule implements IModule {
     }
 
     setMessageReadedCallback() {
-        WKSDK.shared().config.provider.messageReadedCallback = createMessageReadedCallback({
-            postMessageReaded: (path, body) => WKApp.apiClient.post(path, body),
+        WKSDK.shared().config.provider.messageReadedCallback = createMessageReadedCallback<void>({
+            postMessageReaded: async (path, body) => { await WKApp.apiClient.post(path, body) },
+            captureContext: captureCurrentImConversationSyncContext,
         })
     }
 
