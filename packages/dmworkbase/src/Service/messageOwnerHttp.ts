@@ -10,6 +10,7 @@ export function messageOwnerHttpKind(path: string): ImOwnerOperationKind | undef
     const relative = pathname.replace(/^\/(?:api\/)?v1\//, '/').replace(/^\//, '')
     if (/^message\/readed(?:\/|$)/.test(relative)) return 'receipt'
     if (/^conversation\/clearUnread(?:\/|$)/.test(relative)) return 'read'
+    if (/^(?:reaction|reactions)(?:\/|$)/.test(relative)) return 'reaction'
     if (/^(?:message|messages)(?:\/|$)/.test(relative)) return 'history'
     if (/^(?:conversation|conversations)(?:\/|$)/.test(relative)) return 'conversation'
     return undefined

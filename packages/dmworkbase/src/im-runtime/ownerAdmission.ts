@@ -1,5 +1,5 @@
 /** Admission is independent of SDK, HTTP, React and the host IPC protocol. */
-export type ImOwnerOperationKind = 'connect' | 'send' | 'history' | 'conversation' | 'read' | 'receipt' | 'upload'
+export type ImOwnerOperationKind = 'connect' | 'send' | 'history' | 'conversation' | 'read' | 'receipt' | 'upload' | 'reaction'
 export type ImOwnerAdmissionPhase = 'active' | 'quiescing' | 'preparing'
 
 export class ImOwnerAdmissionError extends Error {

@@ -45,7 +45,8 @@ function deferredHttp() {
 
 describe('message HTTP owner boundary', () => {
     it.each(['message/channel/sync', '/v1/message/readed', '/api/v1/conversation/clearUnread',
-        'conversations/group/2', 'https://api.example.test/v1/message/extra/sync'])('covers path %s', path => {
+        'conversations/group/2', 'https://api.example.test/v1/message/extra/sync',
+        'reactions', 'reaction/sync', 'messages/_search_global_messages'])('covers path %s', path => {
         expect(messageOwnerHttpKind(path)).toBeDefined()
     })
 
@@ -57,6 +58,7 @@ describe('message HTTP owner boundary', () => {
         owner.quiesce(1)
         expect(await queued).toMatchObject({ code: 'owner_stale' })
         await expect(client.post('message/channel/sync', {})).rejects.toMatchObject({ code: 'owner_denied' })
+        await expect(client.post('reactions', {})).rejects.toMatchObject({ code: 'owner_denied' })
         expect(adapter).not.toHaveBeenCalled()
         await client.get('users/me')
         expect(adapter).toHaveBeenCalledOnce()
