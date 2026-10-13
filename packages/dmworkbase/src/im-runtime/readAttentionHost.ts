@@ -7,6 +7,8 @@
  * stop the conversation UI from recording reads or claiming the SDK-level
  * open conversation.
  */
+import { isImOwnerWorkAllowed } from './ownerAdmissionHost'
+
 type ReadAttentionListener = (allowed: boolean) => void
 
 interface InstalledGate {
@@ -80,7 +82,7 @@ export function installImReadAttentionGate(
 
 /** Whether the current environment may record read attention. */
 export function isImReadAttentionAllowed(): boolean {
-    return installedGate ? installedGate.allowed : allowedByDefault
+    return isImOwnerWorkAllowed() && (installedGate ? installedGate.allowed : allowedByDefault)
 }
 
 /**
