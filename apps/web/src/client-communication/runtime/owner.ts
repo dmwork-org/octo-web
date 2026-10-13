@@ -14,6 +14,8 @@ export interface OwnerRuntimePorts {
   refreshMessages(): Promise<void>;
   applySpace(space: { id: string; name: string }): void;
   setReadAttention(allowed: boolean): void;
+  /** Synchronous writer revocation must precede UI teardown/unload side effects. */
+  revokeMessages?(): void;
   disposeData(): void;
   reportReady(ready: RuntimeReady): Promise<void>;
   reportSnapshot(snapshot: RuntimeSnapshot): void;
@@ -66,6 +68,7 @@ export function createCommunicationOwner(ports: OwnerRuntimePorts) {
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    ports.revokeMessages?.();
     ports.setReadAttention(false);
     // UI teardown precedes restoring ordinary Web's default read allowance.
     for (const cleanup of [

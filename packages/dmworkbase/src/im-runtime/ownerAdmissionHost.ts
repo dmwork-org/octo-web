@@ -4,6 +4,11 @@ import {
 
 let installed: ImOwnerAdmission | undefined
 
+/** Distinguish the managed Communication realm from ordinary Web compatibility. */
+export function hasImOwnerAdmission(): boolean {
+    return !!installed
+}
+
 /** Install before startup/connection. A realm has at most one message owner. */
 export function installImOwnerAdmission(admission: ImOwnerAdmission): void {
     if (installed) throw new ImOwnerAdmissionError('owner_denied')

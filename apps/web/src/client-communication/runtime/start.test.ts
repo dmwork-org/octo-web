@@ -4,6 +4,7 @@ import { startCommunicationRuntime } from "./start";
 import { getDocumentPreviewBody } from "@octo/base/src/Service/DocumentPreviewService";
 import type { DocumentPreviewResponse } from "@octo/base/src/Service/DocumentPreviewService";
 import APIClient from "@octo/base/src/Service/APIClient";
+import type { CommunicationMessageOwner, WebMessageOwnerDrain } from './messageOwner';
 import { resetDocPreviewCache } from "@octo/base/src/Messages/DocumentShareCard/preview";
 import { installHostFilePreview } from "../filePreview";
 import {
@@ -70,6 +71,27 @@ function hostFixture() {
   };
 }
 describe("communication runtime composition", () => {
+  it('revokes the installed message owner before UI teardown and observes its asynchronous stop', async () => {
+    const h = hostFixture();
+    let finish!: (report: WebMessageOwnerDrain) => void;
+    const drained = new Promise<WebMessageOwnerDrain>(resolve => { finish = resolve; });
+    const messages: CommunicationMessageOwner = {
+      snapshot: () => ({ generation: 0, phase: 'active', pendingCount: 0 }),
+      revoke: vi.fn(() => 1), quiesce: vi.fn(() => drained), stop: vi.fn(() => drained),
+      setReadAttention: vi.fn(), prepare: vi.fn(async () => {}), grant: vi.fn(),
+    };
+    const owner = await startCommunicationRuntime(h.host, bootstrap, messages);
+    h.send({ type: 'navigate', page: 'chat' });
+    await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce());
+    owner.dispose();
+    expect(owner.messages).toBe(messages);
+    expect(messages.revoke).toHaveBeenCalledOnce();
+    expect(messages.stop).toHaveBeenCalledOnce();
+    expect(f.sdk.disconnect).not.toHaveBeenCalled();
+    expect(f.gate.dispose).not.toHaveBeenCalled();
+    finish({ owner: 'web', generation: 1, pendingCount: 0, closed: true, stopped: true, readAttentionRevoked: true });
+    await drained;
+  });
   it("holds shared data with no UI, ignores unscoped navigation, then mounts the same owner", async () => {
     const h = hostFixture();
     const owner = await startCommunicationRuntime(h.host, bootstrap);

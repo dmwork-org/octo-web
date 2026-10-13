@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createImOwnerAdmission } from './ownerAdmission'
 import {
     beginImOwnerOperation, captureImOwnerWorkContext, installImOwnerAdmission,
-    isImOwnerWorkAllowed, uninstallImOwnerAdmission, withImOwnerOperation,
+    hasImOwnerAdmission, isImOwnerWorkAllowed, uninstallImOwnerAdmission, withImOwnerOperation,
 } from './ownerAdmissionHost'
 import { installImReadAttentionGate, isImReadAttentionAllowed } from './readAttentionHost'
 
@@ -22,12 +22,15 @@ afterEach(() => {
 
 describe('Web message owner admission', () => {
     it('keeps ordinary Web allowed until an exclusive host is installed', () => {
+        expect(hasImOwnerAdmission()).toBe(false)
         const ordinary = beginImOwnerOperation('history')
         expect(ordinary.isCurrent()).toBe(true)
         const owner = install()
+        expect(hasImOwnerAdmission()).toBe(true)
         expect(ordinary.isCurrent()).toBe(false)
         expect(() => installImOwnerAdmission(createImOwnerAdmission())).toThrow('owner_denied')
         owner.quiesce(1)
+        expect(hasImOwnerAdmission()).toBe(true)
         expect(isImOwnerWorkAllowed()).toBe(false)
     })
 

@@ -19,6 +19,7 @@ function fixture(withSummary = false) {
     refreshMessages: vi.fn(() => new Promise<void>(() => {})),
     applySpace: vi.fn(() => { badge = { status: "loading", count: null }; notify(); }),
     setReadAttention: vi.fn(),
+    revokeMessages: vi.fn(),
     disposeData: vi.fn(),
     reportReady: vi.fn(async () => {}),
     reportSnapshot: vi.fn(),
@@ -123,6 +124,9 @@ describe("communication data owner", () => {
     f.owner.dispose();
     f.owner.dispose();
     expect(f.ports.disposeUi).toHaveBeenCalledOnce();
+    expect(f.ports.revokeMessages).toHaveBeenCalledOnce();
+    expect(vi.mocked(f.ports.revokeMessages!).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(f.ports.disposeUi).mock.invocationCallOrder[0]);
     expect(f.release).toHaveBeenCalledOnce();
     expect(f.ports.summary?.dispose).toHaveBeenCalledOnce();
     expect(vi.mocked(f.ports.disposeUi).mock.invocationCallOrder[0])

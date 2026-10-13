@@ -14,6 +14,7 @@ import { createLazyCommunicationUi } from "./lazyUi";
 import { installLazyDocumentForward } from "./lazyDocumentForward";
 import { createCommunicationOwner } from "./owner";
 import { createRuntimeHostScheduler } from "./hostScheduler";
+import type { CommunicationMessageOwner } from './messageOwner';
 
 export function assertBackgroundRuntimeHost(host: OctoBuddyCommunicationBridge, bootstrap: CommunicationBootstrap): void {
   if (!bootstrap.runtime) return;
@@ -25,13 +26,15 @@ export function assertBackgroundRuntimeHost(host: OctoBuddyCommunicationBridge, 
   }
 }
 
-export async function startCommunicationRuntime(host: OctoBuddyCommunicationBridge, bootstrap: CommunicationBootstrap) {
+export async function startCommunicationRuntime(
+  host: OctoBuddyCommunicationBridge, bootstrap: CommunicationBootstrap, messages?: CommunicationMessageOwner,
+) {
   assertBackgroundRuntimeHost(host, bootstrap);
   if (!bootstrap.runtime) throw new Error("Missing owner runtime bootstrap");
   const sdk = WKSDK.shared();
   const store = getCurrentImConversationStore();
   const unread = getCurrentImUnreadObserver();
-  const gate = installImReadAttentionGate(false);
+  const gate = messages ? undefined : installImReadAttentionGate(false);
   let disposed = false;
   const cleanups: Array<() => void> = [];
   let owner: ReturnType<typeof createCommunicationOwner>;
@@ -59,7 +62,12 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
     disposed = true;
     for (const cleanup of [
       ...cleanups.splice(0).reverse(), () => forward?.dispose(),
-      () => store.dispose(), () => sdk.disconnect(), () => hostScheduler?.dispose(), () => gate.dispose(),
+      () => store.dispose(),
+      () => {
+        if (messages) void messages.stop().catch(() => reportError(new Error('message_owner_stop_failed')));
+        else sdk.disconnect();
+      },
+      () => hostScheduler?.dispose(), () => gate?.dispose(),
     ]) {
       try { cleanup(); } catch (error) { reportError(error); }
     }
@@ -88,7 +96,8 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
       document.documentElement.dataset.spaceId = space.id;
       applyImSpaceContext({ space_id: space.id, name: space.name });
     },
-    setReadAttention: gate.setAllowed,
+    setReadAttention: messages ? messages.setReadAttention : gate!.setAllowed,
+    revokeMessages: messages ? () => { messages.revoke(); } : undefined,
     disposeData,
     reportReady: (state) => host.reportRuntimeReady!(state),
     reportSnapshot: (snapshot) => host.reportRuntimeSnapshot!(snapshot),
@@ -144,7 +153,7 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
     window.addEventListener("pagehide", onPageHide);
     cleanups.push(() => window.removeEventListener("pagehide", onPageHide));
     await owner.start();
-    return owner;
+    return { ...owner, messages };
   } catch (error) {
     owner.dispose();
     throw error;
