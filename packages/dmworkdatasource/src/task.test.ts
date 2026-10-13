@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
+import { Message } from 'wukongimjssdk'
 
 // vi.hoisted runs before vi.mock hoisting, so these are available in factories
 const { TaskStatus, mockApiGet } = vi.hoisted(() => ({
@@ -27,10 +28,13 @@ vi.mock('wukongimjssdk', () => {
     MessageTask: MockMessageTask,
     TaskStatus,
     MediaMessageContent: class {},
+    Message: class {},
   }
 })
 
-vi.mock('@octo/base', () => ({
+vi.mock('@octo/base', async () => ({
+  ...await import('../../dmworkbase/src/im-runtime/ownerAdmissionHost'),
+  captureCurrentImConversationSyncContext: () => () => true,
   WKApp: {
     apiClient: {
       get: (...args: any[]) => mockApiGet(...args),
@@ -63,7 +67,7 @@ function makeCredentials(overrides: Record<string, any> = {}) {
 }
 
 function createTask(fileOrNull: File | null = makeFile(), remoteUrl = ''): MediaMessageUploadTask {
-  const task = new MediaMessageUploadTask()
+  const task = new MediaMessageUploadTask(new Message())
   task.message = {
     channel: { channelType: 1, channelID: 'ch001' },
     content: {

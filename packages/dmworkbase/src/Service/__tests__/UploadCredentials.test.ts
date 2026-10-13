@@ -126,7 +126,10 @@ describe("precheckUploadCredentials", () => {
 
         await expect(uploadChatMedia(fakeFile("a.png", "image/png"), fakeChannel, "png"))
             .resolves.toBe("https://cos.example/download")
-        expect(get).toHaveBeenCalledWith(expect.stringContaining("file/upload/credentials"))
+        expect(get).toHaveBeenCalledWith(
+            expect.stringContaining("file/upload/credentials"),
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        )
         expect(put).toHaveBeenCalledWith(
             "https://cos.example/upload",
             expect.any(File),

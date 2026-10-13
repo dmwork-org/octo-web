@@ -1,7 +1,9 @@
-import { WKApp } from "@octo/base";
-import axios from "axios";
-import { MediaMessageContent } from "wukongimjssdk";
-import {  MessageTask, TaskStatus } from "wukongimjssdk";
+import { WKApp } from "@octo/base"
+import axios from "axios"
+import { MediaMessageContent, MessageTask, TaskStatus } from "wukongimjssdk"
+import {
+    beginUploadOwnerAttempt, captureUploadTaskContext, type UploadOwnerAttempt,
+} from "./taskOwnerAttempt"
 
 interface UploadCredentials {
     uploadUrl: string
@@ -12,126 +14,138 @@ interface UploadCredentials {
     expiredTime: number
 }
 
-export class MediaMessageUploadTask extends MessageTask {
-    private _progress?:number
-    private controller: AbortController | undefined
-    getUUID(){
-        const len=32;//32长度
-        const radix=16;//16进制
-        const bytes = new Uint8Array(len);
-        crypto.getRandomValues(bytes);
-        const chars='0123456789ABCDEF'.split('');const uuid:string[]=[]; let i;for(i=0;i<len;i++)uuid[i]=chars[bytes[i] % radix];
-        return uuid.join('');
-      }
+interface UploadMediaContent extends MediaMessageContent {
+    url?: string
+}
 
-    async start(): Promise<void> {
-        const mediaContent = this.message.content as MediaMessageContent
-        if(mediaContent.file) {
-            try {
-                const fileName = this.getUUID();
-                const ext = mediaContent.extension ? `.${mediaContent.extension}` : ""
-                const path = `/${this.message.channel.channelType}/${this.message.channel.channelID}/${fileName}${ext}`
-                const credentials = await this.getUploadCredentials(mediaContent.file, path)
-                if(credentials) {
-                    await this.uploadFile(mediaContent.file, credentials)
-                }else{
-                    this.status = TaskStatus.fail
-                    this.update()
-                }
-            } catch {
-                this.status = TaskStatus.fail
-                this.update()
-            }
-        }else {
-            if (mediaContent.remoteUrl && mediaContent.remoteUrl !== "") {
-                this.status = TaskStatus.success
-                this.update()
-            } else {
-                this.status = TaskStatus.fail
-                this.update()
-            }
-        }
+export class MediaMessageUploadTask extends MessageTask {
+    private _progress?: number
+    private readonly originIsCurrent = captureUploadTaskContext()
+    private activeAttempt?: UploadOwnerAttempt
+    private activePromise?: Promise<void>
+
+    getUUID() {
+        const bytes = new Uint8Array(32)
+        crypto.getRandomValues(bytes)
+        return Array.from(bytes, byte => "0123456789ABCDEF"[byte % 16]).join("")
     }
 
-    async uploadFile(file: File, credentials: UploadCredentials) {
-        // 动态超时：每 MB 预留 10 秒，最低 2 分钟兜底
-        const fileSizeMB = file.size / (1024 * 1024);
-        const timeoutMs = Math.max(2 * 60 * 1000, fileSizeMB * 10 * 1000);
-        const headers: Record<string, string> = { "Content-Type": credentials.contentType }
-        if (credentials.contentDisposition) {
-            headers["Content-Disposition"] = credentials.contentDisposition
-        }
-        const resp = await axios.put(credentials.uploadUrl, file, {
-            headers,
-            signal: (this.controller = new AbortController()).signal,
-            timeout: timeoutMs,
-            onUploadProgress: e => {
-                if (e.total && e.total > 0) {
-                    this._progress = Math.round((e.loaded / e.total) * 100);
-                    this.update()
-                }
-            }
-        }).catch(() => {
-            // Don't overwrite cancel status — abort triggers catch too
-            if (this.status !== TaskStatus.cancel) {
-                this.status = TaskStatus.fail
-                this.update()
+    start(): Promise<void> {
+        if (this.status === TaskStatus.cancel) return this.activePromise ?? Promise.resolve()
+        return this.runAttempt(async attempt => {
+            const mediaContent = this.message.content as UploadMediaContent
+            if (mediaContent.file) {
+                const ext = mediaContent.extension ? `.${mediaContent.extension}` : ""
+                const path = `/${this.message.channel.channelType}/${this.message.channel.channelID}/${this.getUUID()}${ext}`
+                const credentials = await this.getUploadCredentials(mediaContent.file, path, attempt.signal)
+                if (!this.isCurrent(attempt)) return
+                if (credentials) await this.performUpload(mediaContent.file, credentials, attempt)
+                else this.publishStatus(TaskStatus.fail, attempt)
+            } else {
+                this.publishStatus(mediaContent.remoteUrl ? TaskStatus.success : TaskStatus.fail, attempt)
             }
         })
-        if(resp && resp.status >= 200 && resp.status < 300) {
-            const mediaContent = this.message.content as MediaMessageContent
+    }
+
+    /** Direct callers receive the same admission and attempt guards as start(). */
+    uploadFile(file: File, credentials: UploadCredentials): Promise<void> {
+        if (this.status === TaskStatus.cancel) return this.activePromise ?? Promise.resolve()
+        return this.runAttempt(attempt => this.performUpload(file, credentials, attempt))
+    }
+
+    private runAttempt(run: (attempt: UploadOwnerAttempt) => Promise<void>): Promise<void> {
+        if (this.activePromise) return this.activePromise
+        if (!this.originIsCurrent()) return Promise.resolve()
+        let attempt: UploadOwnerAttempt
+        try { attempt = beginUploadOwnerAttempt(this.originIsCurrent) }
+        catch { return Promise.resolve() } // SDK starts tasks without observing a rejection.
+        this.activeAttempt = attempt
+        const work = Promise.resolve().then(async () => {
+            try {
+                if (this.isCurrent(attempt)) await run(attempt)
+            } catch {
+                // Cancellation or stale completion must never notify SDK task success/failure.
+                if (this.isCurrent(attempt)) {
+                    this.status = TaskStatus.fail
+                    try { this.update() } catch { /* Do not reject a fire-and-forget SDK task. */ }
+                }
+            } finally {
+                attempt.release()
+                if (this.activeAttempt === attempt) {
+                    this.activeAttempt = undefined
+                    this.activePromise = undefined
+                }
+            }
+        })
+        this.activePromise = work
+        return work
+    }
+
+    private isCurrent(attempt: UploadOwnerAttempt): boolean {
+        return this.activeAttempt === attempt && attempt.isCurrent()
+    }
+
+    private publishStatus(status: TaskStatus, attempt: UploadOwnerAttempt): void {
+        if (!this.isCurrent(attempt)) return
+        this.status = status
+        this.update() // SDK may synchronously enqueue send here; retain the ticket through it.
+    }
+
+    private async performUpload(file: File, credentials: UploadCredentials, attempt: UploadOwnerAttempt): Promise<void> {
+        if (!this.isCurrent(attempt)) return
+        const timeoutMs = Math.max(2 * 60 * 1000, file.size / (1024 * 1024) * 10 * 1000)
+        const headers: Record<string, string> = { "Content-Type": credentials.contentType }
+        if (credentials.contentDisposition) headers["Content-Disposition"] = credentials.contentDisposition
+        const resp = await axios.put(credentials.uploadUrl, file, {
+            headers,
+            signal: attempt.signal,
+            timeout: timeoutMs,
+            onUploadProgress: event => {
+                if (!this.isCurrent(attempt)) return
+                if (event.total && event.total > 0) {
+                    this._progress = Math.round(event.loaded / event.total * 100)
+                    this.update()
+                }
+            },
+        })
+        if (!this.isCurrent(attempt)) return
+        if (resp.status >= 200 && resp.status < 300) {
+            const mediaContent = this.message.content as UploadMediaContent
             mediaContent.url = credentials.downloadUrl
             mediaContent.remoteUrl = credentials.downloadUrl
-            this.status = TaskStatus.success
-            this.update()
-        } else if(resp) {
-            this.status = TaskStatus.fail
-            this.update()
-        }
+            this.publishStatus(TaskStatus.success, attempt)
+        } else this.publishStatus(TaskStatus.fail, attempt)
     }
 
-    // 获取预签名直传凭证（COS 直传）
-    async getUploadCredentials(file: File, path: string): Promise<UploadCredentials | undefined> {
+    async getUploadCredentials(file: File, path: string, signal?: AbortSignal): Promise<UploadCredentials | undefined> {
         const contentType = file.type || "application/octet-stream"
-        const fileName = file.name || 'file'
-        const fileSize = file.size
+        const fileName = file.name || "file"
         const result = await WKApp.apiClient.get(
-            `file/upload/credentials?path=${encodeURIComponent(path)}&type=chat&filename=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(contentType)}&fileSize=${fileSize}`
+            `file/upload/credentials?path=${encodeURIComponent(path)}&type=chat&filename=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(contentType)}&fileSize=${file.size}`,
+            { signal },
         )
-        if(result && result.uploadUrl && result.downloadUrl) {
-            return result as UploadCredentials
-        }
+        if (result && result.uploadUrl && result.downloadUrl) return result as UploadCredentials
     }
 
-    suspend(): void {
-    }
-    resume(): void {
-       
-    }
+    suspend(): void {}
+    resume(): void {}
+
     cancel(): void {
+        const shouldNotify = this.activeAttempt ? this.isCurrent(this.activeAttempt) : this.originIsCurrent()
+        this.activeAttempt?.cancel()
         this.status = TaskStatus.cancel
-        if(this.controller) {
-            this.controller.abort()
-        }
-        this.update()
-    }
-    /** 返回上传进度整数百分比（0~100） */
-    progress(): number {
-        return this._progress ?? 0
+        if (shouldNotify) this.update()
     }
 
-    /**
-     * 重试上传：防重入 + 取消上一个请求，再重置状态重新 start()。
-     * Note: expiredTime is not checked here because start() always re-fetches
-     * fresh credentials via getUploadCredentials, so stale tokens are never reused.
-     */
+    progress(): number { return this._progress ?? 0 }
+
+    /** Retry only after the previous credentials/PUT Promise has actually settled. */
     async restart(): Promise<void> {
-        if (this.status === TaskStatus.processing) return // 防重入
-        this.controller?.abort() // 取消上一个请求（如有）
+        if (this.activePromise) return this.activePromise
+        if (this.status === TaskStatus.processing || !this.originIsCurrent()) return
         this.status = TaskStatus.processing
         this._progress = 0
         this.update()
         await this.start()
     }
-
 }
