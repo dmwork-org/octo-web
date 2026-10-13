@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel, Message, MessageStatus, WKSDK } from "wukongimjssdk";
 import type { DocForwardOpen, ForwardGrant, ForwardGrantResult } from "../../ForwardModal/grant";
+import { createImOwnerAdmission, type ImOwnerAdmission } from '../../../im-runtime/ownerAdmission';
+import { installImOwnerAdmission, uninstallImOwnerAdmission } from '../../../im-runtime/ownerAdmissionHost';
 
 const runtime = vi.hoisted(() => ({
   subscribers: new Map<string, Array<{ uid: string }>>(),
@@ -120,9 +122,45 @@ beforeEach(() => {
   vi.spyOn(Toast, "error").mockReturnValue("error");
 });
 
-afterEach(() => vi.restoreAllMocks());
+let owner: ImOwnerAdmission | undefined;
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (owner) {
+    owner.quiesce(owner.snapshot().generation + 1);
+    uninstallImOwnerAdmission(owner);
+    owner = undefined;
+  }
+});
 
 describe("document forwarding through WKBase render callbacks", () => {
+  it('blocks a picker captured by the previous owner even after reactivation', () => {
+    owner = createImOwnerAdmission();
+    installImOwnerAdmission(owner);
+    const base = makeBase();
+    const onError = vi.fn();
+    base.showConversationSelect(undefined, 'Forward', { ...documentInput, onError });
+    const ui = picker(base);
+    owner.quiesce(1); owner.prepare(2); owner.activate(2);
+    ui.confirm([group]);
+    expect(send).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it('blocks SDK send after a beforeSend Promise from the previous owner settles', async () => {
+    owner = createImOwnerAdmission();
+    installImOwnerAdmission(owner);
+    const before = deferred<void>();
+    const entered = vi.fn(() => before.promise);
+    const onError = vi.fn();
+    const base = makeBase();
+    base.showConversationSelect(undefined, 'Forward', { ...documentInput, beforeSend: entered, onError });
+    picker(base).confirm([group]);
+    await vi.waitFor(() => expect(entered).toHaveBeenCalledOnce());
+    owner.quiesce(1); owner.prepare(2); owner.activate(2);
+    before.resolve();
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+    expect(send).not.toHaveBeenCalled();
+  });
   it("accepts forwards after React's development lifecycle remount", async () => {
     const base = makeBase();
     base.componentDidMount();

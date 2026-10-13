@@ -14,6 +14,7 @@ import { Dap } from "../../Service/Dap";
 import UserInfo from "../UserInfo";
 import BotDetailModal from "../BotDetailModal";
 import WKApp from "../../App";
+import { captureImOwnerWorkContext } from "../../im-runtime/ownerAdmissionHost";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
   ChannelInfoLike,
@@ -140,6 +141,7 @@ export class GlobalModalOptions {
 interface ForwardOp {
   settled: boolean
   confirmed: boolean
+  ownerIsCurrent: () => boolean
   forward?: DocForwardOpen
   onCancel?: () => void
 }
@@ -270,7 +272,8 @@ export default class WKBase
     options?: { withComment?: boolean }
   ): (() => void) | void {
     if (this.currentForwardOp) this.cancelForward(this.currentForwardOp);
-    const op: ForwardOp = { settled: false, confirmed: false, forward, onCancel };
+    const op: ForwardOp = { settled: false, confirmed: false, forward, onCancel,
+      ownerIsCurrent: captureImOwnerWorkContext() };
     this.forwardOps.add(op);
     this.currentForwardOp = op;
     this.setState((prev) => ({
@@ -360,11 +363,12 @@ export default class WKBase
     // Capture source space BEFORE any async grant/load, so no send proceeds
     // under a different currentSpaceId.
     const sourceSpaceId = WKApp.shared.currentSpaceId;
+    const ownerIsCurrent = op?.ownerIsCurrent ?? captureImOwnerWorkContext();
 
     let grantFailures: string[] | undefined;
     let grantRejections: string[] | undefined;
     let interrupted = false;
-    const isDead = (): boolean => interrupted || this.forwardUnmounted || op?.settled === true ||
+    const isDead = (): boolean => !ownerIsCurrent() || interrupted || this.forwardUnmounted || op?.settled === true ||
       WKApp.shared.currentSpaceId !== sourceSpaceId || forward.isActive?.() === false;
     const reportError = (error: unknown): void => {
       if (interrupted) return;
@@ -698,6 +702,12 @@ export default class WKBase
               renderForwardOp.confirmed = true;
               const forward = renderForwardOp.forward;
               this.hideForwardPicker(renderForwardOp);
+              if (!renderForwardOp.ownerIsCurrent()) {
+                renderForwardOp.settled = true;
+                this.forwardOps.delete(renderForwardOp);
+                forward?.onError?.(new Error("Forward owner expired"));
+                return;
+              }
               if (forward) {
                 // feature #511: host owns "先授权后发" + send + partial-failure Toast.
                 void this.runDocForward(channels, grant, forward, renderForwardOp, comment).catch((error) => {

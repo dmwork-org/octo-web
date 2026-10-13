@@ -208,3 +208,4 @@ export const convertMarkdownToDoc = async (params: { title: string; markdown: st
 export const getDocsDocumentOpener = (): ((result: { docId: string; url: string }) => Promise<void>) | undefined => {
   return undefined;
 };
+export { captureImOwnerWorkContext } from '../../../dmworkbase/src/im-runtime/ownerAdmissionHost';

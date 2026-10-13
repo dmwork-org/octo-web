@@ -4,6 +4,7 @@ import {
   isConversationDisbanded,
   SummaryTipContent,
   WKApp,
+  captureImOwnerWorkContext,
 } from "@octo/base";
 import {
   Channel,
@@ -49,7 +50,8 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
 
   async notifySummaryCompleted({ previousStatus, detail }, { isActive } = {}) {
     const spaceId = WKApp.shared.currentSpaceId;
-    const active = () => WKApp.shared.currentSpaceId === spaceId && (isActive?.() ?? true);
+    const ownerIsCurrent = captureImOwnerWorkContext();
+    const active = () => ownerIsCurrent() && WKApp.shared.currentSpaceId === spaceId && (isActive?.() ?? true);
     if (!active()) return;
     const uid = WKApp.loginInfo.uid ?? "";
     const displayName =
@@ -79,7 +81,8 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
 
   requestForward({ content, title, onComplete, onError, onCancel, isActive }) {
     const spaceId = WKApp.shared.currentSpaceId;
-    const active = () => WKApp.shared.currentSpaceId === spaceId && (isActive?.() ?? true);
+    const ownerIsCurrent = captureImOwnerWorkContext();
+    const active = () => ownerIsCurrent() && WKApp.shared.currentSpaceId === spaceId && (isActive?.() ?? true);
     WKApp.shared.baseContext.showConversationSelect(
       async (channels: Channel[]) => {
         if (!active()) { onError?.(new SummaryForwardContextExpiredError()); return; }

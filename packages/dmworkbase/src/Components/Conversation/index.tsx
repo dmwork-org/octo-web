@@ -25,6 +25,8 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 
 import Provider from "../../Service/Provider";
 import { flushConversationReadOnUnload } from "../../Service/unloadConversationRead";
+import { captureImOwnerWorkContext } from "../../im-runtime/ownerAdmissionHost";
+import { ImOwnerAdmissionError } from "../../im-runtime/ownerAdmission";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
 import { selectDoneReminderIDs } from "./reminderDone";
@@ -600,38 +602,47 @@ export class Conversation
         vm,
       };
       const onMessageSent = this.props.onMessageSent;
+      const ownerIsCurrent = captureImOwnerWorkContext();
+      const assertOwner = () => {
+        if (!ownerIsCurrent()) throw new ImOwnerAdmissionError('owner_stale');
+      };
       const send = createConversationChatSendHandler<Message>(
         {
           conversation: {
-            sendMessage: (content) => this.sendMessage(content, channel, vm),
+            sendMessage: (content) => { assertOwner(); return this.sendMessage(content, channel, vm); },
             editMessage: (
               messageID,
               messageSeq,
               channelID,
               channelType,
               content,
-            ) =>
-              vm.editMessage(
+            ) => {
+              assertOwner();
+              return vm.editMessage(
                 messageID,
                 messageSeq,
                 channelID,
                 channelType,
                 content,
-              ),
+              );
+            },
           },
           channel: () => channel,
-          sendTextAndWaitAck: (content, onEnqueued) =>
-            this.sendTextAndWaitAck(content, channel, onEnqueued, vm),
-          sendMediaAndWait: (content, onEnqueued) =>
-            this.sendMediaAndWait(content, channel, onEnqueued, vm),
-          sendRichTextMixed: (blocks, reply, onEnqueued) =>
-            this.sendRichTextMixed(
+          sendTextAndWaitAck: (content, onEnqueued) => {
+            assertOwner(); return this.sendTextAndWaitAck(content, channel, onEnqueued, vm);
+          },
+          sendMediaAndWait: (content, onEnqueued) => {
+            assertOwner(); return this.sendMediaAndWait(content, channel, onEnqueued, vm);
+          },
+          sendRichTextMixed: (blocks, reply, onEnqueued) => {
+            assertOwner(); return this.sendRichTextMixed(
               blocks,
               reply,
               onEnqueued,
               channel,
               vm,
-            ),
+            );
+          },
           resolveReplyFromName: (message) => {
             const channelInfo = getImChannelInfo(
               WKSDK.shared(),
@@ -680,10 +691,10 @@ export class Conversation
             sendDraft.revision,
           );
         },
-        send,
+        send: request => { assertOwner(); return send(request); },
         onSendSettled: async (settlement) => {
           try {
-            if (!settlement.outcome.editorConsumed) return;
+            if (!ownerIsCurrent() || !settlement.outcome.editorConsumed) return;
             if (!settlement.restoreFailed) {
               await this.clearDraftAfterSend(settlement, context);
             }
@@ -1278,6 +1289,11 @@ export class Conversation
     vm: ConversationVM = this.vm
   ): Promise<boolean> {
     const contentBlocks: RichTextBlock[] = [];
+    const ownerIsCurrent = captureImOwnerWorkContext();
+    const assertOwner = () => {
+      if (!ownerIsCurrent()) throw new ImOwnerAdmissionError('owner_stale');
+    };
+    assertOwner();
 
     // 合并 mention（跨多个文本块）。
     let mentionAll = false;
@@ -1326,6 +1342,7 @@ export class Conversation
         const file = block.file;
         // 1. 先从本地文件读尺寸（schema 必填>0，且不受 CDN 延迟影响）。
         const { width, height } = await readLocalImageSize(file);
+        assertOwner();
         if (width <= 0 || height <= 0) {
           failImage(
             file,
@@ -1341,11 +1358,13 @@ export class Conversation
         try {
           url = await uploadChatMedia(file, channel, ext);
         } catch (err) {
+          assertOwner();
           const msg =
             (err as { msg?: string })?.msg ||
             t("base.conversation.upload.failed");
           failImage(file, msg);
         }
+        assertOwner();
         // 3. 安全：发送前图片 URL 走 isSafeUrl(http/https only)，与接收侧对称。
         if (!isSafeUrl(url!)) {
           failImage(file, t("base.conversation.upload.failed"));
@@ -1387,6 +1406,7 @@ export class Conversation
       if (mentionEntities.length > 0) (mn as any).entities = mentionEntities;
       content.mention = mn;
     }
+    assertOwner();
     return this.sendTextAndWaitAck(content, channel, onEnqueued, vm);
   }
 

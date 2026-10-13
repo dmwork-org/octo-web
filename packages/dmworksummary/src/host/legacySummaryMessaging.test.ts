@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createImOwnerAdmission, type ImOwnerAdmission } from '../../../dmworkbase/src/im-runtime/ownerAdmission';
+import { installImOwnerAdmission, uninstallImOwnerAdmission } from '../../../dmworkbase/src/im-runtime/ownerAdmissionHost';
 import { WKApp } from "@octo/base";
 import { legacySummaryMessagingPort } from "./legacySummaryMessaging";
 import { SummaryForwardContextExpiredError } from "./forwardErrors";
@@ -37,8 +39,24 @@ beforeEach(() => {
   mocks.send.mockResolvedValue({});
   mocks.interpret.mockReturnValue({ kind: "success", total: 1, failed: 0 });
 });
+let owner: ImOwnerAdmission | undefined;
+afterEach(() => {
+  if (!owner) return;
+  owner.quiesce(owner.snapshot().generation + 1);
+  uninstallImOwnerAdmission(owner);
+  owner = undefined;
+});
 
 describe("Summary forwarding context", () => {
+  it('rejects an old picker after the same Web realm was reactivated', async () => {
+    owner = createImOwnerAdmission();
+    installImOwnerAdmission(owner);
+    const forward = startForward();
+    owner.quiesce(1); owner.prepare(2); owner.activate(2);
+    await forward.confirm([]);
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(forward.onError).toHaveBeenCalledWith(expect.any(SummaryForwardContextExpiredError));
+  });
   it("reports expiration instead of silently cancelling after a Space switch", async () => {
     const forward = startForward();
     WKApp.shared.currentSpaceId = "space-b";

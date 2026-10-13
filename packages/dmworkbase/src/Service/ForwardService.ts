@@ -48,6 +48,8 @@ import { wrapSendContentForInjection } from "../Utils/sendContentProxy";
 import { applyMsgLevelExternalFieldsWithFallback } from "./Convert";
 import { ChannelTypePerson } from "wukongimjssdk";
 import { getImChannelInfo } from "../im-runtime/channelRuntime";
+import { captureImOwnerWorkContext } from "../im-runtime/ownerAdmissionHost";
+import { ImOwnerAdmissionError } from "../im-runtime/ownerAdmission";
 
 export type ForwardFailureReason = "disbanded" | "send-error";
 
@@ -177,7 +179,9 @@ export class ForwardService {
         if (opts.comment && opts.comment.length > MAX_MESSAGE_LENGTH) {
             throw new Error("Forward comment exceeds maximum message length");
         }
+        const ownerIsCurrent = captureImOwnerWorkContext();
         const assertActive = () => {
+            if (!ownerIsCurrent()) throw new ImOwnerAdmissionError('owner_stale');
             if (opts.isActive && !opts.isActive()) throw new Error("Forward context expired");
         };
         assertActive();

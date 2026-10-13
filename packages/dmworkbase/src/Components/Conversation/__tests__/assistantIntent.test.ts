@@ -1964,6 +1964,23 @@ describe("Conversation attachment and viewport helpers", () => {
     expect(onMessageSent).toHaveBeenCalledTimes(1)
   })
 
+  it('rejects a composer transaction captured before owner replacement', async () => {
+    const { createImOwnerAdmission } = await import('../../../im-runtime/ownerAdmission')
+    const { installImOwnerAdmission, uninstallImOwnerAdmission } = await import('../../../im-runtime/ownerAdmissionHost')
+    const owner = createImOwnerAdmission()
+    installImOwnerAdmission(owner)
+    try {
+      const conversation = new Conversation({ channel })
+      ;(conversation as unknown as { vm: { channel: typeof channel } }).vm = { channel }
+      const tx = (conversation as unknown as { captureChatComposerSendTransaction(): { send(request: unknown): unknown } }).captureChatComposerSendTransaction()
+      owner.quiesce(1); owner.prepare(2); owner.activate(2)
+      expect(() => tx.send({})).toThrow('owner_stale')
+    } finally {
+      owner.quiesce(owner.snapshot().generation + 1)
+      uninstallImOwnerAdmission(owner)
+    }
+  })
+
   it("renders fold message content variants and invokes file actions", async () => {
     const conversation = new Conversation({ channel })
     const app = (await import("../../../App")).default
