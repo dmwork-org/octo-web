@@ -15,6 +15,9 @@ import { installLazyDocumentForward } from "./lazyDocumentForward";
 import { createCommunicationOwner } from "./owner";
 import { createRuntimeHostScheduler } from "./hostScheduler";
 import type { CommunicationMessageOwner } from './messageOwner';
+import { installMessageOwnerEndpoint } from './messageOwnerEndpoint';
+import { sameRuntimeScope } from '../../client-feature/runtimeContract';
+import { captureCommunicationConnectionContext } from './messageOwnerContext';
 
 export function assertBackgroundRuntimeHost(host: OctoBuddyCommunicationBridge, bootstrap: CommunicationBootstrap): void {
   if (!bootstrap.runtime) return;
@@ -24,6 +27,9 @@ export function assertBackgroundRuntimeHost(host: OctoBuddyCommunicationBridge, 
   if (bootstrap.runtime.summaryAttention === "owner" && (!host.scheduleRuntimeTask || !host.cancelRuntimeTask)) {
     throw new Error("Background summary scheduler unavailable");
   }
+  if (bootstrap.ownerCutover && (!host.onOwnerCutoverCommand || !host.reportOwnerCutoverReady || !host.reportOwnerCutoverResult)) {
+    throw new Error('Owner cutover protocol unavailable');
+  }
 }
 
 export async function startCommunicationRuntime(
@@ -31,6 +37,7 @@ export async function startCommunicationRuntime(
 ) {
   assertBackgroundRuntimeHost(host, bootstrap);
   if (!bootstrap.runtime) throw new Error("Missing owner runtime bootstrap");
+  if (bootstrap.ownerCutover && !messages) throw new Error('Owner cutover requires a message owner');
   const sdk = WKSDK.shared();
   const store = getCurrentImConversationStore();
   const unread = getCurrentImUnreadObserver();
@@ -111,6 +118,28 @@ export async function startCommunicationRuntime(
     onError: reportError,
   });
   try {
+    if (bootstrap.ownerCutover) {
+      if (!messages) throw new Error('Owner cutover requires a message owner');
+      // Endpoint identity must survive owner-generation changes during drain.
+      const contextCurrent = captureCommunicationConnectionContext();
+      const spaceRevision = WKApp.shared.spaceRevision;
+      const spaceId = WKApp.shared.currentSpaceId;
+      const isOwnerContextCurrent = () => !disposed && contextCurrent() &&
+        WKApp.shared.spaceRevision === spaceRevision && WKApp.shared.currentSpaceId === spaceId &&
+        sameRuntimeScope(owner.getScope(), bootstrap.ownerCutover!);
+      const endpoint = installMessageOwnerEndpoint({
+        binding: bootstrap.ownerCutover,
+        messages,
+        isCurrent: isOwnerContextCurrent,
+        bridge: {
+          onOwnerCutoverCommand: host.onOwnerCutoverCommand!,
+          reportOwnerCutoverResult: host.reportOwnerCutoverResult!,
+        },
+      });
+      cleanups.push(() => endpoint.dispose());
+      await host.reportOwnerCutoverReady!(bootstrap.ownerCutover);
+      if (!isOwnerContextCurrent()) throw new Error('owner_context_revoked');
+    }
     cleanups.push(installHostDocumentPreview(host, bootstrap.space.id, () => {
       const scope = owner.getScope();
       return () => owner.isCurrent(scope);

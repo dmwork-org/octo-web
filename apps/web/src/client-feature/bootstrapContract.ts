@@ -65,5 +65,16 @@ export function assertClientFeatureBootstrap(
     else if (expectedFeatureId === "summary") parseSummaryRuntimeBootstrap(bootstrap.runtime);
     else throw new Error("This feature does not support a background runtime");
   }
+  if (bootstrap.ownerCutover !== undefined) {
+    if (expectedFeatureId !== 'communication' || bootstrap.runtime === undefined) {
+      throw new Error('Owner cutover requires a Communication runtime');
+    }
+    const binding = parseOwnerCutoverBinding(bootstrap.ownerCutover);
+    const runtime = parseOwnerRuntimeBootstrap(bootstrap.runtime);
+    if (binding.ownerId !== runtime.ownerId || binding.contextId !== runtime.contextId || binding.epoch !== runtime.epoch) {
+      throw new Error('Owner cutover runtime scope does not match');
+    }
+  }
 }
 import { parseOwnerRuntimeBootstrap, parseSummaryRuntimeBootstrap } from "./runtimeContract";
+import { parseOwnerCutoverBinding } from './imOwnerCutoverContract';

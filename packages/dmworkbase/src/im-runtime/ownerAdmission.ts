@@ -75,7 +75,9 @@ export function createImOwnerAdmission(): ImOwnerAdmission {
         },
         quiesce(next) {
             if (phase === 'quiescing' && next === generation) return
-            requireGeneration(next)
+            // Main can revoke a partial activation in its original positive
+            // generation. No later prepare may reuse that fenced generation.
+            if (!(next === generation && generation > 0)) requireGeneration(next)
             // Revoke before invoking callbacks: reentrant work is denied too.
             generation = next
             phase = 'quiescing'

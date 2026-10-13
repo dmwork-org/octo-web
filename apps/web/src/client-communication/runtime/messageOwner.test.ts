@@ -105,8 +105,8 @@ describe('Communication message owner assembly', () => {
     });
     expect(() => h.owner.grant(2)).toThrow('activation failed');
     expect(h.owner.snapshot().phase).toBe('quiescing');
-    expect(h.owner.snapshot().generation).toBe(3);
-    await expect(h.owner.stop()).resolves.toMatchObject({ generation: 3, closed: true });
+    expect(h.owner.snapshot().generation).toBe(2);
+    await expect(h.owner.stop()).resolves.toMatchObject({ generation: 2, closed: true });
   });
 
   it('fails closed if initial SDK setup throws', () => {

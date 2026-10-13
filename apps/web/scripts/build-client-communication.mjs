@@ -10,6 +10,7 @@ void buildClientFeature({
   contractRevision: 3,
   documentForwardVersion: 1,
   backgroundRuntimeVersion: 1,
+  ownerCutoverVersion: 1,
   summaryAttentionProviderVersion: 1,
   workspaceConversationVersion: 1,
   forwardSurfaceVersion: 1,

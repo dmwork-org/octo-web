@@ -31,6 +31,7 @@ export interface CommunicationBootstrap {
   initialPage: CommunicationPage;
   initialPresentation: CommunicationPresentation;
   runtime?: OwnerRuntimeBootstrap;
+  ownerCutover?: import('../client-feature/imOwnerCutoverContract').OwnerCutoverBinding;
 }
 
 export type HostCommand =
@@ -113,6 +114,9 @@ export interface OctoBuddyCommunicationBridge {
   publishForwardSurface?(update: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceUpdate): Promise<void>;
   onForwardSurfaceAction?(listener: (command: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceCommand) => void): () => void;
   reportRuntimeReady?(state: RuntimeReady): Promise<void>;
+  reportOwnerCutoverReady?(state: import('../client-feature/imOwnerCutoverContract').OwnerCutoverBinding): Promise<void>;
+  reportOwnerCutoverResult?(result: import('../client-feature/imOwnerCutoverContract').OwnerCutoverReport): Promise<boolean>;
+  onOwnerCutoverCommand?(callback: (command: unknown) => void): () => void;
   reportRuntimeSnapshot?(snapshot: RuntimeSnapshot): void;
   reportRuntimeCommandResult?(result: RuntimeCommandResult): void;
   onRuntimeCommand?(callback: (command: unknown) => void): () => void;

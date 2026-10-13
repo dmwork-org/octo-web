@@ -92,14 +92,15 @@ export function installCommunicationMessageOwner(
       }
       try { sdk.grant(generation); }
       catch (error) {
-        const next = revoke();
+        const next = revoke(generation);
         // Partial activation is denied immediately. Observe its actual cleanup Promise.
         void quiesce(next).catch(() => {});
         throw error;
       }
       const active = admission.snapshot();
       if (active.phase !== 'active' || active.generation !== generation) {
-        revoke();
+        revoke(generation);
+        void quiesce(generation).catch(() => {});
         throw new ImOwnerAdmissionError('owner_stale');
       }
     },

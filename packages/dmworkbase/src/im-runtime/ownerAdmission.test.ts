@@ -79,6 +79,28 @@ describe('Web message owner admission', () => {
         expect(captureImOwnerWorkContext()()).toBe(true)
     })
 
+    it.each(['preparing', 'active'] as const)('allows revoking the same positive generation from %s', phase => {
+        const owner = install()
+        owner.quiesce(1)
+        owner.prepare(2)
+        if (phase === 'active') owner.activate(2)
+        const cancel = vi.fn(() => expect(() => owner.begin('send')).toThrow('owner_denied'))
+        const ticket = phase === 'active' ? owner.begin('send', cancel) : undefined
+        owner.quiesce(2)
+        owner.quiesce(2)
+        expect(owner.snapshot()).toEqual({ generation: 2, phase: 'quiescing', pendingCount: ticket ? 1 : 0 })
+        expect(() => owner.activate(2)).toThrow('owner_stale')
+        expect(() => owner.quiesce(1)).toThrow('owner_stale')
+        expect(() => owner.prepare(2)).toThrow(ticket ? 'owner_denied' : 'owner_stale')
+        if (ticket) {
+            expect(ticket.isCurrent()).toBe(false)
+            expect(cancel).toHaveBeenCalledOnce()
+            ticket.release()
+        }
+        owner.prepare(3)
+        expect(owner.snapshot().phase).toBe('preparing')
+    })
+
     it.each([-1, 0, 0.5, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid generation %s', next => {
         const owner = install()
         expect(() => owner.quiesce(next)).toThrow('owner_stale')

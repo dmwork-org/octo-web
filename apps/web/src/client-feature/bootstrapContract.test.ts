@@ -29,4 +29,30 @@ describe("client feature bootstrap contract v1", () => {
       ).toThrow();
     }
   });
+
+  const runtime = { version: 1, ownerId: 'owner', contextId: 'context', epoch: 2, summaryAttention: 'disabled' };
+  const ownerCutover = { version: 1, ownerCutoverVersion: 1, ownerId: 'owner', contextId: 'context', epoch: 2, bindingId: 'view' };
+  const communication = fixtures.valid.find(fixture => fixture.featureId === 'communication')!.value;
+
+  it('accepts a cutover binding only with the exact Communication runtime', () => {
+    expect(() => assertClientFeatureBootstrap({ ...communication, runtime, ownerCutover }, 'communication')).not.toThrow();
+    expect(() => assertClientFeatureBootstrap({ ...communication, ownerCutover }, 'communication')).toThrow();
+    expect(() => assertClientFeatureBootstrap({ ...communication, runtime, ownerCutover: { ...ownerCutover, epoch: 3 } }, 'communication')).toThrow();
+  });
+
+  it.each(['ownerId', 'contextId', 'bindingId', 'ownerCutoverVersion'])(
+    'rejects an invalid owner binding %s', field => {
+      expect(() => assertClientFeatureBootstrap({ ...communication, runtime,
+        ownerCutover: { ...ownerCutover, [field]: field === 'ownerCutoverVersion' ? 2 : '' },
+      }, 'communication')).toThrow();
+    },
+  );
+
+  it('rejects cutover credentials and capability on another feature', () => {
+    expect(() => assertClientFeatureBootstrap({ ...communication, runtime,
+      ownerCutover: { ...ownerCutover, token: 'unexpected' },
+    }, 'communication')).toThrow();
+    const summary = fixtures.valid.find(fixture => fixture.featureId === 'summary')!.value;
+    expect(() => assertClientFeatureBootstrap({ ...summary, ownerCutover }, 'summary')).toThrow();
+  });
 });
