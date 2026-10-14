@@ -108,12 +108,19 @@ async function main() {
     await mountCommunicationUi(host, bootstrap);
   }
   await enableCommunicationShadowCaptureIfE2E();
+  await enableCommunicationProductionSidebarCaptureIfRequested();
 }
 
 async function enableCommunicationShadowCaptureIfE2E(): Promise<void> {
   if (import.meta.env.VITE_E2E_MOCK_IM !== "1") return;
   const { installCommunicationShadowCaptureHook } = await import("./shadowCaptureE2E");
   installCommunicationShadowCaptureHook();
+}
+
+async function enableCommunicationProductionSidebarCaptureIfRequested(): Promise<void> {
+  if (import.meta.env.VITE_SIDEBAR_CAPTURE !== "1") return;
+  const { installCommunicationProductionSidebarCapture } = await import("./sidebarCaptureProduction");
+  installCommunicationProductionSidebarCapture();
 }
 
 async function enableMockImIfE2E(): Promise<void> {

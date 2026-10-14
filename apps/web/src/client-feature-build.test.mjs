@@ -16,6 +16,7 @@ describe("client feature build environment", () => {
         VITE_API_URL: "https://prod.example",
         VITE_E2E_MOCK: "0",
         VITE_E2E_MOCK_IM: "0",
+        VITE_SIDEBAR_CAPTURE: "0",
       },
     });
   });
@@ -45,6 +46,7 @@ describe("client feature build environment", () => {
           VITE_API_URL: "https://mock.example",
           VITE_E2E_MOCK: "1",
           VITE_E2E_MOCK_IM: "1",
+          VITE_SIDEBAR_CAPTURE: "0",
           OCTO_ALLOW_MOCK_CLIENT_ARTIFACT: "1",
         },
         {}
@@ -57,6 +59,7 @@ describe("client feature build environment", () => {
         VITE_API_URL: "https://mock.example",
         VITE_E2E_MOCK: "1",
         VITE_E2E_MOCK_IM: "1",
+        VITE_SIDEBAR_CAPTURE: "0",
       },
     });
   });
@@ -68,6 +71,27 @@ describe("client feature build environment", () => {
         { VITE_E2E_MOCK: "1", VITE_E2E_MOCK_IM: "1", VITE_API_URL: "https://prod.example" }
       )
     ).toThrow("OCTO_ALLOW_MOCK_CLIENT_ARTIFACT");
+  });
+
+  it("forwards opt-in production sidebar capture settings", () => {
+    expect(
+      resolveClientFeatureBuildEnv(
+        {
+          VITE_API_URL: "https://test.example",
+          VITE_SIDEBAR_CAPTURE: "1",
+          VITE_GIT_COMMIT: "web-commit-123",
+        },
+        { VITE_E2E_MOCK: "0", VITE_E2E_MOCK_IM: "0" }
+      )
+    ).toMatchObject({
+      apiURL: "https://test.example",
+      e2eMock: false,
+      e2eMockIm: false,
+      viteEnv: {
+        VITE_SIDEBAR_CAPTURE: "1",
+        VITE_GIT_COMMIT: "web-commit-123",
+      },
+    });
   });
   it("rejects API-only mock flags from process env without opt-in", () => {
     expect(() =>
@@ -145,6 +169,7 @@ describe("client feature build environment", () => {
         VITE_API_URL: "https://process.example",
         VITE_E2E_MOCK: "1",
         VITE_E2E_MOCK_IM: "1",
+        VITE_SIDEBAR_CAPTURE: "0",
       },
     });
   });
