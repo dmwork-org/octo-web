@@ -134,11 +134,15 @@ async function enableMockImIfE2E(): Promise<void> {
       __octoCommunicationE2E__?: {
         getOpenChannel: () => { channelID?: string; channelType?: number } | null;
         setOpenChannel: (channel: { channelID: string; channelType: number } | null) => void;
+        setSpace: (spaceId: string) => void;
       };
     }).__octoCommunicationE2E__ = {
       getOpenChannel: () => WKApp.shared.openChannel || null,
       setOpenChannel: (channel) => {
         WKApp.shared.openChannel = channel ? new Channel(channel.channelID, channel.channelType) : undefined;
+      },
+      setSpace: (spaceId) => {
+        WKApp.shared.currentSpaceId = spaceId;
       },
     };
   } catch (error) {

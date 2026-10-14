@@ -2,11 +2,14 @@ import {
   SyncMessageOptions,
   WKApp,
   createCurrentImShadowTrace,
+  createCurrentImSidebarCapture,
 } from "@octo/base";
 import type {
   CurrentImShadowTrace,
   ShadowCaptureDocument,
   ShadowCaptureManifest,
+  SidebarCaptureDocument,
+  SidebarCaptureManifest,
 } from "@octo/base";
 import { Channel } from "wukongimjssdk";
 
@@ -48,6 +51,17 @@ export type CommunicationShadowCaptureApi = {
   read(): ShadowCaptureDocument | null;
   dispose(): ShadowCaptureDocument | null;
   isActive(): boolean;
+  readSidebar(): SidebarCaptureDocument | null;
+  disposeSidebar(): SidebarCaptureDocument | null;
+  syncSidebar(
+    tab: "recent" | "follow",
+    options?: Partial<{
+      version: number;
+      last_msg_seqs: string;
+      msg_count: number;
+    }>,
+  ): Promise<unknown>;
+  syncCategories(spaceId?: string): Promise<unknown>;
   /** Test-only command seam; delegates to the installed provider unchanged. */
   syncMessages(
     channel: CommunicationShadowChannelInput,
@@ -85,6 +99,8 @@ export function installCommunicationShadowCaptureHook(): CommunicationShadowCapt
 
   let active: CurrentImShadowTrace | undefined;
   let last: ShadowCaptureDocument | undefined;
+  let activeSidebar: ReturnType<typeof createCurrentImSidebarCapture> | undefined;
+  let lastSidebar: SidebarCaptureDocument | undefined;
 
   const api: CommunicationShadowCaptureApi = {
     start(options = {}) {
@@ -95,7 +111,22 @@ export function installCommunicationShadowCaptureHook(): CommunicationShadowCapt
         captureReads: options.captureReads ?? true,
         captureCommandOutcomes: options.captureCommandOutcomes ?? false,
       });
+      const sidebarManifest: SidebarCaptureManifest = {
+        schemaVersion: 1,
+        kind: "web-sidebar-capture",
+        source: "octo-web",
+        requiredTabs: ["recent", "follow"],
+        // This bridge is only installed with VITE_E2E_MOCK_IM=1.  Keep the
+        // artifact explicitly contract/fixture scoped so it can never be
+        // mistaken for production parity evidence.
+        captureProfile: "contract",
+        redaction: "plain-dto-v1",
+        captureId: manifest.artifact.commit,
+        artifact: manifest.artifact,
+      };
+      activeSidebar = createCurrentImSidebarCapture({ manifest: sidebarManifest });
       last = undefined;
+      lastSidebar = undefined;
       return { active: true, manifest: active.toDocument().manifest };
     },
 
@@ -104,16 +135,53 @@ export function installCommunicationShadowCaptureHook(): CommunicationShadowCapt
     },
 
     dispose() {
-      if (!active) return last ?? null;
+      if (!active) {
+        if (activeSidebar) {
+          const sidebar = activeSidebar;
+          activeSidebar = undefined;
+          sidebar.dispose();
+          lastSidebar = sidebar.toDocument();
+        }
+        return last ?? null;
+      }
       const trace = active;
       active = undefined;
       trace.dispose();
+      if (activeSidebar) {
+        const sidebar = activeSidebar;
+        activeSidebar = undefined;
+        sidebar.dispose();
+        lastSidebar = sidebar.toDocument();
+      }
       last = trace.toDocument();
       return last;
     },
 
     isActive() {
       return active !== undefined;
+    },
+
+    readSidebar() {
+      return activeSidebar?.toDocument() ?? lastSidebar ?? null;
+    },
+
+    disposeSidebar() {
+      if (!activeSidebar) return lastSidebar ?? null;
+      const capture = activeSidebar;
+      activeSidebar = undefined;
+      capture.dispose();
+      lastSidebar = capture.toDocument();
+      return lastSidebar;
+    },
+
+    syncSidebar(tab, options = {}) {
+      if (!activeSidebar) throw new Error("Communication sidebar capture is not active");
+      return activeSidebar.syncSidebar(tab, options);
+    },
+
+    syncCategories(spaceId) {
+      if (!activeSidebar) throw new Error("Communication sidebar capture is not active");
+      return activeSidebar.syncCategories(spaceId);
     },
 
     async syncMessages(channel, options = {}) {

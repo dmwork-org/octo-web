@@ -1,11 +1,16 @@
 /* eslint-disable no-undef -- Playwright executes this file in Node. */
 import { test, expect } from "../../fixtures-authed";
 import type { Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
 import {
   disposeCommunicationShadowCapture,
+  disposeCommunicationSidebarCapture,
   markCommunicationShadowRead,
+  readCommunicationSidebarCapture,
   readCommunicationShadowCapture,
+  runCommunicationCategorySync,
   runCommunicationShadowHistory,
+  runCommunicationSidebarSync,
   startCommunicationShadowCapture,
   waitForCommunicationShadowCapture,
 } from "../../_kit/shadow-capture";
@@ -166,7 +171,7 @@ test("Communication shadow capture exports an SDK event from the runtime listene
   }, CAPTURE_SEED);
   await pagePlain.waitForFunction((channelId) => {
     const sdkCtor = (globalThis as unknown as {
-      WKSDK?: { shared?: () => { conversationManager?: { conversations?: Array<any> } } };
+      WKSDK?: { shared?: () => { conversationManager?: { conversations?: Array<unknown> } } };
     }).WKSDK;
     const conversations = sdkCtor?.shared?.().conversationManager?.conversations ?? [];
     return conversations.some((conversation) =>
@@ -286,4 +291,189 @@ test("Communication shadow capture exports an SDK event from the runtime listene
     }),
   ]));
   expect(document?.events.some((event) => event.type === "command.outcome")).toBe(true);
+});
+
+test("Communication sidebar capture exports store, sidebar, and category facts from the same owner", async ({ pagePlain }, testInfo) => {
+  await installCommunicationHost(pagePlain);
+  await pagePlain.goto("/client-communication.html?shadowCapture=1");
+  await waitForCommunicationShadowCapture(pagePlain);
+
+  await pagePlain.evaluate(() => {
+    type Msw = {
+      worker: { use: (...handlers: unknown[]) => void };
+      http: {
+        post: (path: string, resolver: (info: { request: Request }) => unknown) => unknown;
+        get: (path: string, resolver: () => unknown) => unknown;
+      };
+      HttpResponse: { json: (body: unknown) => unknown };
+    };
+    const msw = (globalThis as unknown as { __msw?: Msw }).__msw;
+    if (!msw) throw new Error("MSW worker unavailable");
+    let releaseRecent: (() => void) | undefined;
+    (globalThis as unknown as { __releaseSidebarRecent__?: () => void }).__releaseSidebarRecent__ = () => {
+      releaseRecent?.();
+    };
+    msw.worker.use(
+      msw.http.post("*/sidebar/sync", async ({ request }) => {
+        const body = (await request.json()) as { tab?: string; device_uuid?: string };
+        if (!body.device_uuid) throw new Error("sidebar device_uuid missing");
+        if (body.tab === "recent") {
+          await new Promise<void>((resolve) => {
+            releaseRecent = resolve;
+            (globalThis as unknown as { __sidebarRecentPending__?: boolean }).__sidebarRecentPending__ = true;
+          });
+          return msw.HttpResponse.json({
+            items: [{
+              target_type: 5,
+              target_id: "group-a____thread-1",
+              channel_type: 5,
+              channel_id: "group-a____thread-1",
+              parent_channel_id: "group-a",
+              timestamp: 1_700_000_004,
+              unread: 4,
+              is_pinned: false,
+              is_followed: true,
+              status: 2,
+              category_id: "cat-a",
+              category_sort: 1,
+              follow_sort: 3,
+            }],
+            version: 31,
+            follow_version: 12,
+          });
+        }
+        return msw.HttpResponse.json({
+          items: [
+            {
+              target_type: 1,
+              target_id: "user-b",
+              channel_type: 1,
+              channel_id: "user-b",
+              timestamp: 1_700_000_002,
+              unread: 2,
+              is_pinned: false,
+              is_followed: true,
+              category_id: "cat-a",
+              category_sort: 1,
+              follow_sort: 1,
+            },
+            {
+              target_type: 2,
+              target_id: "group-a",
+              channel_type: 2,
+              channel_id: "group-a",
+              timestamp: 1_700_000_003,
+              unread: 1,
+              is_pinned: true,
+              is_followed: true,
+              category_id: "cat-a",
+              category_sort: 1,
+              follow_sort: 2,
+            },
+          ],
+          version: 30,
+          follow_version: 12,
+        });
+      }),
+      msw.http.get("*/spaces/e2e-space/categories", () => msw.HttpResponse.json([
+        {
+          category_id: "cat-a",
+          name: "分类 A",
+          sort: 1,
+          is_default: false,
+          groups: [{ group_no: "group-a", name: "Group A", category_sort: 1 }],
+        },
+        {
+          category_id: "default",
+          name: "默认",
+          sort: 2,
+          is_default: true,
+          groups: [],
+        },
+      ])),
+    );
+  });
+
+  await pagePlain.evaluate((seed) => {
+    const install = (globalThis as unknown as {
+      __installMockImRuntime__?: (value: unknown) => void;
+    }).__installMockImRuntime__;
+    if (typeof install !== "function") throw new Error("mock IM installer unavailable");
+    install(seed);
+    const emit = (globalThis as unknown as {
+      octoBuddyCommunication?: { __emitRuntimeCommand?: (command: unknown) => void };
+    }).octoBuddyCommunication?.__emitRuntimeCommand;
+    if (typeof emit !== "function") throw new Error("runtime command seam unavailable");
+    emit({ version: 1, ownerId: "e2e-owner", contextId: "e2e-context", epoch: 1, type: "refresh" });
+  }, {
+    ...CAPTURE_SEED,
+    users: [...CAPTURE_SEED.users, { uid: "user-b", name: "E2E User B" }],
+    groups: [...CAPTURE_SEED.groups, { group_no: "group-a", name: "Group A" }],
+    conversations: [
+      { channelId: "user-b", channelType: 1, unread: 2, timestamp: 1_700_000_002 },
+      { channelId: "group-a", channelType: 2, unread: 3, timestamp: 1_700_000_003, categoryId: "cat-a" },
+      { channelId: "group-a____thread-1", channelType: 5, unread: 4, timestamp: 1_700_000_004 },
+    ],
+    messages: [],
+  });
+  await pagePlain.waitForFunction(() => {
+    const sdkCtor = (globalThis as unknown as {
+      WKSDK?: { shared?: () => { conversationManager?: { conversations?: Array<unknown> } } };
+    }).WKSDK;
+    return (sdkCtor?.shared?.().conversationManager?.conversations ?? []).length >= 3;
+  });
+
+  await startCommunicationShadowCapture(pagePlain, {
+    captureReads: false,
+    manifest: {
+      schemaVersion: 1,
+      artifact: {
+        name: "octo-web-client-communication",
+        version: "e2e-sidebar-capture",
+        commit: "sidebar-capture-e2e",
+        contractRevision: 4,
+      },
+      redaction: "plain-dto-v1",
+    },
+  });
+  await expect(runCommunicationSidebarSync(pagePlain, "follow")).resolves.toMatchObject({
+    tab: "follow",
+    followVersion: 12,
+    accepted: true,
+    items: expect.arrayContaining([
+      expect.objectContaining({ target_type: 1, target_id: "user-b" }),
+      expect.objectContaining({ target_type: 2, target_id: "group-a" }),
+    ]),
+  });
+  await expect(runCommunicationCategorySync(pagePlain, "e2e-space")).resolves.toMatchObject({
+    categories: expect.arrayContaining([expect.objectContaining({ categoryId: "cat-a" })]),
+  });
+
+  const staleRequest = runCommunicationSidebarSync(pagePlain, "recent");
+  await pagePlain.waitForFunction(() => (globalThis as unknown as { __sidebarRecentPending__?: boolean }).__sidebarRecentPending__ === true);
+  await pagePlain.evaluate(() => {
+    const setSpace = (globalThis as unknown as {
+      __octoCommunicationE2E__?: { setSpace?: (spaceId: string) => void };
+    }).__octoCommunicationE2E__?.setSpace;
+    if (typeof setSpace !== "function") throw new Error("Communication E2E space seam unavailable");
+    setSpace("space-b");
+  });
+  await pagePlain.evaluate(() => (globalThis as unknown as {
+    __releaseSidebarRecent__?: () => void;
+  }).__releaseSidebarRecent__?.());
+  await expect(staleRequest).resolves.toMatchObject({ accepted: false, staleReason: "scope" });
+
+  const document = await readCommunicationSidebarCapture(pagePlain);
+  expect(document?.events).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: "conversation.snapshot" }),
+    expect.objectContaining({ type: "sidebar.sync", tab: "follow", response: expect.objectContaining({ follow_version: 12 }) }),
+    expect.objectContaining({ type: "category.snapshot" }),
+    expect.objectContaining({ type: "sidebar.sync", tab: "recent", accepted: false, staleReason: "scope" }),
+  ]));
+  const disposed = await disposeCommunicationSidebarCapture(pagePlain, testInfo);
+  expect(disposed?.manifest.kind).toBe("web-sidebar-capture");
+  const artifactPath = process.env.OCTO_SIDEBAR_CAPTURE_OUTPUT;
+  if (artifactPath && disposed) {
+    await writeFile(artifactPath, `${JSON.stringify(disposed, null, 2)}\n`, "utf8");
+  }
 });

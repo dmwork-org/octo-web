@@ -3,6 +3,7 @@ import type { Page, TestInfo } from "@playwright/test";
 import type {
   ShadowCaptureDocument,
   ShadowCaptureManifest,
+  SidebarCaptureDocument,
 } from "@octo/base";
 
 export const COMMUNICATION_SHADOW_CAPTURE_KEY = "__octoCommunicationShadowCapture__";
@@ -31,6 +32,17 @@ export type ShadowCapturePageApi = {
   read(): ShadowCaptureDocument | null;
   dispose(): ShadowCaptureDocument | null;
   isActive(): boolean;
+  readSidebar(): SidebarCaptureDocument | null;
+  disposeSidebar(): SidebarCaptureDocument | null;
+  syncSidebar(
+    tab: "recent" | "follow",
+    options?: Partial<{
+      version: number;
+      last_msg_seqs: string;
+      msg_count: number;
+    }>,
+  ): Promise<unknown>;
+  syncCategories(spaceId?: string): Promise<unknown>;
   syncMessages(
     channel: ShadowCaptureChannelInput,
     options?: ShadowCaptureSyncOptions,
@@ -108,6 +120,68 @@ export async function readCommunicationShadowCapture(
     if (!api) throw new Error("Communication shadow capture hook is unavailable");
     return api.read();
   }, COMMUNICATION_SHADOW_CAPTURE_KEY);
+}
+
+export async function runCommunicationSidebarSync(
+  page: Page,
+  tab: "recent" | "follow",
+  options: Partial<{ version: number; last_msg_seqs: string; msg_count: number }> = {},
+): Promise<unknown> {
+  await waitForCommunicationShadowCapture(page);
+  return page.evaluate(
+    ({ key, tab: input, options: syncOptions }) => {
+      const api = (globalThis as Record<string, unknown>)[key] as ShadowCapturePageApi | undefined;
+      if (!api) throw new Error("Communication shadow capture hook is unavailable");
+      return api.syncSidebar(input, syncOptions);
+    },
+    { key: COMMUNICATION_SHADOW_CAPTURE_KEY, tab, options },
+  );
+}
+
+export async function runCommunicationCategorySync(
+  page: Page,
+  spaceId?: string,
+): Promise<unknown> {
+  await waitForCommunicationShadowCapture(page);
+  return page.evaluate(
+    ({ key, space }) => {
+      const api = (globalThis as Record<string, unknown>)[key] as ShadowCapturePageApi | undefined;
+      if (!api) throw new Error("Communication shadow capture hook is unavailable");
+      return api.syncCategories(space);
+    },
+    { key: COMMUNICATION_SHADOW_CAPTURE_KEY, space: spaceId },
+  );
+}
+
+export async function readCommunicationSidebarCapture(
+  page: Page,
+): Promise<SidebarCaptureDocument | null> {
+  await waitForCommunicationShadowCapture(page);
+  return page.evaluate((key) => {
+    const api = (globalThis as Record<string, unknown>)[key] as ShadowCapturePageApi | undefined;
+    if (!api) throw new Error("Communication shadow capture hook is unavailable");
+    return api.readSidebar();
+  }, COMMUNICATION_SHADOW_CAPTURE_KEY);
+}
+
+export async function disposeCommunicationSidebarCapture(
+  page: Page,
+  testInfo?: TestInfo,
+  attachmentName = "communication-sidebar-capture.json",
+): Promise<SidebarCaptureDocument | null> {
+  await waitForCommunicationShadowCapture(page);
+  const document = await page.evaluate((key) => {
+    const api = (globalThis as Record<string, unknown>)[key] as ShadowCapturePageApi | undefined;
+    if (!api) throw new Error("Communication shadow capture hook is unavailable");
+    return api.disposeSidebar();
+  }, COMMUNICATION_SHADOW_CAPTURE_KEY);
+  if (document && testInfo) {
+    await testInfo.attach(attachmentName, {
+      body: `${JSON.stringify(document, null, 2)}\n`,
+      contentType: "application/json",
+    });
+  }
+  return document;
 }
 
 export async function disposeCommunicationShadowCapture(
