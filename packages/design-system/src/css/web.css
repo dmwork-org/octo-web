@@ -3,7 +3,8 @@
 @import "./primitives.css";
 @import "./layout.css";
 
-:where(:root, body) {
+:root,
+body {
   --wk-font-sans: var(--ds-font-ui);
   --wk-font-mono: var(--ds-font-mono);
   --wk-text-size-base: var(--ds-font-size-ui);

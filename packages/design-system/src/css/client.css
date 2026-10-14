@@ -3,7 +3,8 @@
 @import "./primitives.css";
 @import "./layout.css";
 
-:where(:root, body) {
+:root,
+body {
   --octo-font-sans: var(--ds-font-ui);
   --octo-font-mono: var(--ds-font-mono);
   --octo-font-size-body: var(--ds-font-size-ui);
