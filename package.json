@@ -26,6 +26,8 @@
     "lint:css": "stylelint '**/*.css' --config stylelint.config.mjs --allow-empty-input && pnpm lint:wkmodal",
     "lint:css:ci": "stylelint --config stylelint.ci.config.mjs --allow-empty-input && pnpm lint:wkmodal",
     "lint:wkmodal": "node scripts/check-wkmodal-semi-overrides.mjs",
+    "check:design-system": "node scripts/design-system-contract.mjs --check && node scripts/design-system-style-lint.mjs --check",
+    "inventory:design-system": "node scripts/design-system-style-lint.mjs --write-baseline",
     "i18n:scan": "node scripts/i18n-scan.mjs scan",
     "i18n:check": "node scripts/i18n-scan.mjs check",
     "i18n:baseline": "node scripts/i18n-scan.mjs baseline",

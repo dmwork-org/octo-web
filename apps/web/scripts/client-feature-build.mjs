@@ -34,9 +34,17 @@ function readThemeContract(appDir) {
   if (typeof contract.version !== "string" || !contract.version.trim()) {
     throw new Error(`[client-artifact] design-system contract has no version: ${pathToContract}`);
   }
+  const canonicalize = (value) => {
+    if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+    if (value && typeof value === "object") {
+      return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
+  };
+  const canonical = `${canonicalize(contract)}\n`;
   return {
     version: contract.version,
-    sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+    sha256: crypto.createHash("sha256").update(canonical).digest("hex"),
   };
 }
 

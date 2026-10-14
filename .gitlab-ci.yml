@@ -53,6 +53,26 @@ lockfile_check:
     - pnpm install --frozen-lockfile --lockfile-only
 
 # ============================================================
+# design_system_contract: verify the shared token contract before any package build.
+# This intentionally runs on the same pnpm image as lockfile_check so local and CI
+# contract hashes, declaration round-trips, and the style inventory use one runtime.
+# ============================================================
+design_system_contract:
+  stage: verify
+  tags:
+    - tke-deepmining-runner
+  image: tbj7-xtiao-tcr1.tencentcloudcr.com/xtiao-release/node:v22.13.0-pnpm
+  variables:
+    GIT_DEPTH: 1
+  script:
+    - npm config set registry https://registry.npmmirror.com
+    - npm install -g pnpm@10 --force
+    - pnpm install --frozen-lockfile
+    - pnpm check:design-system
+    - mkdir -p .artifacts/design-system
+    - pnpm --filter @octo/design-system pack --pack-destination .artifacts/design-system
+
+# ============================================================
 # sync_code: 同步部署配置到 deploy-files 仓库（所有分支）
 # ============================================================
 sync_code:

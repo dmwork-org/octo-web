@@ -1,3 +1,5 @@
+/* @octo-design-system-contract-sha256: 103df716a48824ae5f8b7dee3866372a07b912725001bc363e2ffee70d18e44c */
+
 :root,
 :root[data-theme="light"],
 :root:not([data-theme="dark"]) {
@@ -9,6 +11,13 @@
   --ds-font-weight-ui: 430;
   --ds-font-weight-medium: 500;
   --ds-font-weight-semibold: 600;
+  --ds-font-weight-body: 400;
+  --ds-font-weight-code: 400;
+  --ds-font-weight-label: 430;
+  --ds-font-weight-heading-sm: 600;
+  --ds-font-weight-heading-md: 600;
+  --ds-font-weight-heading-lg: 600;
+  --ds-font-weight-heading-app: 600;
 
   --ds-font-size-ui: 14px;
   --ds-line-height-ui: 20px;
@@ -22,6 +31,10 @@
   --ds-font-size-heading-md: 20px;
   --ds-font-size-heading-lg: 24px;
   --ds-font-size-heading-app: 28px;
+  --ds-line-height-heading-sm: 26px;
+  --ds-line-height-heading-md: 26px;
+  --ds-line-height-heading-lg: 28px;
+  --ds-line-height-heading-app: 34px;
 
   --ds-space-0: 0px;
   --ds-space-0-5: 2px;

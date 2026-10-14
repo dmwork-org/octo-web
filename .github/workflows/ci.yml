@@ -238,5 +238,7 @@ jobs:
         run: pnpm build
       - name: Lint
         run: pnpm lint
+      - name: Design system contract and style gate
+        run: pnpm check:design-system
       - name: WKModal Semi override guard
         run: pnpm lint:wkmodal
