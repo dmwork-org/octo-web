@@ -449,6 +449,12 @@ test("Communication sidebar capture exports store, sidebar, and category facts f
     categories: expect.arrayContaining([expect.objectContaining({ categoryId: "cat-a" })]),
   });
 
+  const stableDocument = await readCommunicationSidebarCapture(pagePlain);
+  const stableArtifactPath = process.env.OCTO_SIDEBAR_CAPTURE_STABLE_OUTPUT;
+  if (stableArtifactPath && stableDocument) {
+    await writeFile(stableArtifactPath, `${JSON.stringify(stableDocument, null, 2)}\n`, "utf8");
+  }
+
   const staleRequest = runCommunicationSidebarSync(pagePlain, "recent");
   await pagePlain.waitForFunction(() => (globalThis as unknown as { __sidebarRecentPending__?: boolean }).__sidebarRecentPending__ === true);
   await pagePlain.evaluate(() => {
