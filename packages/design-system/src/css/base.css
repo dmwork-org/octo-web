@@ -1,0 +1,20 @@
+:where([data-octo-design-system], [data-theme], body) {
+  font-family: var(--ds-font-ui);
+  font-weight: var(--ds-font-weight-ui);
+  color: var(--ds-color-text-primary);
+}
+
+:where([data-octo-design-system], [data-theme]) :where(button, input, textarea, select) {
+  font: inherit;
+}
+
+:where([data-octo-design-system], [data-theme]) :where(code, pre, kbd) {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-code);
+  line-height: var(--ds-line-height-code);
+}
+
+:where([data-octo-design-system], [data-theme]) :where(button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--ds-color-focus);
+  outline-offset: 2px;
+}

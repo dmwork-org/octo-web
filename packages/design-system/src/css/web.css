@@ -1,0 +1,30 @@
+@import "./tokens.css";
+@import "./base.css";
+@import "./primitives.css";
+@import "./layout.css";
+
+:root {
+  --wk-font-sans: var(--ds-font-ui);
+  --wk-font-mono: var(--ds-font-mono);
+  --wk-text-size-base: var(--ds-font-size-ui);
+  --wk-text-size-md: var(--ds-font-size-ui);
+  --wk-text-size-sm: var(--ds-font-size-label);
+  --wk-text-size-xs: 12px;
+  --wk-text-size-lg: 16px;
+  --wk-bg-base: var(--ds-color-canvas);
+  --wk-bg-surface: var(--ds-color-surface-base);
+  --wk-bg-elevated: var(--ds-color-surface-elevated);
+  --wk-bg-hover: var(--ds-color-surface-hover);
+  --wk-bg-selected: var(--ds-color-surface-selected);
+  --wk-text-primary: var(--ds-color-text-primary);
+  --wk-text-secondary: var(--ds-color-text-secondary);
+  --wk-text-tertiary: var(--ds-color-text-tertiary);
+  --wk-border-subtle: var(--ds-color-border-subtle);
+  --wk-border-default: var(--ds-color-border-default);
+  --wk-border-strong: var(--ds-color-border-strong);
+  --wk-color-info: var(--ds-color-accent);
+  --wk-brand-primary: var(--ds-color-action-neutral);
+  --wk-sidebar-w: var(--ds-layout-sidebar-width);
+  --wk-radius-md: var(--ds-radius-md);
+  --wk-radius-lg: var(--ds-radius-lg);
+}

@@ -1,0 +1,34 @@
+@import "./tokens.css";
+@import "./base.css";
+@import "./primitives.css";
+@import "./layout.css";
+
+:root {
+  --octo-font-sans: var(--ds-font-ui);
+  --octo-font-mono: var(--ds-font-mono);
+  --octo-font-size-body: var(--ds-font-size-ui);
+  --octo-line-height-body: var(--ds-line-height-ui);
+  --octo-font-size-ui: var(--ds-font-size-label);
+  --octo-line-height-ui: var(--ds-line-height-label);
+  --octo-font-size-code: var(--ds-font-size-code);
+  --octo-line-height-code: var(--ds-line-height-code);
+  --octo-bg: var(--ds-color-canvas);
+  --octo-surface: var(--ds-color-surface-base);
+  --octo-surface-soft: var(--ds-color-surface-secondary);
+  --octo-surface-hover: var(--ds-color-surface-hover);
+  --octo-surface-selected: var(--ds-color-surface-selected);
+  --octo-text: var(--ds-color-text-primary);
+  --octo-text-secondary: var(--ds-color-text-secondary);
+  --octo-text-tertiary: var(--ds-color-text-tertiary);
+  --octo-border: var(--ds-color-border-default);
+  --octo-border-strong: var(--ds-color-border-strong);
+  --octo-focus: var(--ds-color-focus);
+  --octo-accent: var(--ds-color-accent);
+  --octo-shell-rail-width: var(--ds-layout-rail-width);
+  --octo-shell-sidebar-width: var(--ds-layout-sidebar-width);
+  --octo-shell-header-height: var(--ds-layout-header-height);
+  --octo-shell-composer-radius: var(--ds-radius-composer);
+  --octo-radius-sm: var(--ds-radius-sm);
+  --octo-radius-md: var(--ds-radius-md);
+  --octo-radius-lg: var(--ds-radius-lg);
+}

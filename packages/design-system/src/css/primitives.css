@@ -1,0 +1,42 @@
+.ds-surface {
+  background: var(--ds-color-surface-base);
+  color: var(--ds-color-text-primary);
+}
+
+.ds-button {
+  min-height: var(--ds-control-height-md);
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-color-border-default);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-surface-base);
+  color: var(--ds-color-text-primary);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--ds-motion-fast,120ms) var(--ds-motion-ease,cubic-bezier(.2,0,0,1)), border-color var(--ds-motion-fast,120ms) var(--ds-motion-ease,cubic-bezier(.2,0,0,1));
+}
+
+.ds-button:hover:not(:disabled) {
+  background: var(--ds-color-surface-hover);
+}
+
+.ds-button[data-variant="primary"] {
+  border-color: var(--ds-color-action-neutral);
+  background: var(--ds-color-action-neutral);
+  color: var(--ds-color-text-inverse);
+}
+
+.ds-input {
+  min-height: var(--ds-control-height-md);
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-color-border-default);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-surface-base);
+  color: var(--ds-color-text-primary);
+  font: inherit;
+}
+
+.ds-input:focus {
+  border-color: var(--ds-color-focus);
+  outline: 2px solid color-mix(in srgb, var(--ds-color-focus) 25%, transparent);
+  outline-offset: 0;
+}

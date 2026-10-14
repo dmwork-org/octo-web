@@ -1,0 +1,33 @@
+.ds-shell {
+  min-height: 100%;
+  background: var(--ds-color-canvas);
+  color: var(--ds-color-text-primary);
+}
+
+.ds-shell__rail {
+  width: var(--ds-layout-rail-width);
+  flex: 0 0 var(--ds-layout-rail-width);
+}
+
+.ds-shell__sidebar {
+  width: var(--ds-layout-sidebar-width);
+  max-width: var(--ds-layout-sidebar-width-max);
+  flex: 0 0 var(--ds-layout-sidebar-width);
+}
+
+.ds-shell__header {
+  min-height: var(--ds-layout-header-height);
+}
+
+.ds-panel {
+  border-radius: var(--ds-radius-panel);
+  background: var(--ds-color-surface-base);
+  box-shadow: var(--ds-shadow-surface);
+}
+
+.ds-composer {
+  min-height: var(--ds-layout-composer-min-height);
+  border-radius: var(--ds-radius-composer);
+  background: var(--ds-color-surface-elevated);
+  box-shadow: var(--ds-shadow-surface);
+}

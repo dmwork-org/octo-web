@@ -1,4 +1,5 @@
 import childProcess from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -24,6 +25,19 @@ function run(command, args, options) {
       resolve();
     });
   });
+}
+
+function readThemeContract(appDir) {
+  const pathToContract = path.resolve(appDir, "..", "..", "packages", "design-system", "src", "tokens.json");
+  const bytes = fs.readFileSync(pathToContract);
+  const contract = JSON.parse(bytes.toString("utf8"));
+  if (typeof contract.version !== "string" || !contract.version.trim()) {
+    throw new Error(`[client-artifact] design-system contract has no version: ${pathToContract}`);
+  }
+  return {
+    version: contract.version,
+    sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+  };
 }
 
 export async function buildClientFeature({
@@ -108,6 +122,7 @@ export async function buildClientFeature({
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(appDir, "package.json"), "utf8")
   );
+  const themeContract = readThemeContract(appDir);
   const gitResult = childProcess.spawnSync(
     "git",
     ["rev-parse", "--short", "HEAD"],
@@ -129,6 +144,8 @@ export async function buildClientFeature({
     featureId,
     version: packageJson.version,
     commit: gitResult.stdout.trim(),
+    themeContractVersion: themeContract.version,
+    themeContractSha256: themeContract.sha256,
     entry: "index.html",
     hostBridgeMajor: 1,
     contractRevision,

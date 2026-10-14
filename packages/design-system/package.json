@@ -1,0 +1,23 @@
+{
+  "name": "@octo/design-system",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Shared zero-framework visual foundations for Octo Client and renderer artifacts",
+  "license": "MIT",
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": "./src/tokens.json",
+    "./tokens.json": "./src/tokens.json",
+    "./tokens.css": "./src/css/tokens.css",
+    "./base.css": "./src/css/base.css",
+    "./primitives.css": "./src/css/primitives.css",
+    "./layout.css": "./src/css/layout.css",
+    "./client.css": "./src/css/client.css",
+    "./web.css": "./src/css/web.css"
+  },
+  "publishConfig": {
+    "registry": "https://codex.mlamp.cn/api/v4/projects/324/packages/npm/"
+  }
+}

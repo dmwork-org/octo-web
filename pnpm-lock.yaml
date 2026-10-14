@@ -21,6 +21,8 @@ patchedDependencies:
 
 importers:
 
+  packages/design-system: {}
+
   .:
     dependencies:
       '@babel/plugin-proposal-private-property-in-object':
@@ -457,6 +459,9 @@ importers:
       '@octo/chat-react':
         specifier: workspace:*
         version: link:../chat-react
+      '@octo/design-system':
+        specifier: workspace:*
+        version: link:../design-system
       '@octo/file-preview':
         specifier: workspace:*
         version: link:../file-preview
