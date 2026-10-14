@@ -310,6 +310,10 @@ test("Communication sidebar capture exports store, sidebar, and category facts f
     const msw = (globalThis as unknown as { __msw?: Msw }).__msw;
     if (!msw) throw new Error("MSW worker unavailable");
     let releaseRecent: (() => void) | undefined;
+    let holdRecent = false;
+    (globalThis as unknown as { __holdSidebarRecent__?: () => void }).__holdSidebarRecent__ = () => {
+      holdRecent = true;
+    };
     (globalThis as unknown as { __releaseSidebarRecent__?: () => void }).__releaseSidebarRecent__ = () => {
       releaseRecent?.();
     };
@@ -318,6 +322,25 @@ test("Communication sidebar capture exports store, sidebar, and category facts f
         const body = (await request.json()) as { tab?: string; device_uuid?: string };
         if (!body.device_uuid) throw new Error("sidebar device_uuid missing");
         if (body.tab === "recent") {
+          if (!holdRecent) {
+            return msw.HttpResponse.json({
+              items: [{
+                target_type: 2,
+                target_id: "group-a",
+                channel_type: 2,
+                channel_id: "group-a",
+                timestamp: 1_700_000_003,
+                unread: 3,
+                is_pinned: false,
+                is_followed: true,
+                category_id: "cat-a",
+                category_sort: 1,
+                follow_sort: 2,
+              }],
+              version: 30,
+              follow_version: 12,
+            });
+          }
           await new Promise<void>((resolve) => {
             releaseRecent = resolve;
             (globalThis as unknown as { __sidebarRecentPending__?: boolean }).__sidebarRecentPending__ = true;
@@ -445,6 +468,11 @@ test("Communication sidebar capture exports store, sidebar, and category facts f
       expect.objectContaining({ target_type: 2, target_id: "group-a" }),
     ]),
   });
+  await expect(runCommunicationSidebarSync(pagePlain, "recent")).resolves.toMatchObject({
+    tab: "recent",
+    accepted: true,
+    items: expect.arrayContaining([expect.objectContaining({ target_id: "group-a" })]),
+  });
   await expect(runCommunicationCategorySync(pagePlain, "e2e-space")).resolves.toMatchObject({
     categories: expect.arrayContaining([expect.objectContaining({ categoryId: "cat-a" })]),
   });
@@ -455,6 +483,9 @@ test("Communication sidebar capture exports store, sidebar, and category facts f
     await writeFile(stableArtifactPath, `${JSON.stringify(stableDocument, null, 2)}\n`, "utf8");
   }
 
+  await pagePlain.evaluate(() => (globalThis as unknown as {
+    __holdSidebarRecent__?: () => void;
+  }).__holdSidebarRecent__?.());
   const staleRequest = runCommunicationSidebarSync(pagePlain, "recent");
   await pagePlain.waitForFunction(() => (globalThis as unknown as { __sidebarRecentPending__?: boolean }).__sidebarRecentPending__ === true);
   await pagePlain.evaluate(() => {
