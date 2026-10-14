@@ -3,7 +3,7 @@
 @import "./primitives.css";
 @import "./layout.css";
 
-:root {
+:where(:root, body) {
   --wk-font-sans: var(--ds-font-ui);
   --wk-font-mono: var(--ds-font-mono);
   --wk-text-size-base: var(--ds-font-size-ui);
@@ -12,19 +12,42 @@
   --wk-text-size-xs: 12px;
   --wk-text-size-lg: 16px;
   --wk-bg-base: var(--ds-color-canvas);
+  --wk-bg-deep: var(--ds-color-canvas);
   --wk-bg-surface: var(--ds-color-surface-base);
   --wk-bg-elevated: var(--ds-color-surface-elevated);
   --wk-bg-hover: var(--ds-color-surface-hover);
   --wk-bg-selected: var(--ds-color-surface-selected);
+  --wk-bg-active: var(--ds-color-surface-selected);
+  --wk-bg-navrail: var(--ds-color-surface-secondary);
   --wk-text-primary: var(--ds-color-text-primary);
   --wk-text-secondary: var(--ds-color-text-secondary);
   --wk-text-tertiary: var(--ds-color-text-tertiary);
+  --wk-text-disabled: var(--ds-color-text-disabled);
+  --wk-text-inverse: var(--ds-color-text-inverse);
+  --wk-text-accent: var(--ds-color-ai);
   --wk-border-subtle: var(--ds-color-border-subtle);
   --wk-border-default: var(--ds-color-border-default);
   --wk-border-strong: var(--ds-color-border-strong);
-  --wk-color-info: var(--ds-color-accent);
+  --wk-color-theme: var(--ds-color-action-neutral);
+  --wk-color-accent: var(--ds-color-ai);
+  --wk-color-accent-hover: var(--ds-color-ai);
+  --wk-color-success: var(--ds-color-success);
+  --wk-color-warning: var(--ds-color-warning);
+  --wk-color-error: var(--ds-color-danger);
+  --wk-color-info: var(--ds-color-info);
   --wk-brand-primary: var(--ds-color-action-neutral);
   --wk-sidebar-w: var(--ds-layout-sidebar-width);
+  --wk-rail-w: var(--ds-layout-rail-width);
+  --wk-header-h: var(--ds-layout-header-height);
+  --wk-toolbar-h: var(--ds-layout-toolbar-height);
+  --wk-control-h-sm: var(--ds-control-height-sm);
+  --wk-control-h-md: var(--ds-control-height-md);
+  --wk-control-h-lg: var(--ds-control-height-lg);
+  --wk-content-max-w: var(--ds-layout-content-max-width);
+  --wk-content-wide-max-w: var(--ds-layout-content-wide-max-width);
   --wk-radius-md: var(--ds-radius-md);
   --wk-radius-lg: var(--ds-radius-lg);
+  --wk-shadow-sm: var(--ds-shadow-surface);
+  --wk-shadow-md: var(--ds-shadow-surface);
+  --wk-shadow-lg: var(--ds-shadow-dialog);
 }

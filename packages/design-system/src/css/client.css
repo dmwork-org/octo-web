@@ -3,7 +3,7 @@
 @import "./primitives.css";
 @import "./layout.css";
 
-:root {
+:where(:root, body) {
   --octo-font-sans: var(--ds-font-ui);
   --octo-font-mono: var(--ds-font-mono);
   --octo-font-size-body: var(--ds-font-size-ui);
@@ -28,6 +28,19 @@
   --octo-shell-sidebar-width: var(--ds-layout-sidebar-width);
   --octo-shell-header-height: var(--ds-layout-header-height);
   --octo-shell-composer-radius: var(--ds-radius-composer);
+  --octo-shell-panel-inset: var(--ds-layout-panel-inset);
+  --octo-shell-panel-radius: var(--ds-radius-panel);
+  --octo-shell-content-width: var(--ds-layout-content-wide-max-width);
+  --octo-shell-content-gutter: var(--ds-space-8);
+  --octo-shell-content-gutter-compact: var(--ds-space-6);
+  --octo-rail-width: var(--ds-layout-rail-width);
+  --octo-sidebar-width: var(--ds-layout-sidebar-width);
+  --octo-header-height: var(--ds-layout-header-height);
+  --octo-composer-min-height: var(--ds-layout-composer-min-height);
+  --octo-control-height-sm: var(--ds-control-height-sm);
+  --octo-control-height-md: var(--ds-control-height-md);
+  --octo-control-height-lg: var(--ds-control-height-lg);
+  --octo-legacy-radius: var(--ds-radius-md);
   --octo-radius-sm: var(--ds-radius-sm);
   --octo-radius-md: var(--ds-radius-md);
   --octo-radius-lg: var(--ds-radius-lg);

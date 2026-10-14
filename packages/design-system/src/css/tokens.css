@@ -97,7 +97,10 @@
 }
 
 :root[data-theme="dark"],
-:root.dark {
+:root.dark,
+html.dark,
+body.dark,
+body[theme-mode="dark"] {
   color-scheme: dark;
 
   --ds-color-canvas: #141414;
