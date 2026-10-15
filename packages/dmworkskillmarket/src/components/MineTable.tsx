@@ -149,14 +149,19 @@ const COLUMNS: Array<{ key: string; labelKey: string }> = [
 ];
 
 export default function MineTable({ rows, ariaLabel }: MineTableProps) {
+  // Hide the entire columns in expert lists, including mixed asset lists, so
+  // unsupported metrics leave neither headers nor placeholder cells behind.
+  const showUsageCounts = !rows.some((row) => row.type === "expert" || row.type === "squad");
+  const columns = showUsageCounts ? COLUMNS : COLUMNS.filter((column) => column.key !== "num");
+
   return (
     <div
-      className="wk-mine-table"
+      className={`wk-mine-table${showUsageCounts ? " wk-mine-table--with-usage" : ""}`}
       role="table"
       aria-label={ariaLabel ?? t("skillMarket.mineTable.ariaLabel")}
     >
       <div className="wk-mine-table__head" role="row">
-        {COLUMNS.map((col, i) => (
+        {columns.map((col, i) => (
           <span
             key={`${col.key}-${i}`}
             className={`wk-mine-table__col wk-mine-table__col--${col.key}`}
@@ -243,12 +248,16 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                 "—"
               )}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
-              {formatCount(r.views ?? 0)}
-            </span>
-            <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
-              {formatCount(r.downloads ?? 0)}
-            </span>
+            {showUsageCounts && (
+              <>
+                <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
+                  {formatCount(r.views ?? 0)}
+                </span>
+                <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
+                  {formatCount(r.downloads ?? 0)}
+                </span>
+              </>
+            )}
             <span className="wk-mine-table__col wk-mine-table__col--status" role="cell">
               {r.statusLabel || r.status ? (
                 <span

@@ -2746,8 +2746,8 @@
   overflow-x: auto;
 }
 
-/* Nine fixed columns: 名称 / 描述 / 分类 / 版本 / 可见性 / 浏览 / 下载 / 状态 /
-   操作. 名称 and 描述 are the only elastic ones and both truncate, so a long
+/* Seven base columns: 名称 / 描述 / 分类 / 版本 / 可见性 / 状态 / 操作.
+   Tables with supported usage metrics add 浏览 / 下载 before 状态. 名称 and 描述 are the only elastic ones and both truncate, so a long
    value never reflows the row.
 
    操作 is a FIXED width, not `minmax(…, max-content)`. The header and every row
@@ -2775,11 +2775,17 @@
   /* Let the whole row, including its border/background, span every column. */
   min-width: min-content;
   grid-template-columns:
-    minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px 64px
-    64px 88px 160px;
+    minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px
+    88px 160px;
   align-items: center;
   gap: var(--wk-sp-3);
   padding: 0 var(--wk-sp-5);
+}
+:where(.wk-mine-table--with-usage) .wk-mine-table__head,
+:where(.wk-mine-table--with-usage) .wk-mine-table__row {
+  grid-template-columns:
+    minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px 64px
+    64px 88px 160px;
 }
 .wk-mine-table__head {
   height: 44px;

@@ -1,11 +1,10 @@
 import React from "react";
-import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound, Users } from "lucide-react";
+import { Bot, Pencil, ShieldCheck, Trash2, UserRound, Users } from "lucide-react";
 import { t } from "@octo/base";
 import type { ExpertItem } from "../mock/expertMock";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
-import { formatCount } from "../utils/format";
 
 interface ExpertCardProps {
   item: ExpertItem;
@@ -18,7 +17,7 @@ interface ExpertCardProps {
    *  picker and provisions directly — an agent for an expert, or the member
    *  agents + team for a squad. */
   onAddToLoop?: (item: ExpertItem) => void;
-  /** Show the footer stats row. Discovery hides it; the 我的 view keeps it. */
+  /** Show the squad member count. Discovery hides it; the 我的 view keeps it. */
   showStats?: boolean;
 }
 
@@ -28,7 +27,7 @@ const MAX_TAGS = 3;
  * Catalog card for an expert / expert squad. Deliberately reuses the MCP
  * card's class names (.wk-mcp-card*) so it inherits the exact same layout and
  * accent color scheme — icon + title, a bot/human owner row, summary, accent
- * tag pills, and a footer stat. The whole card is one click target (no inline
+ * tag pills, and a squad member count. The whole card is one click target (no inline
  * action button competing for the click); copying lives in the detail modal.
  */
 export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop, showStats = true }: ExpertCardProps) {
@@ -40,8 +39,7 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
   // 添加到回路 is offered for both experts and squads.
   const showAddToLoop = Boolean(onAddToLoop);
   const hasActions = Boolean(onEdit || onDelete);
-  const rawViewCount = item.viewCount ?? 0;
-  const rawInstallCount = item.installCount ?? 0;
+  const showMemberCount = showStats && isSquad;
 
   return (
     <div
@@ -151,9 +149,9 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
         )}
       </div>
 
-      {(showStats || hasActions) && (
+      {(showMemberCount || hasActions) && (
       <div className="wk-mcp-card__footer">
-        {showStats && (
+        {showMemberCount && (
         <div className="wk-mcp-card__stats">
           {isSquad && (
             <span
@@ -164,22 +162,6 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
               {item.memberCount ?? item.members.length}
             </span>
           )}
-          <span
-            className="wk-mcp-card__stat"
-            title={t("mcp.expert.viewCountTitle", { values: { count: rawViewCount } })}
-            aria-label={t("mcp.expert.viewCountTitle", { values: { count: rawViewCount } })}
-          >
-            <Eye size={14} aria-hidden="true" />
-            {formatCount(rawViewCount)}
-          </span>
-          <span
-            className="wk-mcp-card__stat"
-            title={t("mcp.expert.installCountTitle", { values: { count: rawInstallCount } })}
-            aria-label={t("mcp.expert.installCountTitle", { values: { count: rawInstallCount } })}
-          >
-            <Download size={14} aria-hidden="true" />
-            {formatCount(rawInstallCount)}
-          </span>
         </div>
         )}
         {hasActions && (

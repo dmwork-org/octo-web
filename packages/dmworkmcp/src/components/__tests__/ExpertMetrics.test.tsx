@@ -5,6 +5,7 @@ import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ExpertDetailModal from "../ExpertDetailModal";
 import ExpertCard from "../ExpertCard";
+import MineTable from "../../../../dmworkskillmarket/src/components/MineTable";
 import type { ExpertAgent, ExpertSquad } from "../../mock/expertMock";
 
 const trackExpertView = vi.fn();
@@ -115,24 +116,64 @@ describe("expert metric counts", () => {
     expect(trackExpertView).toHaveBeenLastCalledWith("squad", "squad-1");
   });
 
-  it("renders compact view/install counts on the card", () => {
-    const cardRoot = render(<ExpertCard item={agent} onOpen={vi.fn()} />);
-    // Compute the expectation with the same Intl options the component uses —
-    // compact notation output is locale-dependent (1.3K vs 1280 under zh-CN).
-    const compact1280 = new Intl.NumberFormat(undefined, {
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(1280);
-    expect(cardRoot.textContent).toContain(compact1280);
-    expect(cardRoot.textContent).toContain("6");
+  it.each([agent, { ...agent, viewCount: 0, installCount: 0 }])(
+    "hides unsupported usage counts without leaving an empty card footer",
+    (item) => {
+      const root = render(<ExpertCard item={item} onOpen={vi.fn()} />);
+      expect(root.querySelector(".wk-mcp-card__stats")).toBeNull();
+      expect(root.querySelector(".wk-mcp-card__footer")).toBeNull();
+    }
+  );
+
+  it("keeps the squad member count and card actions", () => {
+    const onAddToLoop = vi.fn();
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const root = render(
+      <ExpertCard item={squad} onOpen={vi.fn()} onAddToLoop={onAddToLoop} onEdit={onEdit} onDelete={onDelete} />
+    );
+    const stats = root.querySelectorAll(".wk-mcp-card__stat");
+    expect(stats).toHaveLength(1);
+    expect(stats[0].textContent).toBe("5");
+    act(() => {
+      root.querySelector<HTMLButtonElement>(".wk-mcp-card__primary-action")!.click();
+      root.querySelector<HTMLButtonElement>('[title="mcp.expert.edit"]')!.click();
+      root.querySelector<HTMLButtonElement>('[title="mcp.expert.delete"]')!.click();
+    });
+    expect(onAddToLoop).toHaveBeenCalledWith(squad);
+    expect(onEdit).toHaveBeenCalledWith(squad);
+    expect(onDelete).toHaveBeenCalledWith(squad);
   });
 
-  it("keeps zero counts visible instead of hiding the stats", () => {
-    const zero: ExpertAgent = { ...agent, viewCount: 0, installCount: 0 };
-    const root = render(<ExpertCard item={zero} onOpen={vi.fn()} />);
-    const stats = root.querySelectorAll(".wk-mcp-card__stat");
-    expect(stats).toHaveLength(2);
-    expect(stats[0].textContent).toContain("0");
-    expect(stats[1].textContent).toContain("0");
+  it.each([
+    ["expert"],
+    ["squad"],
+    ["expert", "squad", "skill", "connector"],
+  ] as const)("removes usage headers and cells from lists containing %j", (...types) => {
+    const root = render(
+      <MineTable rows={types.map((type) => ({
+        id: type, type, name: type, icon: null, views: 42, downloads: 6,
+      }))} />
+    );
+    expect(root.querySelectorAll(".wk-mine-table__col--num")).toHaveLength(0);
+    expect(root.querySelectorAll('[role="columnheader"]')).toHaveLength(7);
+    expect(root.textContent).not.toContain("skillMarket.plugin.columnViews");
+    expect(root.textContent).not.toContain("skillMarket.plugin.columnDownloads");
+    for (const row of root.querySelectorAll('.wk-mine-table__row')) {
+      expect(row.querySelectorAll('[role="cell"]')).toHaveLength(7);
+    }
+  });
+
+  it("preserves usage columns for skill and connector lists", () => {
+    const root = render(
+      <MineTable rows={(["skill", "connector"] as const).map((type) => ({
+        id: type, type, name: type, icon: null, views: 42, downloads: 6,
+      }))} />
+    );
+    expect(root.querySelectorAll('[role="columnheader"]')).toHaveLength(9);
+    const counts = Array.from(root.querySelectorAll('.wk-mine-table__row')).map((row) =>
+      Array.from(row.querySelectorAll('.wk-mine-table__col--num')).map((cell) => cell.textContent)
+    );
+    expect(counts).toEqual([["42", "6"], ["42", "6"]]);
   });
 });
